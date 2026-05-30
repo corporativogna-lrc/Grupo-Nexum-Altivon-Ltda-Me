@@ -38,11 +38,6 @@ NexumAltivon.com
 
 ---
 
-## Banco de Dados — MySQL
-
-**Servidor:** 192.168.1.72:3309  
-**Banco:** nexum_altivon  
-**Usuario:** root  
 
 ### Tabelas Criadas (22)
 
