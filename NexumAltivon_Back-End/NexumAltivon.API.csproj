@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <RootNamespace>NexumAltivon.API</RootNamespace>
+    <AssemblyName>NexumAltivon.API</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="API\Program.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="API\appsettings.json">
+      <Link>appsettings.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Entity Framework Core -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.5" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.5">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.2" />
+
+    <!-- JWT Authentication -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.5" />
+
+    <!-- FluentValidation -->
+    <PackageReference Include="FluentValidation" Version="11.9.1" />
+    <PackageReference Include="FluentValidation.AspNetCore" Version="11.3.0" />
+
+    <!-- Swagger -->
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+
+    <!-- BCrypt -->
+    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+
+    <!-- Health Checks -->
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="8.0.5" />
+
+    <!-- Compression -->
+    <PackageReference Include="Microsoft.AspNetCore.ResponseCompression" Version="2.2.0" />
+
+    <!-- CORS -->
+    <PackageReference Include="Microsoft.AspNetCore.Cors" Version="2.2.0" />
+  </ItemGroup>
+
+</Project>

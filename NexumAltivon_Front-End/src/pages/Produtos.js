@@ -1,0 +1,221 @@
+import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { categoriaAPI, produtoAPI } from '../services/api';
+import ProductCard from '../components/ProductCard';
+import { fallbackCategories, fallbackProducts } from '../data/mockStore';
+import { ArrowDownUp, Filter, Search, SlidersHorizontal, X } from 'lucide-react';
+
+const sortOptions = {
+  destaque: 'Destaques',
+  menor_preco: 'Menor preço',
+  maior_preco: 'Maior preço',
+  nome: 'Nome',
+};
+
+export default function Produtos() {
+  const [params, setParams] = useSearchParams();
+  const [produtos, setProdutos] = useState(fallbackProducts);
+  const [categorias, setCategorias] = useState(fallbackCategories);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState(params.get('categoria') || '');
+  const [sortBy, setSortBy] = useState('destaque');
+  const [inStockOnly, setInStockOnly] = useState(true);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [produtosRes, categoriasRes] = await Promise.all([
+        produtoAPI.getAll(selectedCategory ? { categoria_id: selectedCategory } : {}),
+        categoriaAPI.getAll(),
+      ]);
+      if (Array.isArray(produtosRes.data) && produtosRes.data.length > 0) setProdutos(produtosRes.data);
+      if (Array.isArray(categoriasRes.data) && categoriasRes.data.length > 0) setCategorias(categoriasRes.data);
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Erro:', error);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedCategory]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    if (selectedCategory) {
+      setParams({ categoria: selectedCategory });
+    } else {
+      setParams({});
+    }
+  }, [selectedCategory, setParams]);
+
+  const filteredProdutos = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const filtered = produtos.filter((produto) => {
+      const matchesSearch =
+        !normalizedSearch ||
+        produto.nome?.toLowerCase().includes(normalizedSearch) ||
+        produto.descricao?.toLowerCase().includes(normalizedSearch) ||
+        produto.sku?.toLowerCase().includes(normalizedSearch);
+      const matchesStock = !inStockOnly || Number(produto.estoque) > 0;
+      const matchesCategory = !selectedCategory || String(produto.categoria_id || produto.categoria?.id) === String(selectedCategory);
+      return matchesSearch && matchesStock && matchesCategory;
+    });
+
+    return [...filtered].sort((a, b) => {
+      const priceA = a.preco_promocional || a.preco || 0;
+      const priceB = b.preco_promocional || b.preco || 0;
+      if (sortBy === 'menor_preco') return priceA - priceB;
+      if (sortBy === 'maior_preco') return priceB - priceA;
+      if (sortBy === 'nome') return (a.nome || '').localeCompare(b.nome || '');
+      return Number(Boolean(b.destaque)) - Number(Boolean(a.destaque));
+    });
+  }, [inStockOnly, produtos, searchTerm, selectedCategory, sortBy]);
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setSelectedCategory('');
+    setSortBy('destaque');
+    setInStockOnly(true);
+  };
+
+  return (
+    <main className="min-h-screen bg-[#f5f7fb]">
+      <section className="border-b border-slate-200 bg-white">
+        <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-sm font-black uppercase tracking-[0.22em] text-amber-700">Catálogo premium</p>
+              <h1 className="mt-3 text-4xl font-black text-slate-950 sm:text-5xl" data-testid="produtos-title">
+                Relógios e acessórios
+              </h1>
+              <p className="mt-4 max-w-2xl text-slate-500">
+                Filtre por coleção, disponibilidade e faixa de interesse para encontrar a peça certa com rapidez.
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-center">
+              <div>
+                <p className="text-2xl font-black text-slate-950">{filteredProdutos.length}</p>
+                <p className="text-xs font-bold uppercase text-slate-500">produtos</p>
+              </div>
+              <div>
+                <p className="text-2xl font-black text-slate-950">{categorias.length}</p>
+                <p className="text-xs font-bold uppercase text-slate-500">coleções</p>
+              </div>
+              <div>
+                <p className="text-2xl font-black text-slate-950">10x</p>
+                <p className="text-xs font-bold uppercase text-slate-500">sem juros</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 lg:grid-cols-[280px_minmax(0,1fr)] lg:px-8">
+        <aside className="h-fit rounded-lg border border-slate-200 bg-white p-5 shadow-sm lg:sticky lg:top-28">
+          <div className="mb-5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal size={18} />
+              <h2 className="font-black text-slate-950">Filtros</h2>
+            </div>
+            <button onClick={clearFilters} className="inline-flex items-center gap-1 text-xs font-black text-slate-500 hover:text-slate-950">
+              <X size={14} />
+              Limpar
+            </button>
+          </div>
+
+          <label className="block text-sm font-bold text-slate-700" htmlFor="search-input">Buscar</label>
+          <div className="relative mt-2">
+            <Search className="absolute left-3 top-3 text-slate-400" size={18} />
+            <input
+              id="search-input"
+              type="text"
+              placeholder="Modelo, SKU ou estilo"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              className="w-full rounded-lg border border-slate-200 bg-white py-3 pl-10 pr-3 text-sm outline-none transition focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+              data-testid="search-input"
+            />
+          </div>
+
+          <div className="mt-6">
+            <label className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700" htmlFor="category-filter">
+              <Filter size={16} />
+              Coleção
+            </label>
+            <select
+              id="category-filter"
+              value={selectedCategory}
+              onChange={(event) => setSelectedCategory(event.target.value)}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm outline-none transition focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+              data-testid="category-filter"
+            >
+              <option value="">Todas as coleções</option>
+              {categorias.map((cat) => (
+                <option key={cat.id} value={cat.id}>{cat.nome}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mt-6">
+            <label className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700" htmlFor="sort-by">
+              <ArrowDownUp size={16} />
+              Ordenar
+            </label>
+            <select
+              id="sort-by"
+              value={sortBy}
+              onChange={(event) => setSortBy(event.target.value)}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm outline-none transition focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+            >
+              {Object.entries(sortOptions).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </div>
+
+          <label className="mt-6 flex items-center justify-between rounded-lg border border-slate-200 px-3 py-3 text-sm font-bold text-slate-700">
+            <span>Somente pronta entrega</span>
+            <input
+              type="checkbox"
+              checked={inStockOnly}
+              onChange={(event) => setInStockOnly(event.target.checked)}
+              className="h-5 w-5 accent-slate-950"
+            />
+          </label>
+        </aside>
+
+        <div>
+          {loading && (
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
+              {[1, 2, 3, 4, 5, 6].map((item) => (
+                <div key={item} className="h-[520px] animate-pulse rounded-lg bg-white" />
+              ))}
+            </div>
+          )}
+
+          {!loading && filteredProdutos.length === 0 && (
+            <div className="rounded-lg border border-slate-200 bg-white px-6 py-16 text-center shadow-sm">
+              <p className="text-xl font-black text-slate-950">Nenhum produto encontrado</p>
+              <p className="mt-2 text-slate-500">Ajuste os filtros para ver outras opções da coleção.</p>
+              <button onClick={clearFilters} className="mt-6 rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white">
+                Limpar filtros
+              </button>
+            </div>
+          )}
+
+          {!loading && filteredProdutos.length > 0 && (
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3" data-testid="produtos-grid">
+              {filteredProdutos.map((produto) => (
+                <ProductCard key={produto.id} product={produto} />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+    </main>
+  );
+}

@@ -1,0 +1,17 @@
+.git
+.github
+.vs
+.vscode
+.cursor
+**/bin
+**/obj
+**/node_modules
+**/build
+**/dist
+**/coverage
+logs
+backups
+*.log
+*.env
+!*.env.example
+docker/nginx/ssl
