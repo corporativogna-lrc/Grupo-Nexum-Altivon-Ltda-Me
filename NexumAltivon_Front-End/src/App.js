@@ -15,6 +15,20 @@ import Checkout from './pages/Checkout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 
+function getRouterBasename() {
+  const publicUrl = process.env.PUBLIC_URL || '';
+
+  if (publicUrl.startsWith('http')) {
+    try {
+      return new URL(publicUrl).pathname.replace(/\/$/, '');
+    } catch {
+      return '';
+    }
+  }
+
+  return publicUrl.startsWith('/') ? publicUrl.replace(/\/$/, '') : '';
+}
+
 function AppShell() {
   const location = useLocation();
   const isBackoffice = location.pathname.startsWith('/dashboard');
@@ -43,10 +57,12 @@ function AppShell() {
 }
 
 function App() {
+  const routerBasename = getRouterBasename();
+
   return (
     <AuthProvider>
       <CartProvider>
-        <BrowserRouter>
+        <BrowserRouter basename={routerBasename || undefined}>
           <AppShell />
         </BrowserRouter>
       </CartProvider>

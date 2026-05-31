@@ -61,7 +61,7 @@ builder.Services.AddAuthorization(options =>
 });
 
 // AutoMapper
-builder.Services.AddAutoMapper(typeof(Program));
+builder.Services.AddAutoMapper(_ => { }, typeof(Program).Assembly);
 
 // FluentValidation
 builder.Services.AddFluentValidationAutoValidation();

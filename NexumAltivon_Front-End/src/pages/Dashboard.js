@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { dashboardAPI, leadAPI, pedidoAPI } from '../services/api';
-import { fallbackLeads, fallbackPedidos, fallbackResumo } from '../data/mockStore';
+import { categoriaAPI, clienteAPI, dashboardAPI, fornecedorAPI, leadAPI, pedidoAPI, produtoAPI } from '../services/api';
+import { fallbackCategories, fallbackLeads, fallbackPedidos, fallbackProducts, fallbackResumo } from '../data/mockStore';
 import { formatDate, formatPrice, getLeadStatusClass, getPedidoStatusClass } from '../utils/formatters';
 import {
   Activity,
@@ -12,9 +12,11 @@ import {
   Boxes,
   ChevronRight,
   CreditCard,
+  PackagePlus,
   LayoutDashboard,
   LogOut,
   PackageCheck,
+  Save,
   Search,
   ShoppingBag,
   Sparkles,
@@ -25,9 +27,39 @@ import {
 
 const tabs = [
   { id: 'overview', label: 'Visão geral', icon: LayoutDashboard },
+  { id: 'cadastros', label: 'Cadastros', icon: PackagePlus },
   { id: 'pedidos', label: 'Pedidos', icon: ShoppingBag },
   { id: 'crm', label: 'CRM', icon: Users },
 ];
+
+const fallbackClientes = [
+  { id: 1, nome: 'Ana Carolina Silva', email: 'ana.silva@email.com', telefone: '(14) 99876-5432' },
+  { id: 2, nome: 'Bruno Oliveira', email: 'bruno.oliveira@email.com', telefone: '(14) 99765-4321' },
+  { id: 3, nome: 'Carla Mendes', email: 'carla.mendes@email.com', telefone: '(14) 99654-3210' },
+];
+
+const fallbackFornecedores = [
+  { id: 1, nome: 'Chronos Imports', documento: '12.345.678/0001-90', email: 'comercial@chronosimports.com', telefone: '(11) 3030-1122', categoria: 'Relogios' },
+  { id: 2, nome: 'Luxury Cases Brasil', documento: '98.765.432/0001-10', email: 'vendas@luxurycases.com', telefone: '(21) 4040-2211', categoria: 'Acessorios' },
+];
+
+const emptyProduto = {
+  nome: '',
+  descricao: '',
+  preco: '',
+  precoPromocional: '',
+  imagemUrl: '',
+  estoque: '',
+  destaque: true,
+  sku: '',
+  categoriaId: 'classicos',
+};
+
+const emptyCliente = { nome: '', email: '', telefone: '', cpf: '' };
+const emptyFornecedor = { nome: '', documento: '', email: '', telefone: '', categoria: 'Geral' };
+const emptyLead = { nome: '', email: '', telefone: '', status: 'Novo', origem: 'Site', observacao: '' };
+const pedidoStatusOptions = ['Pendente', 'Processando', 'Enviado', 'Entregue', 'Cancelado'];
+const leadStatusOptions = ['Novo', 'Contato', 'Qualificado', 'Negociacao', 'Ganho', 'Perdido'];
 
 const chart = [
   { label: 'Seg', value: 42 },
@@ -72,20 +104,37 @@ export default function Dashboard() {
   const [resumo, setResumo] = useState(fallbackResumo);
   const [pedidos, setPedidos] = useState(fallbackPedidos);
   const [leads, setLeads] = useState(fallbackLeads);
+  const [produtos, setProdutos] = useState(fallbackProducts);
+  const [categorias, setCategorias] = useState(fallbackCategories);
+  const [clientes, setClientes] = useState(fallbackClientes);
+  const [fornecedores, setFornecedores] = useState(fallbackFornecedores);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [query, setQuery] = useState('');
+  const [produtoForm, setProdutoForm] = useState(emptyProduto);
+  const [clienteForm, setClienteForm] = useState(emptyCliente);
+  const [fornecedorForm, setFornecedorForm] = useState(emptyFornecedor);
+  const [leadForm, setLeadForm] = useState(emptyLead);
+  const [formStatus, setFormStatus] = useState('');
 
   const loadData = useCallback(async () => {
     try {
-      const [resumoRes, pedidosRes, leadsRes] = await Promise.all([
+      const [resumoRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes] = await Promise.all([
         dashboardAPI.getResumo(),
         pedidoAPI.getAll(),
         leadAPI.getAll(),
+        produtoAPI.getAll(),
+        categoriaAPI.getAll(),
+        clienteAPI.getAll(),
+        fornecedorAPI.getAll(),
       ]);
       if (resumoRes.data) setResumo({ ...fallbackResumo, ...resumoRes.data });
       if (Array.isArray(pedidosRes.data) && pedidosRes.data.length > 0) setPedidos(pedidosRes.data);
       if (Array.isArray(leadsRes.data) && leadsRes.data.length > 0) setLeads(leadsRes.data);
+      if (Array.isArray(produtosRes.data) && produtosRes.data.length > 0) setProdutos(produtosRes.data);
+      if (Array.isArray(categoriasRes.data) && categoriasRes.data.length > 0) setCategorias(categoriasRes.data);
+      if (Array.isArray(clientesRes.data) && clientesRes.data.length > 0) setClientes(clientesRes.data);
+      if (Array.isArray(fornecedoresRes.data) && fornecedoresRes.data.length > 0) setFornecedores(fornecedoresRes.data);
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
         console.error('Erro:', error);
@@ -100,6 +149,61 @@ export default function Dashboard() {
       loadData();
     }
   }, [isAuthenticated, loadData]);
+
+  const submitProduto = async (event) => {
+    event.preventDefault();
+    setFormStatus('');
+
+    const payload = {
+      ...produtoForm,
+      preco: Number(produtoForm.preco),
+      precoPromocional: produtoForm.precoPromocional ? Number(produtoForm.precoPromocional) : null,
+      estoque: Number(produtoForm.estoque),
+      categoriaId: produtoForm.categoriaId,
+    };
+
+    const response = await produtoAPI.create(payload);
+    setProdutos((current) => [response.data, ...current]);
+    setProdutoForm(emptyProduto);
+    setFormStatus('Produto cadastrado e disponível no catálogo.');
+  };
+
+  const submitCliente = async (event) => {
+    event.preventDefault();
+    setFormStatus('');
+    const response = await clienteAPI.create(clienteForm);
+    setClientes((current) => [response.data, ...current]);
+    setClienteForm(emptyCliente);
+    setFormStatus('Cliente cadastrado no painel.');
+  };
+
+  const submitFornecedor = async (event) => {
+    event.preventDefault();
+    setFormStatus('');
+    const response = await fornecedorAPI.create(fornecedorForm);
+    setFornecedores((current) => [response.data, ...current]);
+    setFornecedorForm(emptyFornecedor);
+    setFormStatus('Fornecedor cadastrado no painel.');
+  };
+
+  const submitLead = async (event) => {
+    event.preventDefault();
+    setFormStatus('');
+    const response = await leadAPI.create(leadForm);
+    setLeads((current) => [response.data, ...current]);
+    setLeadForm(emptyLead);
+    setFormStatus('Lead cadastrado no CRM.');
+  };
+
+  const updateLeadStatus = async (id, status) => {
+    const response = await leadAPI.updateStatus(id, status);
+    setLeads((current) => current.map((lead) => (lead.id === id ? response.data : lead)));
+  };
+
+  const updatePedidoStatus = async (id, status) => {
+    const response = await pedidoAPI.updateStatus(id, status);
+    setPedidos((current) => current.map((pedido) => (pedido.id === id ? response.data : pedido)));
+  };
 
   const filteredPedidos = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -311,9 +415,93 @@ export default function Dashboard() {
                         <ChevronRight size={16} />
                       </button>
                     </div>
-                    <OrdersTable pedidos={pedidos.slice(0, 5)} />
+                    <OrdersTable pedidos={pedidos.slice(0, 5)} onStatusChange={updatePedidoStatus} />
                   </section>
                 </div>
+              )}
+
+              {activeTab === 'cadastros' && (
+                <section className="space-y-6">
+                  <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <h2 className="text-xl font-black text-slate-950">Cadastros operacionais</h2>
+                        <p className="mt-1 text-sm text-slate-500">Produtos, clientes e fornecedores prontos para uso no painel.</p>
+                      </div>
+                      {formStatus && <span className="rounded-full bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-800">{formStatus}</span>}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(340px,0.7fr)]">
+                    <form onSubmit={submitProduto} className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                      <h3 className="text-lg font-black text-slate-950">Cadastro de produto</h3>
+                      <div className="mt-5 grid gap-4 md:grid-cols-2">
+                        <Field label="Nome" value={produtoForm.nome} onChange={(value) => setProdutoForm((form) => ({ ...form, nome: value }))} required />
+                        <Field label="SKU" value={produtoForm.sku} onChange={(value) => setProdutoForm((form) => ({ ...form, sku: value }))} />
+                        <Field label="Preco" type="number" value={produtoForm.preco} onChange={(value) => setProdutoForm((form) => ({ ...form, preco: value }))} required />
+                        <Field label="Preco promocional" type="number" value={produtoForm.precoPromocional} onChange={(value) => setProdutoForm((form) => ({ ...form, precoPromocional: value }))} />
+                        <Field label="Estoque" type="number" value={produtoForm.estoque} onChange={(value) => setProdutoForm((form) => ({ ...form, estoque: value }))} required />
+                        <label className="block text-sm font-bold text-slate-700">
+                          Categoria
+                          <select
+                            value={produtoForm.categoriaId}
+                            onChange={(event) => setProdutoForm((form) => ({ ...form, categoriaId: event.target.value }))}
+                            className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+                          >
+                            {categorias.map((categoria) => (
+                              <option key={categoria.id} value={categoria.id}>{categoria.nome}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="block text-sm font-bold text-slate-700 md:col-span-2">
+                          Descricao
+                          <textarea
+                            value={produtoForm.descricao}
+                            onChange={(event) => setProdutoForm((form) => ({ ...form, descricao: event.target.value }))}
+                            className="mt-2 min-h-24 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+                          />
+                        </label>
+                        <Field label="Imagem URL" value={produtoForm.imagemUrl} onChange={(value) => setProdutoForm((form) => ({ ...form, imagemUrl: value }))} className="md:col-span-2" />
+                        <label className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-3 text-sm font-bold text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={produtoForm.destaque}
+                            onChange={(event) => setProdutoForm((form) => ({ ...form, destaque: event.target.checked }))}
+                            className="h-5 w-5 accent-slate-950"
+                          />
+                          Produto em destaque
+                        </label>
+                      </div>
+                      <button className="mt-5 inline-flex h-11 items-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-black text-white">
+                        <Save size={17} />
+                        Salvar produto
+                      </button>
+                    </form>
+
+                    <div className="space-y-6">
+                      <SimpleForm title="Cadastro de cliente" onSubmit={submitCliente} buttonLabel="Salvar cliente">
+                        <Field label="Nome" value={clienteForm.nome} onChange={(value) => setClienteForm((form) => ({ ...form, nome: value }))} required />
+                        <Field label="Email" type="email" value={clienteForm.email} onChange={(value) => setClienteForm((form) => ({ ...form, email: value }))} required />
+                        <Field label="Telefone" value={clienteForm.telefone} onChange={(value) => setClienteForm((form) => ({ ...form, telefone: value }))} />
+                        <Field label="CPF/CNPJ" value={clienteForm.cpf} onChange={(value) => setClienteForm((form) => ({ ...form, cpf: value }))} />
+                      </SimpleForm>
+
+                      <SimpleForm title="Cadastro de fornecedor" onSubmit={submitFornecedor} buttonLabel="Salvar fornecedor">
+                        <Field label="Nome" value={fornecedorForm.nome} onChange={(value) => setFornecedorForm((form) => ({ ...form, nome: value }))} required />
+                        <Field label="Documento" value={fornecedorForm.documento} onChange={(value) => setFornecedorForm((form) => ({ ...form, documento: value }))} />
+                        <Field label="Email" type="email" value={fornecedorForm.email} onChange={(value) => setFornecedorForm((form) => ({ ...form, email: value }))} />
+                        <Field label="Telefone" value={fornecedorForm.telefone} onChange={(value) => setFornecedorForm((form) => ({ ...form, telefone: value }))} />
+                        <Field label="Categoria" value={fornecedorForm.categoria} onChange={(value) => setFornecedorForm((form) => ({ ...form, categoria: value }))} />
+                      </SimpleForm>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-6 xl:grid-cols-3">
+                    <CompactList title="Produtos cadastrados" items={produtos} fields={['nome', 'sku', 'estoque']} />
+                    <CompactList title="Clientes cadastrados" items={clientes} fields={['nome', 'email', 'telefone']} />
+                    <CompactList title="Fornecedores cadastrados" items={fornecedores} fields={['nome', 'categoria', 'telefone']} />
+                  </div>
+                </section>
               )}
 
               {activeTab === 'pedidos' && (
@@ -322,7 +510,7 @@ export default function Dashboard() {
                     <h2 className="text-xl font-black text-slate-950">Gestão de pedidos</h2>
                     <p className="mt-1 text-sm text-slate-500">{filteredPedidos.length} pedidos encontrados.</p>
                   </div>
-                  <OrdersTable pedidos={filteredPedidos} />
+                  <OrdersTable pedidos={filteredPedidos} onStatusChange={updatePedidoStatus} />
                 </section>
               )}
 
@@ -332,7 +520,25 @@ export default function Dashboard() {
                     <h2 className="text-xl font-black text-slate-950">Pipeline CRM</h2>
                     <p className="mt-1 text-sm text-slate-500">{filteredLeads.length} oportunidades em acompanhamento.</p>
                   </div>
-                  <LeadsTable leads={filteredLeads} />
+                  <div className="grid gap-6 p-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+                    <SimpleForm title="Novo lead CRM" onSubmit={submitLead} buttonLabel="Salvar lead">
+                      <Field label="Nome" value={leadForm.nome} onChange={(value) => setLeadForm((form) => ({ ...form, nome: value }))} required />
+                      <Field label="Email" type="email" value={leadForm.email} onChange={(value) => setLeadForm((form) => ({ ...form, email: value }))} required />
+                      <Field label="Telefone" value={leadForm.telefone} onChange={(value) => setLeadForm((form) => ({ ...form, telefone: value }))} />
+                      <label className="block text-sm font-bold text-slate-700">
+                        Status
+                        <select
+                          value={leadForm.status}
+                          onChange={(event) => setLeadForm((form) => ({ ...form, status: event.target.value }))}
+                          className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+                        >
+                          {leadStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+                        </select>
+                      </label>
+                      <Field label="Origem" value={leadForm.origem} onChange={(value) => setLeadForm((form) => ({ ...form, origem: value }))} />
+                    </SimpleForm>
+                    <LeadsTable leads={filteredLeads} onStatusChange={updateLeadStatus} />
+                  </div>
                 </section>
               )}
             </>
@@ -343,7 +549,56 @@ export default function Dashboard() {
   );
 }
 
-function OrdersTable({ pedidos }) {
+function Field({ label, value, onChange, type = 'text', required = false, className = '' }) {
+  return (
+    <label className={`block text-sm font-bold text-slate-700 ${className}`}>
+      {label}
+      <input
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        required={required}
+        min={type === 'number' ? '0' : undefined}
+        step={type === 'number' ? '0.01' : undefined}
+        className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none transition focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+      />
+    </label>
+  );
+}
+
+function SimpleForm({ title, onSubmit, buttonLabel, children }) {
+  return (
+    <form onSubmit={onSubmit} className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <h3 className="text-lg font-black text-slate-950">{title}</h3>
+      <div className="mt-5 grid gap-4">{children}</div>
+      <button className="mt-5 inline-flex h-11 items-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-black text-white">
+        <Save size={17} />
+        {buttonLabel}
+      </button>
+    </form>
+  );
+}
+
+function CompactList({ title, items, fields }) {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-200 px-5 py-4">
+        <h3 className="font-black text-slate-950">{title}</h3>
+        <p className="mt-1 text-sm text-slate-500">{items.length} registros</p>
+      </div>
+      <div className="max-h-96 divide-y divide-slate-100 overflow-auto">
+        {items.slice(0, 12).map((item) => (
+          <div key={item.id || item.sku || item.email} className="px-5 py-4">
+            <p className="font-black text-slate-950">{item[fields[0]] || '-'}</p>
+            <p className="mt-1 text-sm font-semibold text-slate-500">{fields.slice(1).map((field) => item[field] || '-').join(' · ')}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function OrdersTable({ pedidos, onStatusChange }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[720px]">
@@ -353,11 +608,12 @@ function OrdersTable({ pedidos }) {
             <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Total</th>
             <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Status</th>
             <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Data</th>
+            <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Ação</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
           {pedidos.length === 0 ? (
-            <tr><td colSpan="4" className="px-6 py-8 text-center text-slate-500">Nenhum pedido encontrado</td></tr>
+            <tr><td colSpan="5" className="px-6 py-8 text-center text-slate-500">Nenhum pedido encontrado</td></tr>
           ) : (
             pedidos.map((pedido) => (
               <tr key={pedido.id} className="hover:bg-slate-50" data-testid={`pedido-${pedido.id}`}>
@@ -369,6 +625,15 @@ function OrdersTable({ pedidos }) {
                   </span>
                 </td>
                 <td className="px-6 py-4 text-sm font-semibold text-slate-500">{formatDate(pedido.created_at)}</td>
+                <td className="px-6 py-4">
+                  <select
+                    value={pedido.status}
+                    onChange={(event) => onStatusChange?.(pedido.id, event.target.value)}
+                    className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 outline-none focus:border-slate-950"
+                  >
+                    {pedidoStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+                  </select>
+                </td>
               </tr>
             ))
           )}
@@ -378,7 +643,7 @@ function OrdersTable({ pedidos }) {
   );
 }
 
-function LeadsTable({ leads }) {
+function LeadsTable({ leads, onStatusChange }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[820px]">
@@ -389,11 +654,12 @@ function LeadsTable({ leads }) {
             <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Telefone</th>
             <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Status</th>
             <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Entrada</th>
+            <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Ação</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
           {leads.length === 0 ? (
-            <tr><td colSpan="5" className="px-6 py-8 text-center text-slate-500">Nenhum lead encontrado</td></tr>
+            <tr><td colSpan="6" className="px-6 py-8 text-center text-slate-500">Nenhum lead encontrado</td></tr>
           ) : (
             leads.map((lead) => (
               <tr key={lead.id} className="hover:bg-slate-50" data-testid={`lead-${lead.id}`}>
@@ -406,6 +672,15 @@ function LeadsTable({ leads }) {
                   </span>
                 </td>
                 <td className="px-6 py-4 text-sm font-semibold text-slate-500">{formatDate(lead.created_at)}</td>
+                <td className="px-6 py-4">
+                  <select
+                    value={lead.status}
+                    onChange={(event) => onStatusChange?.(lead.id, event.target.value)}
+                    className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 outline-none focus:border-slate-950"
+                  >
+                    {leadStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+                  </select>
+                </td>
               </tr>
             ))
           )}

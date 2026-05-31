@@ -13,6 +13,10 @@
 
   <ItemGroup>
     <Compile Include="API\Program.cs" />
+    <Compile Include="API\Data\**\*.cs" />
+    <Compile Include="API\Models\**\*.cs" />
+    <Compile Remove="API\Models\CarrinhoCheckoutPagamento.cs" />
+    <Compile Remove="API\Models\IntegracoesModels.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -30,6 +34,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="MySqlConnector" Version="2.4.0" />
     <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.2" />
 
     <!-- JWT Authentication -->

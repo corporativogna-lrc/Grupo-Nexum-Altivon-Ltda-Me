@@ -7,7 +7,7 @@ const getDefaultApiUrl = () => {
   const { hostname } = window.location;
   const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
 
-  return isLocalhost ? 'http://localhost:5000' : 'https://api.nexumaltivon.com';
+  return isLocalhost ? 'http://localhost:5000' : 'https://back.nexumaltivon.com';
 };
 
 export const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || getDefaultApiUrl();
@@ -124,6 +124,11 @@ export const pedidoAPI = {
 export const clienteAPI = {
   getAll: () => api.get('/clientes'),
   create: (data) => api.post('/clientes', data),
+};
+
+export const fornecedorAPI = {
+  getAll: () => api.get('/fornecedores'),
+  create: (data) => api.post('/fornecedores', data),
 };
 
 export const leadAPI = {

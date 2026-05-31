@@ -19,6 +19,10 @@ services:
       ApiSettings__CorsOrigins__1: https://nexumaltivon.com
       ApiSettings__CorsOrigins__2: https://admin.nexumaltivon.com
       ApiSettings__CorsOrigins__3: https://api.nexumaltivon.com
+      ApiSettings__CorsOrigins__4: https://back.nexumaltivon.com
+      ApiSettings__CorsOrigins__5: https://erp.nexumaltivon.com
+      ApiSettings__CorsOrigins__6: https://crm.nexumaltivon.com
+      ApiSettings__CorsOrigins__7: https://pdv.nexumaltivon.com
       Integracoes__MercadoPago__AccessToken: ${MP_ACCESS_TOKEN}
       Integracoes__SendGrid__ApiKey: ${SENDGRID_API_KEY}
     expose:
