@@ -250,6 +250,11 @@ app.MapGet("/api/lojas", async (NexumDbContext db, CancellationToken ct) =>
             loja.OrdemExibicao))
         .ToListAsync(ct);
 
+    if (lojas.Count == 0)
+    {
+        lojas = DashboardCompletoDto.Lojas;
+    }
+
     return Results.Ok(ApiResponse<List<LojaDto>>.Ok(lojas));
 })
 .AllowAnonymous()
@@ -268,6 +273,11 @@ app.MapGet("/api/categorias", async (NexumDbContext db, CancellationToken ct) =>
             categoria.Nome,
             categoria.Descricao ?? string.Empty))
         .ToListAsync(ct);
+
+    if (categorias.Count == 0)
+    {
+        categorias = StoreData.Categorias;
+    }
 
     return Results.Ok(ApiResponse<List<CategoriaDto>>.Ok(categorias));
 })
@@ -367,6 +377,15 @@ app.MapGet("/api/produtos", async (string? categoria_id, NexumDbContext db, Canc
             4.8m))
         .ToListAsync(ct);
 
+    if (produtos.Count == 0)
+    {
+        produtos = string.IsNullOrWhiteSpace(categoria_id)
+            ? StoreData.Produtos
+            : StoreData.Produtos
+                .Where(produto => string.Equals(produto.CategoriaId, categoria_id, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+    }
+
     return Results.Ok(ApiResponse<List<ProdutoLojaDto>>.Ok(produtos));
 })
 .AllowAnonymous()
@@ -395,6 +414,11 @@ app.MapGet("/api/produtos/destaques", async (NexumDbContext db, CancellationToke
             produto.Categoria != null ? produto.Categoria.Slug : "classicos",
             4.8m))
         .ToListAsync(ct);
+
+    if (produtos.Count == 0)
+    {
+        produtos = StoreData.Produtos.Where(produto => produto.Destaque).ToList();
+    }
 
     return Results.Ok(ApiResponse<List<ProdutoLojaDto>>.Ok(produtos));
 })
@@ -425,7 +449,10 @@ app.MapGet("/api/produtos/{id}", async (string id, NexumDbContext db, Cancellati
 
     if (dto is null)
     {
-        return Results.NotFound(ApiResponse<string>.Erro("Produto nao encontrado."));
+        var fallback = StoreData.Produtos.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+        return fallback is null
+            ? Results.NotFound(ApiResponse<string>.Erro("Produto nao encontrado."))
+            : Results.Ok(ApiResponse<ProdutoLojaDto>.Ok(fallback));
     }
 
     return Results.Ok(ApiResponse<ProdutoLojaDto>.Ok(dto));
@@ -597,7 +624,10 @@ app.MapGet("/api/cupons/{codigo}", async (string codigo, NexumDbContext db, Canc
 
     if (cupom is null)
     {
-        return Results.NotFound(ApiResponse<string>.Erro("Cupom invalido."));
+        var fallback = StoreData.Cupons.FirstOrDefault(item => string.Equals(item.Codigo, codigo, StringComparison.OrdinalIgnoreCase));
+        return fallback is null
+            ? Results.NotFound(ApiResponse<string>.Erro("Cupom invalido."))
+            : Results.Ok(ApiResponse<CupomDto>.Ok(fallback));
     }
 
     if (cupom.ValidoDe.HasValue && cupom.ValidoDe.Value > DateTime.UtcNow)
