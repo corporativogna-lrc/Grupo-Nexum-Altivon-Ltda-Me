@@ -125,12 +125,6 @@ NexumAltivon.com
 | /swagger | GET | Dev/Staging | Documentacao API |
 
 ---
-
-## Como Executar
-
-### 1. Banco de Dados
-```bash
-mysql -h 192.168.1.72 -P 3309 -u root -p < Database/nexum_altivon_schema.sql
 ```
 
 ### 2. API
