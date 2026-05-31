@@ -16,7 +16,7 @@ NexumAltivon.com
 |   |   |-- Services/             → 15 Services (business logic)
 |   |   |-- DTOs/                 → 8 arquivos de DTOs
 |   |   |-- Models/               → 23 Entidades EF Core
-|   |   |-- Data/                 → DbContext + Migrations
+|   |   |--44 Data/                 → DbContext + Migrations
 |   |   |-- Middleware/           → Exception, Rate Limit, Auditoria
 |   |   |-- Helpers/              → Health Checks
 |   |   |-- Validators/           → FluentValidation
@@ -38,11 +38,8 @@ NexumAltivon.com
 
 ---
 
-## Banco de Dados — MySQL
 
-**Servidor:** 192.168.1.72:3309
-**Banco:** nexum_altivon
-**Usuario:** root
+
 
 ### Tabelas Criadas (22)
 
