@@ -52,7 +52,14 @@ logs/
 
 # Backups
 backups/
+_backups/
+_arquivo_morto/
+artifacts/
 *.sql.gz
+
+# Runtime local
+.codex/
+.nexum-runtime/
 
 # Node.js (futuro front-end)
 node_modules/
