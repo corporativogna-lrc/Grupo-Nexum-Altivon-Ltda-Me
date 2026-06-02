@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - 'NexumAltivon_Front-End/**'
-      - '.github/workflows/pages.yml'
+      - '.github/workflows/Pages.yml'
   workflow_dispatch:
 
 permissions:
