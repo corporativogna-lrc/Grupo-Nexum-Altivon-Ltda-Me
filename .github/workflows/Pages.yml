@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - 'NexumAltivon_Front-End/**'
-      - '.github/workflows/pages.yml'
+      - '.github/workflows/Pages.yml'
   workflow_dispatch:
 
 permissions:
@@ -46,7 +46,7 @@ jobs:
         env:
           CI: false
           PUBLIC_URL: /
-          REACT_APP_BACKEND_URL: https://back.nexumaltivon.com
+          REACT_APP_BACKEND_URL: https://api.nexumaltivon.com
 
       - name: Configurar dominio customizado
         run: echo "www.nexumaltivon.com" > NexumAltivon_Front-End/build/CNAME
