@@ -7,7 +7,7 @@ Este projeto deve ser publicado apenas em repositorios privados e com banco de d
 Repositorio alvo:
 
 ```text
-https://github.com/corporativogna-lrc/Grupo-Nexum-Altivon-Ltda-M
+https://github.com/corporativogna-lrc/Grupo-Nexum-Altivon-Ltda-Me.git
 ```
 
 Antes do primeiro push, confirme no GitHub que o repositorio esta como `Private`.
@@ -66,6 +66,11 @@ DNS esperado:
 nexumaltivon.com        A/AAAA -> IP do servidor
 www.nexumaltivon.com    A/AAAA -> IP do servidor
 api.nexumaltivon.com    A/AAAA -> IP do servidor
+back.nexumaltivon.com   A/AAAA -> IP do servidor
+admin.nexumaltivon.com  A/AAAA -> IP do servidor
+erp.nexumaltivon.com    A/AAAA -> IP do servidor
+crm.nexumaltivon.com    A/AAAA -> IP do servidor
+pdv.nexumaltivon.com    A/AAAA -> IP do servidor
 ```
 
 Para HTTPS, use um proxy/terminador TLS no servidor ou Cloudflare apontando para a porta `80` do `nexum-nginx`.

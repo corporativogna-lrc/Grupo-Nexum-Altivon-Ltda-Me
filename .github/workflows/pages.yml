@@ -46,7 +46,7 @@ jobs:
         env:
           CI: false
           PUBLIC_URL: /
-          REACT_APP_BACKEND_URL: https://back.nexumaltivon.com
+          REACT_APP_BACKEND_URL: https://api.nexumaltivon.com
 
       - name: Enviar artefato do Pages
         uses: actions/upload-pages-artifact@v3
