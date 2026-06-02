@@ -7,7 +7,7 @@ const getDefaultApiUrl = () => {
   const { hostname } = window.location;
   const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
 
-  return isLocalhost ? 'http://localhost:5000' : 'https://api.nexumaltivon.com';
+  return isLocalhost ? 'http://localhost:5010' : 'https://petite-blanket-unlimited-workshop.trycloudflare.com';
 };
 
 export const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || getDefaultApiUrl();
