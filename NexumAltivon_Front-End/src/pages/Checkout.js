@@ -136,14 +136,20 @@ export default function Checkout() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12">
+    <div className="min-h-screen bg-[#050505] py-12 text-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h1 className="text-4xl font-bold text-gray-900 mb-8" data-testid="checkout-title">
-          Finalizar Compra
-        </h1>
+        <div className="mb-8">
+          <p className="text-sm font-black uppercase tracking-[0.22em] text-[#C9A227]">Checkout integrado</p>
+          <h1 className="mt-2 text-4xl font-black text-white" data-testid="checkout-title">
+            Finalizar Compra
+          </h1>
+          <p className="mt-3 max-w-3xl text-[#A0A0A0]">
+            Cadastro do cliente, endereço, loja, forma de pagamento e criação do pedido seguem o fluxo real da API.
+          </p>
+        </div>
 
         {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4"
+          <div className="mb-4 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-rose-200"
             data-testid="checkout-error">
             {error}
           </div>
@@ -152,7 +158,7 @@ export default function Checkout() {
         <CheckoutStepper step={step} />
 
         <div className="grid lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 bg-white p-6 rounded-lg shadow-md">
+          <div className="rounded-2xl border border-[#2A2A2A] bg-[#111111] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.35)] lg:col-span-2">
             {step === 1 && (
               <StepDadosPessoais
                 dadosCliente={dadosCliente}
