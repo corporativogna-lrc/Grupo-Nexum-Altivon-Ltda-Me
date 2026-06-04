@@ -7,6 +7,7 @@ on:
       - 'NexumAltivon_Back-End/**'
       - 'docker/**'
       - '.github/workflows/ci-cd.yml'
+  workflow_dispatch:
   pull_request:
     branches: [main]
     paths:
@@ -73,7 +74,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: ${{ env.FRONTEND_PATH }}
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Build frontend
         working-directory: ${{ env.FRONTEND_PATH }}
@@ -170,7 +171,7 @@ jobs:
   deploy-staging:
     runs-on: ubuntu-latest
     needs: [docker-build-api, docker-build-frontend]
-    if: github.ref == 'refs/heads/develop'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
     name: Deploy Staging
     environment: staging
 
@@ -192,7 +193,7 @@ jobs:
   deploy-production:
     runs-on: ubuntu-latest
     needs: [docker-build-api, docker-build-frontend]
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     name: Deploy Production
     environment: production
 
