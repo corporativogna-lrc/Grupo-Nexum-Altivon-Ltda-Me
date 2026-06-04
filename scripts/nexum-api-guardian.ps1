@@ -22,8 +22,9 @@ New-Item -ItemType Directory -Force -Path $RunDir, $LogDir | Out-Null
 if (Test-Path $GuardianPidPath) {
   $existingGuardianPid = Get-Content $GuardianPidPath -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($existingGuardianPid -and ($existingGuardianPid -ne $PID)) {
-    $existingGuardian = Get-Process -Id $existingGuardianPid -ErrorAction SilentlyContinue
-    if ($existingGuardian) {
+    $existingGuardian = Get-CimInstance Win32_Process -Filter "ProcessId = $existingGuardianPid" -ErrorAction SilentlyContinue
+    $guardianCommand = if ($existingGuardian) { [string]$existingGuardian.CommandLine } else { "" }
+    if ($guardianCommand -and $guardianCommand.Contains("nexum-api-guardian.ps1")) {
       exit 0
     }
   }
