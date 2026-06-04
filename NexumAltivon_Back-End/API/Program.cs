@@ -94,7 +94,7 @@ builder.Services.AddSwaggerGen(options =>
     options.SwaggerDoc("v1", new OpenApiInfo
     {
         Title = "Nexum Altivon API",
-        Version = "v1.0.0",
+        Version = "v1.1.0",
         Description = "API funcional inicial para site e painel administrativo Nexum Altivon."
     });
 
@@ -159,7 +159,7 @@ app.MapGet("/", (IHostEnvironment environment) =>
         {
             status = "online",
             service = "Nexum Altivon API",
-            version = "1.0.0"
+            version = "1.1.0"
         }));
 
 app.MapPost("/api/auth/login", (
