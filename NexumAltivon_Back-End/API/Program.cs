@@ -660,7 +660,7 @@ app.MapGet("/api/clientes", [Authorize(Policy = "Gerente")] async (NexumDbContex
         .AsNoTracking()
         .OrderByDescending(cliente => cliente.CreatedAt)
         .Take(500)
-        .Select(cliente => new ClienteLojaDto(cliente.Id, cliente.Nome, cliente.Email, cliente.Telefone))
+        .Select(cliente => new ClienteLojaDto(cliente.Id, cliente.Nome, cliente.Email, cliente.Telefone, cliente.CpfCnpj))
         .ToListAsync(ct);
 
     return Results.Ok(ApiResponse<List<ClienteLojaDto>>.Ok(clientes));
@@ -690,7 +690,7 @@ app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, C
             await db.SaveChangesAsync(ct);
         }
 
-        var existenteDto = new ClienteLojaDto(clienteExistente.Id, clienteExistente.Nome, clienteExistente.Email, clienteExistente.Telefone);
+        var existenteDto = new ClienteLojaDto(clienteExistente.Id, clienteExistente.Nome, clienteExistente.Email, clienteExistente.Telefone, clienteExistente.CpfCnpj);
         return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(existenteDto, "Cliente ja cadastrado. Registro existente reutilizado."));
     }
 
@@ -708,7 +708,7 @@ app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, C
     db.Clientes.Add(cliente);
     await db.SaveChangesAsync(ct);
 
-    var dto = new ClienteLojaDto(cliente.Id, cliente.Nome, cliente.Email, cliente.Telefone);
+    var dto = new ClienteLojaDto(cliente.Id, cliente.Nome, cliente.Email, cliente.Telefone, cliente.CpfCnpj);
     return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(dto, "Cliente registrado."));
 })
 .AllowAnonymous()
@@ -743,11 +743,22 @@ app.MapPost("/api/fornecedores", [Authorize(Policy = "Gerente")] async (Forneced
         return Results.BadRequest(ApiResponse<string>.Erro("Nome do fornecedor obrigatorio."));
     }
 
+    var documento = string.IsNullOrWhiteSpace(request.Documento) ? null : request.Documento.Trim();
+    var email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim().ToLowerInvariant();
+    var fornecedorExistente = await db.Fornecedores.FirstOrDefaultAsync(fornecedor =>
+        (!string.IsNullOrWhiteSpace(documento) && fornecedor.Cnpj == documento) ||
+        (!string.IsNullOrWhiteSpace(email) && fornecedor.Email != null && fornecedor.Email.ToLower() == email), ct);
+
+    if (fornecedorExistente is not null)
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("Fornecedor ja cadastrado com este documento ou e-mail."));
+    }
+
     var fornecedor = new Fornecedor
     {
         RazaoSocial = request.Nome.Trim(),
-        Cnpj = string.IsNullOrWhiteSpace(request.Documento) ? null : request.Documento.Trim(),
-        Email = request.Email,
+        Cnpj = documento,
+        Email = email,
         Telefone = request.Telefone,
         Segmento = request.Categoria,
         Status = StatusFornecedor.Ativo,
@@ -1399,7 +1410,7 @@ public sealed record CupomDto(string Codigo, decimal? DescontoPercentual, decima
 
 public sealed record ClienteRequest(string Nome, string Email, string? Cpf, string? Telefone);
 
-public sealed record ClienteLojaDto(int Id, string Nome, string Email, string? Telefone);
+public sealed record ClienteLojaDto(int Id, string Nome, string Email, string? Telefone, string? Cpf = null);
 
 public sealed record FornecedorRequest(string Nome, string? Documento, string? Email, string? Telefone, string? Categoria);
 

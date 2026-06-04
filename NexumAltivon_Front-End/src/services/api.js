@@ -21,6 +21,8 @@ const normalizeRecord = (record) => {
     preco_promocional: record.preco_promocional ?? record.precoPromocional,
     imagem_url: record.imagem_url ?? record.imagemUrl,
     categoria_id: record.categoria_id ?? record.categoriaId,
+    cpf: record.cpf ?? record.cpfCnpj ?? record.cpf_cnpj,
+    documento: record.documento ?? record.cnpj ?? record.cpfCnpj ?? record.cpf_cnpj,
     numero_pedido: record.numero_pedido ?? record.numeroPedido,
     created_at: record.created_at ?? record.createdAt,
     desconto_percentual: record.desconto_percentual ?? record.descontoPercentual,

@@ -1,6 +1,6 @@
-# Nexum Altivon — Versão 1.1.2
+# Nexum Altivon — Versão 1.1.3
 
-Marco: `estabilidade-api-autostart-ponte-2026-06-04`
+Marco: `cadastros-sem-duplicidade-2026-06-04`
 
 Data de registro: 2026-06-04
 
@@ -11,6 +11,9 @@ Status:
 - Cadastro de cliente mantém proteção contra duplicidade por e-mail/CPF no fluxo real da API.
 - Guardião da API reforçado para ignorar registros antigos de processo após reinício.
 - Instaladores locais adicionados para fixar a API no arranque do Windows.
+- Painel agora bloqueia duplicidade antes do envio em produtos, clientes e fornecedores.
+- API passa a devolver CPF/CNPJ de clientes para validação preventiva no painel.
+- API passa a bloquear fornecedor duplicado por documento ou e-mail.
 - Base preparada para próxima etapa: enriquecer cadastros, CRM, pedidos e integrações.
 
 Observação operacional:

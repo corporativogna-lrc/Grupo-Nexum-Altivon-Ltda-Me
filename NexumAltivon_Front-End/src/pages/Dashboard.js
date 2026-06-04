@@ -59,9 +59,9 @@ const plannedModules = [
 const navSections = ['Principal', 'Gestão', 'Marketing & CRM', 'Integrações', 'Sistema'];
 
 const fallbackClientes = [
-  { id: 1, nome: 'Ana Carolina Silva', email: 'ana.silva@email.com', telefone: '(14) 99876-5432' },
-  { id: 2, nome: 'Bruno Oliveira', email: 'bruno.oliveira@email.com', telefone: '(14) 99765-4321' },
-  { id: 3, nome: 'Carla Mendes', email: 'carla.mendes@email.com', telefone: '(14) 99654-3210' },
+  { id: 1, nome: 'Ana Carolina Silva', email: 'ana.silva@email.com', telefone: '(14) 99876-5432', cpf: '123.456.789-00' },
+  { id: 2, nome: 'Bruno Oliveira', email: 'bruno.oliveira@email.com', telefone: '(14) 99765-4321', cpf: '234.567.890-11' },
+  { id: 3, nome: 'Carla Mendes', email: 'carla.mendes@email.com', telefone: '(14) 99654-3210', cpf: '345.678.901-22' },
 ];
 
 const fallbackFornecedores = [
@@ -70,6 +70,7 @@ const fallbackFornecedores = [
 ];
 
 const emptyProduto = {
+  id: '',
   nome: '',
   descricao: '',
   preco: '',
@@ -106,6 +107,72 @@ const chart = [
   { label: 'Sáb', value: 92 },
   { label: 'Dom', value: 61 },
 ];
+
+const normalizeText = (value) => String(value ?? '').trim().toLowerCase();
+const normalizeDocument = (value) => String(value ?? '').replace(/\D/g, '');
+
+const getProdutoDuplicateMessage = (form, produtos) => {
+  const sku = normalizeText(form.sku);
+  const id = normalizeText(form.id);
+  const nome = normalizeText(form.nome);
+
+  if (sku) {
+    const duplicate = produtos.find((produto) => normalizeText(produto.sku) === sku);
+    if (duplicate) return `SKU já usado em ${duplicate.nome || 'outro produto'}.`;
+  }
+
+  if (id) {
+    const duplicate = produtos.find((produto) => normalizeText(produto.id) === id);
+    if (duplicate) return `Identificador público já usado em ${duplicate.nome || 'outro produto'}.`;
+  }
+
+  if (nome) {
+    const duplicate = produtos.find((produto) => normalizeText(produto.nome) === nome);
+    if (duplicate) return 'Produto com este nome já existe no catálogo.';
+  }
+
+  return '';
+};
+
+const getClienteDuplicateMessage = (form, clientes) => {
+  const email = normalizeText(form.email);
+  const documento = normalizeDocument(form.cpf);
+
+  if (email) {
+    const duplicate = clientes.find((cliente) => normalizeText(cliente.email) === email);
+    if (duplicate) return `Cliente já cadastrado com este e-mail: ${duplicate.nome || duplicate.email}.`;
+  }
+
+  if (documento) {
+    const duplicate = clientes.find((cliente) => normalizeDocument(cliente.cpf) === documento || normalizeDocument(cliente.cpfCnpj) === documento);
+    if (duplicate) return `Cliente já cadastrado com este CPF/CNPJ: ${duplicate.nome || duplicate.email}.`;
+  }
+
+  return '';
+};
+
+const getFornecedorDuplicateMessage = (form, fornecedores) => {
+  const documento = normalizeDocument(form.documento);
+  const email = normalizeText(form.email);
+  const nome = normalizeText(form.nome);
+
+  if (documento) {
+    const duplicate = fornecedores.find((fornecedor) => normalizeDocument(fornecedor.documento) === documento || normalizeDocument(fornecedor.cnpj) === documento);
+    if (duplicate) return `Fornecedor já cadastrado com este documento: ${duplicate.nome || duplicate.email}.`;
+  }
+
+  if (email) {
+    const duplicate = fornecedores.find((fornecedor) => normalizeText(fornecedor.email) === email);
+    if (duplicate) return `Fornecedor já cadastrado com este e-mail: ${duplicate.nome || duplicate.email}.`;
+  }
+
+  if (nome) {
+    const duplicate = fornecedores.find((fornecedor) => normalizeText(fornecedor.nome) === nome);
+    if (duplicate) return 'Fornecedor com este nome já existe na base.';
+  }
+
+  return '';
+};
 
 function StatCard({ title, value, detail, icon: Icon, trend, tone = 'slate' }) {
   const toneClass = {
@@ -190,6 +257,11 @@ export default function Dashboard() {
   const submitProduto = async (event) => {
     event.preventDefault();
     setFormStatus('');
+    const duplicateMessage = getProdutoDuplicateMessage(produtoForm, produtos);
+    if (duplicateMessage) {
+      setFormStatus(duplicateMessage);
+      return;
+    }
 
     const payload = {
       ...produtoForm,
@@ -208,6 +280,12 @@ export default function Dashboard() {
   const submitCliente = async (event) => {
     event.preventDefault();
     setFormStatus('');
+    const duplicateMessage = getClienteDuplicateMessage(clienteForm, clientes);
+    if (duplicateMessage) {
+      setFormStatus(duplicateMessage);
+      return;
+    }
+
     const response = await clienteAPI.create(clienteForm);
     setClientes((current) => {
       const semDuplicidade = current.filter((cliente) => cliente.id !== response.data.id);
@@ -220,6 +298,12 @@ export default function Dashboard() {
   const submitFornecedor = async (event) => {
     event.preventDefault();
     setFormStatus('');
+    const duplicateMessage = getFornecedorDuplicateMessage(fornecedorForm, fornecedores);
+    if (duplicateMessage) {
+      setFormStatus(duplicateMessage);
+      return;
+    }
+
     const response = await fornecedorAPI.create(fornecedorForm);
     setFornecedores((current) => [response.data, ...current]);
     setFornecedorForm(emptyFornecedor);
@@ -260,6 +344,10 @@ export default function Dashboard() {
       [lead.nome, lead.email, lead.telefone, lead.status].some((value) => String(value || '').toLowerCase().includes(term))
     );
   }, [leads, query]);
+
+  const produtoDuplicateMessage = useMemo(() => getProdutoDuplicateMessage(produtoForm, produtos), [produtoForm, produtos]);
+  const clienteDuplicateMessage = useMemo(() => getClienteDuplicateMessage(clienteForm, clientes), [clienteForm, clientes]);
+  const fornecedorDuplicateMessage = useMemo(() => getFornecedorDuplicateMessage(fornecedorForm, fornecedores), [fornecedorForm, fornecedores]);
 
   const statusCounts = useMemo(() => {
     return pedidos.reduce((acc, pedido) => {
@@ -565,7 +653,9 @@ export default function Dashboard() {
                       <form onSubmit={submitProduto} className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
                         <h3 className="text-lg font-black text-slate-950">Cadastro detalhado de produto</h3>
                         <p className="mt-1 text-sm font-semibold text-slate-500">Informações principais para catálogo, estoque e vitrine pública.</p>
+                        {produtoDuplicateMessage && <DuplicateAlert message={produtoDuplicateMessage} />}
                         <div className="mt-5 grid gap-4 md:grid-cols-2">
+                          <Field label="Slug público / ID do produto" value={produtoForm.id} onChange={(value) => setProdutoForm((form) => ({ ...form, id: value }))} />
                           <Field label="Nome" value={produtoForm.nome} onChange={(value) => setProdutoForm((form) => ({ ...form, nome: value }))} required />
                           <Field label="SKU / Código interno" value={produtoForm.sku} onChange={(value) => setProdutoForm((form) => ({ ...form, sku: value }))} />
                           <Field label="Preço" type="number" value={produtoForm.preco} onChange={(value) => setProdutoForm((form) => ({ ...form, preco: value }))} required />
@@ -602,7 +692,7 @@ export default function Dashboard() {
                             Produto em destaque na vitrine
                           </label>
                         </div>
-                        <button className="mt-5 inline-flex h-11 items-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-black text-white">
+                        <button disabled={Boolean(produtoDuplicateMessage)} className="mt-5 inline-flex h-11 items-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300">
                           <Save size={17} />
                           Salvar produto
                         </button>
@@ -613,26 +703,26 @@ export default function Dashboard() {
 
                   {activeCadastroTab === 'clientes' && (
                     <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-                      <SimpleForm title="Cadastro detalhado de cliente" subtitle="Evita duplicidade por e-mail/CPF e reaproveita registros existentes." onSubmit={submitCliente} buttonLabel="Salvar cliente">
+                      <SimpleForm title="Cadastro detalhado de cliente" subtitle="Evita duplicidade por e-mail/CPF e reaproveita registros existentes." onSubmit={submitCliente} buttonLabel="Salvar cliente" alertMessage={clienteDuplicateMessage} disabled={Boolean(clienteDuplicateMessage)}>
                         <Field label="Nome completo / Razão social" value={clienteForm.nome} onChange={(value) => setClienteForm((form) => ({ ...form, nome: value }))} required />
                         <Field label="Email principal" type="email" value={clienteForm.email} onChange={(value) => setClienteForm((form) => ({ ...form, email: value }))} required />
                         <Field label="Telefone / WhatsApp" value={clienteForm.telefone} onChange={(value) => setClienteForm((form) => ({ ...form, telefone: value }))} />
                         <Field label="CPF/CNPJ" value={clienteForm.cpf} onChange={(value) => setClienteForm((form) => ({ ...form, cpf: value }))} />
                       </SimpleForm>
-                      <CompactList title="Clientes cadastrados" items={clientes} fields={['nome', 'email', 'telefone']} />
+                      <CompactList title="Clientes cadastrados" items={clientes} fields={['nome', 'email', 'telefone', 'cpf']} />
                     </div>
                   )}
 
                   {activeCadastroTab === 'fornecedores' && (
                     <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-                      <SimpleForm title="Cadastro detalhado de fornecedor" subtitle="Base para compras, dropshipping, logística e integrações futuras." onSubmit={submitFornecedor} buttonLabel="Salvar fornecedor">
+                      <SimpleForm title="Cadastro detalhado de fornecedor" subtitle="Base para compras, dropshipping, logística e integrações futuras." onSubmit={submitFornecedor} buttonLabel="Salvar fornecedor" alertMessage={fornecedorDuplicateMessage} disabled={Boolean(fornecedorDuplicateMessage)}>
                         <Field label="Nome / Razão social" value={fornecedorForm.nome} onChange={(value) => setFornecedorForm((form) => ({ ...form, nome: value }))} required />
                         <Field label="Documento CNPJ/CPF" value={fornecedorForm.documento} onChange={(value) => setFornecedorForm((form) => ({ ...form, documento: value }))} />
                         <Field label="Email comercial" type="email" value={fornecedorForm.email} onChange={(value) => setFornecedorForm((form) => ({ ...form, email: value }))} />
                         <Field label="Telefone / WhatsApp" value={fornecedorForm.telefone} onChange={(value) => setFornecedorForm((form) => ({ ...form, telefone: value }))} />
                         <Field label="Categoria / Segmento" value={fornecedorForm.categoria} onChange={(value) => setFornecedorForm((form) => ({ ...form, categoria: value }))} />
                       </SimpleForm>
-                      <CompactList title="Fornecedores cadastrados" items={fornecedores} fields={['nome', 'categoria', 'telefone']} />
+                      <CompactList title="Fornecedores cadastrados" items={fornecedores} fields={['nome', 'documento', 'email', 'categoria']} />
                     </div>
                   )}
                 </section>
@@ -699,13 +789,22 @@ function Field({ label, value, onChange, type = 'text', required = false, classN
   );
 }
 
-function SimpleForm({ title, subtitle, onSubmit, buttonLabel, children }) {
+function DuplicateAlert({ message }) {
+  return (
+    <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-black text-amber-900">
+      {message}
+    </div>
+  );
+}
+
+function SimpleForm({ title, subtitle, onSubmit, buttonLabel, children, alertMessage = '', disabled = false }) {
   return (
     <form onSubmit={onSubmit} className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <h3 className="text-lg font-black text-slate-950">{title}</h3>
       {subtitle && <p className="mt-1 text-sm font-semibold text-slate-500">{subtitle}</p>}
+      {alertMessage && <DuplicateAlert message={alertMessage} />}
       <div className="mt-5 grid gap-4">{children}</div>
-      <button className="mt-5 inline-flex h-11 items-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-black text-white">
+      <button disabled={disabled} className="mt-5 inline-flex h-11 items-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300">
         <Save size={17} />
         {buttonLabel}
       </button>
