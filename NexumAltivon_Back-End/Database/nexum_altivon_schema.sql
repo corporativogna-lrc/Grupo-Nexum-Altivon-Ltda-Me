@@ -1,8 +1,8 @@
--- ============================================================
+﻿-- ============================================================
 -- NEXUM ALTIVON COMMERCE PLATFORM
 -- BANCO DE DADOS: nexum_altivon
 -- SERVIDOR: 192.168.1.72:3309
--- VERSÃO: 1.0.0
+-- VERSÃƒO: 1.0.0
 -- DATA: 2026-05-23
 -- AUTOR: Grupo Nexum Altivon ME
 -- ============================================================
@@ -14,7 +14,7 @@ COLLATE utf8mb4_unicode_ci;
 USE nexum_altivon;
 
 -- ============================================================
--- TABELA: usuarios (Usuários do Sistema / Admin)
+-- TABELA: usuarios (UsuÃ¡rios do Sistema / Admin)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS usuarios (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
--- TABELA: lojas (6 Lojas do Grupo Societário)
+-- TABELA: lojas (6 Lojas do Grupo SocietÃ¡rio)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS lojas (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -56,14 +56,14 @@ CREATE TABLE IF NOT EXISTS lojas (
     INDEX idx_ativa (ativa)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Inserção das 6 lojas do Grupo Nexum Altivon
+-- InserÃ§Ã£o das 6 lojas do Grupo Nexum Altivon
 INSERT INTO lojas (nome, slug, segmento, descricao, cor_primaria, cor_secundaria, dominio, ordem_exibicao) VALUES
-('Grann-Tur', 'grann-tur', 'Viagens & Turismo', 'Mochilas, malas, acessórios de viagem e tudo para explorar o mundo com estilo.', '#C9A227', '#1E3A5F', 'grann-tur.nexumaltivon.com', 1),
-('Chronos', 'chronos', 'Relógios & Acessórios', 'Relógios que marcam mais que horas — marcam estilo. Do clássico ao moderno.', '#C9A227', '#2E5A8F', 'chronos.nexumaltivon.com', 2),
-('Moda Mim', 'moda-mim', 'Moda & Vestuário', 'Tendências que vestem a sua personalidade. Roupas, calçados e acessórios.', '#C9A227', '#8B1E3F', 'moda-mim.nexumaltivon.com', 3),
-('Geração Top+', 'geracao-top', 'Tecnologia & Gadgets', 'Tecnologia de ponta ao alcance de todos. Smartphones, gadgets e eletrônicos.', '#C9A227', '#0F4C3A', 'geracao-top.nexumaltivon.com', 4),
-('Estruturaline', 'estruturaline', 'Construção & Estruturas', 'Ferramentas, materiais de construção e equipamentos profissionais.', '#C9A227', '#4A3728', 'estruturaline.nexumaltivon.com', 5),
-('Gran-fest-festas', 'gran-fest', 'Festas & Eventos', 'Decorações, utensílios e tudo para tornar sua festa inesquecível.', '#C9A227', '#6B2D5C', 'gran-fest.nexumaltivon.com', 6);
+('Grann-Tur', 'grann-tur', 'Viagens & Turismo', 'Mochilas, malas, acessÃ³rios de viagem e tudo para explorar o mundo com estilo.', '#C9A227', '#1E3A5F', 'grann-tur.nexumaltivon.com', 1),
+('Chronos', 'chronos', 'RelÃ³gios & AcessÃ³rios', 'RelÃ³gios que marcam mais que horas â€” marcam estilo. Do clÃ¡ssico ao moderno.', '#C9A227', '#2E5A8F', 'chronos.nexumaltivon.com', 2),
+('Moda Mim', 'moda-mim', 'Moda & VestuÃ¡rio', 'TendÃªncias que vestem a sua personalidade. Roupas, calÃ§ados e acessÃ³rios.', '#C9A227', '#8B1E3F', 'moda-mim.nexumaltivon.com', 3),
+('GeraÃ§Ã£o Top+', 'geracao-top', 'Tecnologia & Gadgets', 'Tecnologia de ponta ao alcance de todos. Smartphones, gadgets e eletrÃ´nicos.', '#C9A227', '#0F4C3A', 'geracao-top.nexumaltivon.com', 4),
+('Estruturaline', 'estruturaline', 'ConstruÃ§Ã£o & Estruturas', 'Ferramentas, materiais de construÃ§Ã£o e equipamentos profissionais.', '#C9A227', '#4A3728', 'estruturaline.nexumaltivon.com', 5),
+('Gran-fest-festas', 'gran-fest', 'Festas & Eventos', 'DecoraÃ§Ãµes, utensÃ­lios e tudo para tornar sua festa inesquecÃ­vel.', '#C9A227', '#6B2D5C', 'gran-fest.nexumaltivon.com', 6);
 
 -- ============================================================
 -- TABELA: categorias
@@ -163,7 +163,7 @@ CREATE TABLE IF NOT EXISTS fornecedores (
     INDEX idx_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Adicionar FK em produtos após criar fornecedores
+-- Adicionar FK em produtos apÃ³s criar fornecedores
 ALTER TABLE produtos ADD CONSTRAINT fk_prod_fornecedor
     FOREIGN KEY (fornecedor_id) REFERENCES fornecedores(id) ON DELETE SET NULL;
 
@@ -429,7 +429,7 @@ CREATE TABLE IF NOT EXISTS envios (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
--- TABELA: marketplaces (Configurações de Integração)
+-- TABELA: marketplaces (ConfiguraÃ§Ãµes de IntegraÃ§Ã£o)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS marketplaces (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -540,7 +540,7 @@ CREATE TABLE IF NOT EXISTS crm_atendimentos (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
--- TABELA: financeiro (Lançamentos)
+-- TABELA: financeiro (LanÃ§amentos)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS financeiro (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -651,33 +651,33 @@ CREATE TABLE IF NOT EXISTS configuracoes_sistema (
     INDEX idx_grupo (grupo)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Configurações iniciais
+-- ConfiguraÃ§Ãµes iniciais
 INSERT INTO configuracoes_sistema (chave, valor, tipo, descricao, grupo) VALUES
 ('site_nome', 'Grupo Nexum Altivon', 'Texto', 'Nome do site/empresa', 'Geral'),
 ('site_url', 'https://www.nexumaltivon.com', 'Texto', 'URL oficial', 'Geral'),
 ('site_logo', '/assets/logo-2.jpg', 'Texto', 'Logo principal', 'Geral'),
-('site_email_contato', 'contato@nexumaltivon.com', 'Texto', 'E-mail de contato', 'Geral'),
+('site_email_contato', 'corporativo.gna@gmail.com', 'Texto', 'E-mail de contato', 'Geral'),
 ('site_telefone', '(14) 99673-1879', 'Texto', 'Telefone principal', 'Geral'),
 ('site_whatsapp', '5514996731879', 'Texto', 'WhatsApp principal', 'Geral'),
-('frete_gratis_valor_minimo', '299.00', 'Numero', 'Valor mínimo para frete grátis', 'Frete'),
-('frete_padrao_metodo', 'Melhor Envio', 'Texto', 'Método de frete padrão', 'Frete'),
+('frete_gratis_valor_minimo', '299.00', 'Numero', 'Valor mÃ­nimo para frete grÃ¡tis', 'Frete'),
+('frete_padrao_metodo', 'Melhor Envio', 'Texto', 'MÃ©todo de frete padrÃ£o', 'Frete'),
 ('pagamento_pix_ativo', '1', 'Booleano', 'PIX habilitado', 'Pagamento'),
-('pagamento_cartao_ativo', '1', 'Booleano', 'Cartão habilitado', 'Pagamento'),
+('pagamento_cartao_ativo', '1', 'Booleano', 'CartÃ£o habilitado', 'Pagamento'),
 ('pagamento_boleto_ativo', '1', 'Booleano', 'Boleto habilitado', 'Pagamento'),
 ('pagamento_gateway_principal', 'MercadoPago', 'Texto', 'Gateway principal', 'Pagamento'),
-('parcelamento_maximo', '12', 'Numero', 'Máximo de parcelas', 'Pagamento'),
+('parcelamento_maximo', '12', 'Numero', 'MÃ¡ximo de parcelas', 'Pagamento'),
 ('parcelamento_sem_juros', '6', 'Numero', 'Parcelas sem juros', 'Pagamento'),
-('taxa_juros_parcelamento', '1.99', 'Numero', 'Taxa de juros ao mês', 'Pagamento'),
+('taxa_juros_parcelamento', '1.99', 'Numero', 'Taxa de juros ao mÃªs', 'Pagamento'),
 ('dropshipping_ativo', '1', 'Booleano', 'Dropshipping habilitado', 'Dropshipping'),
 ('marketplace_hub_ativo', '1', 'Booleano', 'Marketplace HUB habilitado', 'Marketplace'),
-('recuperacao_carrinho_ativo', '1', 'Booleano', 'Recuperação de carrinho', 'Marketing'),
+('recuperacao_carrinho_ativo', '1', 'Booleano', 'RecuperaÃ§Ã£o de carrinho', 'Marketing'),
 ('afiliados_ativo', '0', 'Booleano', 'Programa de afiliados', 'Marketing'),
 ('cashback_ativo', '0', 'Booleano', 'Sistema de cashback', 'Marketing'),
 ('fidelidade_ponto_reais', '1.00', 'Numero', 'Valor do ponto de fidelidade', 'Marketing'),
-('manutencao_modo', '0', 'Booleano', 'Modo manutenção', 'Sistema'),
-('api_rate_limit', '100', 'Numero', 'Limite de requisições por minuto', 'API'),
-('jwt_expiracao_horas', '24', 'Numero', 'Expiração do token JWT', 'Seguranca'),
-('jwt_refresh_dias', '7', 'Numero', 'Expiração do refresh token', 'Seguranca');
+('manutencao_modo', '0', 'Booleano', 'Modo manutenÃ§Ã£o', 'Sistema'),
+('api_rate_limit', '100', 'Numero', 'Limite de requisiÃ§Ãµes por minuto', 'API'),
+('jwt_expiracao_horas', '24', 'Numero', 'ExpiraÃ§Ã£o do token JWT', 'Seguranca'),
+('jwt_refresh_dias', '7', 'Numero', 'ExpiraÃ§Ã£o do refresh token', 'Seguranca');
 
 -- ============================================================
 -- VIEWS
@@ -752,7 +752,7 @@ GROUP BY tipo, status, DATE(created_at);
 
 DELIMITER //
 
--- Procedure: Gerar número de pedido único
+-- Procedure: Gerar nÃºmero de pedido Ãºnico
 CREATE PROCEDURE sp_gerar_numero_pedido(
     OUT numero_pedido VARCHAR(20)
 )
@@ -777,7 +777,7 @@ BEGIN
     SET numero_pedido = CONCAT(prefixo, LPAD(sequencia, 4, '0'));
 END //
 
--- Procedure: Atualizar estoque após pedido
+-- Procedure: Atualizar estoque apÃ³s pedido
 CREATE PROCEDURE sp_atualizar_estoque_pedido(
     IN p_pedido_id INT,
     IN p_operacao ENUM('Reservar','Liberar','Confirmar')
@@ -877,7 +877,7 @@ BEGIN
     SELECT ROW_COUNT() as registros_removidos;
 END //
 
--- Procedure: Relatório diário de vendas
+-- Procedure: RelatÃ³rio diÃ¡rio de vendas
 CREATE PROCEDURE sp_relatorio_vendas_dia(
     IN p_data DATE
 )
@@ -945,14 +945,15 @@ END //
 DELIMITER ;
 
 -- ============================================================
--- USUÁRIO ADMIN INICIAL (senha: Admin@Nexum2026!)
+-- USUÃRIO ADMIN INICIAL (senha: Admin@Nexum2026!)
 -- Hash BCrypt: $2a$12$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy
 -- ============================================================
 INSERT INTO usuarios (nome, email, senha_hash, perfil, ativo) VALUES
 ('Administrador Master', 'admin@nexumaltivon.com', '$2a$12$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'SuperAdmin', 1),
-('Rodrigo Costa', 'rodrigo@nexumaltivon.com', '$2a$12$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'Admin', 1),
-('Vinicius', 'vinicius@nexumaltivon.com', '$2a$12$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'Gerente', 1);
+('Rodrigo Costa', 'corporativo.gna@gmail.com', '$2a$12$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'Admin', 1),
+('Vinicius', 'corporativo.gna@gmail.com', '$2a$12$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'Gerente', 1);
 
 -- ============================================================
 -- FIM DO SCRIPT
 -- ============================================================
+

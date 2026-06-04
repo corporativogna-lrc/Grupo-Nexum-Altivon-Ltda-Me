@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Mail, MapPin, ShieldCheck } from 'lucide-react';
+import { Mail, MapPin, Phone, ShieldCheck } from 'lucide-react';
 
 const links = [
   { to: '/produtos', label: 'Catálogo' },
@@ -40,9 +40,17 @@ export default function Footer() {
         <div>
           <p className="mb-3 text-sm font-black uppercase tracking-[0.14em] text-[#C9A227]">Contato</p>
           <div className="space-y-3 text-sm font-semibold text-zinc-300">
-            <a className="flex items-center gap-2 transition hover:text-[#C9A227]" href="mailto:contato@nexumaltivon.com">
+            <a className="flex items-center gap-2 transition hover:text-[#C9A227]" href="mailto:corporativo.gna@gmail.com">
               <Mail size={16} />
-              contato@nexumaltivon.com
+              corporativo.gna@gmail.com
+            </a>
+            <a className="flex items-center gap-2 transition hover:text-[#C9A227]" href="tel:+5514996731879">
+              <Phone size={16} />
+              Rodrigo: +55 (14) 99673-1879
+            </a>
+            <a className="flex items-center gap-2 transition hover:text-[#C9A227]" href="tel:+5514996348409">
+              <Phone size={16} />
+              Vinicius: +55 (14) 99634-8409
             </a>
             <p className="flex items-center gap-2">
               <MapPin size={16} />

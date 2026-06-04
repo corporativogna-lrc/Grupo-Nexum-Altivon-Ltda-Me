@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel Administrativo — Grupo Nexum Altivon</title>
+    <title>Painel Administrativo â€” Grupo Nexum Altivon</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
@@ -545,7 +545,7 @@
             <button class="btn btn-gold" type="submit" style="width:100%;justify-content:center;">
                 <i class="fas fa-right-to-bracket"></i> Entrar
             </button>
-            <div class="login-error" id="loginError">Não foi possível autenticar. Verifique a API e as credenciais.</div>
+            <div class="login-error" id="loginError">NÃ£o foi possÃ­vel autenticar. Verifique a API e as credenciais.</div>
             <div class="login-hint">Desenvolvimento: admin@nexumaltivon.com / Admin@123</div>
         </form>
     </section>
@@ -574,7 +574,7 @@
                 <i class="fas fa-users"></i> Clientes
             </a>
 
-            <div class="menu-section">Gestão</div>
+            <div class="menu-section">GestÃ£o</div>
             <a class="menu-item" onclick="showSection('lojas')">
                 <i class="fas fa-store"></i> Lojas
             </a>
@@ -585,7 +585,7 @@
                 <i class="fas fa-file-invoice"></i> Fiscal
             </a>
             <a class="menu-item" onclick="showSection('logistica')">
-                <i class="fas fa-truck"></i> Logística
+                <i class="fas fa-truck"></i> LogÃ­stica
             </a>
 
             <div class="menu-section">Marketing & CRM</div>
@@ -600,7 +600,7 @@
                 <i class="fas fa-bullhorn"></i> Marketing
             </a>
 
-            <div class="menu-section">Integrações</div>
+            <div class="menu-section">IntegraÃ§Ãµes</div>
             <a class="menu-item" onclick="showSection('marketplaces')">
                 <i class="fas fa-globe"></i> Marketplaces
             </a>
@@ -610,10 +610,10 @@
 
             <div class="menu-section">Sistema</div>
             <a class="menu-item" onclick="showSection('usuarios')">
-                <i class="fas fa-user-shield"></i> Usuários
+                <i class="fas fa-user-shield"></i> UsuÃ¡rios
             </a>
             <a class="menu-item" onclick="showSection('configuracoes')">
-                <i class="fas fa-cog"></i> Configurações
+                <i class="fas fa-cog"></i> ConfiguraÃ§Ãµes
             </a>
             <a class="menu-item" onclick="showSection('auditoria')">
                 <i class="fas fa-clipboard-list"></i> Auditoria
@@ -640,7 +640,7 @@
                     <i class="fas fa-bars"></i>
                 </button>
                 <div class="breadcrumb">
-                    <span>Dashboard</span> / Visão Geral
+                    <span>Dashboard</span> / VisÃ£o Geral
                     <span class="api-status" id="apiStatus">conectando...</span>
                 </div>
             </div>
@@ -666,7 +666,7 @@
             <!-- DASHBOARD SECTION -->
             <div id="section-dashboard" class="section-content">
                 <h1 class="page-title">Dashboard</h1>
-                <p class="page-subtitle">Visão geral do Grupo Nexum Altivon — <span id="data-atual"></span></p>
+                <p class="page-subtitle">VisÃ£o geral do Grupo Nexum Altivon â€” <span id="data-atual"></span></p>
 
                 <!-- KPI CARDS -->
                 <div class="kpi-grid" id="kpiGrid">
@@ -772,10 +772,10 @@
                 </div>
             </div>
 
-            <!-- OUTRAS SEÇÕES (PLACEHOLDERS) -->
+            <!-- OUTRAS SEÃ‡Ã•ES (PLACEHOLDERS) -->
             <div id="section-pedidos" class="section-content" style="display:none;">
                 <h1 class="page-title">Pedidos</h1>
-                <p class="page-subtitle">Gestão completa de todos os pedidos do grupo</p>
+                <p class="page-subtitle">GestÃ£o completa de todos os pedidos do grupo</p>
                 <div class="table-card">
                     <div class="table-header">
                         <span class="table-title">Todos os Pedidos</span>
@@ -786,7 +786,7 @@
                     </div>
                     <table class="data-table">
                         <thead>
-                            <tr><th>Nº Pedido</th><th>Data</th><th>Cliente</th><th>Loja</th><th>Total</th><th>Pagamento</th><th>Status</th><th>Ações</th></tr>
+                            <tr><th>NÂº Pedido</th><th>Data</th><th>Cliente</th><th>Loja</th><th>Total</th><th>Pagamento</th><th>Status</th><th>AÃ§Ãµes</th></tr>
                         </thead>
                         <tbody id="tbodyPedidos"></tbody>
                     </table>
@@ -795,7 +795,7 @@
 
             <div id="section-produtos" class="section-content" style="display:none;">
                 <h1 class="page-title">Produtos</h1>
-                <p class="page-subtitle">Catálogo de produtos das 6 lojas</p>
+                <p class="page-subtitle">CatÃ¡logo de produtos das 6 lojas</p>
                 <div class="table-card">
                     <div class="table-header">
                         <span class="table-title">Todos os Produtos</span>
@@ -806,7 +806,7 @@
                     </div>
                     <table class="data-table">
                         <thead>
-                            <tr><th>SKU</th><th>Produto</th><th>Loja</th><th>Preço</th><th>Estoque</th><th>Tipo</th><th>Status</th><th>Ações</th></tr>
+                            <tr><th>SKU</th><th>Produto</th><th>Loja</th><th>PreÃ§o</th><th>Estoque</th><th>Tipo</th><th>Status</th><th>AÃ§Ãµes</th></tr>
                         </thead>
                         <tbody id="tbodyProdutos"></tbody>
                     </table>
@@ -826,7 +826,7 @@
                     </div>
                     <table class="data-table">
                         <thead>
-                            <tr><th>Nome</th><th>E-mail</th><th>Telefone</th><th>Tipo</th><th>VIP</th><th>Pedidos</th><th>Status</th><th>Ações</th></tr>
+                            <tr><th>Nome</th><th>E-mail</th><th>Telefone</th><th>Tipo</th><th>VIP</th><th>Pedidos</th><th>Status</th><th>AÃ§Ãµes</th></tr>
                         </thead>
                         <tbody id="tbodyClientes"></tbody>
                     </table>
@@ -835,7 +835,7 @@
 
             <div id="section-crm" class="section-content" style="display:none;">
                 <h1 class="page-title">CRM</h1>
-                <p class="page-subtitle">Gestão de leads, atendimentos e parcerias</p>
+                <p class="page-subtitle">GestÃ£o de leads, atendimentos e parcerias</p>
                 <div class="table-card">
                     <div class="table-header">
                         <span class="table-title">Todos os Leads</span>
@@ -846,36 +846,36 @@
                     </div>
                     <table class="data-table">
                         <thead>
-                            <tr><th>Nome</th><th>Tipo</th><th>Origem</th><th>Status</th><th>Prioridade</th><th>Responsável</th><th>Data</th><th>Ações</th></tr>
+                            <tr><th>Nome</th><th>Tipo</th><th>Origem</th><th>Status</th><th>Prioridade</th><th>ResponsÃ¡vel</th><th>Data</th><th>AÃ§Ãµes</th></tr>
                         </thead>
                         <tbody id="tbodyLeads"></tbody>
                     </table>
                 </div>
             </div>
 
-            <!-- PLACEHOLDER PARA OUTRAS SEÇÕES -->
+            <!-- PLACEHOLDER PARA OUTRAS SEÃ‡Ã•ES -->
             <div id="section-lojas" class="section-content" style="display:none;">
                 <h1 class="page-title">Lojas</h1>
-                <p class="page-subtitle">Gerenciamento das 6 lojas do grupo societário</p>
+                <p class="page-subtitle">Gerenciamento das 6 lojas do grupo societÃ¡rio</p>
                 <div id="lojasGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;"></div>
             </div>
 
             <div id="section-financeiro" class="section-content" style="display:none;">
                 <h1 class="page-title">Financeiro</h1>
-                <p class="page-subtitle">Lançamentos, receitas, despesas e relatórios</p>
+                <p class="page-subtitle">LanÃ§amentos, receitas, despesas e relatÃ³rios</p>
                 <div class="kpi-grid" id="kpiFinanceiro"></div>
             </div>
 
             <div id="section-configuracoes" class="section-content" style="display:none;">
-                <h1 class="page-title">Configurações do Sistema</h1>
-                <p class="page-subtitle">Parâmetros gerais, integrações e preferências</p>
+                <h1 class="page-title">ConfiguraÃ§Ãµes do Sistema</h1>
+                <p class="page-subtitle">ParÃ¢metros gerais, integraÃ§Ãµes e preferÃªncias</p>
                 <div id="configGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:20px;"></div>
             </div>
         </div>
     </main>
 
     <script>
-        // ===== CONFIGURAÇÃO DA API =====
+        // ===== CONFIGURAÃ‡ÃƒO DA API =====
         const API_BASE = window.location.protocol === 'file:' || window.location.hostname === 'localhost'
             ? 'http://localhost:5000/api'
             : 'https://api.nexumaltivon.com/api';
@@ -928,13 +928,13 @@
         async function loadDashboard() {
             try {
                 const result = await apiFetch('/admin/dashboard/completo');
-                if (!result.sucesso || !result.dados) throw new Error(result.mensagem || 'Resposta inválida');
+                if (!result.sucesso || !result.dados) throw new Error(result.mensagem || 'Resposta invÃ¡lida');
                 dashboardData = result.dados;
                 document.getElementById('apiStatus').textContent = 'API conectada';
             } catch (error) {
                 dashboardData = mockDashboard;
                 document.getElementById('apiStatus').textContent = error.message === 'unauthorized'
-                    ? 'sessão expirada'
+                    ? 'sessÃ£o expirada'
                     : 'API offline, usando dados locais';
                 if (error.message === 'unauthorized') logout();
             }
@@ -965,7 +965,7 @@
             document.getElementById('section-' + sectionId).style.display = 'block';
             document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
             event.currentTarget.classList.add('active');
-            document.querySelector('.breadcrumb').innerHTML = '<span>' + sectionId.charAt(0).toUpperCase() + sectionId.slice(1) + '</span> / Gestão';
+            document.querySelector('.breadcrumb').innerHTML = '<span>' + sectionId.charAt(0).toUpperCase() + sectionId.slice(1) + '</span> / GestÃ£o';
         }
 
         // ===== DATA =====
@@ -1020,7 +1020,7 @@
                 { periodo: 'mai/26', faturamento: 45230.80, quantidadePedidos: 186 }
             ],
             vendasPorLoja: [
-                { lojaNome: 'Geração Top+', lojaSlug: 'geracao-top', faturamento: 98560.00, pedidos: 412, ticketMedio: 239.22, percentual: 25.4 },
+                { lojaNome: 'GeraÃ§Ã£o Top+', lojaSlug: 'geracao-top', faturamento: 98560.00, pedidos: 412, ticketMedio: 239.22, percentual: 25.4 },
                 { lojaNome: 'Moda Mim', lojaSlug: 'moda-mim', faturamento: 72340.00, pedidos: 298, ticketMedio: 242.75, percentual: 18.7 },
                 { lojaNome: 'Chronos', lojaSlug: 'chronos', faturamento: 67890.00, pedidos: 245, ticketMedio: 277.10, percentual: 17.5 },
                 { lojaNome: 'Grann-Tur', lojaSlug: 'grann-tur', faturamento: 54230.00, pedidos: 198, ticketMedio: 273.89, percentual: 14.0 },
@@ -1028,10 +1028,10 @@
                 { lojaNome: 'Gran-fest-festas', lojaSlug: 'gran-fest', faturamento: 48760.00, pedidos: 187, ticketMedio: 260.75, percentual: 12.6 }
             ],
             produtosMaisVendidos: [
-                { produtoId: 1, nome: 'Smartphone Galaxy S24', imagem: null, lojaNome: 'Geração Top+', quantidadeVendida: 142, receitaTotal: 213400.00 },
-                { produtoId: 2, nome: 'Relógio Chronos Elite', imagem: null, lojaNome: 'Chronos', quantidadeVendida: 98, receitaTotal: 78400.00 },
+                { produtoId: 1, nome: 'Smartphone Galaxy S24', imagem: null, lojaNome: 'GeraÃ§Ã£o Top+', quantidadeVendida: 142, receitaTotal: 213400.00 },
+                { produtoId: 2, nome: 'RelÃ³gio Chronos Elite', imagem: null, lojaNome: 'Chronos', quantidadeVendida: 98, receitaTotal: 78400.00 },
                 { produtoId: 3, nome: 'Mala de Viagem Premium', imagem: null, lojaNome: 'Grann-Tur', quantidadeVendida: 87, receitaTotal: 43500.00 },
-                { produtoId: 4, nome: 'Vestido Floral Verão', imagem: null, lojaNome: 'Moda Mim', quantidadeVendida: 76, receitaTotal: 22800.00 },
+                { produtoId: 4, nome: 'Vestido Floral VerÃ£o', imagem: null, lojaNome: 'Moda Mim', quantidadeVendida: 76, receitaTotal: 22800.00 },
                 { produtoId: 5, nome: 'Kit Festa Premium', imagem: null, lojaNome: 'Gran-fest-festas', quantidadeVendida: 65, receitaTotal: 19500.00 }
             ],
             clientesRecentes: [
@@ -1042,7 +1042,7 @@
                 { id: 5, nome: 'Elisa Ferreira', email: 'elisa.ferreira@email.com', whatsapp: '(14) 99432-1098', dataCadastro: '2026-05-21T16:00:00', totalPedidos: 1, totalGasto: 320.00 }
             ],
             pedidosRecentes: [
-                { id: 1, numeroPedido: 'NX2605230001', clienteNome: 'Ana Carolina Silva', total: 450.00, status: 'Pago', statusPagamento: 'Aprovado', lojaNome: 'Geração Top+', dataPedido: '2026-05-23T15:30:00' },
+                { id: 1, numeroPedido: 'NX2605230001', clienteNome: 'Ana Carolina Silva', total: 450.00, status: 'Pago', statusPagamento: 'Aprovado', lojaNome: 'GeraÃ§Ã£o Top+', dataPedido: '2026-05-23T15:30:00' },
                 { id: 2, numeroPedido: 'NX2605230002', clienteNome: 'Bruno Oliveira', total: 890.00, status: 'EmSeparacao', statusPagamento: 'Aprovado', lojaNome: 'Moda Mim', dataPedido: '2026-05-23T14:10:00' },
                 { id: 3, numeroPedido: 'NX2605230003', clienteNome: 'Carla Mendes', total: 1250.00, status: 'Pendente', statusPagamento: 'Aguardando', lojaNome: 'Chronos', dataPedido: '2026-05-23T11:45:00' },
                 { id: 4, numeroPedido: 'NX2605220008', clienteNome: 'Diego Souza', total: 320.00, status: 'Enviado', statusPagamento: 'Aprovado', lojaNome: 'Grann-Tur', dataPedido: '2026-05-22T16:20:00' },
@@ -1053,7 +1053,7 @@
                 { id: 2, nome: 'Gabriela Rocha', tipo: 'Dropshipping', status: 'EmAtendimento', prioridade: 'Media', email: 'gabriela@dropship.com', whatsapp: '(21) 97654-3210', dataCriacao: '2026-05-23T09:30:00' },
                 { id: 3, nome: 'Henrique Almeida', tipo: 'Parceiro', status: 'Qualificado', prioridade: 'Alta', email: 'henrique@parceiro.com', whatsapp: '(31) 96543-2109', dataCriacao: '2026-05-22T17:00:00' },
                 { id: 4, nome: 'Isabela Costa', tipo: 'ClienteVIP', status: 'Convertido', prioridade: 'Media', email: 'isabela@email.com', whatsapp: '(14) 95432-1098', dataCriacao: '2026-05-22T11:00:00' },
-                { id: 5, nome: 'João Pedro', tipo: 'Fornecedor', status: 'Novo', prioridade: 'Baixa', email: 'joao@fornecedor.com', whatsapp: '(41) 94321-0987', dataCriacao: '2026-05-21T15:00:00' }
+                { id: 5, nome: 'JoÃ£o Pedro', tipo: 'Fornecedor', status: 'Novo', prioridade: 'Baixa', email: 'joao@fornecedor.com', whatsapp: '(41) 94321-0987', dataCriacao: '2026-05-21T15:00:00' }
             ]
         };
 
@@ -1062,9 +1062,9 @@
             const kpiData = [
                 { label: 'Faturamento Hoje', value: 'R$ ' + kpis.faturamentoHoje.toLocaleString('pt-BR', {minimumFractionDigits: 2}), change: '+12%', positive: true, icon: 'fa-dollar-sign', color: 'kpi-success', iconColor: 'icon-success' },
                 { label: 'Pedidos Hoje', value: kpis.pedidosHoje, change: '+5', positive: true, icon: 'fa-shopping-cart', color: 'kpi-info', iconColor: 'icon-info' },
-                { label: 'Clientes Ativos', value: kpis.clientesAtivos.toLocaleString('pt-BR'), change: '+34 este mês', positive: true, icon: 'fa-users', color: 'kpi-success', iconColor: 'icon-success' },
-                { label: 'Ticket Médio', value: 'R$ ' + kpis.ticketMedio.toLocaleString('pt-BR', {minimumFractionDigits: 2}), change: '+3.2%', positive: true, icon: 'fa-chart-line', color: 'kpi-warning', iconColor: 'icon-warning' },
-                { label: 'Produtos Estoque Baixo', value: kpis.produtosEstoqueBaixo, change: 'Atenção', positive: false, icon: 'fa-exclamation-triangle', color: 'kpi-danger', iconColor: 'icon-danger' },
+                { label: 'Clientes Ativos', value: kpis.clientesAtivos.toLocaleString('pt-BR'), change: '+34 este mÃªs', positive: true, icon: 'fa-users', color: 'kpi-success', iconColor: 'icon-success' },
+                { label: 'Ticket MÃ©dio', value: 'R$ ' + kpis.ticketMedio.toLocaleString('pt-BR', {minimumFractionDigits: 2}), change: '+3.2%', positive: true, icon: 'fa-chart-line', color: 'kpi-warning', iconColor: 'icon-warning' },
+                { label: 'Produtos Estoque Baixo', value: kpis.produtosEstoqueBaixo, change: 'AtenÃ§Ã£o', positive: false, icon: 'fa-exclamation-triangle', color: 'kpi-danger', iconColor: 'icon-danger' },
                 { label: 'Leads Novos', value: kpis.leadsNovos, change: '+3 hoje', positive: true, icon: 'fa-user-plus', color: 'kpi-info', iconColor: 'icon-info' }
             ];
 
@@ -1245,7 +1245,7 @@
             const lojas = (data.vendasPorLoja || []).map((loja, index) => ({
                 nome: loja.lojaNome,
                 slug: loja.lojaSlug,
-                segmento: 'Operação comercial',
+                segmento: 'OperaÃ§Ã£o comercial',
                 cor: ['#1E3A5F', '#2E5A8F', '#8B1E3F', '#0F4C3A', '#4A3728', '#6B2D5C'][index % 6],
                 pedidos: loja.pedidos,
                 faturamento: loja.faturamento
@@ -1253,10 +1253,10 @@
 
             const fallbackLojas = [
                 { nome: 'Grann-Tur', slug: 'grann-tur', segmento: 'Viagens & Turismo', cor: '#1E3A5F', pedidos: 198, faturamento: 54230 },
-                { nome: 'Chronos', slug: 'chronos', segmento: 'Relógios & Acessórios', cor: '#2E5A8F', pedidos: 245, faturamento: 67890 },
-                { nome: 'Moda Mim', slug: 'moda-mim', segmento: 'Moda & Vestuário', cor: '#8B1E3F', pedidos: 298, faturamento: 72340 },
-                { nome: 'Geração Top+', slug: 'geracao-top', segmento: 'Tecnologia & Gadgets', cor: '#0F4C3A', pedidos: 412, faturamento: 98560 },
-                { nome: 'Estruturaline', slug: 'estruturaline', segmento: 'Construção & Estruturas', cor: '#4A3728', pedidos: 156, faturamento: 45670 },
+                { nome: 'Chronos', slug: 'chronos', segmento: 'RelÃ³gios & AcessÃ³rios', cor: '#2E5A8F', pedidos: 245, faturamento: 67890 },
+                { nome: 'Moda Mim', slug: 'moda-mim', segmento: 'Moda & VestuÃ¡rio', cor: '#8B1E3F', pedidos: 298, faturamento: 72340 },
+                { nome: 'GeraÃ§Ã£o Top+', slug: 'geracao-top', segmento: 'Tecnologia & Gadgets', cor: '#0F4C3A', pedidos: 412, faturamento: 98560 },
+                { nome: 'Estruturaline', slug: 'estruturaline', segmento: 'ConstruÃ§Ã£o & Estruturas', cor: '#4A3728', pedidos: 156, faturamento: 45670 },
                 { nome: 'Gran-fest-festas', slug: 'gran-fest', segmento: 'Festas & Eventos', cor: '#6B2D5C', pedidos: 187, faturamento: 48760 }
             ];
 
@@ -1292,9 +1292,9 @@
         // ===== FINANCEIRO KPIs =====
         function renderFinanceiroKpis() {
             const kpis = [
-                { label: 'Receitas do Mês', value: 'R$ 45.230,80', change: '+8.5%', positive: true, icon: 'fa-arrow-up', color: 'kpi-success' },
-                { label: 'Despesas do Mês', value: 'R$ 18.450,20', change: '-2.3%', positive: true, icon: 'fa-arrow-down', color: 'kpi-danger' },
-                { label: 'Lucro Líquido', value: 'R$ 26.780,60', change: '+15.2%', positive: true, icon: 'fa-chart-line', color: 'kpi-info' },
+                { label: 'Receitas do MÃªs', value: 'R$ 45.230,80', change: '+8.5%', positive: true, icon: 'fa-arrow-up', color: 'kpi-success' },
+                { label: 'Despesas do MÃªs', value: 'R$ 18.450,20', change: '-2.3%', positive: true, icon: 'fa-arrow-down', color: 'kpi-danger' },
+                { label: 'Lucro LÃ­quido', value: 'R$ 26.780,60', change: '+15.2%', positive: true, icon: 'fa-chart-line', color: 'kpi-info' },
                 { label: 'Margem de Lucro', value: '59.2%', change: '+3.1%', positive: true, icon: 'fa-percent', color: 'kpi-warning' }
             ];
 
@@ -1314,25 +1314,25 @@
             `).join('');
         }
 
-        // ===== CONFIGURAÇÕES =====
+        // ===== CONFIGURAÃ‡Ã•ES =====
         function renderConfiguracoes() {
             const configs = [
                 { grupo: 'Geral', items: [
                     { chave: 'site_nome', label: 'Nome do Site', valor: 'Grupo Nexum Altivon', tipo: 'texto' },
                     { chave: 'site_url', label: 'URL Oficial', valor: 'https://www.nexumaltivon.com', tipo: 'texto' },
-                    { chave: 'site_email', label: 'E-mail de Contato', valor: 'contato@nexumaltivon.com', tipo: 'texto' }
+                    { chave: 'site_email', label: 'E-mail de Contato', valor: 'corporativo.gna@gmail.com', tipo: 'texto' }
                 ]},
                 { grupo: 'Pagamento', items: [
                     { chave: 'gateway_principal', label: 'Gateway Principal', valor: 'Mercado Pago', tipo: 'select' },
-                    { chave: 'parcelamento_max', label: 'Máx. Parcelas', valor: '12', tipo: 'numero' },
+                    { chave: 'parcelamento_max', label: 'MÃ¡x. Parcelas', valor: '12', tipo: 'numero' },
                     { chave: 'parcelas_sem_juros', label: 'Parcelas Sem Juros', valor: '6', tipo: 'numero' }
                 ]},
                 { grupo: 'Frete', items: [
-                    { chave: 'frete_gratis_min', label: 'Frete Grátis (mínimo)', valor: 'R$ 299,00', tipo: 'moeda' },
-                    { chave: 'frete_padrao', label: 'Método Padrão', valor: 'Melhor Envio', tipo: 'select' }
+                    { chave: 'frete_gratis_min', label: 'Frete GrÃ¡tis (mÃ­nimo)', valor: 'R$ 299,00', tipo: 'moeda' },
+                    { chave: 'frete_padrao', label: 'MÃ©todo PadrÃ£o', valor: 'Melhor Envio', tipo: 'select' }
                 ]},
                 { grupo: 'Marketing', items: [
-                    { chave: 'recuperacao_carrinho', label: 'Recuperação de Carrinho', valor: 'Ativo', tipo: 'booleano' },
+                    { chave: 'recuperacao_carrinho', label: 'RecuperaÃ§Ã£o de Carrinho', valor: 'Ativo', tipo: 'booleano' },
                     { chave: 'cashback', label: 'Sistema de Cashback', valor: 'Inativo', tipo: 'booleano' }
                 ]}
             ];
@@ -1395,9 +1395,10 @@
                 loadDashboard();
             } else {
                 renderDashboard(mockDashboard);
-                document.getElementById('apiStatus').textContent = 'login necessário';
+                document.getElementById('apiStatus').textContent = 'login necessÃ¡rio';
             }
         });
     </script>
 </body>
 </html>
+

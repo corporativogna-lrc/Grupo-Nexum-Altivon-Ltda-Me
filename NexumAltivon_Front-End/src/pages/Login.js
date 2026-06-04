@@ -28,14 +28,14 @@ export default function Login() {
   };
 
   return (
-    <div className="nexum-admin-login min-h-screen flex items-center justify-center py-12 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center py-12 px-4">
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
-          <div className="w-20 h-20 bg-[#C9A227] rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <div className="w-20 h-20 bg-gradient-to-br from-amber-400 to-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <LogIn className="text-white" size={40} />
           </div>
-          <h2 className="text-3xl font-bold text-white" data-testid="login-title">Acessar Painel Administrativo</h2>
-          <p className="mt-2 text-gray-300">Gestão operacional Grupo Nexum Altivon</p>
+          <h2 className="text-3xl font-bold text-white" data-testid="login-title">Acessar Sistema</h2>
+          <p className="mt-2 text-gray-300">Painel administrativo Nexum Altivon</p>
         </div>
 
         <form className="bg-white p-8 rounded-2xl shadow-2xl space-y-6" onSubmit={handleSubmit}>
@@ -79,6 +79,11 @@ export default function Login() {
           >
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
+
+          <div className="text-center text-sm text-gray-600">
+            <p>Credenciais de teste:</p>
+            <p className="font-mono">admin@nexumaltivon.com / Admin@123</p>
+          </div>
 
           <div className="text-center">
             <Link to="/" className="text-amber-600 hover:underline">← Voltar para Home</Link>

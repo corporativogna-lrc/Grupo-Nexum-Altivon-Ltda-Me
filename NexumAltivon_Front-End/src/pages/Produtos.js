@@ -83,31 +83,31 @@ export default function Produtos() {
   };
 
   return (
-    <main className="min-h-screen bg-[#050505] text-white">
-      <section className="border-b border-[#2A2A2A] bg-[radial-gradient(circle_at_top_left,rgba(201,162,39,0.18),transparent_32%),linear-gradient(135deg,#050505,#101010)]">
+    <main className="min-h-screen bg-[#f5f7fb]">
+      <section className="border-b border-slate-200 bg-white">
         <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <p className="text-sm font-black uppercase tracking-[0.22em] text-[#C9A227]">Catálogo integrado</p>
-              <h1 className="mt-3 text-4xl font-black text-white sm:text-5xl" data-testid="produtos-title">
-                Produtos Nexum Altivon
+              <p className="text-sm font-black uppercase tracking-[0.22em] text-amber-700">Catálogo premium</p>
+              <h1 className="mt-3 text-4xl font-black text-slate-950 sm:text-5xl" data-testid="produtos-title">
+                Relógios e acessórios
               </h1>
-              <p className="mt-4 max-w-2xl text-[#B8B8B8]">
-                Catálogo conectado ao sistema: produtos, estoque, preço promocional e categorias entram pelo mesmo fluxo da API operacional.
+              <p className="mt-4 max-w-2xl text-slate-500">
+                Filtre por coleção, disponibilidade e faixa de interesse para encontrar a peça certa com rapidez.
               </p>
             </div>
-            <div className="grid grid-cols-3 gap-3 rounded-2xl border border-[#2A2A2A] bg-black/40 p-3 text-center backdrop-blur">
+            <div className="grid grid-cols-3 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-center">
               <div>
-                <p className="text-2xl font-black text-[#C9A227]">{filteredProdutos.length}</p>
-                <p className="text-xs font-bold uppercase text-[#A0A0A0]">produtos</p>
+                <p className="text-2xl font-black text-slate-950">{filteredProdutos.length}</p>
+                <p className="text-xs font-bold uppercase text-slate-500">produtos</p>
               </div>
               <div>
-                <p className="text-2xl font-black text-[#C9A227]">{categorias.length}</p>
-                <p className="text-xs font-bold uppercase text-[#A0A0A0]">categorias</p>
+                <p className="text-2xl font-black text-slate-950">{categorias.length}</p>
+                <p className="text-xs font-bold uppercase text-slate-500">coleções</p>
               </div>
               <div>
-                <p className="text-2xl font-black text-[#C9A227]">API</p>
-                <p className="text-xs font-bold uppercase text-[#A0A0A0]">integrada</p>
+                <p className="text-2xl font-black text-slate-950">10x</p>
+                <p className="text-xs font-bold uppercase text-slate-500">sem juros</p>
               </div>
             </div>
           </div>
@@ -115,34 +115,34 @@ export default function Produtos() {
       </section>
 
       <section className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 lg:grid-cols-[280px_minmax(0,1fr)] lg:px-8">
-        <aside className="h-fit rounded-2xl border border-[#2A2A2A] bg-[#111111] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.35)] lg:sticky lg:top-28">
+        <aside className="h-fit rounded-lg border border-slate-200 bg-white p-5 shadow-sm lg:sticky lg:top-28">
           <div className="mb-5 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <SlidersHorizontal size={18} />
-              <h2 className="font-black text-white">Filtros</h2>
+              <h2 className="font-black text-slate-950">Filtros</h2>
             </div>
-            <button onClick={clearFilters} className="inline-flex items-center gap-1 text-xs font-black text-[#A0A0A0] hover:text-[#C9A227]">
+            <button onClick={clearFilters} className="inline-flex items-center gap-1 text-xs font-black text-slate-500 hover:text-slate-950">
               <X size={14} />
               Limpar
             </button>
           </div>
 
-          <label className="block text-sm font-bold text-[#D8D8D8]" htmlFor="search-input">Buscar</label>
+          <label className="block text-sm font-bold text-slate-700" htmlFor="search-input">Buscar</label>
           <div className="relative mt-2">
-            <Search className="absolute left-3 top-3 text-[#777]" size={18} />
+            <Search className="absolute left-3 top-3 text-slate-400" size={18} />
             <input
               id="search-input"
               type="text"
               placeholder="Modelo, SKU ou estilo"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              className="w-full rounded-xl border border-[#2A2A2A] bg-[#080808] py-3 pl-10 pr-3 text-sm text-white outline-none transition placeholder:text-[#777] focus:border-[#C9A227] focus:ring-4 focus:ring-[#C9A227]/10"
+              className="w-full rounded-lg border border-slate-200 bg-white py-3 pl-10 pr-3 text-sm outline-none transition focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
               data-testid="search-input"
             />
           </div>
 
           <div className="mt-6">
-            <label className="mb-2 flex items-center gap-2 text-sm font-bold text-[#D8D8D8]" htmlFor="category-filter">
+            <label className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700" htmlFor="category-filter">
               <Filter size={16} />
               Coleção
             </label>
@@ -150,7 +150,7 @@ export default function Produtos() {
               id="category-filter"
               value={selectedCategory}
               onChange={(event) => setSelectedCategory(event.target.value)}
-              className="w-full rounded-xl border border-[#2A2A2A] bg-[#080808] px-3 py-3 text-sm text-white outline-none transition focus:border-[#C9A227] focus:ring-4 focus:ring-[#C9A227]/10"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm outline-none transition focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
               data-testid="category-filter"
             >
               <option value="">Todas as coleções</option>
@@ -161,7 +161,7 @@ export default function Produtos() {
           </div>
 
           <div className="mt-6">
-            <label className="mb-2 flex items-center gap-2 text-sm font-bold text-[#D8D8D8]" htmlFor="sort-by">
+            <label className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700" htmlFor="sort-by">
               <ArrowDownUp size={16} />
               Ordenar
             </label>
@@ -169,7 +169,7 @@ export default function Produtos() {
               id="sort-by"
               value={sortBy}
               onChange={(event) => setSortBy(event.target.value)}
-              className="w-full rounded-xl border border-[#2A2A2A] bg-[#080808] px-3 py-3 text-sm text-white outline-none transition focus:border-[#C9A227] focus:ring-4 focus:ring-[#C9A227]/10"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm outline-none transition focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
             >
               {Object.entries(sortOptions).map(([value, label]) => (
                 <option key={value} value={value}>{label}</option>
@@ -177,13 +177,13 @@ export default function Produtos() {
             </select>
           </div>
 
-          <label className="mt-6 flex items-center justify-between rounded-xl border border-[#2A2A2A] bg-[#080808] px-3 py-3 text-sm font-bold text-[#D8D8D8]">
+          <label className="mt-6 flex items-center justify-between rounded-lg border border-slate-200 px-3 py-3 text-sm font-bold text-slate-700">
             <span>Somente pronta entrega</span>
             <input
               type="checkbox"
               checked={inStockOnly}
               onChange={(event) => setInStockOnly(event.target.checked)}
-              className="h-5 w-5 accent-[#C9A227]"
+              className="h-5 w-5 accent-slate-950"
             />
           </label>
         </aside>
@@ -192,16 +192,16 @@ export default function Produtos() {
           {loading && (
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
               {[1, 2, 3, 4, 5, 6].map((item) => (
-                <div key={item} className="h-[520px] animate-pulse rounded-2xl border border-[#2A2A2A] bg-[#111111]" />
+                <div key={item} className="h-[520px] animate-pulse rounded-lg bg-white" />
               ))}
             </div>
           )}
 
           {!loading && filteredProdutos.length === 0 && (
-            <div className="rounded-2xl border border-[#2A2A2A] bg-[#111111] px-6 py-16 text-center shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
-              <p className="text-xl font-black text-white">Nenhum produto encontrado</p>
-              <p className="mt-2 text-[#A0A0A0]">Ajuste os filtros para ver outras opções do catálogo.</p>
-              <button onClick={clearFilters} className="mt-6 rounded-full bg-[#C9A227] px-5 py-3 text-sm font-black text-black">
+            <div className="rounded-lg border border-slate-200 bg-white px-6 py-16 text-center shadow-sm">
+              <p className="text-xl font-black text-slate-950">Nenhum produto encontrado</p>
+              <p className="mt-2 text-slate-500">Ajuste os filtros para ver outras opções da coleção.</p>
+              <button onClick={clearFilters} className="mt-6 rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white">
                 Limpar filtros
               </button>
             </div>

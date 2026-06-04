@@ -74,8 +74,17 @@ export default function Contato() {
                     <Phone className="text-amber-600" size={20} />
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Telefone</p>
-                    <p className="font-semibold">(11) 3456-7890</p>
+                    <p className="text-sm text-gray-500">Rodrigo</p>
+                    <a className="font-semibold hover:text-amber-600" href="tel:+5514996731879">+55 (14) 99673-1879</a>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <div className="bg-amber-100 p-3 rounded-full">
+                    <Phone className="text-amber-600" size={20} />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Vinicius</p>
+                    <a className="font-semibold hover:text-amber-600" href="tel:+5514996348409">+55 (14) 99634-8409</a>
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">
@@ -84,7 +93,7 @@ export default function Contato() {
                   </div>
                   <div>
                     <p className="text-sm text-gray-500">Email</p>
-                    <p className="font-semibold">contato@nexumaltivon.com</p>
+                    <a className="font-semibold hover:text-amber-600" href="mailto:corporativo.gna@gmail.com">corporativo.gna@gmail.com</a>
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">

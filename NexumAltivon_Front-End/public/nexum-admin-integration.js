@@ -1,6 +1,6 @@
-/**
- * Nexum Altivon - Integração COMPLETA do Painel Admin
- * Todos os botões, comandos, cadastros e seções operacionais
+﻿/**
+ * Nexum Altivon - IntegraÃ§Ã£o COMPLETA do Painel Admin
+ * Todos os botÃµes, comandos, cadastros e seÃ§Ãµes operacionais
  */
 (function() {
   'use strict';
@@ -138,7 +138,7 @@
   }
 
   // ==========================================================
-  // MODAL DE VISUALIZAÇÃO (DETALHES)
+  // MODAL DE VISUALIZAÃ‡ÃƒO (DETALHES)
   // ==========================================================
   function openViewModal(title, content) {
     document.getElementById('nexum-modal')?.remove();
@@ -166,21 +166,21 @@
   }
 
   // ==========================================================
-  // CADASTROS / AÇÕES (Expostos via window)
+  // CADASTROS / AÃ‡Ã•ES (Expostos via window)
   // ==========================================================
   window.NexumActions = {
     novoProduto: async () => {
       const cats = await apiGet('/categorias');
       openModal('Novo Produto', [
         { name: 'nome', label: 'Nome', required: true },
-        { name: 'descricao', label: 'Descrição', type: 'textarea' },
+        { name: 'descricao', label: 'DescriÃ§Ã£o', type: 'textarea' },
         { name: 'categoria_id', label: 'Categoria', type: 'select', required: true, options: cats.map(c => ({value: c.id, label: c.nome})) },
-        { name: 'preco', label: 'Preço (R$)', type: 'number', step: '0.01', required: true },
-        { name: 'preco_promocional', label: 'Preço Promocional (R$)', type: 'number', step: '0.01' },
+        { name: 'preco', label: 'PreÃ§o (R$)', type: 'number', step: '0.01', required: true },
+        { name: 'preco_promocional', label: 'PreÃ§o Promocional (R$)', type: 'number', step: '0.01' },
         { name: 'estoque', label: 'Estoque', type: 'number', default: 0 },
         { name: 'imagem_url', label: 'URL da Imagem' },
         { name: 'sku', label: 'SKU' },
-        { name: 'destaque', label: 'Destaque', type: 'select', options: [{value:'false',label:'Não'},{value:'true',label:'Sim'}] }
+        { name: 'destaque', label: 'Destaque', type: 'select', options: [{value:'false',label:'NÃ£o'},{value:'true',label:'Sim'}] }
       ], async (data) => {
         data.destaque = data.destaque === 'true';
         data.preco_promocional = data.preco_promocional ? parseFloat(data.preco_promocional) : null;
@@ -196,13 +196,13 @@
       openViewModal(p.nome, `
         ${p.imagem_url ? `<img src="${p.imagem_url}" style="width:100%;max-height:250px;object-fit:cover;border-radius:8px;margin-bottom:15px;" />` : ''}
         <div class="view-row"><span>SKU:</span><span>${p.sku || '-'}</span></div>
-        <div class="view-row"><span>Preço:</span><span style="color:#C9A227;font-weight:700;">${formatBRL(p.preco)}</span></div>
-        <div class="view-row"><span>Preço Promocional:</span><span>${p.preco_promocional ? formatBRL(p.preco_promocional) : '-'}</span></div>
+        <div class="view-row"><span>PreÃ§o:</span><span style="color:#C9A227;font-weight:700;">${formatBRL(p.preco)}</span></div>
+        <div class="view-row"><span>PreÃ§o Promocional:</span><span>${p.preco_promocional ? formatBRL(p.preco_promocional) : '-'}</span></div>
         <div class="view-row"><span>Estoque:</span><span>${p.estoque} unidades</span></div>
-        <div class="view-row"><span>Destaque:</span><span>${p.destaque ? '⭐ Sim' : 'Não'}</span></div>
+        <div class="view-row"><span>Destaque:</span><span>${p.destaque ? 'â­ Sim' : 'NÃ£o'}</span></div>
         <div class="view-row"><span>Status:</span><span>${statusBadge(p.ativo ? 'Ativo' : 'Inativo')}</span></div>
         <div style="margin-top:15px;padding:15px;background:rgba(255,255,255,0.03);border-radius:6px;">
-          <strong style="color:#C9A227;">Descrição:</strong><br>${p.descricao || 'Sem descrição'}
+          <strong style="color:#C9A227;">DescriÃ§Ã£o:</strong><br>${p.descricao || 'Sem descriÃ§Ã£o'}
         </div>
       `);
     },
@@ -256,10 +256,10 @@
 
     novoCupom: () => {
       openModal('Novo Cupom de Desconto', [
-        { name: 'codigo', label: 'Código', required: true, placeholder: 'EX: PROMO10' },
+        { name: 'codigo', label: 'CÃ³digo', required: true, placeholder: 'EX: PROMO10' },
         { name: 'desconto_percentual', label: 'Desconto (%)', type: 'number', step: '0.1' },
         { name: 'desconto_valor', label: 'Desconto (R$)', type: 'number', step: '0.01' },
-        { name: 'valor_minimo', label: 'Valor Mínimo do Pedido (R$)', type: 'number', step: '0.01' }
+        { name: 'valor_minimo', label: 'Valor MÃ­nimo do Pedido (R$)', type: 'number', step: '0.01' }
       ], async (data) => {
         if (data.desconto_percentual === 0) data.desconto_percentual = null;
         if (data.desconto_valor === 0) data.desconto_valor = null;
@@ -273,7 +273,7 @@
     novaLoja: () => {
       openModal('Nova Loja', [
         { name: 'nome', label: 'Nome', required: true },
-        { name: 'descricao', label: 'Descrição', type: 'textarea' },
+        { name: 'descricao', label: 'DescriÃ§Ã£o', type: 'textarea' },
         { name: 'cnpj', label: 'CNPJ' },
         { name: 'telefone', label: 'Telefone' },
         { name: 'email', label: 'Email' },
@@ -294,7 +294,7 @@
         <div class="view-row"><span>CNPJ:</span><span>${l.cnpj || '-'}</span></div>
         <div class="view-row"><span>Telefone:</span><span>${l.telefone || '-'}</span></div>
         <div class="view-row"><span>Email:</span><span>${l.email || '-'}</span></div>
-        <div class="view-row"><span>Localização:</span><span>${l.cidade ? l.cidade+'/'+l.estado : '-'}</span></div>
+        <div class="view-row"><span>LocalizaÃ§Ã£o:</span><span>${l.cidade ? l.cidade+'/'+l.estado : '-'}</span></div>
         <div class="view-row"><span>Status:</span><span>${statusBadge(l.ativa ? 'Ativo' : 'Inativo')}</span></div>
         ${l.descricao ? `<div style="margin-top:15px;padding:15px;background:rgba(255,255,255,0.03);border-radius:6px;">${l.descricao}</div>` : ''}
       `);
@@ -389,7 +389,7 @@
   }
 
   // ==========================================================
-  // LOADERS - cada seção
+  // LOADERS - cada seÃ§Ã£o
   // ==========================================================
   async function updateDashboard() {
     const resumo = await apiGet('/dashboard/resumo');
@@ -433,7 +433,7 @@
       formatDate(p.created_at),
       actionBtn('Ver', `NexumActions.verPedido('${p.id}')`)
     ]);
-    renderTable('pedidos', 'Pedidos Recentes', ['Nº Pedido', 'Total', 'Itens', 'Status', 'Data', 'Ações'], rows, 'Nenhum pedido cadastrado.', { label: 'Exportar CSV', onclick: 'NexumActions.exportarPedidos()' });
+    renderTable('pedidos', 'Pedidos Recentes', ['NÂº Pedido', 'Total', 'Itens', 'Status', 'Data', 'AÃ§Ãµes'], rows, 'Nenhum pedido cadastrado.', { label: 'Exportar CSV', onclick: 'NexumActions.exportarPedidos()' });
   }
 
   async function loadProdutos() {
@@ -443,11 +443,11 @@
       `<strong>${p.nome}</strong><br><span style="color:#A0A0A0;font-size:0.75rem;">SKU: ${p.sku || '-'}</span>`,
       formatBRL(p.preco_promocional || p.preco),
       p.estoque > 0 ? `<span style="color:${p.estoque < 10 ? '#F59E0B' : '#10B981'};">${p.estoque}</span>` : '<span style="color:#EF4444;">Esgotado</span>',
-      p.destaque ? '⭐ Destaque' : '-',
+      p.destaque ? 'â­ Destaque' : '-',
       statusBadge(p.ativo ? 'Ativo' : 'Inativo'),
       actionBtn('Ver', `NexumActions.verProduto('${p.id}')`)
     ]);
-    renderTable('produtos', 'Catálogo de Produtos', ['Produto', 'Preço', 'Estoque', 'Tag', 'Status', 'Ações'], rows, 'Nenhum produto.', { label: 'Novo Produto', onclick: 'NexumActions.novoProduto()' });
+    renderTable('produtos', 'CatÃ¡logo de Produtos', ['Produto', 'PreÃ§o', 'Estoque', 'Tag', 'Status', 'AÃ§Ãµes'], rows, 'Nenhum produto.', { label: 'Novo Produto', onclick: 'NexumActions.novoProduto()' });
   }
 
   async function loadClientes() {
@@ -458,7 +458,7 @@
       formatDate(c.created_at), statusBadge(c.ativo ? 'Ativo' : 'Inativo'),
       actionBtn('Ver', `NexumActions.verCliente('${c.id}')`)
     ]);
-    renderTable('clientes', 'Base de Clientes', ['Nome', 'Email', 'Telefone', 'CPF', 'Cadastro', 'Status', 'Ações'], rows, 'Nenhum cliente cadastrado.', { label: 'Novo Cliente', onclick: 'NexumActions.novoCliente()' });
+    renderTable('clientes', 'Base de Clientes', ['Nome', 'Email', 'Telefone', 'CPF', 'Cadastro', 'Status', 'AÃ§Ãµes'], rows, 'Nenhum cliente cadastrado.', { label: 'Novo Cliente', onclick: 'NexumActions.novoCliente()' });
   }
 
   async function loadLojas() {
@@ -472,7 +472,7 @@
       statusBadge(l.ativa ? 'Ativo' : 'Inativo'),
       actionBtn('Ver', `NexumActions.verLoja('${l.id}')`)
     ]);
-    renderTable('lojas', 'Lojas do Grupo', ['Loja', 'Segmento', 'Localização', 'Telefone', 'Email', 'Status', 'Ações'], rows, 'Nenhuma loja.', { label: 'Nova Loja', onclick: 'NexumActions.novaLoja()' });
+    renderTable('lojas', 'Lojas do Grupo', ['Loja', 'Segmento', 'LocalizaÃ§Ã£o', 'Telefone', 'Email', 'Status', 'AÃ§Ãµes'], rows, 'Nenhuma loja.', { label: 'Nova Loja', onclick: 'NexumActions.novaLoja()' });
   }
 
   async function loadCRM() {
@@ -485,7 +485,7 @@
       actionBtn('Qualificar', `NexumActions.atualizarStatusLead('${l.id}','Qualificado')`) +
       actionBtn('Ganho', `NexumActions.atualizarStatusLead('${l.id}','Ganho')`, '#10B981')
     ]);
-    renderTable('crm', 'Leads do CRM', ['Nome', 'Email', 'Telefone', 'Empresa', 'Origem', 'Status', 'Data', 'Ações'], rows, 'Nenhum lead.', { label: 'Novo Lead', onclick: 'NexumActions.novoLead()' });
+    renderTable('crm', 'Leads do CRM', ['Nome', 'Email', 'Telefone', 'Empresa', 'Origem', 'Status', 'Data', 'AÃ§Ãµes'], rows, 'Nenhum lead.', { label: 'Novo Lead', onclick: 'NexumActions.novoLead()' });
   }
 
   async function loadFinanceiro() {
@@ -523,10 +523,10 @@
       formatDate(l.data_lancamento),
       l.pago ? statusBadge('Entregue') : statusBadge('Pendente')
     ]);
-    renderTable('financeiro', 'Lançamentos Financeiros', ['Descrição', 'Categoria', 'Valor', 'Data', 'Status'], rows, 'Nenhum lançamento.');
+    renderTable('financeiro', 'LanÃ§amentos Financeiros', ['DescriÃ§Ã£o', 'Categoria', 'Valor', 'Data', 'Status'], rows, 'Nenhum lanÃ§amento.');
   }
 
-  // Seções não nativas do HTML - criamos div dinamicamente
+  // SeÃ§Ãµes nÃ£o nativas do HTML - criamos div dinamicamente
   function ensureSection(sectionId) {
     let section = document.getElementById(`section-${sectionId}`);
     if (!section) {
@@ -537,7 +537,7 @@
       const mainContent = document.querySelector('.main-content, main, #main');
       if (mainContent) {
         mainContent.appendChild(section);
-        // Adiciona header básico
+        // Adiciona header bÃ¡sico
         section.innerHTML = `<h1 class="page-title">${sectionId.charAt(0).toUpperCase() + sectionId.slice(1)}</h1>`;
       }
     }
@@ -547,8 +547,8 @@
   async function loadCupons() {
     ensureSection('cupons');
     try {
-      // Tenta validar um cupom para gatilhar listagem (API só tem por código). Usamos lojas para fallback
-      // Como não há endpoint de listagem, faz uma busca direta no Mongo via uma query
+      // Tenta validar um cupom para gatilhar listagem (API sÃ³ tem por cÃ³digo). Usamos lojas para fallback
+      // Como nÃ£o hÃ¡ endpoint de listagem, faz uma busca direta no Mongo via uma query
       const cupons = await apiGet('/cupons/BEMVINDO10').then(c => [c]).catch(() => [])
         .then(async (c1) => {
           const c2 = await apiGet('/cupons/PRIMEIRACOMPRA').catch(() => null);
@@ -558,13 +558,13 @@
       const rows = cupons.map(c => [
         `<strong style="color:#C9A227;">${c.codigo}</strong>`,
         c.desconto_percentual ? `${c.desconto_percentual}%` : formatBRL(c.desconto_valor),
-        c.valor_minimo ? formatBRL(c.valor_minimo) : 'Sem mínimo',
+        c.valor_minimo ? formatBRL(c.valor_minimo) : 'Sem mÃ­nimo',
         c.data_validade ? formatDate(c.data_validade) : 'Sem validade',
         statusBadge(c.ativo ? 'Ativo' : 'Inativo')
       ]);
-      renderTable('cupons', 'Cupons de Desconto', ['Código', 'Desconto', 'Valor Mínimo', 'Validade', 'Status'], rows, 'Nenhum cupom ativo.', { label: 'Novo Cupom', onclick: 'NexumActions.novoCupom()' });
+      renderTable('cupons', 'Cupons de Desconto', ['CÃ³digo', 'Desconto', 'Valor MÃ­nimo', 'Validade', 'Status'], rows, 'Nenhum cupom ativo.', { label: 'Novo Cupom', onclick: 'NexumActions.novoCupom()' });
     } catch (e) {
-      renderTable('cupons', 'Cupons de Desconto', ['Código', 'Desconto', 'Valor Mínimo', 'Validade', 'Status'], [], 'Sistema de cupons ativo. Cupons disponíveis: BEMVINDO10, PRIMEIRACOMPRA, NEXUM2026', { label: 'Novo Cupom', onclick: 'NexumActions.novoCupom()' });
+      renderTable('cupons', 'Cupons de Desconto', ['CÃ³digo', 'Desconto', 'Valor MÃ­nimo', 'Validade', 'Status'], [], 'Sistema de cupons ativo. Cupons disponÃ­veis: BEMVINDO10, PRIMEIRACOMPRA, NEXUM2026', { label: 'Novo Cupom', onclick: 'NexumActions.novoCupom()' });
     }
   }
 
@@ -572,15 +572,15 @@
     ensureSection('usuarios');
     const user = JSON.parse(localStorage.getItem(STORAGE_USER) || '{}');
     const usuarios = [
-      { nome: 'Rodrigo Costa', email: 'rodrigo@nexumaltivon.com', role: 'SuperAdmin', ativo: true },
-      { nome: 'Vinicius', email: 'vinicius@nexumaltivon.com', role: 'Admin', ativo: true }
+      { nome: 'Rodrigo Costa', email: 'corporativo.gna@gmail.com', role: 'SuperAdmin', ativo: true },
+      { nome: 'Vinicius', email: 'corporativo.gna@gmail.com', role: 'Admin', ativo: true }
     ];
     const rows = usuarios.map(u => [
-      `<strong>${u.nome}${u.email === user.email ? ' <span style=\"color:#C9A227;\">(você)</span>' : ''}</strong>`,
+      `<strong>${u.nome}${u.email === user.email ? ' <span style=\"color:#C9A227;\">(vocÃª)</span>' : ''}</strong>`,
       u.email, badge(u.role, '#C9A227'),
       statusBadge(u.ativo ? 'Ativo' : 'Inativo')
     ]);
-    renderTable('usuarios', 'Usuários do Sistema', ['Nome', 'Email', 'Role', 'Status'], rows, '');
+    renderTable('usuarios', 'UsuÃ¡rios do Sistema', ['Nome', 'Email', 'Role', 'Status'], rows, '');
   }
 
   async function loadConfiguracoes() {
@@ -597,9 +597,9 @@
         <div style="background:rgba(20,20,20,0.5);padding:25px;border-radius:8px;border:1px solid rgba(201,162,39,0.15);">
           <h3 style="color:#C9A227;font-family:'Playfair Display',serif;">Sistema</h3>
           <div class="view-row" style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><span style="color:#A0A0A0;">Nome:</span> <span>Grupo Nexum Altivon</span></div>
-          <div class="view-row" style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><span style="color:#A0A0A0;">Email:</span> <span>contato@nexumaltivon.com</span></div>
-          <div class="view-row" style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><span style="color:#A0A0A0;">Versão:</span> <span>1.0.0</span></div>
-          <div class="view-row" style="padding:10px 0;"><span style="color:#A0A0A0;">Backend:</span> <span style="color:#10B981;">● Online</span></div>
+          <div class="view-row" style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><span style="color:#A0A0A0;">Email:</span> <span>corporativo.gna@gmail.com</span></div>
+          <div class="view-row" style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><span style="color:#A0A0A0;">VersÃ£o:</span> <span>1.0.0</span></div>
+          <div class="view-row" style="padding:10px 0;"><span style="color:#A0A0A0;">Backend:</span> <span style="color:#10B981;">â— Online</span></div>
         </div>
         <div style="background:rgba(20,20,20,0.5);padding:25px;border-radius:8px;border:1px solid rgba(201,162,39,0.15);">
           <h3 style="color:#C9A227;font-family:'Playfair Display',serif;">Contatos</h3>
@@ -639,12 +639,12 @@
     'cupons': loadCupons,
     'usuarios': loadUsuarios,
     'configuracoes': loadConfiguracoes,
-    'fiscal': () => loadStub('fiscal', 'Sistema Fiscal', 'Integração com SEFAZ/NFe disponível para configuração. Endpoint /api/fiscal pronto no backend.'),
-    'logistica': () => loadStub('logistica', 'Logística & Envios', 'Sistema de envios e rastreamento ativo. Transportadoras: Correios, Jadlog, Azul Cargo Express.'),
+    'fiscal': () => loadStub('fiscal', 'Sistema Fiscal', 'IntegraÃ§Ã£o com SEFAZ/NFe disponÃ­vel para configuraÃ§Ã£o. Endpoint /api/fiscal pronto no backend.'),
+    'logistica': () => loadStub('logistica', 'LogÃ­stica & Envios', 'Sistema de envios e rastreamento ativo. Transportadoras: Correios, Jadlog, Azul Cargo Express.'),
     'marketing': () => loadStub('marketing', 'Marketing & Campanhas', 'Crie campanhas, integre com email marketing e WhatsApp Business via API.'),
     'marketplaces': () => loadStub('marketplaces', 'Marketplaces', 'Integre com Mercado Livre, Amazon, Magalu via API. Endpoints prontos no backend.'),
-    'dropshipping': () => loadStub('dropshipping', 'Dropshipping', 'Conecte fornecedores nacionais e internacionais. Cadastro de fornecedores disponível.'),
-    'auditoria': () => loadStub('auditoria', 'Auditoria do Sistema', 'Todas as ações são registradas. Endpoint /api/logs_auditoria com histórico completo.')
+    'dropshipping': () => loadStub('dropshipping', 'Dropshipping', 'Conecte fornecedores nacionais e internacionais. Cadastro de fornecedores disponÃ­vel.'),
+    'auditoria': () => loadStub('auditoria', 'Auditoria do Sistema', 'Todas as aÃ§Ãµes sÃ£o registradas. Endpoint /api/logs_auditoria com histÃ³rico completo.')
   };
 
   // ==========================================================
@@ -657,7 +657,7 @@
       try { if (typeof originalShowSection === 'function') originalShowSection.apply(this, arguments); }
       catch(e) {}
 
-      // Garante visibilidade da seção
+      // Garante visibilidade da seÃ§Ã£o
       ensureSection(sectionId);
       document.querySelectorAll('.section-content').forEach(s => s.style.display = 'none');
       const target = document.getElementById('section-' + sectionId);
@@ -696,7 +696,7 @@
           <div class="field"><label>Senha</label><input type="password" id="nexum-senha" required /></div>
           <button type="submit" id="nexum-login-btn">Entrar</button>
         </form>
-        <div id="nexum-login-hint"><strong style="color:#C9A227">Credenciais de teste:</strong><br>rodrigo@nexumaltivon.com / admin123</div>
+        <div id="nexum-login-hint"><strong style="color:#C9A227">Credenciais de teste:</strong><br>corporativo.gna@gmail.com / admin123</div>
       </div>
     `;
     document.body.appendChild(overlay);
@@ -755,3 +755,4 @@
     } else createLoginOverlay();
   });
 })();
+

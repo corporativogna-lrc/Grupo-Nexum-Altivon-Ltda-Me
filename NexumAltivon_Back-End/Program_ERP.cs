@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -9,9 +9,9 @@ using NexumAltivon.API.Configurations;
 var builder = WebApplication.CreateBuilder(args);
 
 // ============================================
-// CONFIGURAÇÃO DE SERVIÇOS — ERP GenesisGest.Net
+// CONFIGURAÃ‡ÃƒO DE SERVIÃ‡OS â€” ERP GenesisGest.Net
 // Grupo Nexum Altivon ME | www.nexumaltivon.com
-// Fase 5 — ERP/CRM Completo
+// Fase 5 â€” ERP/CRM Completo
 // ============================================
 
 // 1. Controllers + JSON
@@ -22,7 +22,7 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
     });
 
-// 2. DbContext — MySQL
+// 2. DbContext â€” MySQL
 var connectionString = builder.Configuration.GetConnectionString("NexumDb");
 builder.Services.AddDbContext<NexumDbContext>(options =>
     options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString),
@@ -67,7 +67,7 @@ builder.Services.AddAuthorization(options =>
 // 5. AutoMapper
 builder.Services.AddAutoMapper(typeof(MappingProfile));
 
-// 6. DI Services — E-Commerce (Fases 1-4)
+// 6. DI Services â€” E-Commerce (Fases 1-4)
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ILojaService, LojaService>();
 builder.Services.AddScoped<IClienteService, ClienteService>();
@@ -87,7 +87,7 @@ builder.Services.AddScoped<ILogisticaService, LogisticaService>();
 builder.Services.AddScoped<IErpSyncService, ErpSyncService>();
 builder.Services.AddScoped<IMarketplaceSyncService, MarketplaceSyncService>();
 
-// 7. DI Services — ERP/CRM (Fase 5)
+// 7. DI Services â€” ERP/CRM (Fase 5)
 builder.Services.AddScoped<IFinanceiroService, FinanceiroService>();
 builder.Services.AddScoped<ICrmService, CrmService>();
 builder.Services.AddScoped<IEstoqueService, EstoqueService>();
@@ -133,13 +133,13 @@ builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo
     {
-        Title = "Nexum Altivon API — ERP GenesisGest.Net",
+        Title = "Nexum Altivon API â€” ERP GenesisGest.Net",
         Version = "v1.0.00.2600",
         Description = "API unificada E-Commerce + ERP/CRM do Grupo Nexum Altivon ME",
         Contact = new OpenApiContact
         {
             Name = "Grupo Nexum Altivon",
-            Email = "contato@nexumaltivon.com",
+            Email = "corporativo.gna@gmail.com",
             Url = new Uri("https://www.nexumaltivon.com")
         }
     });
@@ -181,7 +181,7 @@ builder.Services.AddHealthChecks()
     .AddDbContextCheck<NexumDbContext>("mysql-nexum")
     .AddCheck<ApiHealthCheck>("api-custom");
 
-// 14. Hangfire (para sync automático ERP ↔ E-Commerce)
+// 14. Hangfire (para sync automÃ¡tico ERP â†” E-Commerce)
 builder.Services.AddHangfire(config =>
     config.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
           .UseSimpleAssemblyNameTypeSerializer()
@@ -213,7 +213,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "Nexum Altivon API v1");
-        c.DocumentTitle = "Nexum Altivon — Documentação API";
+        c.DocumentTitle = "Nexum Altivon â€” DocumentaÃ§Ã£o API";
         c.DefaultModelsExpandDepth(-1);
     });
 }
@@ -237,7 +237,7 @@ app.UseHangfireDashboard("/hangfire", new DashboardOptions
     Authorization = new[] { new HangfireAuthorizationFilter() }
 });
 
-// Agendamentos automáticos ERP
+// Agendamentos automÃ¡ticos ERP
 using (var scope = app.Services.CreateScope())
 {
     var syncService = scope.ServiceProvider.GetRequiredService<ISyncErpService>();
@@ -256,7 +256,7 @@ using (var scope = app.Services.CreateScope())
         "*/30 * * * *",
         new RecurringJobOptions { QueueName = "sync" });
 
-    // Alerta de contas vencidas — todo dia às 8h
+    // Alerta de contas vencidas â€” todo dia Ã s 8h
     RecurringJob.AddOrUpdate<IFinanceiroService>(
         "alerta-contas-vencidas",
         service => service.VerificarContasVencidasAsync(),
@@ -273,3 +273,4 @@ if (app.Environment.IsDevelopment())
 }
 
 app.Run();
+

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text;
@@ -37,7 +37,7 @@ namespace NexumAltivon.API.Services
             _config = config;
             _logger = logger;
             _sendGridKey = _config["Integracoes:SendGrid:ApiKey"];
-            _fromEmail = _config["Integracoes:SendGrid:FromEmail"] ?? "naoresponder@nexumaltivon.com";
+            _fromEmail = _config["Integracoes:SendGrid:FromEmail"] ?? "corporativo.gna@gmail.com";
             _fromName = _config["Integracoes:SendGrid:FromName"] ?? "Grupo Nexum Altivon";
             _whatsappAtivo = bool.Parse(_config["Integracoes:WhatsApp:Ativo"] ?? "false");
             _whatsappApiUrl = _config["Integracoes:WhatsApp:ApiUrl"];
@@ -59,15 +59,15 @@ h1 {{ color: #C9A227; font-size: 24px; }}
 </style></head>
 <body>
 <div class='container'>
-<h1>✅ Pedido Recebido!</h1>
-<p>Olá <strong>{cliente.Nome}</strong>,</p>
+<h1>âœ… Pedido Recebido!</h1>
+<p>OlÃ¡ <strong>{cliente.Nome}</strong>,</p>
 <p>Seu pedido <strong style='color:#C9A227'>{pedido.NumeroPedido}</strong> foi recebido com sucesso.</p>
 <div class='pedido-info'>
 <p><strong>Total:</strong> R$ {pedido.Total:N2}</p>
 <p><strong>Status:</strong> Aguardando pagamento</p>
 <p><strong>Data:</strong> {pedido.CriadoEm:dd/MM/yyyy HH:mm}</p>
 </div>
-<p>Assim que o pagamento for confirmado, iniciaremos a separação do seu pedido.</p>
+<p>Assim que o pagamento for confirmado, iniciaremos a separaÃ§Ã£o do seu pedido.</p>
 <div class='footer'>
 <p>Grupo Nexum Altivon<br>www.nexumaltivon.com</p>
 </div>
@@ -76,7 +76,7 @@ h1 {{ color: #C9A227; font-size: 24px; }}
 </html>";
 
             await EnviarEmailAsync(cliente.Email, assunto, corpo);
-            _logger.LogInformation("Confirmação de pedido enviada: {NumeroPedido}", pedido.NumeroPedido);
+            _logger.LogInformation("ConfirmaÃ§Ã£o de pedido enviada: {NumeroPedido}", pedido.NumeroPedido);
         }
 
         public async Task EnviarConfirmacaoPagamentoAsync(Cliente cliente, Pedido pedido)
@@ -92,11 +92,11 @@ h1 {{ color: #C9A227; }}
 </style></head>
 <body>
 <div class='container'>
-<h1>💳 Pagamento Confirmado!</h1>
-<p>Olá <strong>{cliente.Nome}</strong>,</p>
+<h1>ðŸ’³ Pagamento Confirmado!</h1>
+<p>OlÃ¡ <strong>{cliente.Nome}</strong>,</p>
 <p>O pagamento do pedido <strong>{pedido.NumeroPedido}</strong> foi confirmado.</p>
 <p><strong>Valor pago:</strong> R$ {pedido.Total:N2}</p>
-<p>Seu pedido agora está em <strong>separação</strong> e em breve será enviado.</p>
+<p>Seu pedido agora estÃ¡ em <strong>separaÃ§Ã£o</strong> e em breve serÃ¡ enviado.</p>
 <p>Acompanhe o status pelo site: <a href='https://www.nexumaltivon.com/pedidos/{pedido.NumeroPedido}' style='color:#C9A227'>Meus Pedidos</a></p>
 </div>
 </body>
@@ -120,15 +120,15 @@ h1 {{ color: #C9A227; }}
                     text = mensagem
                 };
 
-                // Stub para API genérica de WhatsApp (ex: Evolution API, WPPConnect, etc.)
-                // Em produção, substituir pela URL real do gateway WhatsApp
+                // Stub para API genÃ©rica de WhatsApp (ex: Evolution API, WPPConnect, etc.)
+                // Em produÃ§Ã£o, substituir pela URL real do gateway WhatsApp
                 var response = await _httpClient.PostAsJsonAsync(_whatsappApiUrl, request);
                 if (!response.IsSuccessStatusCode)
                     _logger.LogWarning("Falha ao enviar WhatsApp: {Status}", response.StatusCode);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erro ao enviar notificação WhatsApp");
+                _logger.LogError(ex, "Erro ao enviar notificaÃ§Ã£o WhatsApp");
             }
         }
 
@@ -138,7 +138,7 @@ h1 {{ color: #C9A227; }}
             {
                 if (string.IsNullOrEmpty(_sendGridKey))
                 {
-                    _logger.LogWarning("SendGrid não configurado. E-mail simulado para {Email}: {Assunto}", destinatario, assunto);
+                    _logger.LogWarning("SendGrid nÃ£o configurado. E-mail simulado para {Email}: {Assunto}", destinatario, assunto);
                     return;
                 }
 
@@ -179,23 +179,23 @@ h1 {{ color: #C9A227; }}
         {
             var assunto = $"[ALERTA] Estoque Baixo - {produto.Nome}";
             var corpo = $@"<p>Produto <strong>{produto.Nome}</strong> (SKU: {produto.Sku}) atingiu estoque baixo.</p>
-<p>Estoque atual: <strong>{produto.Estoque}</strong> | Mínimo: {produto.EstoqueMinimo}</p>
+<p>Estoque atual: <strong>{produto.Estoque}</strong> | MÃ­nimo: {produto.EstoqueMinimo}</p>
 <p>Loja: {produto.Loja?.Nome}</p>";
 
-            var emailsAdmin = _config["Alertas:EstoqueEmailAdmin"] ?? "vinicius@nexumaltivon.com";
+            var emailsAdmin = _config["Alertas:EstoqueEmailAdmin"] ?? "corporativo.gna@gmail.com";
             await EnviarEmailAsync(emailsAdmin, assunto, corpo);
         }
 
         public async Task EnviarStatusPedidoAsync(Cliente cliente, Pedido pedido, string mensagemPersonalizada)
         {
-            var assunto = $"Atualização do Pedido {pedido.NumeroPedido}";
+            var assunto = $"AtualizaÃ§Ã£o do Pedido {pedido.NumeroPedido}";
             var corpo = $@"
 <!DOCTYPE html>
 <html>
 <body style='font-family:Montserrat,sans-serif;background:#0A0A0A;color:#F5F5F5;'>
 <div style='max-width:600px;margin:0 auto;background:#1A1A1A;padding:30px;border:1px solid #C9A227;'>
-<h1 style='color:#C9A227'>📦 Atualização de Pedido</h1>
-<p>Olá <strong>{cliente.Nome}</strong>,</p>
+<h1 style='color:#C9A227'>ðŸ“¦ AtualizaÃ§Ã£o de Pedido</h1>
+<p>OlÃ¡ <strong>{cliente.Nome}</strong>,</p>
 <p>{mensagemPersonalizada}</p>
 <p>Pedido: <strong>{pedido.NumeroPedido}</strong></p>
 <p>Status atual: <strong>{pedido.Status}</strong></p>
@@ -208,3 +208,4 @@ h1 {{ color: #C9A227; }}
         }
     }
 }
+
