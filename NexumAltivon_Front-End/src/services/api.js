@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { HTTP_UNAUTHORIZED, STORAGE_KEYS } from '../constants';
 
-const PUBLIC_API_URL = 'https://pillow-premium-nick-johnson.trycloudflare.com';
+const PUBLIC_API_URL = 'https://went-bent-sets-hunt.trycloudflare.com';
 
 const getDefaultApiUrl = () => {
   if (typeof window === 'undefined') return 'http://localhost:5000';
@@ -111,6 +111,7 @@ export const produtoAPI = {
   getById: (id) => api.get(`/produtos/${id}`),
   create: (data) => api.post('/produtos', data),
   update: (id, data) => api.put(`/produtos/${id}`, data),
+  uploadImagem: (data) => api.post('/uploads/produtos/imagens', data),
 };
 
 export const categoriaAPI = {
@@ -156,6 +157,10 @@ export const financeiroAPI = {
     api.get('/financeiro/faturamento', {
       params: { data_inicio: dataInicio, data_fim: dataFim },
     }),
+};
+
+export const integracoesAPI = {
+  getStatus: () => api.get('/integracoes/status'),
 };
 
 export default api;

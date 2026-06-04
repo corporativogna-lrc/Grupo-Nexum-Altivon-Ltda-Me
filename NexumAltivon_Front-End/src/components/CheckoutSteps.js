@@ -108,8 +108,22 @@ export function StepEndereco({ endereco, setEndereco, onBack, onNext }) {
 }
 
 // Step 3: Pagamento
-export function StepPagamento({ lojas, lojaId, setLojaId, metodoPagamento, setMetodoPagamento, onBack, onConfirm, loading }) {
+export function StepPagamento({
+  lojas,
+  lojaId,
+  setLojaId,
+  metodoPagamento,
+  setMetodoPagamento,
+  freteOptions = [],
+  freteSelecionado,
+  setFreteSelecionado,
+  onBack,
+  onConfirm,
+  loading,
+}) {
   const metodos = ['cartao', 'pix', 'boleto'];
+  const formatPrice = (price) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
 
   return (
     <div>
@@ -127,6 +141,29 @@ export function StepPagamento({ lojas, lojaId, setLojaId, metodoPagamento, setMe
         </select>
       </div>
 
+      <div className="mb-6 space-y-3">
+        <label className="mb-2 block font-bold text-[#D8D8D8]">Frete e logística</label>
+        {freteOptions.map((frete) => (
+          <label key={frete.id} className="flex cursor-pointer items-center rounded-xl border border-[#2A2A2A] bg-[#080808] p-4 hover:border-[#C9A227]">
+            <input
+              type="radio"
+              name="frete"
+              value={frete.id}
+              checked={freteSelecionado === frete.id}
+              onChange={(e) => setFreteSelecionado(e.target.value)}
+              className="mr-3 accent-[#C9A227]"
+            />
+            <span>
+              <span className="block font-bold text-white">{frete.nome}</span>
+              <span className="text-xs font-semibold text-[#A0A0A0]">{frete.transportadora} · {frete.prazo === 0 ? 'combinar prazo' : `${frete.prazo} dias úteis`}</span>
+            </span>
+            <span className="ml-auto rounded-full border border-[#2A2A2A] px-3 py-1 text-xs font-black text-[#C9A227]">
+              {frete.valor === 0 ? 'Grátis' : formatPrice(frete.valor)}
+            </span>
+          </label>
+        ))}
+      </div>
+
       <div className="space-y-3 mb-6">
         <label className="mb-2 block font-bold text-[#D8D8D8]">Método de Pagamento</label>
         {metodos.map((metodo) => (
@@ -141,7 +178,7 @@ export function StepPagamento({ lojas, lojaId, setLojaId, metodoPagamento, setMe
             />
             <span className="font-bold capitalize text-white">{getPagamentoLabel(metodo)}</span>
             <span className="ml-auto rounded-full border border-[#2A2A2A] px-3 py-1 text-xs font-bold text-[#A0A0A0]">
-              Integração via API
+              Registrado no pedido
             </span>
           </label>
         ))}
@@ -162,7 +199,7 @@ export function StepPagamento({ lojas, lojaId, setLojaId, metodoPagamento, setMe
 }
 
 // Resumo do pedido
-export function ResumoPedido({ cart, subtotal, desconto, total }) {
+export function ResumoPedido({ cart, subtotal, desconto, frete, total }) {
   const formatPrice = (price) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
 
@@ -182,6 +219,11 @@ export function ResumoPedido({ cart, subtotal, desconto, total }) {
         {desconto > 0 && (
           <div className="flex justify-between text-emerald-400">
             <span>Desconto:</span><span>-{formatPrice(desconto)}</span>
+          </div>
+        )}
+        {frete && (
+          <div className="flex justify-between">
+            <span>Frete:</span><span>{frete.valor === 0 ? 'Grátis' : formatPrice(frete.valor)}</span>
           </div>
         )}
         <div className="flex justify-between border-t border-[#2A2A2A] pt-2 text-xl font-black text-white">

@@ -136,6 +136,7 @@ builder.Services
 var app = builder.Build();
 
 app.UseCors("NexumCorsPolicy");
+app.UseStaticFiles();
 
 if (app.Environment.IsDevelopment() || app.Environment.IsStaging())
 {
@@ -459,6 +460,66 @@ app.MapGet("/api/produtos/{id}", async (string id, NexumDbContext db, Cancellati
 })
 .AllowAnonymous()
 .WithName("ProdutoPorId")
+;
+
+app.MapPost("/api/uploads/produtos/imagens", [Authorize(Policy = "Gerente")] async (
+    UploadImagemRequest request,
+    IWebHostEnvironment environment,
+    HttpContext http,
+    CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.DataUrl))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Imagem obrigatoria."));
+    }
+
+    var separatorIndex = request.DataUrl.IndexOf(",", StringComparison.Ordinal);
+    var header = separatorIndex > 0 ? request.DataUrl[..separatorIndex] : string.Empty;
+    var base64 = separatorIndex > 0 ? request.DataUrl[(separatorIndex + 1)..] : request.DataUrl;
+    var contentType = string.IsNullOrWhiteSpace(request.ContentType)
+        ? header.Contains("image/png", StringComparison.OrdinalIgnoreCase) ? "image/png" : "image/jpeg"
+        : request.ContentType.Trim().ToLowerInvariant();
+
+    var extension = contentType switch
+    {
+        "image/png" => ".png",
+        "image/webp" => ".webp",
+        "image/gif" => ".gif",
+        _ => ".jpg"
+    };
+
+    if (contentType is not ("image/jpeg" or "image/jpg" or "image/png" or "image/webp" or "image/gif"))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Formato de imagem invalido."));
+    }
+
+    byte[] bytes;
+    try
+    {
+        bytes = Convert.FromBase64String(base64);
+    }
+    catch
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Imagem invalida."));
+    }
+
+    if (bytes.Length == 0 || bytes.Length > 2 * 1024 * 1024)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Imagem deve ter ate 2MB."));
+    }
+
+    var root = environment.WebRootPath ?? Path.Combine(environment.ContentRootPath, "wwwroot");
+    var uploadDir = Path.Combine(root, "uploads", "produtos");
+    Directory.CreateDirectory(uploadDir);
+
+    var fileName = $"produto-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}{extension}";
+    var filePath = Path.Combine(uploadDir, fileName);
+    await File.WriteAllBytesAsync(filePath, bytes, ct);
+
+    var publicUrl = $"{http.Request.Scheme}://{http.Request.Host}/uploads/produtos/{fileName}";
+    return Results.Ok(ApiResponse<UploadImagemDto>.Ok(new UploadImagemDto(publicUrl), "Imagem enviada."));
+})
+.WithName("UploadImagemProduto")
 ;
 
 app.MapPost("/api/produtos", [Authorize(Policy = "Gerente")] async (
@@ -944,9 +1005,15 @@ app.MapPost("/api/pedidos", async (PedidoRequest request, NexumDbContext db, Htt
         LojaId = lojaId,
         Status = StatusPedido.Pendente,
         StatusPagamento = StatusPagamento.Aguardando,
+        MeioPagamento = request.MetodoPagamento,
+        GatewayPagamento = string.IsNullOrWhiteSpace(request.GatewayPagamento) ? "ConfiguracaoPendente" : request.GatewayPagamento,
         Subtotal = subtotal,
         Desconto = desconto,
-        Total = Math.Max(0m, subtotal - desconto),
+        FreteValor = request.FreteValor ?? 0m,
+        FreteMetodo = request.FreteMetodo,
+        FreteTransportadora = request.FreteTransportadora,
+        FretePrazoDias = request.FretePrazoDias ?? 0,
+        Total = Math.Max(0m, subtotal + (request.FreteValor ?? 0m) - desconto),
         CupomCodigo = request.CupomCodigo,
         Origem = OrigemPedido.Site,
         IpCliente = http.Connection.RemoteIpAddress?.ToString(),
@@ -964,6 +1031,21 @@ app.MapPost("/api/pedidos", async (PedidoRequest request, NexumDbContext db, Htt
 })
 .AllowAnonymous()
 .WithName("CriarPedido")
+;
+
+app.MapGet("/api/integracoes/status", [Authorize(Policy = "Gerente")] () =>
+{
+    var modules = new List<IntegracaoStatusDto>
+    {
+        new("Dropshipping", "dropshipping", "Preparado", "Roteamento por fornecedor e catalogos pendentes de credenciais reais."),
+        new("Logistica e Fretes", "logistica", "Preparado", "Frete operacional no checkout e emissao de etiqueta aguardando transportadora."),
+        new("Gateways de pagamento", "gateways", "Preparado", "Pedido registra metodo escolhido; cobranca real depende das chaves do gateway."),
+        new("Marketplaces/API", "marketplaces", "Preparado", "Base pronta para sincronizar catalogos e importar pedidos externos.")
+    };
+
+    return Results.Ok(ApiResponse<List<IntegracaoStatusDto>>.Ok(modules));
+})
+.WithName("IntegracoesStatus")
 ;
 
 app.MapGet("/api/dashboard/resumo", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
@@ -1406,6 +1488,10 @@ public sealed record ProdutoRequest(
     }
 }
 
+public sealed record UploadImagemRequest(string? FileName, string? ContentType, string DataUrl);
+
+public sealed record UploadImagemDto(string Url);
+
 public sealed record CupomDto(string Codigo, decimal? DescontoPercentual, decimal? DescontoValor, decimal? ValorMinimo);
 
 public sealed record ClienteRequest(string Nome, string Email, string? Cpf, string? Telefone);
@@ -1422,7 +1508,18 @@ public sealed record StatusUpdateRequest(
 
 public sealed record PedidoItemRequest(string ProdutoId, int Quantidade);
 
-public sealed record PedidoRequest(int ClienteId, string LojaId, List<PedidoItemRequest> Itens, string? CupomCodigo, object? EnderecoEntrega);
+public sealed record PedidoRequest(
+    [property: JsonPropertyName("cliente_id")] int ClienteId,
+    [property: JsonPropertyName("loja_id")] string LojaId,
+    [property: JsonPropertyName("itens")] List<PedidoItemRequest> Itens,
+    [property: JsonPropertyName("cupom_codigo")] string? CupomCodigo,
+    [property: JsonPropertyName("endereco_entrega")] object? EnderecoEntrega,
+    [property: JsonPropertyName("metodo_pagamento")] string? MetodoPagamento,
+    [property: JsonPropertyName("gateway_pagamento")] string? GatewayPagamento,
+    [property: JsonPropertyName("frete_valor")] decimal? FreteValor,
+    [property: JsonPropertyName("frete_metodo")] string? FreteMetodo,
+    [property: JsonPropertyName("frete_transportadora")] string? FreteTransportadora,
+    [property: JsonPropertyName("frete_prazo_dias")] int? FretePrazoDias);
 
 public sealed record EnderecoEntregaRequest(
     string? Cep,
@@ -1434,6 +1531,8 @@ public sealed record EnderecoEntregaRequest(
     string? Estado);
 
 public sealed record PedidoLojaDto(int Id, string NumeroPedido, decimal Total, string Status, DateTime CreatedAt);
+
+public sealed record IntegracaoStatusDto(string Nome, string Slug, string Status, string Detalhe);
 
 public sealed record DashboardResumoDto(
     int PedidosHoje,

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { categoriaAPI, clienteAPI, dashboardAPI, fornecedorAPI, leadAPI, pedidoAPI, produtoAPI } from '../services/api';
+import { categoriaAPI, clienteAPI, dashboardAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI } from '../services/api';
 import { fallbackCategories, fallbackLeads, fallbackPedidos, fallbackProducts, fallbackResumo } from '../data/mockStore';
 import { formatDate, formatPrice, getLeadStatusClass, getPedidoStatusClass } from '../utils/formatters';
 import {
@@ -16,7 +16,9 @@ import {
   CreditCard,
   Database,
   FileText,
+  Globe2,
   Handshake,
+  ImagePlus,
   PackagePlus,
   LayoutDashboard,
   LogOut,
@@ -25,6 +27,7 @@ import {
   Search,
   ShoppingBag,
   Sparkles,
+  Truck,
   TrendingUp,
   UserRound,
   Users,
@@ -39,6 +42,7 @@ const tabs = [
   { id: 'cadastro-produtos', label: 'Produtos', icon: PackageCheck, section: 'Cadastros' },
   { id: 'cadastro-clientes', label: 'Clientes', icon: Users, section: 'Cadastros' },
   { id: 'cadastro-fornecedores', label: 'Fornecedores', icon: Building2, section: 'Cadastros' },
+  { id: 'integracoes', label: 'Integrações', icon: Globe2, section: 'Integrações', badge: 'paralelo' },
 ];
 
 const cadastroTabs = [
@@ -67,14 +71,19 @@ const cadastroHighlights = {
 
 const plannedModules = [
   { label: 'Lojas', icon: Building2, section: 'Gestão' },
-  { label: 'Financeiro / Gateways', icon: WalletCards, section: 'Gestão' },
+  { label: 'Financeiro / Gateways', icon: WalletCards, section: 'Gestão', track: 'paralelo' },
   { label: 'Fiscal', icon: FileText, section: 'Gestão' },
-  { label: 'Logística', icon: Boxes, section: 'Gestão' },
+  { label: 'Logística / Fretes', icon: Boxes, section: 'Gestão', track: 'paralelo' },
   { label: 'Cupons', icon: CreditCard, section: 'Marketing & CRM' },
   { label: 'Marketing', icon: TrendingUp, section: 'Marketing & CRM' },
-  { label: 'API / Marketplaces', icon: Database, section: 'Integrações' },
-  { label: 'Dropshipping', icon: Handshake, section: 'Integrações' },
   { label: 'Configurações', icon: Cog, section: 'Sistema' },
+];
+
+const fallbackIntegracoes = [
+  { nome: 'Dropshipping', slug: 'dropshipping', status: 'Preparado', detalhe: 'Roteamento por fornecedor e catálogos pendentes de credenciais reais.' },
+  { nome: 'Logística e Fretes', slug: 'logistica', status: 'Preparado', detalhe: 'Frete operacional no checkout e etiquetas aguardando transportadora.' },
+  { nome: 'Gateways de pagamento', slug: 'gateways', status: 'Preparado', detalhe: 'Pedido registra método escolhido; cobrança real depende das chaves do gateway.' },
+  { nome: 'Marketplaces/API', slug: 'marketplaces', status: 'Preparado', detalhe: 'Base pronta para sincronizar catálogos e importar pedidos externos.' },
 ];
 
 const navSections = ['Principal', 'Cadastros', 'Gestão', 'Marketing & CRM', 'Integrações', 'Sistema'];
@@ -131,6 +140,14 @@ const chart = [
 
 const normalizeText = (value) => String(value ?? '').trim().toLowerCase();
 const normalizeDocument = (value) => String(value ?? '').replace(/\D/g, '');
+
+const fileToDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Falha ao ler imagem.'));
+    reader.readAsDataURL(file);
+  });
 
 const getProdutoDuplicateMessage = (form, produtos) => {
   const sku = normalizeText(form.sku);
@@ -232,7 +249,9 @@ export default function Dashboard() {
   const [categorias, setCategorias] = useState(allowDemoData ? fallbackCategories : []);
   const [clientes, setClientes] = useState(allowDemoData ? fallbackClientes : []);
   const [fornecedores, setFornecedores] = useState(allowDemoData ? fallbackFornecedores : []);
+  const [integracoes, setIntegracoes] = useState(fallbackIntegracoes);
   const [loading, setLoading] = useState(true);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [activeCadastroTab, setActiveCadastroTab] = useState('produtos');
   const [query, setQuery] = useState('');
@@ -244,7 +263,7 @@ export default function Dashboard() {
 
   const loadData = useCallback(async () => {
     try {
-      const [resumoRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes] = await Promise.all([
+      const [resumoRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, integracoesRes] = await Promise.all([
         dashboardAPI.getResumo(),
         pedidoAPI.getAll(),
         leadAPI.getAll(),
@@ -252,6 +271,7 @@ export default function Dashboard() {
         categoriaAPI.getAll(),
         clienteAPI.getAll(),
         fornecedorAPI.getAll(),
+        integracoesAPI.getStatus().catch(() => ({ data: fallbackIntegracoes })),
       ]);
       if (resumoRes.data) setResumo({ ...fallbackResumo, ...resumoRes.data });
       if (Array.isArray(pedidosRes.data) && pedidosRes.data.length > 0) setPedidos(pedidosRes.data);
@@ -260,6 +280,7 @@ export default function Dashboard() {
       if (Array.isArray(categoriasRes.data) && categoriasRes.data.length > 0) setCategorias(categoriasRes.data);
       if (Array.isArray(clientesRes.data) && clientesRes.data.length > 0) setClientes(clientesRes.data);
       if (Array.isArray(fornecedoresRes.data) && fornecedoresRes.data.length > 0) setFornecedores(fornecedoresRes.data);
+      if (Array.isArray(integracoesRes.data) && integracoesRes.data.length > 0) setIntegracoes(integracoesRes.data);
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
         console.error('Erro:', error);
@@ -296,6 +317,37 @@ export default function Dashboard() {
     setProdutos((current) => [response.data, ...current]);
     setProdutoForm(emptyProduto);
     setFormStatus('Produto cadastrado e disponível no catálogo.');
+  };
+
+  const uploadProdutoImagem = async (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setFormStatus('Selecione um arquivo de imagem válido.');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setFormStatus('Imagem muito grande. Use arquivo de até 2MB.');
+      return;
+    }
+
+    setUploadingImage(true);
+    setFormStatus('');
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      const response = await produtoAPI.uploadImagem({
+        fileName: file.name,
+        contentType: file.type,
+        dataUrl,
+      });
+      const url = response.data?.url || response.data?.Url;
+      if (!url) throw new Error('URL da imagem não retornada.');
+      setProdutoForm((form) => ({ ...form, imagemUrl: url }));
+      setFormStatus('Imagem enviada e vinculada ao produto.');
+    } catch (error) {
+      setFormStatus(error.response?.data?.detail || error.message || 'Não foi possível enviar a imagem.');
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   const submitCliente = async (event) => {
@@ -459,7 +511,7 @@ export default function Dashboard() {
                         >
                           <Icon size={18} />
                           <span>{item.label}</span>
-                          <span className="ml-auto rounded-full border border-zinc-700 px-2 py-0.5 text-[0.62rem] uppercase text-zinc-600">breve</span>
+                          <span className="ml-auto rounded-full border border-zinc-700 px-2 py-0.5 text-[0.62rem] uppercase text-zinc-600">{item.track || 'breve'}</span>
                         </button>
                       );
                     })}
@@ -565,9 +617,9 @@ export default function Dashboard() {
                       {[
                         { label: 'E-commerce', status: 'Operante', icon: ShoppingBag },
                         { label: 'Cadastros reais', status: 'Em uso', icon: PackagePlus },
-                        { label: 'Dropshipping', status: 'Estruturando', icon: Handshake },
-                        { label: 'Logística', status: 'Estruturando', icon: Boxes },
-                        { label: 'Gateways/API', status: 'Estruturando', icon: Database },
+                        { label: 'Dropshipping', status: 'Paralelo', icon: Handshake },
+                        { label: 'Logística', status: 'Paralelo', icon: Boxes },
+                        { label: 'Gateways/API', status: 'Paralelo', icon: Database },
                       ].map((item) => {
                         const Icon = item.icon;
                         return (
@@ -736,7 +788,13 @@ export default function Dashboard() {
                               className="mt-2 min-h-28 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
                             />
                           </label>
-                          <Field label="Imagem principal URL" value={produtoForm.imagemUrl} onChange={(value) => setProdutoForm((form) => ({ ...form, imagemUrl: value }))} className="md:col-span-2" />
+                          <ImageUrlField
+                            value={produtoForm.imagemUrl}
+                            onChange={(value) => setProdutoForm((form) => ({ ...form, imagemUrl: value }))}
+                            onUpload={uploadProdutoImagem}
+                            uploading={uploadingImage}
+                            className="md:col-span-2"
+                          />
                           <label className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-3 text-sm font-bold text-slate-700">
                             <input
                               type="checkbox"
@@ -828,6 +886,46 @@ export default function Dashboard() {
                   </div>
                 </section>
               )}
+
+              {activeTab === 'integracoes' && (
+                <section className="space-y-6">
+                  <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Trilha paralela</p>
+                        <h2 className="mt-2 text-2xl font-black text-slate-950">Integrações operacionais</h2>
+                        <p className="mt-1 max-w-3xl text-sm text-slate-500">
+                          Base para dropshipping, logística, gateways e marketplaces sem travar os cadastros e vendas principais.
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-amber-50 px-4 py-2 text-sm font-black text-amber-900">Preparado para credenciais reais</span>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    {integracoes.map((integracao) => (
+                      <IntegrationCard key={integracao.slug || integracao.nome} integracao={integracao} />
+                    ))}
+                  </div>
+
+                  <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                    <h3 className="text-lg font-black text-slate-950">Sequência segura de ativação</h3>
+                    <div className="mt-5 grid gap-3 md:grid-cols-4">
+                      {[
+                        'Cadastrar credenciais reais',
+                        'Testar sandbox quando existir',
+                        'Validar pedido real pequeno',
+                        'Liberar venda assistida',
+                      ].map((item, index) => (
+                        <div key={item} className="rounded-lg border border-slate-100 bg-slate-50 p-4">
+                          <p className="text-2xl font-black text-[#C9A227]">0{index + 1}</p>
+                          <p className="mt-2 text-sm font-black text-slate-950">{item}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                </section>
+              )}
             </>
           )}
         </div>
@@ -917,6 +1015,64 @@ function ProductPreview({ produto, categorias }) {
           {promotional > 0 && <p className="text-sm font-bold text-slate-400 line-through">{formatPrice(price)}</p>}
           <p className="text-3xl font-black text-slate-950">{formatPrice(promotional || price)}</p>
         </div>
+      </div>
+    </section>
+  );
+}
+
+function ImageUrlField({ value, onChange, onUpload, uploading, className = '' }) {
+  return (
+    <div className={`rounded-lg border border-slate-200 bg-slate-50 p-4 ${className}`}>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
+        <Field
+          label="Imagem principal URL"
+          value={value}
+          onChange={onChange}
+          className="flex-1"
+        />
+        <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-black text-slate-800 hover:border-[#C9A227]">
+          <ImagePlus size={17} />
+          {uploading ? 'Enviando...' : 'Enviar imagem'}
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            className="hidden"
+            disabled={uploading}
+            onChange={(event) => onUpload(event.target.files?.[0])}
+          />
+        </label>
+      </div>
+      <p className="mt-3 text-xs font-semibold text-slate-500">
+        Use uma URL pública HTTPS ou envie uma imagem de até 2MB. O sistema salva a imagem na API e grava o link no produto.
+      </p>
+    </div>
+  );
+}
+
+function IntegrationCard({ integracao }) {
+  const iconMap = {
+    dropshipping: Handshake,
+    logistica: Truck,
+    gateways: WalletCards,
+    marketplaces: Database,
+  };
+  const Icon = iconMap[integracao.slug] || Globe2;
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-[#C9A227]">
+            <Icon size={23} />
+          </div>
+          <div>
+            <h3 className="text-lg font-black text-slate-950">{integracao.nome}</h3>
+            <p className="mt-2 text-sm font-semibold text-slate-500">{integracao.detalhe}</p>
+          </div>
+        </div>
+        <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black uppercase tracking-wide text-emerald-800">
+          {integracao.status}
+        </span>
       </div>
     </section>
   );

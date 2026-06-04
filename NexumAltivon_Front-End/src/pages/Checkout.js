@@ -45,6 +45,7 @@ export default function Checkout() {
 
   const [lojaId, setLojaId] = useState('');
   const [metodoPagamento, setMetodoPagamento] = useState('cartao');
+  const [freteSelecionado, setFreteSelecionado] = useState('padrao');
 
   const loadLojas = useCallback(async () => {
     try {
@@ -74,7 +75,13 @@ export default function Checkout() {
 
   const subtotal = getTotal();
   const desconto = calcularDesconto(cupomAplicado, subtotal);
-  const total = subtotal - desconto;
+  const freteOptions = [
+    { id: 'retirada', nome: 'Retirada / combinar entrega', transportadora: 'Nexum Altivon', prazo: 0, valor: 0 },
+    { id: 'padrao', nome: subtotal >= 299 ? 'Frete grátis padrão' : 'Entrega padrão', transportadora: 'Correios / Melhor Envio', prazo: 7, valor: subtotal >= 299 ? 0 : 29.9 },
+    { id: 'expresso', nome: 'Entrega expressa', transportadora: 'Transportadora parceira', prazo: 3, valor: 49.9 },
+  ];
+  const frete = freteOptions.find((item) => item.id === freteSelecionado) || freteOptions[1];
+  const total = subtotal + frete.valor - desconto;
 
   const finalizarPedido = async () => {
     setLoading(true);
@@ -96,7 +103,13 @@ export default function Checkout() {
           quantidade: item.quantity
         })),
         cupom_codigo: cupomAplicado?.codigo,
-        endereco_entrega: endereco
+        endereco_entrega: endereco,
+        metodo_pagamento: metodoPagamento,
+        gateway_pagamento: metodoPagamento === 'pix' ? 'PIX' : metodoPagamento === 'boleto' ? 'Boleto' : 'Cartao',
+        frete_valor: frete.valor,
+        frete_metodo: frete.nome,
+        frete_transportadora: frete.transportadora,
+        frete_prazo_dias: frete.prazo
       };
 
       const pedidoRes = await pedidoAPI.create(pedidoData);
@@ -163,6 +176,9 @@ export default function Checkout() {
                 setLojaId={setLojaId}
                 metodoPagamento={metodoPagamento}
                 setMetodoPagamento={setMetodoPagamento}
+                freteOptions={freteOptions}
+                freteSelecionado={freteSelecionado}
+                setFreteSelecionado={setFreteSelecionado}
                 onBack={() => setStep(2)}
                 onConfirm={finalizarPedido}
                 loading={loading}
@@ -170,7 +186,7 @@ export default function Checkout() {
             )}
           </div>
 
-          <ResumoPedido cart={cart} subtotal={subtotal} desconto={desconto} total={total} />
+          <ResumoPedido cart={cart} subtotal={subtotal} desconto={desconto} frete={frete} total={total} />
         </div>
       </div>
     </div>
