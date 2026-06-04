@@ -108,6 +108,22 @@ public class NexumDbContext : DbContext
             .HasForeignKey(a => a.LeadId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        modelBuilder.Entity<CrmLead>()
+            .Property(lead => lead.Origem)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<CrmLead>()
+            .Property(lead => lead.Tipo)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<CrmLead>()
+            .Property(lead => lead.Status)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<CrmLead>()
+            .Property(lead => lead.Prioridade)
+            .HasConversion<string>();
+
         // Configuração de precisão para decimais
         modelBuilder.Entity<Produto>()
             .Property(p => p.Preco)

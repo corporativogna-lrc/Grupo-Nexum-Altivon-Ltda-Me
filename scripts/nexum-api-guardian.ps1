@@ -82,7 +82,7 @@ function Start-ApiProcess {
   }
 
   Write-GuardianLog "Iniciando API em $Url"
-  $dotnetCommand = 'dotnet run --project "' + $ProjectPath + '" --no-build --no-restore'
+  $dotnetCommand = 'dotnet run --project "' + $ProjectPath + '" --configuration Release --no-build --no-restore'
 
   $process = Start-Process `
     -FilePath "cmd.exe" `

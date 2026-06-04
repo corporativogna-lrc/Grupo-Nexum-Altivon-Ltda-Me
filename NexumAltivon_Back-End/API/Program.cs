@@ -990,27 +990,27 @@ app.MapGet("/api/dashboard/resumo", [Authorize(Policy = "Gerente")] async (Nexum
 
 app.MapGet("/api/crm/leads", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
 {
-    var leads = await db.CrmLeads
-        .AsNoTracking()
-        .OrderByDescending(lead => lead.CreatedAt)
-        .Take(500)
-        .Select(lead => new
-        {
-            lead.Id,
-            lead.Nome,
-            lead.Email,
-            lead.Telefone,
-            lead.Status,
-            lead.CreatedAt
-        })
+    var leads = await db.Database.SqlQueryRaw<LeadRow>(
+            """
+            SELECT
+                id AS Id,
+                nome AS Nome,
+                COALESCE(email, '') AS Email,
+                COALESCE(telefone, '') AS Telefone,
+                CAST(status AS CHAR) AS Status,
+                created_at AS CreatedAt
+            FROM crm_leads
+            ORDER BY created_at DESC
+            LIMIT 500
+            """)
         .ToListAsync(ct);
 
     var dtos = leads.Select(lead => new LeadLojaDto(
         lead.Id,
         lead.Nome,
-        lead.Email ?? string.Empty,
-        lead.Telefone ?? string.Empty,
-        FormatStatusLead(lead.Status),
+        lead.Email,
+        lead.Telefone,
+        FormatStatusLeadValue(lead.Status),
         lead.CreatedAt)).ToList();
 
     return Results.Ok(ApiResponse<List<LeadLojaDto>>.Ok(dtos));
@@ -1171,6 +1171,16 @@ static string FormatStatusLead(StatusLead status) =>
         StatusLead.Convertido => "Ganho",
         _ => status.ToString()
     };
+
+static string FormatStatusLeadValue(string? raw)
+{
+    if (TryParseStatusLead(raw, out var status))
+    {
+        return FormatStatusLead(status);
+    }
+
+    return string.IsNullOrWhiteSpace(raw) ? "Novo" : raw.Trim();
+}
 
 static bool TryParseStatusLead(string? raw, out StatusLead status)
 {
@@ -1424,6 +1434,16 @@ public sealed record DashboardResumoDto(
     decimal TicketMedio);
 
 public sealed record LeadLojaDto(int Id, string Nome, string Email, string Telefone, string Status, DateTime CreatedAt);
+
+public sealed class LeadRow
+{
+    public int Id { get; set; }
+    public string Nome { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string Telefone { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+}
 
 public sealed record LeadRequest(string Nome, string Email, string? Telefone, string? Status, string? Origem, string? Observacao);
 
