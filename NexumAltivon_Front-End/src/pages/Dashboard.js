@@ -38,6 +38,12 @@ const tabs = [
   { id: 'crm', label: 'CRM', icon: Users, section: 'Marketing & CRM' },
 ];
 
+const cadastroTabs = [
+  { id: 'produtos', label: 'Produtos', detail: 'Catálogo, estoque, preço e vitrine', icon: PackageCheck },
+  { id: 'clientes', label: 'Clientes', detail: 'Identificação comercial e contatos', icon: Users },
+  { id: 'fornecedores', label: 'Fornecedores', detail: 'Parceiros, dropshipping e logística', icon: Building2 },
+];
+
 const plannedModules = [
   { label: 'Lojas', icon: Building2, section: 'Gestão' },
   { label: 'Financeiro / Gateways', icon: WalletCards, section: 'Gestão' },
@@ -140,6 +146,7 @@ export default function Dashboard() {
   const [fornecedores, setFornecedores] = useState(allowDemoData ? fallbackFornecedores : []);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [activeCadastroTab, setActiveCadastroTab] = useState('produtos');
   const [query, setQuery] = useState('');
   const [produtoForm, setProdutoForm] = useState(emptyProduto);
   const [clienteForm, setClienteForm] = useState(emptyCliente);
@@ -515,87 +522,121 @@ export default function Dashboard() {
               {activeTab === 'cadastros' && (
                 <section className="space-y-6">
                   <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                       <div>
-                        <h2 className="text-xl font-black text-slate-950">Cadastros operacionais</h2>
-                        <p className="mt-1 text-sm text-slate-500">Produtos, clientes e fornecedores prontos para uso no painel.</p>
+                        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Cadastros operacionais</p>
+                        <h2 className="mt-2 text-2xl font-black text-slate-950">Base mestra em telas separadas</h2>
+                        <p className="mt-1 text-sm text-slate-500">Escolha um cadastro para trabalhar com mais foco e menos risco de preenchimento errado.</p>
                       </div>
                       {formStatus && <span className="rounded-full bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-800">{formStatus}</span>}
                     </div>
                   </div>
 
-                  <div className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(340px,0.7fr)]">
-                    <form onSubmit={submitProduto} className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-                      <h3 className="text-lg font-black text-slate-950">Cadastro de produto</h3>
-                      <div className="mt-5 grid gap-4 md:grid-cols-2">
-                        <Field label="Nome" value={produtoForm.nome} onChange={(value) => setProdutoForm((form) => ({ ...form, nome: value }))} required />
-                        <Field label="SKU" value={produtoForm.sku} onChange={(value) => setProdutoForm((form) => ({ ...form, sku: value }))} />
-                        <Field label="Preco" type="number" value={produtoForm.preco} onChange={(value) => setProdutoForm((form) => ({ ...form, preco: value }))} required />
-                        <Field label="Preco promocional" type="number" value={produtoForm.precoPromocional} onChange={(value) => setProdutoForm((form) => ({ ...form, precoPromocional: value }))} />
-                        <Field label="Estoque" type="number" value={produtoForm.estoque} onChange={(value) => setProdutoForm((form) => ({ ...form, estoque: value }))} required />
-                        <label className="block text-sm font-bold text-slate-700">
-                          Categoria
-                          <select
-                            value={produtoForm.categoriaId}
-                            onChange={(event) => setProdutoForm((form) => ({ ...form, categoriaId: event.target.value }))}
-                            className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
-                          >
-                            {categorias.map((categoria) => (
-                              <option key={categoria.id} value={categoria.id}>{categoria.nome}</option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="block text-sm font-bold text-slate-700 md:col-span-2">
-                          Descricao
-                          <textarea
-                            value={produtoForm.descricao}
-                            onChange={(event) => setProdutoForm((form) => ({ ...form, descricao: event.target.value }))}
-                            className="mt-2 min-h-24 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
-                          />
-                        </label>
-                        <Field label="Imagem URL" value={produtoForm.imagemUrl} onChange={(value) => setProdutoForm((form) => ({ ...form, imagemUrl: value }))} className="md:col-span-2" />
-                        <label className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-3 text-sm font-bold text-slate-700">
-                          <input
-                            type="checkbox"
-                            checked={produtoForm.destaque}
-                            onChange={(event) => setProdutoForm((form) => ({ ...form, destaque: event.target.checked }))}
-                            className="h-5 w-5 accent-slate-950"
-                          />
-                          Produto em destaque
-                        </label>
-                      </div>
-                      <button className="mt-5 inline-flex h-11 items-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-black text-white">
-                        <Save size={17} />
-                        Salvar produto
-                      </button>
-                    </form>
+                  <div className="grid gap-4 lg:grid-cols-3">
+                    {cadastroTabs.map((item) => {
+                      const Icon = item.icon;
+                      const active = activeCadastroTab === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setActiveCadastroTab(item.id)}
+                          className={`rounded-lg border p-5 text-left shadow-sm transition ${
+                            active
+                              ? 'border-slate-950 bg-slate-950 text-white'
+                              : 'border-slate-200 bg-white text-slate-950 hover:border-[#C9A227]'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-4">
+                            <div className={`flex h-11 w-11 items-center justify-center rounded-lg ${active ? 'bg-[#C9A227] text-black' : 'bg-slate-100 text-slate-700'}`}>
+                              <Icon size={22} />
+                            </div>
+                            <ChevronRight className={active ? 'text-[#C9A227]' : 'text-slate-400'} size={20} />
+                          </div>
+                          <h3 className="mt-4 text-lg font-black">{item.label}</h3>
+                          <p className={`mt-1 text-sm font-semibold ${active ? 'text-slate-300' : 'text-slate-500'}`}>{item.detail}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
 
-                    <div className="space-y-6">
-                      <SimpleForm title="Cadastro de cliente" onSubmit={submitCliente} buttonLabel="Salvar cliente">
-                        <Field label="Nome" value={clienteForm.nome} onChange={(value) => setClienteForm((form) => ({ ...form, nome: value }))} required />
-                        <Field label="Email" type="email" value={clienteForm.email} onChange={(value) => setClienteForm((form) => ({ ...form, email: value }))} required />
-                        <Field label="Telefone" value={clienteForm.telefone} onChange={(value) => setClienteForm((form) => ({ ...form, telefone: value }))} />
+                  {activeCadastroTab === 'produtos' && (
+                    <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
+                      <form onSubmit={submitProduto} className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                        <h3 className="text-lg font-black text-slate-950">Cadastro detalhado de produto</h3>
+                        <p className="mt-1 text-sm font-semibold text-slate-500">Informações principais para catálogo, estoque e vitrine pública.</p>
+                        <div className="mt-5 grid gap-4 md:grid-cols-2">
+                          <Field label="Nome" value={produtoForm.nome} onChange={(value) => setProdutoForm((form) => ({ ...form, nome: value }))} required />
+                          <Field label="SKU / Código interno" value={produtoForm.sku} onChange={(value) => setProdutoForm((form) => ({ ...form, sku: value }))} />
+                          <Field label="Preço" type="number" value={produtoForm.preco} onChange={(value) => setProdutoForm((form) => ({ ...form, preco: value }))} required />
+                          <Field label="Preço promocional" type="number" value={produtoForm.precoPromocional} onChange={(value) => setProdutoForm((form) => ({ ...form, precoPromocional: value }))} />
+                          <Field label="Estoque inicial" type="number" value={produtoForm.estoque} onChange={(value) => setProdutoForm((form) => ({ ...form, estoque: value }))} required />
+                          <label className="block text-sm font-bold text-slate-700">
+                            Categoria
+                            <select
+                              value={produtoForm.categoriaId}
+                              onChange={(event) => setProdutoForm((form) => ({ ...form, categoriaId: event.target.value }))}
+                              className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+                            >
+                              {categorias.map((categoria) => (
+                                <option key={categoria.id} value={categoria.id}>{categoria.nome}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="block text-sm font-bold text-slate-700 md:col-span-2">
+                            Descrição comercial
+                            <textarea
+                              value={produtoForm.descricao}
+                              onChange={(event) => setProdutoForm((form) => ({ ...form, descricao: event.target.value }))}
+                              className="mt-2 min-h-28 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+                            />
+                          </label>
+                          <Field label="Imagem principal URL" value={produtoForm.imagemUrl} onChange={(value) => setProdutoForm((form) => ({ ...form, imagemUrl: value }))} className="md:col-span-2" />
+                          <label className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-3 text-sm font-bold text-slate-700">
+                            <input
+                              type="checkbox"
+                              checked={produtoForm.destaque}
+                              onChange={(event) => setProdutoForm((form) => ({ ...form, destaque: event.target.checked }))}
+                              className="h-5 w-5 accent-slate-950"
+                            />
+                            Produto em destaque na vitrine
+                          </label>
+                        </div>
+                        <button className="mt-5 inline-flex h-11 items-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-black text-white">
+                          <Save size={17} />
+                          Salvar produto
+                        </button>
+                      </form>
+                      <CompactList title="Produtos cadastrados" items={produtos} fields={['nome', 'sku', 'estoque']} />
+                    </div>
+                  )}
+
+                  {activeCadastroTab === 'clientes' && (
+                    <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                      <SimpleForm title="Cadastro detalhado de cliente" subtitle="Evita duplicidade por e-mail/CPF e reaproveita registros existentes." onSubmit={submitCliente} buttonLabel="Salvar cliente">
+                        <Field label="Nome completo / Razão social" value={clienteForm.nome} onChange={(value) => setClienteForm((form) => ({ ...form, nome: value }))} required />
+                        <Field label="Email principal" type="email" value={clienteForm.email} onChange={(value) => setClienteForm((form) => ({ ...form, email: value }))} required />
+                        <Field label="Telefone / WhatsApp" value={clienteForm.telefone} onChange={(value) => setClienteForm((form) => ({ ...form, telefone: value }))} />
                         <Field label="CPF/CNPJ" value={clienteForm.cpf} onChange={(value) => setClienteForm((form) => ({ ...form, cpf: value }))} />
                       </SimpleForm>
-
-                      <SimpleForm title="Cadastro de fornecedor" onSubmit={submitFornecedor} buttonLabel="Salvar fornecedor">
-                        <Field label="Nome" value={fornecedorForm.nome} onChange={(value) => setFornecedorForm((form) => ({ ...form, nome: value }))} required />
-                        <Field label="Documento" value={fornecedorForm.documento} onChange={(value) => setFornecedorForm((form) => ({ ...form, documento: value }))} />
-                        <Field label="Email" type="email" value={fornecedorForm.email} onChange={(value) => setFornecedorForm((form) => ({ ...form, email: value }))} />
-                        <Field label="Telefone" value={fornecedorForm.telefone} onChange={(value) => setFornecedorForm((form) => ({ ...form, telefone: value }))} />
-                        <Field label="Categoria" value={fornecedorForm.categoria} onChange={(value) => setFornecedorForm((form) => ({ ...form, categoria: value }))} />
-                      </SimpleForm>
+                      <CompactList title="Clientes cadastrados" items={clientes} fields={['nome', 'email', 'telefone']} />
                     </div>
-                  </div>
+                  )}
 
-                  <div className="grid gap-6 xl:grid-cols-3">
-                    <CompactList title="Produtos cadastrados" items={produtos} fields={['nome', 'sku', 'estoque']} />
-                    <CompactList title="Clientes cadastrados" items={clientes} fields={['nome', 'email', 'telefone']} />
-                    <CompactList title="Fornecedores cadastrados" items={fornecedores} fields={['nome', 'categoria', 'telefone']} />
-                  </div>
+                  {activeCadastroTab === 'fornecedores' && (
+                    <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                      <SimpleForm title="Cadastro detalhado de fornecedor" subtitle="Base para compras, dropshipping, logística e integrações futuras." onSubmit={submitFornecedor} buttonLabel="Salvar fornecedor">
+                        <Field label="Nome / Razão social" value={fornecedorForm.nome} onChange={(value) => setFornecedorForm((form) => ({ ...form, nome: value }))} required />
+                        <Field label="Documento CNPJ/CPF" value={fornecedorForm.documento} onChange={(value) => setFornecedorForm((form) => ({ ...form, documento: value }))} />
+                        <Field label="Email comercial" type="email" value={fornecedorForm.email} onChange={(value) => setFornecedorForm((form) => ({ ...form, email: value }))} />
+                        <Field label="Telefone / WhatsApp" value={fornecedorForm.telefone} onChange={(value) => setFornecedorForm((form) => ({ ...form, telefone: value }))} />
+                        <Field label="Categoria / Segmento" value={fornecedorForm.categoria} onChange={(value) => setFornecedorForm((form) => ({ ...form, categoria: value }))} />
+                      </SimpleForm>
+                      <CompactList title="Fornecedores cadastrados" items={fornecedores} fields={['nome', 'categoria', 'telefone']} />
+                    </div>
+                  )}
                 </section>
               )}
-
               {activeTab === 'pedidos' && (
                 <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
                   <div className="border-b border-slate-200 px-6 py-5">
@@ -658,10 +699,11 @@ function Field({ label, value, onChange, type = 'text', required = false, classN
   );
 }
 
-function SimpleForm({ title, onSubmit, buttonLabel, children }) {
+function SimpleForm({ title, subtitle, onSubmit, buttonLabel, children }) {
   return (
     <form onSubmit={onSubmit} className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <h3 className="text-lg font-black text-slate-950">{title}</h3>
+      {subtitle && <p className="mt-1 text-sm font-semibold text-slate-500">{subtitle}</p>}
       <div className="mt-5 grid gap-4">{children}</div>
       <button className="mt-5 inline-flex h-11 items-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-black text-white">
         <Save size={17} />
@@ -781,3 +823,4 @@ function LeadsTable({ leads, onStatusChange }) {
     </div>
   );
 }
+
