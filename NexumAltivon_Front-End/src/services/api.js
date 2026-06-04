@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { HTTP_UNAUTHORIZED, STORAGE_KEYS } from '../constants';
 
-const PUBLIC_API_URL = 'https://tutorials-reserve-distances-fought.trycloudflare.com';
+const PUBLIC_API_URL = 'https://pillow-premium-nick-johnson.trycloudflare.com';
 
 const getDefaultApiUrl = () => {
   if (typeof window === 'undefined') return 'http://localhost:5000';
