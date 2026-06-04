@@ -1,13 +1,15 @@
 import axios from 'axios';
 import { HTTP_UNAUTHORIZED, STORAGE_KEYS } from '../constants';
 
+const PUBLIC_API_URL = 'https://tutorials-reserve-distances-fought.trycloudflare.com';
+
 const getDefaultApiUrl = () => {
   if (typeof window === 'undefined') return 'http://localhost:5000';
 
   const { hostname } = window.location;
   const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
 
-  return isLocalhost ? 'http://localhost:5010' : 'https://api.nexumaltivon.com';
+  return isLocalhost ? 'http://localhost:5010' : PUBLIC_API_URL;
 };
 
 export const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || getDefaultApiUrl();
