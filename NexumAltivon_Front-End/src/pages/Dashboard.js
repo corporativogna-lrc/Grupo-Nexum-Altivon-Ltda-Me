@@ -34,15 +34,36 @@ import {
 const tabs = [
   { id: 'overview', label: 'Dashboard', icon: LayoutDashboard, section: 'Principal' },
   { id: 'pedidos', label: 'Pedidos', icon: ShoppingBag, section: 'Principal' },
-  { id: 'cadastros', label: 'Produtos / Cadastros', icon: PackagePlus, section: 'Principal', badge: 'novo' },
   { id: 'crm', label: 'CRM', icon: Users, section: 'Marketing & CRM' },
+  { id: 'cadastros', label: 'Menu de Cadastros', icon: PackagePlus, section: 'Cadastros', badge: 'novo' },
+  { id: 'cadastro-produtos', label: 'Produtos', icon: PackageCheck, section: 'Cadastros' },
+  { id: 'cadastro-clientes', label: 'Clientes', icon: Users, section: 'Cadastros' },
+  { id: 'cadastro-fornecedores', label: 'Fornecedores', icon: Building2, section: 'Cadastros' },
 ];
 
 const cadastroTabs = [
-  { id: 'produtos', label: 'Produtos', detail: 'Catálogo, estoque, preço e vitrine', icon: PackageCheck },
-  { id: 'clientes', label: 'Clientes', detail: 'Identificação comercial e contatos', icon: Users },
-  { id: 'fornecedores', label: 'Fornecedores', detail: 'Parceiros, dropshipping e logística', icon: Building2 },
+  { id: 'produtos', label: 'Produtos', detail: 'Catálogo, estoque, preço e vitrine', icon: PackageCheck, action: 'Abrir tela de produtos' },
+  { id: 'clientes', label: 'Clientes', detail: 'Identificação comercial e contatos', icon: Users, action: 'Abrir tela de clientes' },
+  { id: 'fornecedores', label: 'Fornecedores', detail: 'Parceiros, dropshipping e logística', icon: Building2, action: 'Abrir tela de fornecedores' },
 ];
+
+const cadastroHighlights = {
+  produtos: [
+    'Slug, SKU e nome são conferidos antes de salvar.',
+    'Preço, estoque, categoria e imagem já alimentam a vitrine.',
+    'A prévia lateral ajuda a revisar antes de gravar.',
+  ],
+  clientes: [
+    'E-mail e CPF/CNPJ são conferidos antes de chegar ao banco.',
+    'Se o cliente já existir, o cadastro não duplica.',
+    'A base fica pronta para pedidos, CRM e cobrança.',
+  ],
+  fornecedores: [
+    'Documento, e-mail e nome são conferidos para evitar duplicidade.',
+    'Segmento ajuda a organizar dropshipping, compras e logística.',
+    'A lista lateral mostra o que já está ativo na base real.',
+  ],
+};
 
 const plannedModules = [
   { label: 'Lojas', icon: Building2, section: 'Gestão' },
@@ -56,7 +77,7 @@ const plannedModules = [
   { label: 'Configurações', icon: Cog, section: 'Sistema' },
 ];
 
-const navSections = ['Principal', 'Gestão', 'Marketing & CRM', 'Integrações', 'Sistema'];
+const navSections = ['Principal', 'Cadastros', 'Gestão', 'Marketing & CRM', 'Integrações', 'Sistema'];
 
 const fallbackClientes = [
   { id: 1, nome: 'Ana Carolina Silva', email: 'ana.silva@email.com', telefone: '(14) 99876-5432', cpf: '123.456.789-00' },
@@ -348,6 +369,27 @@ export default function Dashboard() {
   const produtoDuplicateMessage = useMemo(() => getProdutoDuplicateMessage(produtoForm, produtos), [produtoForm, produtos]);
   const clienteDuplicateMessage = useMemo(() => getClienteDuplicateMessage(clienteForm, clientes), [clienteForm, clientes]);
   const fornecedorDuplicateMessage = useMemo(() => getFornecedorDuplicateMessage(fornecedorForm, fornecedores), [fornecedorForm, fornecedores]);
+  const selectedCadastro = cadastroTabs.find((item) => item.id === activeCadastroTab) || cadastroTabs[0];
+  const cadastroCounts = {
+    produtos: produtos.length,
+    clientes: clientes.length,
+    fornecedores: fornecedores.length,
+  };
+
+  const openCadastro = (id) => {
+    setActiveCadastroTab(id);
+    setActiveTab(`cadastro-${id}`);
+    setFormStatus('');
+  };
+
+  const openMainTab = (id) => {
+    if (id.startsWith('cadastro-')) {
+      setActiveCadastroTab(id.replace('cadastro-', ''));
+    }
+
+    setActiveTab(id);
+    setFormStatus('');
+  };
 
   const statusCounts = useMemo(() => {
     return pedidos.reduce((acc, pedido) => {
@@ -394,7 +436,7 @@ export default function Dashboard() {
                       return (
                         <button
                           key={tab.id}
-                          onClick={() => setActiveTab(tab.id)}
+                          onClick={() => openMainTab(tab.id)}
                           className={`flex w-full items-center gap-3 border-l-4 px-3 py-3 text-left text-sm font-bold transition ${
                             active ? 'border-[#C9A227] bg-[#C9A227]/10 text-[#C9A227]' : 'border-transparent text-zinc-400 hover:border-[#C9A227]/60 hover:bg-white/5 hover:text-[#E8D5A3]'
                           }`}
@@ -478,7 +520,7 @@ export default function Dashboard() {
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => openMainTab(tab.id)}
                   className={`inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-black ${
                     active ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-700'
                   }`}
@@ -613,8 +655,8 @@ export default function Dashboard() {
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                       <div>
                         <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Cadastros operacionais</p>
-                        <h2 className="mt-2 text-2xl font-black text-slate-950">Base mestra em telas separadas</h2>
-                        <p className="mt-1 text-sm text-slate-500">Escolha um cadastro para trabalhar com mais foco e menos risco de preenchimento errado.</p>
+                        <h2 className="mt-2 text-2xl font-black text-slate-950">Menu principal de cadastros</h2>
+                        <p className="mt-1 text-sm text-slate-500">Escolha uma área para abrir uma tela própria de trabalho.</p>
                       </div>
                       {formStatus && <span className="rounded-full bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-800">{formStatus}</span>}
                     </div>
@@ -628,7 +670,7 @@ export default function Dashboard() {
                         <button
                           key={item.id}
                           type="button"
-                          onClick={() => setActiveCadastroTab(item.id)}
+                          onClick={() => openCadastro(item.id)}
                           className={`rounded-lg border p-5 text-left shadow-sm transition ${
                             active
                               ? 'border-slate-950 bg-slate-950 text-white'
@@ -643,10 +685,23 @@ export default function Dashboard() {
                           </div>
                           <h3 className="mt-4 text-lg font-black">{item.label}</h3>
                           <p className={`mt-1 text-sm font-semibold ${active ? 'text-slate-300' : 'text-slate-500'}`}>{item.detail}</p>
+                          <p className={`mt-4 text-xs font-black uppercase tracking-[0.14em] ${active ? 'text-[#C9A227]' : 'text-slate-400'}`}>
+                            {cadastroCounts[item.id]} registros · {item.action}
+                          </p>
                         </button>
                       );
                     })}
                   </div>
+                </section>
+              )}
+
+              {activeTab.startsWith('cadastro-') && (
+                <section className="space-y-6">
+                  <CadastroWorkspaceHeader
+                    cadastro={selectedCadastro}
+                    count={cadastroCounts[activeCadastroTab]}
+                    highlights={cadastroHighlights[activeCadastroTab]}
+                  />
 
                   {activeCadastroTab === 'produtos' && (
                     <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
@@ -697,7 +752,10 @@ export default function Dashboard() {
                           Salvar produto
                         </button>
                       </form>
-                      <CompactList title="Produtos cadastrados" items={produtos} fields={['nome', 'sku', 'estoque']} />
+                      <div className="space-y-6">
+                        <ProductPreview produto={produtoForm} categorias={categorias} />
+                        <CompactList title="Produtos cadastrados" items={produtos} fields={['nome', 'sku', 'estoque']} />
+                      </div>
                     </div>
                   )}
 
@@ -709,7 +767,10 @@ export default function Dashboard() {
                         <Field label="Telefone / WhatsApp" value={clienteForm.telefone} onChange={(value) => setClienteForm((form) => ({ ...form, telefone: value }))} />
                         <Field label="CPF/CNPJ" value={clienteForm.cpf} onChange={(value) => setClienteForm((form) => ({ ...form, cpf: value }))} />
                       </SimpleForm>
-                      <CompactList title="Clientes cadastrados" items={clientes} fields={['nome', 'email', 'telefone', 'cpf']} />
+                      <div className="space-y-6">
+                        <CadastroInsightPanel title="Controle de clientes" checks={cadastroHighlights.clientes} />
+                        <CompactList title="Clientes cadastrados" items={clientes} fields={['nome', 'email', 'telefone', 'cpf']} />
+                      </div>
                     </div>
                   )}
 
@@ -722,7 +783,10 @@ export default function Dashboard() {
                         <Field label="Telefone / WhatsApp" value={fornecedorForm.telefone} onChange={(value) => setFornecedorForm((form) => ({ ...form, telefone: value }))} />
                         <Field label="Categoria / Segmento" value={fornecedorForm.categoria} onChange={(value) => setFornecedorForm((form) => ({ ...form, categoria: value }))} />
                       </SimpleForm>
-                      <CompactList title="Fornecedores cadastrados" items={fornecedores} fields={['nome', 'documento', 'email', 'categoria']} />
+                      <div className="space-y-6">
+                        <CadastroInsightPanel title="Controle de fornecedores" checks={cadastroHighlights.fornecedores} />
+                        <CompactList title="Fornecedores cadastrados" items={fornecedores} fields={['nome', 'documento', 'email', 'categoria']} />
+                      </div>
                     </div>
                   )}
                 </section>
@@ -769,6 +833,92 @@ export default function Dashboard() {
         </div>
       </section>
     </main>
+  );
+}
+
+function CadastroWorkspaceHeader({ cadastro, count, highlights = [] }) {
+  const Icon = cadastro.icon;
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-slate-200 bg-slate-950 text-white shadow-sm">
+      <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-[#C9A227] text-black">
+                <Icon size={26} />
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-[#C9A227]">Tela dedicada</p>
+                <h3 className="mt-2 text-2xl font-black">{cadastro.label}</h3>
+                <p className="mt-2 max-w-2xl text-sm font-semibold text-slate-300">{cadastro.detail}</p>
+              </div>
+            </div>
+            <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-right">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Registros</p>
+              <p className="mt-1 text-3xl font-black text-[#C9A227]">{count}</p>
+            </div>
+          </div>
+        </div>
+        <div className="border-t border-white/10 bg-white/5 p-6 lg:border-l lg:border-t-0">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Proteções desta tela</p>
+          <div className="mt-4 space-y-3">
+            {highlights.map((item) => (
+              <div key={item} className="flex gap-3 text-sm font-semibold text-slate-200">
+                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#C9A227]" />
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CadastroInsightPanel({ title, checks }) {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Antes de salvar</p>
+      <h3 className="mt-2 text-lg font-black text-slate-950">{title}</h3>
+      <div className="mt-5 space-y-3">
+        {checks.map((item) => (
+          <div key={item} className="flex gap-3 rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm font-bold text-slate-700">
+            <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+            <span>{item}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ProductPreview({ produto, categorias }) {
+  const categoria = categorias.find((item) => item.id === produto.categoriaId)?.nome || 'Sem categoria';
+  const image = produto.imagemUrl || 'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85';
+  const price = Number(produto.preco || 0);
+  const promotional = Number(produto.precoPromocional || 0);
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="aspect-[16/10] bg-slate-100">
+        <img src={image} alt={produto.nome || 'Prévia do produto'} className="h-full w-full object-cover" />
+      </div>
+      <div className="p-5">
+        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Prévia da vitrine</p>
+        <h3 className="mt-2 text-xl font-black text-slate-950">{produto.nome || 'Nome do produto'}</h3>
+        <p className="mt-2 line-clamp-3 text-sm font-semibold text-slate-500">{produto.descricao || 'Descrição comercial do produto aparecerá aqui para revisão rápida.'}</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">{categoria}</span>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">SKU {produto.sku || '-'}</span>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">Estoque {produto.estoque || 0}</span>
+        </div>
+        <div className="mt-5 flex items-end gap-3">
+          {promotional > 0 && <p className="text-sm font-bold text-slate-400 line-through">{formatPrice(price)}</p>}
+          <p className="text-3xl font-black text-slate-950">{formatPrice(promotional || price)}</p>
+        </div>
+      </div>
+    </section>
   );
 }
 
