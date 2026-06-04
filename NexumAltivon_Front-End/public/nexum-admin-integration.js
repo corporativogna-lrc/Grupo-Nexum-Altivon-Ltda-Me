@@ -696,7 +696,7 @@
           <div class="field"><label>Senha</label><input type="password" id="nexum-senha" required /></div>
           <button type="submit" id="nexum-login-btn">Entrar</button>
         </form>
-        <div id="nexum-login-hint"><strong style="color:#C9A227">Credenciais de teste:</strong><br>corporativo.gna@gmail.com / admin123</div>
+        <div id="nexum-login-hint"><strong style="color:#C9A227">Acesso restrito:</strong><br>Use as credenciais autorizadas pela empresa.</div>
       </div>
     `;
     document.body.appendChild(overlay);

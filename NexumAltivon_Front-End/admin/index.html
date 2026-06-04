@@ -536,17 +536,17 @@
             <div class="login-subtitle">Acesse o painel administrativo</div>
             <div class="form-group">
                 <label class="form-label" for="loginEmail">E-mail</label>
-                <input class="form-control" id="loginEmail" name="email" type="email" autocomplete="username" value="admin@nexumaltivon.com" required>
+                <input class="form-control" id="loginEmail" name="email" type="email" autocomplete="username" required>
             </div>
             <div class="form-group">
                 <label class="form-label" for="loginSenha">Senha</label>
-                <input class="form-control" id="loginSenha" name="senha" type="password" autocomplete="current-password" value="Admin@123" required>
+                <input class="form-control" id="loginSenha" name="senha" type="password" autocomplete="current-password" required>
             </div>
             <button class="btn btn-gold" type="submit" style="width:100%;justify-content:center;">
                 <i class="fas fa-right-to-bracket"></i> Entrar
             </button>
             <div class="login-error" id="loginError">NÃ£o foi possÃ­vel autenticar. Verifique a API e as credenciais.</div>
-            <div class="login-hint">Desenvolvimento: admin@nexumaltivon.com / Admin@123</div>
+            <div class="login-hint">Acesso restrito a usuários autorizados do Grupo Nexum Altivon.</div>
         </form>
     </section>
 
@@ -932,11 +932,11 @@
                 dashboardData = result.dados;
                 document.getElementById('apiStatus').textContent = 'API conectada';
             } catch (error) {
-                dashboardData = mockDashboard;
                 document.getElementById('apiStatus').textContent = error.message === 'unauthorized'
                     ? 'sessÃ£o expirada'
-                    : 'API offline, usando dados locais';
+                    : 'API indisponÃ­vel';
                 if (error.message === 'unauthorized') logout();
+                throw error;
             }
 
             renderDashboard(dashboardData);
@@ -973,7 +973,7 @@
             weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
         });
 
-        // ===== DADOS MOCK (simulando resposta da API) =====
+        // ===== ESTRUTURA PADRAO DO PAINEL =====
         const mockDashboard = {
             kpis: {
                 faturamentoHoje: 2847.50,
@@ -1394,7 +1394,6 @@
                 document.body.classList.remove('auth-required');
                 loadDashboard();
             } else {
-                renderDashboard(mockDashboard);
                 document.getElementById('apiStatus').textContent = 'login necessÃ¡rio';
             }
         });

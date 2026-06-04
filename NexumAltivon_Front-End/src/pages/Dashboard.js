@@ -10,8 +10,13 @@ import {
   ArrowUpRight,
   Bell,
   Boxes,
+  Building2,
   ChevronRight,
+  Cog,
   CreditCard,
+  Database,
+  FileText,
+  Handshake,
   PackagePlus,
   LayoutDashboard,
   LogOut,
@@ -23,14 +28,29 @@ import {
   TrendingUp,
   UserRound,
   Users,
+  WalletCards,
 } from 'lucide-react';
 
 const tabs = [
-  { id: 'overview', label: 'Visão geral', icon: LayoutDashboard },
-  { id: 'cadastros', label: 'Cadastros', icon: PackagePlus },
-  { id: 'pedidos', label: 'Pedidos', icon: ShoppingBag },
-  { id: 'crm', label: 'CRM', icon: Users },
+  { id: 'overview', label: 'Dashboard', icon: LayoutDashboard, section: 'Principal' },
+  { id: 'pedidos', label: 'Pedidos', icon: ShoppingBag, section: 'Principal' },
+  { id: 'cadastros', label: 'Produtos / Cadastros', icon: PackagePlus, section: 'Principal', badge: 'novo' },
+  { id: 'crm', label: 'CRM', icon: Users, section: 'Marketing & CRM' },
 ];
+
+const plannedModules = [
+  { label: 'Lojas', icon: Building2, section: 'Gestão' },
+  { label: 'Financeiro / Gateways', icon: WalletCards, section: 'Gestão' },
+  { label: 'Fiscal', icon: FileText, section: 'Gestão' },
+  { label: 'Logística', icon: Boxes, section: 'Gestão' },
+  { label: 'Cupons', icon: CreditCard, section: 'Marketing & CRM' },
+  { label: 'Marketing', icon: TrendingUp, section: 'Marketing & CRM' },
+  { label: 'API / Marketplaces', icon: Database, section: 'Integrações' },
+  { label: 'Dropshipping', icon: Handshake, section: 'Integrações' },
+  { label: 'Configurações', icon: Cog, section: 'Sistema' },
+];
+
+const navSections = ['Principal', 'Gestão', 'Marketing & CRM', 'Integrações', 'Sistema'];
 
 const fallbackClientes = [
   { id: 1, nome: 'Ana Carolina Silva', email: 'ana.silva@email.com', telefone: '(14) 99876-5432' },
@@ -230,7 +250,7 @@ export default function Dashboard() {
 
   if (authLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#eef2f7]">
+      <div className="flex min-h-screen items-center justify-center bg-[#050505]">
         <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-slate-950" />
       </div>
     );
@@ -239,74 +259,103 @@ export default function Dashboard() {
   if (!isAuthenticated) return <Navigate to="/login" />;
 
   return (
-    <main className="min-h-screen bg-[#eef2f7]">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 border-r border-slate-200 bg-slate-950 text-white lg:block">
+    <main className="nexum-admin-shell min-h-screen bg-[#050505]">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 border-r border-[#2A2A2A] bg-[#0A0A0A] text-white lg:block">
         <div className="flex h-full flex-col p-6">
           <Link to="/" className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-amber-400 text-sm font-black text-slate-950">NA</div>
+            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#C9A227] text-sm font-black text-black">NA</div>
             <div>
-              <p className="font-black">Nexum Altivon</p>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Control Center</p>
+              <p className="font-serif text-lg font-black tracking-widest text-[#C9A227]">NEXUM ALTIVON</p>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">Painel Administrativo</p>
             </div>
           </Link>
 
-          <nav className="mt-10 space-y-2">
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              const active = activeTab === tab.id;
+          <nav className="mt-8 space-y-5 overflow-y-auto pb-6">
+            {navSections.map((section) => {
+              const activeItems = tabs.filter((tab) => tab.section === section);
+              const futureItems = plannedModules.filter((module) => module.section === section);
+              if (activeItems.length === 0 && futureItems.length === 0) return null;
+
               return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-black transition ${
-                    active ? 'bg-white text-slate-950' : 'text-slate-300 hover:bg-white/10 hover:text-white'
-                  }`}
-                  data-testid={`tab-${tab.id}`}
-                >
-                  <Icon size={18} />
-                  {tab.label}
-                </button>
+                <div key={section}>
+                  <p className="px-3 pb-2 text-[0.65rem] font-black uppercase tracking-[0.22em] text-zinc-600">{section}</p>
+                  <div className="space-y-1">
+                    {activeItems.map((tab) => {
+                      const Icon = tab.icon;
+                      const active = activeTab === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          onClick={() => setActiveTab(tab.id)}
+                          className={`flex w-full items-center gap-3 border-l-4 px-3 py-3 text-left text-sm font-bold transition ${
+                            active ? 'border-[#C9A227] bg-[#C9A227]/10 text-[#C9A227]' : 'border-transparent text-zinc-400 hover:border-[#C9A227]/60 hover:bg-white/5 hover:text-[#E8D5A3]'
+                          }`}
+                          data-testid={`tab-${tab.id}`}
+                        >
+                          <Icon size={18} />
+                          <span>{tab.label}</span>
+                          {tab.badge && <span className="ml-auto rounded-full bg-emerald-600 px-2 py-0.5 text-[0.62rem] uppercase text-white">{tab.badge}</span>}
+                        </button>
+                      );
+                    })}
+                    {futureItems.map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <button
+                          key={item.label}
+                          type="button"
+                          className="flex w-full cursor-not-allowed items-center gap-3 border-l-4 border-transparent px-3 py-3 text-left text-sm font-semibold text-zinc-700"
+                          title="Módulo em estruturação"
+                        >
+                          <Icon size={18} />
+                          <span>{item.label}</span>
+                          <span className="ml-auto rounded-full border border-zinc-700 px-2 py-0.5 text-[0.62rem] uppercase text-zinc-600">breve</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               );
             })}
           </nav>
 
           <div className="mt-auto rounded-lg border border-white/10 bg-white/5 p-4">
-            <div className="flex items-center gap-2 text-amber-200">
+            <div className="flex items-center gap-2 text-[#E8D5A3]">
               <Sparkles size={16} />
-              <p className="text-xs font-black uppercase tracking-[0.18em]">Meta do mês</p>
+              <p className="text-xs font-black uppercase tracking-[0.18em]">Operação real</p>
             </div>
             <p className="mt-3 text-2xl font-black">{formatPrice(resumo.faturamento_mes)}</p>
             <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-              <div className="h-full w-[72%] rounded-full bg-amber-400" />
+              <div className="h-full w-[72%] rounded-full bg-[#C9A227]" />
             </div>
-            <p className="mt-3 text-xs font-semibold text-slate-300">72% da meta comercial concluída.</p>
+            <p className="mt-3 text-xs font-semibold text-zinc-400">Base operacional conectada à API e ao banco real.</p>
           </div>
         </div>
       </aside>
 
       <section className="lg:pl-72">
-        <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/92 backdrop-blur-xl">
+        <header className="sticky top-0 z-30 border-b border-[#2A2A2A] bg-[#0A0A0A]/95 text-white backdrop-blur-xl">
           <div className="flex min-h-[76px] flex-col gap-4 px-4 py-4 sm:px-6 xl:flex-row xl:items-center xl:justify-between xl:px-8">
             <div>
-              <p className="text-sm font-bold text-slate-500">Olá, {user?.nome || 'gestor'}.</p>
-              <h1 className="text-2xl font-black text-slate-950" data-testid="dashboard-title">Painel de controle</h1>
+              <p className="text-sm font-bold text-zinc-500"><span className="text-[#C9A227]">{tabs.find((tab) => tab.id === activeTab)?.label || 'Dashboard'}</span> / Gestão</p>
+              <h1 className="text-2xl font-black text-white" data-testid="dashboard-title">Painel Administrativo</h1>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="relative">
-                <Search className="absolute left-3 top-3 text-slate-400" size={18} />
+                <Search className="absolute left-3 top-3 text-zinc-500" size={18} />
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Buscar pedidos, clientes ou leads"
-                  className="h-11 w-full rounded-full border border-slate-200 bg-white pl-10 pr-4 text-sm font-semibold outline-none transition focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10 sm:w-80"
+                  placeholder="Buscar pedidos, clientes, produtos ou leads"
+                  className="h-11 w-full rounded-full border border-[#2A2A2A] bg-[#050505] pl-10 pr-4 text-sm font-semibold text-white outline-none transition focus:border-[#C9A227] focus:ring-4 focus:ring-[#C9A227]/10 sm:w-80"
                 />
               </div>
-              <button className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700" aria-label="Notificações" title="Notificações">
+              <button className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#2A2A2A] bg-[#1A1A1A] text-zinc-300" aria-label="Notificações" title="Notificações">
                 <Bell size={19} />
               </button>
               <button
                 onClick={logout}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-slate-950 px-5 text-sm font-black text-white"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#C9A227] px-5 text-sm font-black text-black"
               >
                 <LogOut size={17} />
                 Sair
@@ -351,6 +400,36 @@ export default function Dashboard() {
                     <StatCard title="Faturamento" value={formatPrice(resumo.faturamento_mes)} detail="no mês" trend={18} icon={TrendingUp} tone="amber" />
                     <StatCard title="Leads novos" value={resumo.leads_novos} detail="em qualificação" trend={-3} icon={UserRound} tone="indigo" />
                   </div>
+
+                  <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h2 className="text-xl font-black text-slate-950">Arquitetura operacional integrada</h2>
+                        <p className="mt-1 text-sm text-slate-500">
+                          E-commerce, dropshipping, logística, gateways de pagamento e módulos empresariais conectados pelo canal de API.
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-800">API em produção temporária</span>
+                    </div>
+                    <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                      {[
+                        { label: 'E-commerce', status: 'Operante', icon: ShoppingBag },
+                        { label: 'Cadastros reais', status: 'Em uso', icon: PackagePlus },
+                        { label: 'Dropshipping', status: 'Estruturando', icon: Handshake },
+                        { label: 'Logística', status: 'Estruturando', icon: Boxes },
+                        { label: 'Gateways/API', status: 'Estruturando', icon: Database },
+                      ].map((item) => {
+                        const Icon = item.icon;
+                        return (
+                          <div key={item.label} className="rounded-lg border border-slate-100 bg-slate-50 p-4">
+                            <Icon className="text-amber-600" size={22} />
+                            <p className="mt-3 text-sm font-black text-slate-950">{item.label}</p>
+                            <p className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-500">{item.status}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
 
                   <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(360px,1fr)]">
                     <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">

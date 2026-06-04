@@ -5,14 +5,12 @@ on:
     branches: [main, develop]
     paths:
       - 'NexumAltivon_Back-End/**'
-      - 'NexumAltivon_Front-End/**'
       - 'docker/**'
       - '.github/workflows/ci-cd.yml'
   pull_request:
     branches: [main]
     paths:
       - 'NexumAltivon_Back-End/**'
-      - 'NexumAltivon_Front-End/**'
       - 'docker/**'
       - '.github/workflows/ci-cd.yml'
 

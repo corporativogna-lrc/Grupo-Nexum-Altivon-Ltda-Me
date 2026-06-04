@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { STORAGE_KEYS, ADMIN_ROLES } from '../constants';
-import api from '../services/api';
+import api, { API_BASE_URL } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -28,7 +28,7 @@ export function AuthProvider({ children }) {
   const login = async (email, senha) => {
     try {
       const response = await api.post('/auth/login', { email, senha });
-      const payload = response.data;
+      const payload = response.data?.dados || response.data?.Dados || response.data?.data || response.data;
       const accessToken = payload.access_token || payload.token || payload.Token;
       const refreshToken = payload.refresh_token || payload.refreshToken || payload.RefreshToken || '';
       const userData = payload.user || payload.usuario || payload.Usuario || {
@@ -36,6 +36,13 @@ export function AuthProvider({ children }) {
         email,
         role: payload.perfil || payload.role || 'Gerente',
       };
+
+      if (!accessToken) {
+        return {
+          success: false,
+          error: 'Login recebido, mas a API não retornou token de acesso. Verifique a publicação da API.',
+        };
+      }
 
       localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
       localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
@@ -46,9 +53,13 @@ export function AuthProvider({ children }) {
 
       return { success: true };
     } catch (error) {
+      const isNetworkError = !error.response;
+
       return {
         success: false,
-        error: error.response?.data?.detail || error.response?.data?.mensagem || 'Erro ao fazer login'
+        error: isNetworkError
+          ? `API pública indisponível no momento (${API_BASE_URL}). Verifique Cloudflare/DNS e tente novamente.`
+          : error.response?.data?.detail || error.response?.data?.mensagem || 'Erro ao fazer login'
       };
     }
   };

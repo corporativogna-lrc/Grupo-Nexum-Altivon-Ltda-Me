@@ -218,7 +218,7 @@ D:\Users\Rodrigo Costa\source\repos\GenesisGest.Net_E-Commerce\NexumAltivon.com
 
 **Rodrigo Costa** — (14) 99673-1879
 **Vinicius** — (14) 99634-8409
-**E-mail**: contato@nexumaltivon.com
+**E-mail**: corporativo.gna@gmail.com
 **Site**: www.nexumaltivon.com
 
 ---
