@@ -676,10 +676,22 @@ app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, C
     }
 
     var email = request.Email.Trim().ToLowerInvariant();
-    var exists = await db.Clientes.AnyAsync(cliente => cliente.Email == email, ct);
-    if (exists)
+    var cpfCnpj = string.IsNullOrWhiteSpace(request.Cpf) ? null : request.Cpf.Trim();
+    var clienteExistente = await db.Clientes.FirstOrDefaultAsync(cliente =>
+        cliente.Email == email ||
+        (!string.IsNullOrWhiteSpace(cpfCnpj) && cliente.CpfCnpj == cpfCnpj), ct);
+
+    if (clienteExistente is not null)
     {
-        return Results.BadRequest(ApiResponse<string>.Erro("Email ja cadastrado."));
+        if (string.IsNullOrWhiteSpace(clienteExistente.Telefone) && !string.IsNullOrWhiteSpace(request.Telefone))
+        {
+            clienteExistente.Telefone = request.Telefone.Trim();
+            clienteExistente.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+
+        var existenteDto = new ClienteLojaDto(clienteExistente.Id, clienteExistente.Nome, clienteExistente.Email, clienteExistente.Telefone);
+        return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(existenteDto, "Cliente ja cadastrado. Registro existente reutilizado."));
     }
 
     var cliente = new Cliente
@@ -687,7 +699,7 @@ app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, C
         Nome = request.Nome.Trim(),
         Email = email,
         Telefone = request.Telefone,
-        CpfCnpj = string.IsNullOrWhiteSpace(request.Cpf) ? null : request.Cpf.Trim(),
+        CpfCnpj = cpfCnpj,
         Status = StatusCliente.Ativo,
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow

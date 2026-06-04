@@ -81,13 +81,11 @@ export default function Checkout() {
     setError('');
 
     try {
-      let clienteId = `cliente-${Date.now()}`;
+      const clienteRes = await clienteAPI.create(dadosCliente);
+      const clienteId = clienteRes.data.id;
 
-      try {
-        const clienteRes = await clienteAPI.create(dadosCliente);
-        clienteId = clienteRes.data.id || clienteId;
-      } catch (clienteError) {
-        if (process.env.NODE_ENV === 'development') console.warn('Checkout usando cliente local:', clienteError);
+      if (!clienteId) {
+        throw new Error('Cliente nao confirmado pela API.');
       }
 
       const pedidoData = {
@@ -101,30 +99,14 @@ export default function Checkout() {
         endereco_entrega: endereco
       };
 
-      try {
-        const pedidoRes = await pedidoAPI.create(pedidoData);
-        setPedidoCriado(pedidoRes.data);
-      } catch (pedidoError) {
-        if (process.env.NODE_ENV === 'development') console.warn('Checkout usando pedido local:', pedidoError);
-        setPedidoCriado({
-          id: `pedido-${Date.now()}`,
-          numero_pedido: `NA-${new Date().toISOString().slice(2, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`,
-          total,
-          status: 'Recebido',
-          metodo_pagamento: metodoPagamento,
-          created_at: new Date().toISOString(),
-        });
-      }
+      const pedidoRes = await pedidoAPI.create(pedidoData);
+      setPedidoCriado(pedidoRes.data);
 
       clearCart();
       setStep(4);
     } catch (err) {
       const detail = err.response?.data?.detail;
-      if (err.response?.status === 400) {
-        setError('Email já cadastrado. Por favor faça login.');
-      } else {
-        setError(detail || 'Erro ao processar pedido');
-      }
+      setError(detail || err.message || 'Erro ao processar pedido. Nenhum pedido foi registrado.');
     } finally {
       setLoading(false);
     }

@@ -80,6 +80,16 @@ const emptyFornecedor = { nome: '', documento: '', email: '', telefone: '', cate
 const emptyLead = { nome: '', email: '', telefone: '', status: 'Novo', origem: 'Site', observacao: '' };
 const pedidoStatusOptions = ['Pendente', 'Processando', 'Enviado', 'Entregue', 'Cancelado'];
 const leadStatusOptions = ['Novo', 'Contato', 'Qualificado', 'Negociacao', 'Ganho', 'Perdido'];
+const allowDemoData = process.env.NODE_ENV !== 'production';
+const emptyResumo = {
+  pedidos_hoje: 0,
+  total_clientes: 0,
+  faturamento_mes: 0,
+  leads_novos: 0,
+  produtos_estoque_baixo: 0,
+  conversao: 0,
+  ticket_medio: 0,
+};
 
 const chart = [
   { label: 'Seg', value: 42 },
@@ -121,13 +131,13 @@ function StatCard({ title, value, detail, icon: Icon, trend, tone = 'slate' }) {
 
 export default function Dashboard() {
   const { user, isAuthenticated, loading: authLoading, logout } = useAuth();
-  const [resumo, setResumo] = useState(fallbackResumo);
-  const [pedidos, setPedidos] = useState(fallbackPedidos);
-  const [leads, setLeads] = useState(fallbackLeads);
-  const [produtos, setProdutos] = useState(fallbackProducts);
-  const [categorias, setCategorias] = useState(fallbackCategories);
-  const [clientes, setClientes] = useState(fallbackClientes);
-  const [fornecedores, setFornecedores] = useState(fallbackFornecedores);
+  const [resumo, setResumo] = useState(allowDemoData ? fallbackResumo : emptyResumo);
+  const [pedidos, setPedidos] = useState(allowDemoData ? fallbackPedidos : []);
+  const [leads, setLeads] = useState(allowDemoData ? fallbackLeads : []);
+  const [produtos, setProdutos] = useState(allowDemoData ? fallbackProducts : []);
+  const [categorias, setCategorias] = useState(allowDemoData ? fallbackCategories : []);
+  const [clientes, setClientes] = useState(allowDemoData ? fallbackClientes : []);
+  const [fornecedores, setFornecedores] = useState(allowDemoData ? fallbackFornecedores : []);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [query, setQuery] = useState('');
@@ -192,7 +202,10 @@ export default function Dashboard() {
     event.preventDefault();
     setFormStatus('');
     const response = await clienteAPI.create(clienteForm);
-    setClientes((current) => [response.data, ...current]);
+    setClientes((current) => {
+      const semDuplicidade = current.filter((cliente) => cliente.id !== response.data.id);
+      return [response.data, ...semDuplicidade];
+    });
     setClienteForm(emptyCliente);
     setFormStatus('Cliente cadastrado no painel.');
   };
