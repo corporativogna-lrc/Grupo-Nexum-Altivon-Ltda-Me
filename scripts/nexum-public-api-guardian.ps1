@@ -28,6 +28,16 @@ function Write-GuardianLog {
   Add-Content -Path $GuardianLog -Value "[$(Get-Date -Format s)] $Message"
 }
 
+function Set-Utf8NoBomText {
+  param(
+    [string]$Path,
+    [string]$Value
+  )
+
+  $encoding = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($Path, $Value, $encoding)
+}
+
 function Test-HttpHealth {
   param([string]$Url)
   try {
@@ -91,7 +101,8 @@ function Get-CurrentRuntimeUrl {
   }
 
   try {
-    $config = Get-Content $PublicRuntimeConfig -Raw | ConvertFrom-Json
+    $rawConfig = Get-Content $PublicRuntimeConfig -Raw
+    $config = $rawConfig.TrimStart([char]0xFEFF) | ConvertFrom-Json
     return [string]$config.apiUrl
   } catch {
     return ""
@@ -112,8 +123,8 @@ function Publish-RuntimeUrl {
     source = "nexum-public-api-guardian"
   } | ConvertTo-Json
 
-  Set-Content -Path $RootRuntimeConfig -Value $payload -Encoding UTF8
-  Set-Content -Path $PublicRuntimeConfig -Value $payload -Encoding UTF8
+  Set-Utf8NoBomText -Path $RootRuntimeConfig -Value $payload
+  Set-Utf8NoBomText -Path $PublicRuntimeConfig -Value $payload
 
   Push-Location $RootDir
   try {
