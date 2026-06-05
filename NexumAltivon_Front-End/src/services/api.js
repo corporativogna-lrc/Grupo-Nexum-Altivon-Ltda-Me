@@ -2,6 +2,10 @@ import axios from 'axios';
 import { HTTP_UNAUTHORIZED, STORAGE_KEYS } from '../constants';
 
 const PUBLIC_API_URL = 'https://visual-both-textile-modeling.trycloudflare.com';
+const RUNTIME_API_CONFIG_URL = '/api-runtime.json';
+const RUNTIME_CACHE_KEY = 'nexum_api_runtime_url';
+
+let runtimeApiUrlPromise = null;
 
 const getDefaultApiUrl = () => {
   if (typeof window === 'undefined') return 'http://localhost:5000';
@@ -14,6 +18,48 @@ const getDefaultApiUrl = () => {
 
 export const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || getDefaultApiUrl();
 const API_URL = `${API_BASE_URL}/api`;
+
+const normalizeApiUrl = (value) => {
+  const url = String(value || '').trim().replace(/\/+$/, '');
+  return /^https?:\/\//i.test(url) ? url : '';
+};
+
+const isLocalApi = () => {
+  if (typeof window === 'undefined') return true;
+  const { hostname } = window.location;
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
+};
+
+export const getRuntimeApiBaseUrl = async () => {
+  if (process.env.REACT_APP_BACKEND_URL || isLocalApi()) return API_BASE_URL;
+  if (runtimeApiUrlPromise) return runtimeApiUrlPromise;
+
+  runtimeApiUrlPromise = (async () => {
+    const cached = normalizeApiUrl(localStorage.getItem(RUNTIME_CACHE_KEY));
+
+    try {
+      const response = await fetch(`${RUNTIME_API_CONFIG_URL}?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+
+      if (response.ok) {
+        const config = await response.json();
+        const runtimeUrl = normalizeApiUrl(config.apiUrl || config.api_url || config.url);
+        if (runtimeUrl) {
+          localStorage.setItem(RUNTIME_CACHE_KEY, runtimeUrl);
+          return runtimeUrl;
+        }
+      }
+    } catch {
+      // Mantém a última ponte funcional em cache quando a configuração pública oscila.
+    }
+
+    return cached || API_BASE_URL;
+  })();
+
+  return runtimeApiUrlPromise;
+};
 
 const normalizeRecord = (record) => {
   if (!record || typeof record !== 'object' || Array.isArray(record)) return record;
@@ -57,7 +103,10 @@ const api = axios.create({
 });
 
 // Add token to requests
-api.interceptors.request.use((config) => {
+api.interceptors.request.use(async (config) => {
+  const runtimeApiBaseUrl = await getRuntimeApiBaseUrl();
+  config.baseURL = `${runtimeApiBaseUrl}/api`;
+
   const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -79,7 +128,8 @@ api.interceptors.response.use(
 
       try {
         const refreshToken = localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
-        const response = await axios.post(`${API_URL}/auth/refresh`, {
+        const runtimeApiBaseUrl = await getRuntimeApiBaseUrl();
+        const response = await axios.post(`${runtimeApiBaseUrl}/api/auth/refresh`, {
           refresh_token: refreshToken,
         });
 

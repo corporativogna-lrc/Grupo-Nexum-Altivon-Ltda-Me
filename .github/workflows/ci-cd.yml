@@ -79,8 +79,6 @@ jobs:
       - name: Build frontend
         working-directory: ${{ env.FRONTEND_PATH }}
         run: npm run build
-        env:
-          REACT_APP_BACKEND_URL: https://visual-both-textile-modeling.trycloudflare.com
 
       - name: Upload frontend artifact
         uses: actions/upload-artifact@v4
@@ -163,8 +161,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            REACT_APP_BACKEND_URL=https://visual-both-textile-modeling.trycloudflare.com
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
