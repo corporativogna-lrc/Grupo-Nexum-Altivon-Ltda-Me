@@ -80,11 +80,46 @@ const plannedModules = [
 ];
 
 const fallbackIntegracoes = [
-  { nome: 'Dropshipping', slug: 'dropshipping', status: 'Preparado', detalhe: 'Roteamento por fornecedor e catálogos pendentes de credenciais reais.' },
-  { nome: 'Logística e Fretes', slug: 'logistica', status: 'Preparado', detalhe: 'Frete operacional no checkout e etiquetas aguardando transportadora.' },
-  { nome: 'Gateways de pagamento', slug: 'gateways', status: 'Preparado', detalhe: 'Pedido registra método escolhido; cobrança real depende das chaves do gateway.' },
-  { nome: 'Marketplaces/API', slug: 'marketplaces', status: 'Preparado', detalhe: 'Base pronta para sincronizar catálogos e importar pedidos externos.' },
+  { nome: 'E-commerce e API', slug: 'ecommerce', status: 'Operacional', detalhe: 'Catálogo, clientes, pedidos, estoque e painel usam a API operacional.', configurada: true, ambiente: 'Produção' },
+  { nome: 'Dropshipping', slug: 'dropshipping', status: 'Aguardando cadastros', detalhe: 'Roteamento depende dos fornecedores e produtos vinculados.', configurada: false, ambiente: 'Produção assistida' },
+  { nome: 'Logística e Fretes', slug: 'logistica', status: 'Aguardando credenciais', detalhe: 'Frete está registrado no checkout; cotação e etiqueta dependem da transportadora.', configurada: false, ambiente: 'Sandbox' },
+  { nome: 'Gateways de pagamento', slug: 'gateways', status: 'Aguardando credenciais', detalhe: 'Pedido registra método; cobrança real depende do token e webhook.', configurada: false, ambiente: 'Não configurado' },
+  { nome: 'Marketplaces', slug: 'marketplaces', status: 'Aguardando credenciais', detalhe: 'Sincronização de catálogo e pedidos depende da autorização externa.', configurada: false, ambiente: 'Integração externa' },
+  { nome: 'Bancos e conciliação', slug: 'bancaria', status: 'Planejado', detalhe: 'Conciliação depende da definição do banco e convênio.', configurada: false, ambiente: 'Não configurado' },
 ];
+
+const integrationGuides = {
+  ecommerce: {
+    description: 'Operação central de catálogo, clientes, pedidos, estoque e painel administrativo.',
+    requirements: ['API respondendo continuamente', 'Banco de dados conectado', 'Domínio público estável'],
+    nextTest: 'Criar um pedido controlado e conferir cliente, pedido e reserva de estoque.',
+  },
+  dropshipping: {
+    description: 'Roteamento de produtos e pedidos para fornecedores parceiros.',
+    requirements: ['Fornecedor ativo', 'Produto vinculado ao fornecedor', 'Regra de custo, prazo e comissão'],
+    nextTest: 'Vincular um produto real a um fornecedor e simular o envio do pedido.',
+  },
+  logistica: {
+    description: 'Cotação de frete, seleção de serviço, etiqueta e rastreamento.',
+    requirements: ['Token da transportadora', 'Endereço de origem', 'Peso e dimensões dos produtos'],
+    nextTest: 'Executar uma cotação em sandbox e validar prazo e valor retornados.',
+  },
+  gateways: {
+    description: 'Cobrança por Pix, boleto e cartão, com retorno automático do pagamento.',
+    requirements: ['Credencial do gateway', 'Webhook público seguro', 'Conta comercial homologada'],
+    nextTest: 'Criar cobrança de baixo valor em sandbox e confirmar o webhook.',
+  },
+  marketplaces: {
+    description: 'Sincronização de catálogo, estoque e pedidos de canais externos.',
+    requirements: ['Aplicação cadastrada no marketplace', 'Autorização OAuth', 'Regras de preço e estoque'],
+    nextTest: 'Autorizar uma conta de teste e importar um anúncio controlado.',
+  },
+  bancaria: {
+    description: 'Conciliação de recebimentos, tarifas e movimentações financeiras.',
+    requirements: ['Banco e produto definidos', 'Convênio/API contratado', 'Credenciais armazenadas no servidor'],
+    nextTest: 'Definir a primeira instituição e o formato de conciliação.',
+  },
+};
 
 const navSections = ['Principal', 'Cadastros', 'Gestão', 'Marketing & CRM', 'Integrações', 'Sistema'];
 const validTabIds = new Set(tabs.map((tab) => tab.id));
@@ -146,12 +181,16 @@ const normalizeDocument = (value) => String(value ?? '').replace(/\D/g, '');
 const getDashboardRouteState = (path = '') => {
   const segments = String(path || '').split('/').filter(Boolean);
 
+  if (segments[0] === 'integracoes' && segments[1]) {
+    return { activeTab: 'integracoes', activeCadastroTab: 'produtos', activeIntegration: segments[1] };
+  }
+
   if (segments[0] === 'cadastros' && validCadastroIds.has(segments[1])) {
-    return { activeTab: `cadastro-${segments[1]}`, activeCadastroTab: segments[1] };
+    return { activeTab: `cadastro-${segments[1]}`, activeCadastroTab: segments[1], activeIntegration: '' };
   }
 
   if (segments[0] === 'cadastros') {
-    return { activeTab: 'cadastros', activeCadastroTab: 'produtos' };
+    return { activeTab: 'cadastros', activeCadastroTab: 'produtos', activeIntegration: '' };
   }
 
   if (validTabIds.has(segments[0])) {
@@ -159,10 +198,11 @@ const getDashboardRouteState = (path = '') => {
     return {
       activeTab: segments[0],
       activeCadastroTab: validCadastroIds.has(cadastroId) ? cadastroId : 'produtos',
+      activeIntegration: '',
     };
   }
 
-  return { activeTab: 'overview', activeCadastroTab: 'produtos' };
+  return { activeTab: 'overview', activeCadastroTab: 'produtos', activeIntegration: '' };
 };
 
 const getDashboardPath = (tabId, cadastroId = 'produtos') => {
@@ -288,6 +328,7 @@ export default function Dashboard() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [activeTab, setActiveTab] = useState(routeState.activeTab);
   const [activeCadastroTab, setActiveCadastroTab] = useState(routeState.activeCadastroTab);
+  const [activeIntegration, setActiveIntegration] = useState(routeState.activeIntegration);
   const [query, setQuery] = useState('');
   const [produtoForm, setProdutoForm] = useState(emptyProduto);
   const [clienteForm, setClienteForm] = useState(emptyCliente);
@@ -333,8 +374,9 @@ export default function Dashboard() {
   useEffect(() => {
     setActiveTab(routeState.activeTab);
     setActiveCadastroTab(routeState.activeCadastroTab);
+    setActiveIntegration(routeState.activeIntegration);
     setFormStatus('');
-  }, [routeState.activeCadastroTab, routeState.activeTab]);
+  }, [routeState.activeCadastroTab, routeState.activeIntegration, routeState.activeTab]);
 
   const submitProduto = async (event) => {
     event.preventDefault();
@@ -475,6 +517,10 @@ export default function Dashboard() {
   const openMainTab = (id) => {
     const cadastroId = id.startsWith('cadastro-') ? id.replace('cadastro-', '') : activeCadastroTab;
     navigate(getDashboardPath(id, cadastroId));
+  };
+
+  const openIntegration = (slug) => {
+    navigate(`/dashboard/integracoes/${slug}`);
   };
 
   const statusCounts = useMemo(() => {
@@ -936,13 +982,25 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    {integracoes.map((integracao) => (
-                      <IntegrationCard key={integracao.slug || integracao.nome} integracao={integracao} />
-                    ))}
-                  </div>
+                  {activeIntegration ? (
+                    <IntegrationWorkspace
+                      integracao={integracoes.find((item) => item.slug === activeIntegration)}
+                      guide={integrationGuides[activeIntegration]}
+                      onBack={() => navigate('/dashboard/integracoes')}
+                    />
+                  ) : (
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      {integracoes.map((integracao) => (
+                        <IntegrationCard
+                          key={integracao.slug || integracao.nome}
+                          integracao={integracao}
+                          onOpen={() => openIntegration(integracao.slug)}
+                        />
+                      ))}
+                    </div>
+                  )}
 
-                  <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                  {!activeIntegration && <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
                     <h3 className="text-lg font-black text-slate-950">Sequência segura de ativação</h3>
                     <div className="mt-5 grid gap-3 md:grid-cols-4">
                       {[
@@ -957,7 +1015,7 @@ export default function Dashboard() {
                         </div>
                       ))}
                     </div>
-                  </section>
+                  </section>}
                 </section>
               )}
             </>
@@ -1083,17 +1141,20 @@ function ImageUrlField({ value, onChange, onUpload, uploading, className = '' })
   );
 }
 
-function IntegrationCard({ integracao }) {
+function IntegrationCard({ integracao, onOpen }) {
   const iconMap = {
+    ecommerce: ShoppingBag,
     dropshipping: Handshake,
     logistica: Truck,
     gateways: WalletCards,
     marketplaces: Database,
+    bancaria: CreditCard,
   };
   const Icon = iconMap[integracao.slug] || Globe2;
+  const configured = integracao.configurada ?? integracao.Configurada;
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <button type="button" onClick={onOpen} className="rounded-lg border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-[#C9A227] hover:shadow-md">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-4">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-[#C9A227]">
@@ -1104,9 +1165,77 @@ function IntegrationCard({ integracao }) {
             <p className="mt-2 text-sm font-semibold text-slate-500">{integracao.detalhe}</p>
           </div>
         </div>
-        <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black uppercase tracking-wide text-emerald-800">
+        <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-wide ${configured ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-900'}`}>
           {integracao.status}
         </span>
+      </div>
+      <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">{integracao.ambiente || integracao.Ambiente || 'Não configurado'}</span>
+        <span className="inline-flex items-center gap-1 text-sm font-black text-slate-950">Abrir módulo <ChevronRight size={16} /></span>
+      </div>
+    </button>
+  );
+}
+
+function IntegrationWorkspace({ integracao, guide, onBack }) {
+  if (!integracao || !guide) {
+    return (
+      <section className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-amber-950">
+        <p className="font-black">Módulo de integração não encontrado.</p>
+        <button type="button" onClick={onBack} className="mt-4 font-black underline">Voltar para integrações</button>
+      </section>
+    );
+  }
+
+  const configured = integracao.configurada ?? integracao.Configurada;
+  const ambiente = integracao.ambiente || integracao.Ambiente || 'Não configurado';
+
+  return (
+    <section className="space-y-6">
+      <button type="button" onClick={onBack} className="inline-flex items-center gap-2 text-sm font-black text-slate-700">
+        ← Voltar para integrações
+      </button>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Módulo operacional</p>
+              <h3 className="mt-2 text-3xl font-black text-slate-950">{integracao.nome}</h3>
+              <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-500">{guide.description}</p>
+            </div>
+            <span className={`rounded-full px-4 py-2 text-sm font-black ${configured ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-900'}`}>
+              {integracao.status}
+            </span>
+          </div>
+          <div className="mt-6 rounded-lg border border-slate-100 bg-slate-50 p-5">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Leitura real da API</p>
+            <p className="mt-2 font-bold text-slate-800">{integracao.detalhe}</p>
+          </div>
+          <div className="mt-6">
+            <h4 className="font-black text-slate-950">Requisitos para ativação</h4>
+            <div className="mt-3 space-y-3">
+              {guide.requirements.map((requirement) => (
+                <div key={requirement} className="flex items-center gap-3 rounded-lg border border-slate-100 p-4">
+                  <div className={`h-3 w-3 rounded-full ${configured ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+                  <span className="text-sm font-bold text-slate-700">{requirement}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <aside className="space-y-4">
+          <div className="rounded-lg border border-slate-200 bg-slate-950 p-6 text-white shadow-sm">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C9A227]">Ambiente</p>
+            <p className="mt-2 text-2xl font-black">{ambiente}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Próximo teste controlado</p>
+            <p className="mt-3 text-sm font-bold leading-6 text-slate-800">{guide.nextTest}</p>
+          </div>
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm font-bold leading-6 text-amber-950">
+            Credenciais nunca são gravadas no navegador. Elas devem permanecer no servidor e fora do GitHub.
+          </div>
+        </aside>
       </div>
     </section>
   );

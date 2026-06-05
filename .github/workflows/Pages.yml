@@ -46,7 +46,7 @@ jobs:
         env:
           CI: false
           PUBLIC_URL: /
-          REACT_APP_BACKEND_URL: https://herald-syndication-convicted-salad.trycloudflare.com
+          REACT_APP_BACKEND_URL: https://visual-both-textile-modeling.trycloudflare.com
 
       - name: Configurar dominio customizado
         run: echo "www.nexumaltivon.com" > NexumAltivon_Front-End/build/CNAME

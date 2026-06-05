@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { HTTP_UNAUTHORIZED, STORAGE_KEYS } from '../constants';
 
-const PUBLIC_API_URL = 'https://herald-syndication-convicted-salad.trycloudflare.com';
+const PUBLIC_API_URL = 'https://visual-both-textile-modeling.trycloudflare.com';
 
 const getDefaultApiUrl = () => {
   if (typeof window === 'undefined') return 'http://localhost:5000';

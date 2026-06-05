@@ -901,7 +901,10 @@ app.MapPut("/api/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
     NexumDbContext db,
     CancellationToken ct) =>
 {
-    var pedido = await db.Pedidos.FirstOrDefaultAsync(item => item.Id == id, ct);
+    await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+    var pedido = await db.Pedidos
+        .Include(item => item.Itens)
+        .FirstOrDefaultAsync(item => item.Id == id, ct);
     if (pedido is null)
     {
         return Results.NotFound(ApiResponse<string>.Erro("Pedido nao encontrado."));
@@ -912,9 +915,65 @@ app.MapPut("/api/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
         return Results.BadRequest(ApiResponse<string>.Erro("Status do pedido invalido."));
     }
 
+    var statusAnterior = pedido.Status;
+    var statusAnteriorConfirmaEstoque = statusAnterior is StatusPedido.Pago or StatusPedido.EmSeparacao or StatusPedido.Enviado or StatusPedido.Entregue;
+    var novoStatusConfirmaEstoque = status is StatusPedido.Pago or StatusPedido.EmSeparacao or StatusPedido.Enviado or StatusPedido.Entregue;
+    var novoStatusCancelaEstoque = status is StatusPedido.Cancelado or StatusPedido.Devolvido or StatusPedido.Reembolsado;
+
+    if (pedido.Itens is { Count: > 0 } && statusAnterior != status)
+    {
+        var produtoIds = pedido.Itens
+            .Where(item => item.ProdutoId.HasValue)
+            .Select(item => item.ProdutoId!.Value)
+            .Distinct()
+            .ToList();
+        var produtos = await db.Produtos
+            .Where(produto => produtoIds.Contains(produto.Id))
+            .ToDictionaryAsync(produto => produto.Id, ct);
+
+        foreach (var item in pedido.Itens)
+        {
+            if (!item.ProdutoId.HasValue || !produtos.TryGetValue(item.ProdutoId.Value, out var produto))
+            {
+                return Results.BadRequest(ApiResponse<string>.Erro($"Produto do pedido nao encontrado: {item.NomeProduto}."));
+            }
+
+            if (!statusAnteriorConfirmaEstoque && novoStatusConfirmaEstoque)
+            {
+                if (produto.EstoqueAtual < item.Quantidade)
+                {
+                    return Results.BadRequest(ApiResponse<string>.Erro($"Estoque insuficiente para confirmar {item.NomeProduto}."));
+                }
+
+                produto.EstoqueReservado = Math.Max(0, produto.EstoqueReservado - item.Quantidade);
+                produto.EstoqueAtual -= item.Quantidade;
+            }
+            else if (!statusAnteriorConfirmaEstoque && novoStatusCancelaEstoque)
+            {
+                produto.EstoqueReservado = Math.Max(0, produto.EstoqueReservado - item.Quantidade);
+            }
+            else if (statusAnteriorConfirmaEstoque && novoStatusCancelaEstoque)
+            {
+                produto.EstoqueAtual += item.Quantidade;
+            }
+
+            produto.UpdatedAt = DateTime.UtcNow;
+        }
+    }
+
     pedido.Status = status;
+    if (novoStatusConfirmaEstoque && pedido.StatusPagamento == StatusPagamento.Aguardando)
+    {
+        pedido.StatusPagamento = StatusPagamento.Aprovado;
+        pedido.DataPagamento ??= DateTime.UtcNow;
+    }
+    else if (status == StatusPedido.Cancelado && pedido.StatusPagamento == StatusPagamento.Aguardando)
+    {
+        pedido.StatusPagamento = StatusPagamento.Cancelado;
+    }
     pedido.UpdatedAt = DateTime.UtcNow;
     await db.SaveChangesAsync(ct);
+    await transaction.CommitAsync(ct);
 
     var dto = new PedidoLojaDto(pedido.Id, pedido.NumeroPedido, pedido.Total, FormatStatusPedido(pedido.Status), pedido.CreatedAt);
     return Results.Ok(ApiResponse<PedidoLojaDto>.Ok(dto, "Status do pedido atualizado."));
@@ -929,6 +988,16 @@ app.MapPost("/api/pedidos", async (PedidoRequest request, NexumDbContext db, Htt
         return Results.BadRequest(ApiResponse<string>.Erro("Itens do pedido obrigatorios."));
     }
 
+    if (request.Itens.Any(item => string.IsNullOrWhiteSpace(item.ProdutoId) || item.Quantidade <= 0))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Produto e quantidade devem ser validos."));
+    }
+
+    var itensSolicitados = request.Itens
+        .GroupBy(item => item.ProdutoId.Trim(), StringComparer.OrdinalIgnoreCase)
+        .Select(group => new PedidoItemRequest(group.Key, group.Sum(item => item.Quantidade)))
+        .ToList();
+
     var cliente = await db.Clientes.FirstOrDefaultAsync(item => item.Id == request.ClienteId, ct);
     if (cliente is null)
     {
@@ -941,23 +1010,38 @@ app.MapPost("/api/pedidos", async (PedidoRequest request, NexumDbContext db, Htt
         lojaId = lojaIdParsed;
     }
 
+    await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+    var produtoSlugs = itensSolicitados.Select(item => item.ProdutoId).ToList();
     var produtosMap = await db.Produtos
-        .AsNoTracking()
-        .Where(produto => request.Itens.Select(item => item.ProdutoId).Contains(produto.Slug))
+        .Where(produto => produto.Ativo && produtoSlugs.Contains(produto.Slug))
         .ToDictionaryAsync(produto => produto.Slug, ct);
 
+    if (produtosMap.Count != produtoSlugs.Count)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Um ou mais produtos nao estao disponiveis."));
+    }
+
     decimal subtotal = 0m;
-    var itens = new List<PedidoItem>(request.Itens.Count);
-    foreach (var item in request.Itens)
+    var itens = new List<PedidoItem>(itensSolicitados.Count);
+    foreach (var item in itensSolicitados)
     {
         if (!produtosMap.TryGetValue(item.ProdutoId, out var produto))
         {
             return Results.BadRequest(ApiResponse<string>.Erro("Produto invalido."));
         }
 
+        var estoqueDisponivel = produto.EstoqueAtual - produto.EstoqueReservado;
+        if (estoqueDisponivel < item.Quantidade)
+        {
+            return Results.BadRequest(ApiResponse<string>.Erro(
+                $"Estoque insuficiente para {produto.Nome}. Disponivel: {Math.Max(0, estoqueDisponivel)}."));
+        }
+
         var precoUnitario = produto.PrecoPromocional ?? produto.Preco;
         var precoTotal = precoUnitario * item.Quantidade;
         subtotal += precoTotal;
+        produto.EstoqueReservado += item.Quantidade;
+        produto.UpdatedAt = DateTime.UtcNow;
 
         itens.Add(new PedidoItem
         {
@@ -985,6 +1069,7 @@ app.MapPost("/api/pedidos", async (PedidoRequest request, NexumDbContext db, Htt
                 TipoCupom.FreteGratis => cupom.Valor,
                 _ => 0m
             };
+            desconto = Math.Min(desconto, subtotal);
         }
     }
 
@@ -1022,7 +1107,7 @@ app.MapPost("/api/pedidos", async (PedidoRequest request, NexumDbContext db, Htt
 
     var pedido = new Pedido
     {
-        NumeroPedido = $"NX{DateTime.UtcNow:yyMMddHHmmss}",
+        NumeroPedido = $"NX{DateTime.UtcNow:yyMMddHHmmss}{Random.Shared.Next(10, 99)}",
         ClienteId = cliente.Id,
         EnderecoEntregaId = enderecoEntregaId,
         LojaId = lojaId,
@@ -1048,6 +1133,7 @@ app.MapPost("/api/pedidos", async (PedidoRequest request, NexumDbContext db, Htt
 
     db.Pedidos.Add(pedido);
     await db.SaveChangesAsync(ct);
+    await transaction.CommitAsync(ct);
 
     var dto = new PedidoLojaDto(pedido.Id, pedido.NumeroPedido, pedido.Total, FormatStatusPedido(pedido.Status), pedido.CreatedAt);
     return Results.Ok(ApiResponse<PedidoLojaDto>.Ok(dto, "Pedido criado com sucesso."));
@@ -1056,14 +1142,77 @@ app.MapPost("/api/pedidos", async (PedidoRequest request, NexumDbContext db, Htt
 .WithName("CriarPedido")
 ;
 
-app.MapGet("/api/integracoes/status", [Authorize(Policy = "Gerente")] () =>
+app.MapGet("/api/integracoes/status", [Authorize(Policy = "Gerente")] async (
+    IConfiguration configuration,
+    NexumDbContext db,
+    CancellationToken ct) =>
 {
+    static bool Configured(params string?[] values) =>
+        values.All(value =>
+            !string.IsNullOrWhiteSpace(value) &&
+            !value.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase));
+
+    var mercadoPagoConfigurado = Configured(configuration["MercadoPago:AccessToken"]);
+    var melhorEnvioConfigurado = Configured(configuration["MelhorEnvio:Token"]);
+    var mercadoLivreConfigurado = Configured(
+        configuration["MercadoLivre:AppId"],
+        configuration["MercadoLivre:ClientSecret"]);
+    var fornecedoresAtivos = await db.Fornecedores
+        .AsNoTracking()
+        .CountAsync(fornecedor => fornecedor.Status == StatusFornecedor.Ativo, ct);
+
     var modules = new List<IntegracaoStatusDto>
     {
-        new("Dropshipping", "dropshipping", "Preparado", "Roteamento por fornecedor e catalogos pendentes de credenciais reais."),
-        new("Logistica e Fretes", "logistica", "Preparado", "Frete operacional no checkout e emissao de etiqueta aguardando transportadora."),
-        new("Gateways de pagamento", "gateways", "Preparado", "Pedido registra metodo escolhido; cobranca real depende das chaves do gateway."),
-        new("Marketplaces/API", "marketplaces", "Preparado", "Base pronta para sincronizar catalogos e importar pedidos externos.")
+        new(
+            "E-commerce e API",
+            "ecommerce",
+            "Operacional",
+            "Catalogo, clientes, pedidos, estoque e painel usam a API operacional.",
+            true,
+            "Producao"),
+        new(
+            "Dropshipping",
+            "dropshipping",
+            fornecedoresAtivos > 0 ? "Base ativa" : "Aguardando cadastros",
+            fornecedoresAtivos > 0
+                ? $"{fornecedoresAtivos} fornecedor(es) ativo(s) disponivel(is) para roteamento."
+                : "Cadastre fornecedores e vincule produtos antes de liberar o roteamento.",
+            fornecedoresAtivos > 0,
+            "Producao assistida"),
+        new(
+            "Logistica e Fretes",
+            "logistica",
+            melhorEnvioConfigurado ? "Configurado" : "Aguardando credenciais",
+            melhorEnvioConfigurado
+                ? "Token logístico encontrado; falta concluir o teste de cotacao e etiqueta."
+                : "Checkout registra frete, mas cotacao e etiqueta dependem do token da transportadora.",
+            melhorEnvioConfigurado,
+            configuration.GetValue("MelhorEnvio:Sandbox", true) ? "Sandbox" : "Producao"),
+        new(
+            "Gateways de pagamento",
+            "gateways",
+            mercadoPagoConfigurado ? "Configurado" : "Aguardando credenciais",
+            mercadoPagoConfigurado
+                ? "Credencial do gateway encontrada; falta validar cobranca e webhook."
+                : "Pedido registra o metodo, mas a cobranca depende do token do gateway.",
+            mercadoPagoConfigurado,
+            mercadoPagoConfigurado ? "Configurado" : "Nao configurado"),
+        new(
+            "Marketplaces",
+            "marketplaces",
+            mercadoLivreConfigurado ? "Configurado" : "Aguardando credenciais",
+            mercadoLivreConfigurado
+                ? "Aplicacao de marketplace configurada; falta validar autorizacao e sincronizacao."
+                : "Importacao de catalogo e pedidos depende das credenciais do marketplace.",
+            mercadoLivreConfigurado,
+            "Integracao externa"),
+        new(
+            "Bancos e conciliacao",
+            "bancaria",
+            "Planejado",
+            "A conciliacao bancaria sera ativada apos definir banco, convenio e credenciais seguras.",
+            false,
+            "Nao configurado")
     };
 
     return Results.Ok(ApiResponse<List<IntegracaoStatusDto>>.Ok(modules));
@@ -1555,7 +1704,13 @@ public sealed record EnderecoEntregaRequest(
 
 public sealed record PedidoLojaDto(int Id, string NumeroPedido, decimal Total, string Status, DateTime CreatedAt);
 
-public sealed record IntegracaoStatusDto(string Nome, string Slug, string Status, string Detalhe);
+public sealed record IntegracaoStatusDto(
+    string Nome,
+    string Slug,
+    string Status,
+    string Detalhe,
+    bool Configurada = false,
+    string Ambiente = "Nao configurado");
 
 public sealed record DashboardResumoDto(
     int PedidosHoje,
