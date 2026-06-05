@@ -1,7 +1,10 @@
 using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -94,7 +97,7 @@ builder.Services.AddSwaggerGen(options =>
     options.SwaggerDoc("v1", new OpenApiInfo
     {
         Title = "Nexum Altivon API",
-        Version = "v1.1.4",
+        Version = "v1.1.5",
         Description = "API funcional inicial para site e painel administrativo Nexum Altivon."
     });
 
@@ -124,6 +127,21 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 builder.Services.AddHealthChecks();
+builder.Services.AddHttpClient("mercado-pago", client =>
+{
+    client.BaseAddress = new Uri("https://api.mercadopago.com/");
+    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+});
+builder.Services.AddHttpClient("melhor-envio", client =>
+{
+    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("NexumAltivon/1.1.5");
+});
+builder.Services.AddHttpClient("mercado-livre", client =>
+{
+    client.BaseAddress = new Uri("https://api.mercadolibre.com/");
+    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+});
 
 builder.Services
     .AddDataProtection()
@@ -177,7 +195,7 @@ app.MapGet("/", (IHostEnvironment environment) =>
         {
             status = "online",
             service = "Nexum Altivon API",
-            version = "1.1.4"
+            version = "1.1.5"
         }));
 
 app.MapPost("/api/auth/login", (
@@ -1032,7 +1050,13 @@ app.MapPut("/api/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
 .WithName("AtualizarStatusPedido")
 ;
 
-app.MapPost("/api/pedidos", async (PedidoRequest request, NexumDbContext db, HttpContext http, CancellationToken ct) =>
+app.MapPost("/api/pedidos", async (
+    PedidoRequest request,
+    NexumDbContext db,
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    HttpContext http,
+    CancellationToken ct) =>
 {
     if (request.Itens is null || request.Itens.Count == 0)
     {
@@ -1200,6 +1224,27 @@ app.MapPost("/api/pedidos", async (PedidoRequest request, NexumDbContext db, Htt
     await db.SaveChangesAsync(ct);
     await transaction.CommitAsync(ct);
 
+    var gatewayResult = await TryStartGatewayPaymentAsync(pedido, cliente, configuration, httpClientFactory, http, ct);
+    if (gatewayResult.Started)
+    {
+        pedido.GatewayPagamento = gatewayResult.Gateway;
+        pedido.GatewayTransacaoId = gatewayResult.TransactionId;
+        pedido.StatusPagamento = StatusPagamento.Aguardando;
+        var pagamento = pedido.Pagamentos?.FirstOrDefault();
+        if (pagamento is not null)
+        {
+            pagamento.Gateway = gatewayResult.Gateway;
+            pagamento.GatewayTransacaoId = gatewayResult.TransactionId;
+            pagamento.PixQrcode = gatewayResult.PixQrcode;
+            pagamento.BoletoUrl = gatewayResult.PaymentUrl;
+            pagamento.Status = StatusPagamentoDetalhado.Pendente;
+            pagamento.WebhookPayload = gatewayResult.RawPayload;
+            pagamento.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
     var dto = new PedidoLojaDto(
         pedido.Id,
         pedido.NumeroPedido,
@@ -1226,19 +1271,20 @@ app.MapGet("/api/integracoes/status", [Authorize(Policy = "Gerente")] async (
     NexumDbContext db,
     CancellationToken ct) =>
 {
-    static bool Configured(params string?[] values) =>
-        values.All(value =>
-            !string.IsNullOrWhiteSpace(value) &&
-            !value.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase));
-
-    var mercadoPagoConfigurado = Configured(configuration["MercadoPago:AccessToken"]);
-    var melhorEnvioConfigurado = Configured(configuration["MelhorEnvio:Token"]);
-    var mercadoLivreConfigurado = Configured(
-        configuration["MercadoLivre:AppId"],
-        configuration["MercadoLivre:ClientSecret"]);
+    var mercadoPagoConfigurado = IsConfiguredSecret(GetIntegrationValue(configuration, "MercadoPago:AccessToken", "Integracoes:MercadoPago:AccessToken"));
+    var melhorEnvioConfigurado = IsConfiguredSecret(GetIntegrationValue(configuration, "MelhorEnvio:Token", "Integracoes:MelhorEnvio:Token"));
+    var mercadoLivreConfigurado = IsConfiguredSecret(GetIntegrationValue(configuration, "MercadoLivre:AccessToken", "Integracoes:MercadoLivre:AccessToken"));
+    var mercadoLivreOAuthPronto = HasAllIntegrationValues(
+        configuration,
+        ("MercadoLivre:AppId", "Integracoes:MercadoLivre:AppId"),
+        ("MercadoLivre:ClientSecret", "Integracoes:MercadoLivre:ClientSecret"),
+        ("MercadoLivre:RedirectUri", "Integracoes:MercadoLivre:RedirectUri"));
     var fornecedoresAtivos = await db.Fornecedores
         .AsNoTracking()
         .CountAsync(fornecedor => fornecedor.Status == StatusFornecedor.Ativo, ct);
+    var dropshippingAtivos = await db.DropshippingConfigs
+        .AsNoTracking()
+        .CountAsync(config => config.Ativo, ct);
 
     var modules = new List<IntegracaoStatusDto>
     {
@@ -1252,11 +1298,11 @@ app.MapGet("/api/integracoes/status", [Authorize(Policy = "Gerente")] async (
         new(
             "Dropshipping",
             "dropshipping",
-            fornecedoresAtivos > 0 ? "Base ativa" : "Aguardando cadastros",
-            fornecedoresAtivos > 0
-                ? $"{fornecedoresAtivos} fornecedor(es) ativo(s) disponivel(is) para roteamento."
-                : "Cadastre fornecedores e vincule produtos antes de liberar o roteamento.",
-            fornecedoresAtivos > 0,
+            fornecedoresAtivos + dropshippingAtivos > 0 ? "Base ativa" : "Aguardando cadastros",
+            fornecedoresAtivos + dropshippingAtivos > 0
+                ? $"{fornecedoresAtivos} fornecedor(es) ativo(s) e {dropshippingAtivos} canal(is) dropshipping disponivel(is) para roteamento."
+                : "Cadastre fornecedores/canais e vincule produtos antes de liberar o roteamento.",
+            fornecedoresAtivos + dropshippingAtivos > 0,
             "Producao assistida"),
         new(
             "Logistica e Fretes",
@@ -1279,11 +1325,13 @@ app.MapGet("/api/integracoes/status", [Authorize(Policy = "Gerente")] async (
         new(
             "Marketplaces",
             "marketplaces",
-            mercadoLivreConfigurado ? "Configurado" : "Aguardando credenciais",
+            mercadoLivreConfigurado ? "Token ativo" : mercadoLivreOAuthPronto ? "OAuth pronto" : "Aguardando credenciais",
             mercadoLivreConfigurado
-                ? "Aplicacao de marketplace configurada; falta validar autorizacao e sincronizacao."
-                : "Importacao de catalogo e pedidos depende das credenciais do marketplace.",
-            mercadoLivreConfigurado,
+                ? "Access token encontrado; sincronizacao pode ser testada contra a API do Mercado Livre."
+                : mercadoLivreOAuthPronto
+                    ? "Aplicacao pronta para autorizacao do vendedor; falta concluir login OAuth e gerar access token."
+                    : "Importacao de catalogo e pedidos depende das credenciais do marketplace.",
+            mercadoLivreConfigurado || mercadoLivreOAuthPronto,
             "Integracao externa"),
         new(
             "Bancos e conciliacao",
@@ -1297,6 +1345,142 @@ app.MapGet("/api/integracoes/status", [Authorize(Policy = "Gerente")] async (
     return Results.Ok(ApiResponse<List<IntegracaoStatusDto>>.Ok(modules));
 })
 .WithName("IntegracoesStatus")
+;
+
+app.MapGet("/api/integracoes/diagnostico", [Authorize(Policy = "Gerente")] async (
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct) =>
+{
+    var slugs = new[] { "ecommerce", "mercadopago", "melhorenvio", "mercadolivre", "dropshipping", "bancaria" };
+    var resultados = new List<IntegracaoDiagnosticoDto>();
+
+    foreach (var slug in slugs)
+    {
+        resultados.Add(await BuildIntegracaoDiagnosticoAsync(slug, configuration, db, httpClientFactory, ct));
+    }
+
+    return Results.Ok(ApiResponse<List<IntegracaoDiagnosticoDto>>.Ok(resultados, "Diagnostico operacional das integracoes."));
+})
+.WithName("IntegracoesDiagnostico")
+;
+
+app.MapGet("/api/integracoes/credenciais-modelo", [Authorize(Policy = "Gerente")] () =>
+{
+    var credenciais = new List<IntegracaoCredencialDto>
+    {
+        new("Mercado Pago", "gateway", "MercadoPago__AccessToken", "Token privado do Mercado Pago para criar cobranças Pix/boleto/cartão.", true),
+        new("Mercado Pago", "gateway", "MercadoPago__PublicKey", "Chave pública usada no checkout transparente quando o front capturar cartão.", false),
+        new("Mercado Pago", "gateway", "MercadoPago__WebhookSecret", "Segredo para validar notificações/webhooks do Mercado Pago.", false),
+        new("Melhor Envio", "logistica", "MelhorEnvio__Token", "Token Bearer do Melhor Envio para cotação, compra de frete e etiqueta.", true),
+        new("Melhor Envio", "logistica", "MelhorEnvio__Sandbox", "true para homologação; false para produção.", false),
+        new("Mercado Livre", "marketplace", "MercadoLivre__AppId", "ID do aplicativo Mercado Livre.", true),
+        new("Mercado Livre", "marketplace", "MercadoLivre__ClientSecret", "Segredo do aplicativo Mercado Livre.", true),
+        new("Mercado Livre", "marketplace", "MercadoLivre__RedirectUri", "URL de retorno cadastrada exatamente no Mercado Livre.", true),
+        new("Mercado Livre", "marketplace", "MercadoLivre__AccessToken", "Token do vendedor após autorizar o aplicativo.", false),
+        new("Integrações bancárias", "bancaria", "Banco__Provider / Banco__ClientId / Banco__ClientSecret", "Credenciais do banco ou PSP escolhido para conciliação.", false)
+    };
+
+    return Results.Ok(ApiResponse<List<IntegracaoCredencialDto>>.Ok(credenciais, "Credenciais necessarias sem expor valores sensiveis."));
+})
+.WithName("IntegracoesCredenciaisModelo")
+;
+
+app.MapPost("/api/integracoes/testar/{slug}", [Authorize(Policy = "Gerente")] async (
+    string slug,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct) =>
+{
+    var resultado = await BuildIntegracaoDiagnosticoAsync(slug, configuration, db, httpClientFactory, ct);
+    return Results.Ok(ApiResponse<IntegracaoDiagnosticoDto>.Ok(resultado, $"Teste executado para {resultado.Nome}."));
+})
+.WithName("TestarIntegracao")
+;
+
+app.MapPost("/api/frete/cotar", async (
+    FreteCotacaoRequest request,
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct) =>
+{
+    var cotacoes = await CotarFreteAsync(request, configuration, httpClientFactory, ct);
+    return Results.Ok(ApiResponse<List<FreteCotacaoDto>>.Ok(cotacoes, cotacoes.Any(c => c.Fonte == "Melhor Envio")
+        ? "Cotacao consultada no Melhor Envio."
+        : "Cotacao operacional gerada pela tabela local ate configurar a transportadora."));
+})
+.AllowAnonymous()
+.WithName("CotarFrete")
+;
+
+app.MapPost("/api/webhooks/mercadopago", async (
+    HttpContext http,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct) =>
+{
+    using var reader = new StreamReader(http.Request.Body, Encoding.UTF8);
+    var payload = await reader.ReadToEndAsync(ct);
+    var paymentId = http.Request.Query["id"].FirstOrDefault()
+        ?? http.Request.Query["data.id"].FirstOrDefault()
+        ?? TryExtractJsonPath(payload, "data", "id")
+        ?? TryExtractJsonField(payload, "id");
+
+    if (!IsConfiguredSecret(paymentId))
+    {
+        return Results.Ok(new { received = true, updated = false, reason = "sem_id_pagamento" });
+    }
+
+    var token = GetIntegrationValue(configuration, "MercadoPago:AccessToken", "Integracoes:MercadoPago:AccessToken");
+    string? status = null;
+    string? rawPaymentPayload = null;
+
+    if (IsConfiguredSecret(token))
+    {
+        try
+        {
+            var client = httpClientFactory.CreateClient("mercado-pago");
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"v1/payments/{paymentId}");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            using var response = await client.SendAsync(request, ct);
+            rawPaymentPayload = await response.Content.ReadAsStringAsync(ct);
+            if (response.IsSuccessStatusCode)
+            {
+                status = TryExtractJsonField(rawPaymentPayload, "status");
+            }
+        }
+        catch
+        {
+            rawPaymentPayload = payload;
+        }
+    }
+
+    var pagamento = await db.Pagamentos
+        .Include(item => item.Pedido)
+        .FirstOrDefaultAsync(item => item.GatewayTransacaoId == paymentId, ct);
+
+    if (pagamento is null)
+    {
+        return Results.Ok(new { received = true, updated = false, reason = "pagamento_nao_encontrado" });
+    }
+
+    pagamento.WebhookPayload = rawPaymentPayload ?? payload;
+    pagamento.DataProcessamento = DateTime.UtcNow;
+    pagamento.UpdatedAt = DateTime.UtcNow;
+
+    if (!string.IsNullOrWhiteSpace(status))
+    {
+        ApplyMercadoPagoStatus(status, pagamento);
+    }
+
+    await db.SaveChangesAsync(ct);
+    return Results.Ok(new { received = true, updated = true, paymentId, status });
+})
+.AllowAnonymous()
+.WithName("WebhookMercadoPago")
 ;
 
 app.MapGet("/api/dashboard/resumo", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
@@ -1484,6 +1668,556 @@ static MetodoPagamento ParseMetodoPagamento(string? metodo)
         "wallet" or "carteira" => MetodoPagamento.Wallet,
         _ => MetodoPagamento.Outro
     };
+}
+
+static string? GetIntegrationValue(IConfiguration configuration, params string[] keys)
+{
+    foreach (var key in keys)
+    {
+        var value = configuration[key];
+        if (IsConfiguredSecret(value))
+        {
+            return value;
+        }
+    }
+
+    return null;
+}
+
+static bool IsConfiguredSecret(string? value) =>
+    !string.IsNullOrWhiteSpace(value) &&
+    !value.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase) &&
+    !value.Contains("USE_ENV", StringComparison.OrdinalIgnoreCase) &&
+    !value.Equals("null", StringComparison.OrdinalIgnoreCase);
+
+static bool HasAllIntegrationValues(IConfiguration configuration, params (string Primary, string Secondary)[] keys) =>
+    keys.All(pair => IsConfiguredSecret(GetIntegrationValue(configuration, pair.Primary, pair.Secondary)));
+
+static async Task<IntegracaoDiagnosticoDto> BuildIntegracaoDiagnosticoAsync(
+    string slug,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct)
+{
+    var normalizedSlug = NormalizeIntegrationSlug(slug);
+    return normalizedSlug switch
+    {
+        "ecommerce" => await TestEcommerceAsync(db, ct),
+        "mercadopago" or "gateways" or "gateway" => await TestMercadoPagoAsync(configuration, httpClientFactory, ct),
+        "melhorenvio" or "logistica" or "frete" => await TestMelhorEnvioAsync(configuration, httpClientFactory, ct),
+        "mercadolivre" or "marketplaces" or "marketplace" => await TestMercadoLivreAsync(configuration, httpClientFactory, ct),
+        "dropshipping" or "dropship" => await TestDropshippingAsync(db, ct),
+        "bancaria" or "bancos" or "financeiro" => TestBancaria(configuration),
+        _ => new IntegracaoDiagnosticoDto(
+            slug,
+            normalizedSlug,
+            "Desconhecida",
+            false,
+            false,
+            "Integração não mapeada no Nexum Altivon.",
+            ["Use: ecommerce, mercadopago, melhorenvio, mercadolivre, dropshipping ou bancaria."],
+            DateTime.UtcNow,
+            null)
+    };
+}
+
+static async Task<IntegracaoDiagnosticoDto> TestEcommerceAsync(NexumDbContext db, CancellationToken ct)
+{
+    var canConnect = await db.Database.CanConnectAsync(ct);
+    var produtos = canConnect ? await db.Produtos.AsNoTracking().CountAsync(ct) : 0;
+    var pedidos = canConnect ? await db.Pedidos.AsNoTracking().CountAsync(ct) : 0;
+
+    return new IntegracaoDiagnosticoDto(
+        "E-commerce e API",
+        "ecommerce",
+        canConnect ? "Operacional" : "Indisponível",
+        true,
+        canConnect,
+        canConnect
+            ? $"API e banco respondendo. Produtos: {produtos}; pedidos: {pedidos}."
+            : "A API não conseguiu conectar ao banco de dados real.",
+        canConnect ? [] : ["Conferir serviço MariaDB/MySQL e ConnectionStrings__DefaultConnection."],
+        DateTime.UtcNow,
+        canConnect ? "Banco real conectado" : null);
+}
+
+static async Task<IntegracaoDiagnosticoDto> TestMercadoPagoAsync(
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct)
+{
+    var accessToken = GetIntegrationValue(configuration, "MercadoPago:AccessToken", "Integracoes:MercadoPago:AccessToken");
+    if (!IsConfiguredSecret(accessToken))
+    {
+        return MissingIntegration(
+            "Mercado Pago",
+            "mercadopago",
+            "Gateway pronto no sistema, aguardando token oficial.",
+            ["MercadoPago__AccessToken"]);
+    }
+
+    try
+    {
+        var client = httpClientFactory.CreateClient("mercado-pago");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "users/me");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var response = await client.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+
+        return new IntegracaoDiagnosticoDto(
+            "Mercado Pago",
+            "mercadopago",
+            response.IsSuccessStatusCode ? "Conectado" : "Credencial recusada",
+            true,
+            response.IsSuccessStatusCode,
+            response.IsSuccessStatusCode
+                ? "Mercado Pago respondeu com sucesso. Gateway apto para iniciar cobrança real."
+                : $"Mercado Pago retornou {(int)response.StatusCode}. Revise token, ambiente e permissões.",
+            response.IsSuccessStatusCode ? [] : ["Validar MercadoPago__AccessToken.", "Conferir se a conta tem Pix/Checkout ativo."],
+            DateTime.UtcNow,
+            TryExtractJsonField(body, "nickname") ?? TryExtractJsonField(body, "email"));
+    }
+    catch (Exception ex)
+    {
+        return ExternalError("Mercado Pago", "mercadopago", ex);
+    }
+}
+
+static async Task<IntegracaoDiagnosticoDto> TestMelhorEnvioAsync(
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct)
+{
+    var token = GetIntegrationValue(configuration, "MelhorEnvio:Token", "Integracoes:MelhorEnvio:Token");
+    var sandbox = configuration.GetValue("MelhorEnvio:Sandbox", configuration.GetValue("Integracoes:MelhorEnvio:Sandbox", true));
+    if (!IsConfiguredSecret(token))
+    {
+        return MissingIntegration(
+            "Melhor Envio",
+            "melhorenvio",
+            "Logística pronta no sistema, aguardando token da transportadora/hub.",
+            ["MelhorEnvio__Token"]);
+    }
+
+    try
+    {
+        var client = httpClientFactory.CreateClient("melhor-envio");
+        client.BaseAddress = new Uri(sandbox ? "https://sandbox.melhorenvio.com.br/" : "https://www.melhorenvio.com.br/");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/v2/me/shipment/services");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var response = await client.SendAsync(request, ct);
+
+        return new IntegracaoDiagnosticoDto(
+            "Melhor Envio",
+            "melhorenvio",
+            response.IsSuccessStatusCode ? "Conectado" : "Credencial recusada",
+            true,
+            response.IsSuccessStatusCode,
+            response.IsSuccessStatusCode
+                ? "Melhor Envio respondeu. Cotação/compra de frete pode ser ativada com dados completos de origem e volumes."
+                : $"Melhor Envio retornou {(int)response.StatusCode}. Revise token, sandbox/produção e permissões.",
+            response.IsSuccessStatusCode ? [] : ["Validar MelhorEnvio__Token.", "Confirmar se MelhorEnvio__Sandbox está no ambiente correto."],
+            DateTime.UtcNow,
+            sandbox ? "Sandbox" : "Produção");
+    }
+    catch (Exception ex)
+    {
+        return ExternalError("Melhor Envio", "melhorenvio", ex);
+    }
+}
+
+static async Task<IntegracaoDiagnosticoDto> TestMercadoLivreAsync(
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct)
+{
+    var accessToken = GetIntegrationValue(configuration, "MercadoLivre:AccessToken", "Integracoes:MercadoLivre:AccessToken");
+    var oauthReady = HasAllIntegrationValues(
+        configuration,
+        ("MercadoLivre:AppId", "Integracoes:MercadoLivre:AppId"),
+        ("MercadoLivre:ClientSecret", "Integracoes:MercadoLivre:ClientSecret"),
+        ("MercadoLivre:RedirectUri", "Integracoes:MercadoLivre:RedirectUri"));
+
+    if (!IsConfiguredSecret(accessToken))
+    {
+        return new IntegracaoDiagnosticoDto(
+            "Mercado Livre",
+            "mercadolivre",
+            oauthReady ? "OAuth pronto" : "Aguardando credenciais",
+            oauthReady,
+            false,
+            oauthReady
+                ? "Aplicativo configurado. Falta o vendedor autorizar para gerar access token e sincronizar anúncios/pedidos."
+                : "Marketplace preparado, mas ainda sem AppId, ClientSecret e RedirectUri completos.",
+            oauthReady ? ["Concluir autorização OAuth do vendedor.", "Salvar MercadoLivre__AccessToken e RefreshToken."] : ["MercadoLivre__AppId", "MercadoLivre__ClientSecret", "MercadoLivre__RedirectUri"],
+            DateTime.UtcNow,
+            null);
+    }
+
+    try
+    {
+        var client = httpClientFactory.CreateClient("mercado-livre");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "users/me");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var response = await client.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+
+        return new IntegracaoDiagnosticoDto(
+            "Mercado Livre",
+            "mercadolivre",
+            response.IsSuccessStatusCode ? "Conectado" : "Credencial recusada",
+            true,
+            response.IsSuccessStatusCode,
+            response.IsSuccessStatusCode
+                ? "Mercado Livre respondeu com o vendedor autenticado. Pronto para sincronizar catálogo e pedidos autorizados."
+                : $"Mercado Livre retornou {(int)response.StatusCode}. Refaça OAuth ou revise permissões.",
+            response.IsSuccessStatusCode ? [] : ["Refazer OAuth do vendedor.", "Atualizar MercadoLivre__AccessToken/RefreshToken."],
+            DateTime.UtcNow,
+            TryExtractJsonField(body, "nickname") ?? TryExtractJsonField(body, "id"));
+    }
+    catch (Exception ex)
+    {
+        return ExternalError("Mercado Livre", "mercadolivre", ex);
+    }
+}
+
+static async Task<IntegracaoDiagnosticoDto> TestDropshippingAsync(NexumDbContext db, CancellationToken ct)
+{
+    var fornecedores = await db.Fornecedores.AsNoTracking().CountAsync(fornecedor => fornecedor.Status == StatusFornecedor.Ativo, ct);
+    var canais = await db.DropshippingConfigs.AsNoTracking().CountAsync(config => config.Ativo, ct);
+    var operacional = fornecedores > 0 || canais > 0;
+
+    return new IntegracaoDiagnosticoDto(
+        "Dropshipping",
+        "dropshipping",
+        operacional ? "Base ativa" : "Aguardando cadastros",
+        operacional,
+        operacional,
+        operacional
+            ? $"{fornecedores} fornecedor(es) ativo(s) e {canais} canal(is) de dropshipping ativo(s)."
+            : "Sem fornecedor/canal ativo para roteamento real de dropshipping.",
+        operacional ? [] : ["Cadastrar fornecedor ativo.", "Vincular produtos ao fornecedor.", "Ativar canal de dropshipping com chave/API quando existir."],
+        DateTime.UtcNow,
+        "Roteamento interno");
+}
+
+static IntegracaoDiagnosticoDto TestBancaria(IConfiguration configuration)
+{
+    var provider = GetIntegrationValue(configuration, "Banco:Provider", "Integracoes:Banco:Provider");
+    var clientId = GetIntegrationValue(configuration, "Banco:ClientId", "Integracoes:Banco:ClientId");
+    var clientSecret = GetIntegrationValue(configuration, "Banco:ClientSecret", "Integracoes:Banco:ClientSecret");
+    var configured = IsConfiguredSecret(provider) && IsConfiguredSecret(clientId) && IsConfiguredSecret(clientSecret);
+
+    return new IntegracaoDiagnosticoDto(
+        "Bancos e conciliação",
+        "bancaria",
+        configured ? "Credenciais cadastradas" : "Aguardando provedor",
+        configured,
+        configured,
+        configured
+            ? "Credenciais bancárias encontradas. Próximo passo: homologar extrato/cobrança com o banco definido."
+            : "Ainda falta definir banco/PSP e cadastrar credenciais para conciliação automática.",
+        configured ? ["Homologar extrato/cobrança no provedor definido."] : ["Banco__Provider", "Banco__ClientId", "Banco__ClientSecret"],
+        DateTime.UtcNow,
+        provider);
+}
+
+static IntegracaoDiagnosticoDto MissingIntegration(string nome, string slug, string detalhe, List<string> pendencias) =>
+    new(nome, slug, "Aguardando credenciais", false, false, detalhe, pendencias, DateTime.UtcNow, null);
+
+static IntegracaoDiagnosticoDto ExternalError(string nome, string slug, Exception ex) =>
+    new(nome, slug, "Erro de comunicação", true, false, $"Falha ao testar provedor externo: {ex.Message}", ["Conferir internet do servidor.", "Repetir teste após validar token/provedor."], DateTime.UtcNow, null);
+
+static string NormalizeIntegrationSlug(string slug)
+{
+    var normalized = (slug ?? string.Empty).Normalize(NormalizationForm.FormD).ToLowerInvariant();
+    var builder = new StringBuilder(normalized.Length);
+    foreach (var character in normalized)
+    {
+        if (CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark && char.IsLetterOrDigit(character))
+        {
+            builder.Append(character);
+        }
+    }
+
+    return builder.ToString();
+}
+
+static string? TryExtractJsonField(string json, string propertyName)
+{
+    try
+    {
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.TryGetProperty(propertyName, out var property)
+            ? property.ToString()
+            : null;
+    }
+    catch
+    {
+        return null;
+    }
+}
+
+static string? TryExtractJsonPath(string json, params string[] path)
+{
+    try
+    {
+        using var document = JsonDocument.Parse(json);
+        var current = document.RootElement;
+        foreach (var segment in path)
+        {
+            if (!current.TryGetProperty(segment, out current))
+            {
+                return null;
+            }
+        }
+
+        return current.ToString();
+    }
+    catch
+    {
+        return null;
+    }
+}
+
+static void ApplyMercadoPagoStatus(string status, Pagamento pagamento)
+{
+    var normalized = status.Trim().ToLowerInvariant();
+    switch (normalized)
+    {
+        case "approved":
+        case "accredited":
+            pagamento.Status = StatusPagamentoDetalhado.Aprovado;
+            if (pagamento.Pedido is not null)
+            {
+                pagamento.Pedido.StatusPagamento = StatusPagamento.Aprovado;
+                pagamento.Pedido.Status = StatusPedido.Pago;
+                pagamento.Pedido.DataPagamento = DateTime.UtcNow;
+                pagamento.Pedido.UpdatedAt = DateTime.UtcNow;
+            }
+            break;
+        case "rejected":
+            pagamento.Status = StatusPagamentoDetalhado.Recusado;
+            if (pagamento.Pedido is not null)
+            {
+                pagamento.Pedido.StatusPagamento = StatusPagamento.Recusado;
+                pagamento.Pedido.UpdatedAt = DateTime.UtcNow;
+            }
+            break;
+        case "cancelled":
+            pagamento.Status = StatusPagamentoDetalhado.Cancelado;
+            if (pagamento.Pedido is not null)
+            {
+                pagamento.Pedido.StatusPagamento = StatusPagamento.Cancelado;
+                pagamento.Pedido.Status = StatusPedido.Cancelado;
+                pagamento.Pedido.UpdatedAt = DateTime.UtcNow;
+            }
+            break;
+        case "refunded":
+        case "charged_back":
+            pagamento.Status = normalized == "charged_back" ? StatusPagamentoDetalhado.Chargeback : StatusPagamentoDetalhado.Estornado;
+            if (pagamento.Pedido is not null)
+            {
+                pagamento.Pedido.StatusPagamento = StatusPagamento.Estornado;
+                pagamento.Pedido.Status = StatusPedido.Reembolsado;
+                pagamento.Pedido.UpdatedAt = DateTime.UtcNow;
+            }
+            break;
+        case "in_process":
+        case "pending":
+        default:
+            pagamento.Status = StatusPagamentoDetalhado.Pendente;
+            break;
+    }
+}
+
+static async Task<List<FreteCotacaoDto>> CotarFreteAsync(
+    FreteCotacaoRequest request,
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct)
+{
+    var token = GetIntegrationValue(configuration, "MelhorEnvio:Token", "Integracoes:MelhorEnvio:Token");
+    var sandbox = configuration.GetValue("MelhorEnvio:Sandbox", configuration.GetValue("Integracoes:MelhorEnvio:Sandbox", true));
+
+    if (IsConfiguredSecret(token) && !string.IsNullOrWhiteSpace(request.CepDestino))
+    {
+        try
+        {
+            var client = httpClientFactory.CreateClient("melhor-envio");
+            client.BaseAddress = new Uri(sandbox ? "https://sandbox.melhorenvio.com.br/" : "https://www.melhorenvio.com.br/");
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/v2/me/shipment/calculate");
+            httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            httpRequest.Content = JsonContent.Create(new
+            {
+                from = new { postal_code = request.CepOrigem ?? "17400000" },
+                to = new { postal_code = request.CepDestino },
+                products = request.Itens.Select((item, index) => new
+                {
+                    id = item.Sku ?? $"item-{index + 1}",
+                    width = item.LarguraCm ?? 16,
+                    height = item.AlturaCm ?? 8,
+                    length = item.ComprimentoCm ?? 24,
+                    weight = item.PesoKg ?? 0.5m,
+                    insurance_value = item.ValorUnitario,
+                    quantity = item.Quantidade <= 0 ? 1 : item.Quantidade
+                }).ToList()
+            });
+
+            using var response = await client.SendAsync(httpRequest, ct);
+            var json = await response.Content.ReadAsStringAsync(ct);
+            if (response.IsSuccessStatusCode)
+            {
+                var cotacoes = ParseMelhorEnvioCotacoes(json);
+                if (cotacoes.Count > 0)
+                {
+                    return cotacoes;
+                }
+            }
+        }
+        catch
+        {
+            // Se o provedor falhar, mantemos a venda com cotação local controlada.
+        }
+    }
+
+    var valorItens = request.Itens.Sum(item => Math.Max(1, item.Quantidade) * item.ValorUnitario);
+    var cepDestino = request.CepDestino ?? string.Empty;
+    var interiorSp = cepDestino.StartsWith("17", StringComparison.Ordinal);
+    var freteBase = valorItens >= 1000 ? 0m : interiorSp ? 29.90m : 49.90m;
+
+    return
+    [
+        new("local-padrao", "Entrega padrão Nexum", "Tabela local", freteBase, interiorSp ? 3 : 7, "Tabela local"),
+        new("local-expresso", "Entrega expressa assistida", "Tabela local", freteBase + 35m, interiorSp ? 1 : 4, "Tabela local")
+    ];
+}
+
+static async Task<GatewayPaymentStartResult> TryStartGatewayPaymentAsync(
+    Pedido pedido,
+    Cliente cliente,
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    HttpContext http,
+    CancellationToken ct)
+{
+    var metodo = (pedido.MeioPagamento ?? string.Empty).Trim().ToLowerInvariant();
+    if (metodo != "pix")
+    {
+        return GatewayPaymentStartResult.NotStarted();
+    }
+
+    var token = GetIntegrationValue(configuration, "MercadoPago:AccessToken", "Integracoes:MercadoPago:AccessToken");
+    if (!IsConfiguredSecret(token))
+    {
+        return GatewayPaymentStartResult.NotStarted();
+    }
+
+    try
+    {
+        var client = httpClientFactory.CreateClient("mercado-pago");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "v1/payments");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Headers.Add("X-Idempotency-Key", $"nexum-{pedido.NumeroPedido}");
+
+        var notificationUrl = BuildPublicUrl(http, "/api/webhooks/mercadopago");
+        request.Content = JsonContent.Create(new
+        {
+            transaction_amount = pedido.Total,
+            description = $"Pedido {pedido.NumeroPedido} - Nexum Altivon",
+            payment_method_id = "pix",
+            notification_url = notificationUrl,
+            external_reference = pedido.NumeroPedido,
+            payer = new
+            {
+                email = cliente.Email,
+                first_name = cliente.Nome.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? cliente.Nome,
+                identification = new
+                {
+                    type = string.IsNullOrWhiteSpace(cliente.CpfCnpj) || cliente.CpfCnpj.Length > 14 ? "CNPJ" : "CPF",
+                    number = new string((cliente.CpfCnpj ?? string.Empty).Where(char.IsDigit).ToArray())
+                }
+            }
+        });
+
+        using var response = await client.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            return GatewayPaymentStartResult.NotStarted(body);
+        }
+
+        using var document = JsonDocument.Parse(body);
+        var root = document.RootElement;
+        var transactionId = root.TryGetProperty("id", out var id) ? id.ToString() : null;
+        string? qrCode = null;
+        string? paymentUrl = null;
+
+        if (root.TryGetProperty("point_of_interaction", out var pointOfInteraction)
+            && pointOfInteraction.TryGetProperty("transaction_data", out var transactionData))
+        {
+            qrCode = transactionData.TryGetProperty("qr_code", out var qrCodeProp) ? qrCodeProp.ToString() : null;
+            paymentUrl = transactionData.TryGetProperty("ticket_url", out var ticketUrlProp) ? ticketUrlProp.ToString() : null;
+        }
+
+        return GatewayPaymentStartResult.Success("MercadoPago", transactionId, qrCode, paymentUrl, body);
+    }
+    catch (Exception ex)
+    {
+        return GatewayPaymentStartResult.NotStarted(ex.Message);
+    }
+}
+
+static string BuildPublicUrl(HttpContext http, string path)
+{
+    var forwardedProto = http.Request.Headers["X-Forwarded-Proto"].FirstOrDefault();
+    var forwardedHost = http.Request.Headers["X-Forwarded-Host"].FirstOrDefault();
+    var scheme = string.IsNullOrWhiteSpace(forwardedProto) ? http.Request.Scheme : forwardedProto;
+    var host = string.IsNullOrWhiteSpace(forwardedHost) ? http.Request.Host.Value : forwardedHost;
+
+    if (string.IsNullOrWhiteSpace(host) || host.Contains("localhost", StringComparison.OrdinalIgnoreCase))
+    {
+        host = "api.nexumaltivon.com";
+        scheme = "https";
+    }
+
+    return $"{scheme}://{host}{path}";
+}
+
+static List<FreteCotacaoDto> ParseMelhorEnvioCotacoes(string json)
+{
+    var cotacoes = new List<FreteCotacaoDto>();
+    try
+    {
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.ValueKind != JsonValueKind.Array)
+        {
+            return cotacoes;
+        }
+
+        foreach (var item in document.RootElement.EnumerateArray())
+        {
+            var id = item.TryGetProperty("id", out var idProp) ? idProp.ToString() : Guid.NewGuid().ToString("N");
+            var name = item.TryGetProperty("name", out var nameProp) ? nameProp.ToString() : "Frete Melhor Envio";
+            var company = item.TryGetProperty("company", out var companyProp) && companyProp.TryGetProperty("name", out var companyName)
+                ? companyName.ToString()
+                : "Melhor Envio";
+            var priceText = item.TryGetProperty("price", out var priceProp) ? priceProp.ToString() : "0";
+            var prazo = item.TryGetProperty("delivery_time", out var prazoProp) && prazoProp.TryGetInt32(out var prazoInt) ? prazoInt : 0;
+
+            if (decimal.TryParse(priceText, NumberStyles.Any, CultureInfo.InvariantCulture, out var price))
+            {
+                cotacoes.Add(new FreteCotacaoDto(id, name, company, price, prazo, "Melhor Envio"));
+            }
+        }
+    }
+    catch
+    {
+        return [];
+    }
+
+    return cotacoes;
 }
 
 static string BuildPedidoInstruction(StatusPagamento statusPagamento, string? metodoPagamento, string? transacaoId)
@@ -1852,6 +2586,71 @@ public sealed record IntegracaoStatusDto(
     string Detalhe,
     bool Configurada = false,
     string Ambiente = "Nao configurado");
+
+public sealed record IntegracaoDiagnosticoDto(
+    string Nome,
+    string Slug,
+    string Status,
+    bool Configurada,
+    bool Operacional,
+    string Detalhe,
+    List<string> Pendencias,
+    DateTime VerificadoEm,
+    string? Referencia);
+
+public sealed record IntegracaoCredencialDto(
+    string Provedor,
+    string Categoria,
+    string Chave,
+    string Uso,
+    bool Obrigatoria);
+
+public sealed record FreteCotacaoRequest(
+    [property: JsonPropertyName("cep_origem")]
+    string? CepOrigem,
+    [property: JsonPropertyName("cep_destino")]
+    string? CepDestino,
+    [property: JsonPropertyName("itens")]
+    List<FreteCotacaoItemRequest> Itens);
+
+public sealed record FreteCotacaoItemRequest(
+    [property: JsonPropertyName("sku")]
+    string? Sku,
+    [property: JsonPropertyName("quantidade")]
+    int Quantidade,
+    [property: JsonPropertyName("valor_unitario")]
+    decimal ValorUnitario,
+    [property: JsonPropertyName("peso_kg")]
+    decimal? PesoKg,
+    [property: JsonPropertyName("altura_cm")]
+    decimal? AlturaCm,
+    [property: JsonPropertyName("largura_cm")]
+    decimal? LarguraCm,
+    [property: JsonPropertyName("comprimento_cm")]
+    decimal? ComprimentoCm);
+
+public sealed record FreteCotacaoDto(
+    string Codigo,
+    string Nome,
+    string Transportadora,
+    decimal Valor,
+    int PrazoDias,
+    string Fonte);
+
+public sealed record GatewayPaymentStartResult(
+    bool Started,
+    string Gateway,
+    string? TransactionId,
+    string? PixQrcode,
+    string? PaymentUrl,
+    string? RawPayload)
+{
+    public static GatewayPaymentStartResult Success(string gateway, string? transactionId, string? pixQrcode, string? paymentUrl, string? rawPayload) =>
+        new(true, gateway, transactionId, pixQrcode, paymentUrl, rawPayload);
+
+    public static GatewayPaymentStartResult NotStarted(string? rawPayload = null) =>
+        new(false, "ConfiguracaoPendente", null, null, null, rawPayload);
+}
 
 public sealed record DashboardResumoDto(
     int PedidosHoje,

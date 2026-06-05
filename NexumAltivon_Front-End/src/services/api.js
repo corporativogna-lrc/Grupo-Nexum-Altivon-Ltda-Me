@@ -81,6 +81,14 @@ const normalizeRecord = (record) => {
     frete_transportadora: record.frete_transportadora ?? record.freteTransportadora,
     frete_prazo_dias: record.frete_prazo_dias ?? record.fretePrazoDias,
     instrucao_pagamento: record.instrucao_pagamento ?? record.instrucaoPagamento,
+    configurada: record.configurada ?? record.Configurada,
+    operacional: record.operacional ?? record.Operacional,
+    detalhe: record.detalhe ?? record.Detalhe,
+    pendencias: record.pendencias ?? record.Pendencias,
+    verificado_em: record.verificado_em ?? record.verificadoEm ?? record.VerificadoEm,
+    referencia: record.referencia ?? record.Referencia,
+    ambiente: record.ambiente ?? record.Ambiente,
+    prazo_dias: record.prazo_dias ?? record.prazoDias ?? record.PrazoDias,
     created_at: record.created_at ?? record.createdAt,
     desconto_percentual: record.desconto_percentual ?? record.descontoPercentual,
     desconto_valor: record.desconto_valor ?? record.descontoValor,
@@ -220,6 +228,13 @@ export const financeiroAPI = {
 
 export const integracoesAPI = {
   getStatus: () => api.get('/integracoes/status'),
+  getDiagnostico: () => api.get('/integracoes/diagnostico'),
+  getCredenciaisModelo: () => api.get('/integracoes/credenciais-modelo'),
+  testar: (slug) => api.post(`/integracoes/testar/${slug}`),
+};
+
+export const freteAPI = {
+  cotar: (data) => api.post('/frete/cotar', data),
 };
 
 export default api;

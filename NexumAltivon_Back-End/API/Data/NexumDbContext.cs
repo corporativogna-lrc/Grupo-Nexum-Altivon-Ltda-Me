@@ -124,6 +124,38 @@ public class NexumDbContext : DbContext
             .Property(lead => lead.Prioridade)
             .HasConversion<string>();
 
+        modelBuilder.Entity<Pedido>()
+            .Property(pedido => pedido.Status)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Pedido>()
+            .Property(pedido => pedido.StatusPagamento)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Pedido>()
+            .Property(pedido => pedido.Origem)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Pagamento>()
+            .Property(pagamento => pagamento.Metodo)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Pagamento>()
+            .Property(pagamento => pagamento.Status)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Transportadora>()
+            .Property(transportadora => transportadora.Tipo)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Marketplace>()
+            .Property(marketplace => marketplace.Tipo)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<DropshippingConfig>()
+            .Property(config => config.Tipo)
+            .HasConversion<string>();
+
         // Configuração de precisão para decimais
         modelBuilder.Entity<Produto>()
             .Property(p => p.Preco)

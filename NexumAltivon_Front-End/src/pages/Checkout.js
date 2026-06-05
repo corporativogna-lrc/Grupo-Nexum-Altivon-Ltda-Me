@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
-import { lojaAPI, clienteAPI, pedidoAPI } from '../services/api';
+import { lojaAPI, clienteAPI, freteAPI, pedidoAPI } from '../services/api';
 import { fallbackCategories } from '../data/mockStore';
 import {
   StepDadosPessoais,
@@ -46,6 +46,11 @@ export default function Checkout() {
   const [lojaId, setLojaId] = useState('');
   const [metodoPagamento, setMetodoPagamento] = useState('cartao');
   const [freteSelecionado, setFreteSelecionado] = useState('padrao');
+  const [freteOptions, setFreteOptions] = useState([
+    { id: 'retirada', nome: 'Retirada / combinar entrega', transportadora: 'Nexum Altivon', prazo: 0, valor: 0 },
+    { id: 'padrao', nome: 'Entrega padrão', transportadora: 'Tabela local', prazo: 7, valor: 29.9 },
+    { id: 'expresso', nome: 'Entrega expressa', transportadora: 'Tabela local', prazo: 3, valor: 49.9 },
+  ]);
 
   const loadLojas = useCallback(async () => {
     try {
@@ -75,13 +80,56 @@ export default function Checkout() {
 
   const subtotal = getTotal();
   const desconto = calcularDesconto(cupomAplicado, subtotal);
-  const freteOptions = [
-    { id: 'retirada', nome: 'Retirada / combinar entrega', transportadora: 'Nexum Altivon', prazo: 0, valor: 0 },
-    { id: 'padrao', nome: subtotal >= 299 ? 'Frete grátis padrão' : 'Entrega padrão', transportadora: 'Correios / Melhor Envio', prazo: 7, valor: subtotal >= 299 ? 0 : 29.9 },
-    { id: 'expresso', nome: 'Entrega expressa', transportadora: 'Transportadora parceira', prazo: 3, valor: 49.9 },
-  ];
   const frete = freteOptions.find((item) => item.id === freteSelecionado) || freteOptions[1];
   const total = subtotal + frete.valor - desconto;
+
+  useEffect(() => {
+    const cepDestino = endereco.cep?.replace(/\D/g, '');
+    if (!cepDestino || cepDestino.length < 8 || cart.length === 0) return;
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const response = await freteAPI.cotar({
+          cep_destino: cepDestino,
+          itens: cart.map((item) => ({
+            sku: item.sku || item.id,
+            quantidade: item.quantity,
+            valor_unitario: item.preco_promocional || item.preco || item.price || 0,
+            peso_kg: item.peso_kg || 0.5,
+            altura_cm: item.altura_cm || 8,
+            largura_cm: item.largura_cm || 16,
+            comprimento_cm: item.comprimento_cm || 24,
+          })),
+        });
+
+        const cotacoes = Array.isArray(response.data) ? response.data : [];
+        if (!cancelled && cotacoes.length > 0) {
+          const mapped = [
+            { id: 'retirada', nome: 'Retirada / combinar entrega', transportadora: 'Nexum Altivon', prazo: 0, valor: 0 },
+            ...cotacoes.map((cotacao) => ({
+              id: cotacao.codigo,
+              nome: cotacao.nome,
+              transportadora: cotacao.transportadora,
+              prazo: cotacao.prazo_dias,
+              valor: cotacao.valor,
+            })),
+          ];
+          setFreteOptions(mapped);
+          if (!mapped.some((option) => option.id === freteSelecionado)) {
+            setFreteSelecionado(mapped[1]?.id || 'retirada');
+          }
+        }
+      } catch {
+        // O checkout não deve cair por oscilação externa: mantém a tabela local.
+      }
+    }, 450);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [cart, endereco.cep, freteSelecionado]);
 
   const finalizarPedido = async () => {
     setLoading(true);

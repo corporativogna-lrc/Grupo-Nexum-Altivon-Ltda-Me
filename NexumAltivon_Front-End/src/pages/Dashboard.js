@@ -109,10 +109,25 @@ const integrationGuides = {
     requirements: ['Credencial do gateway', 'Webhook público seguro', 'Conta comercial homologada'],
     nextTest: 'Criar cobrança de baixo valor em sandbox e confirmar o webhook.',
   },
+  mercadopago: {
+    description: 'Gateway de pagamento para Pix, boleto e cartão por API oficial do Mercado Pago.',
+    requirements: ['Access token oficial', 'Conta comercial homologada', 'Webhook público seguro'],
+    nextTest: 'Validar credencial e criar uma cobrança controlada de baixo valor.',
+  },
   marketplaces: {
     description: 'Sincronização de catálogo, estoque e pedidos de canais externos.',
     requirements: ['Aplicação cadastrada no marketplace', 'Autorização OAuth', 'Regras de preço e estoque'],
     nextTest: 'Autorizar uma conta de teste e importar um anúncio controlado.',
+  },
+  mercadolivre: {
+    description: 'Canal de marketplace para sincronizar catálogo, estoque e pedidos autorizados do Mercado Livre.',
+    requirements: ['Aplicação Mercado Livre', 'OAuth do vendedor', 'Access token/refresh token armazenados no servidor'],
+    nextTest: 'Concluir OAuth do vendedor e chamar users/me para validar a autorização.',
+  },
+  melhorenvio: {
+    description: 'Hub logístico para cotação, compra de frete, etiqueta e rastreamento pelo Melhor Envio.',
+    requirements: ['Token Melhor Envio', 'Endereço de origem', 'Peso e dimensões reais dos produtos'],
+    nextTest: 'Executar cotação em sandbox/produção e conferir prazo e valor retornados.',
   },
   bancaria: {
     description: 'Conciliação de recebimentos, tarifas e movimentações financeiras.',
@@ -346,7 +361,9 @@ export default function Dashboard() {
         categoriaAPI.getAll(),
         clienteAPI.getAll(),
         fornecedorAPI.getAll(),
-        integracoesAPI.getStatus().catch(() => ({ data: fallbackIntegracoes })),
+        integracoesAPI.getDiagnostico()
+          .catch(() => integracoesAPI.getStatus())
+          .catch(() => ({ data: fallbackIntegracoes })),
       ]);
       if (resumoRes.data) setResumo({ ...fallbackResumo, ...resumoRes.data });
       if (Array.isArray(pedidosRes.data) && pedidosRes.data.length > 0) setPedidos(pedidosRes.data);
@@ -1146,8 +1163,11 @@ function IntegrationCard({ integracao, onOpen }) {
     ecommerce: ShoppingBag,
     dropshipping: Handshake,
     logistica: Truck,
+    melhorenvio: Truck,
     gateways: WalletCards,
+    mercadopago: WalletCards,
     marketplaces: Database,
+    mercadolivre: Database,
     bancaria: CreditCard,
   };
   const Icon = iconMap[integracao.slug] || Globe2;
@@ -1178,6 +1198,9 @@ function IntegrationCard({ integracao, onOpen }) {
 }
 
 function IntegrationWorkspace({ integracao, guide, onBack }) {
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+
   if (!integracao || !guide) {
     return (
       <section className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-amber-950">
@@ -1188,7 +1211,30 @@ function IntegrationWorkspace({ integracao, guide, onBack }) {
   }
 
   const configured = integracao.configurada ?? integracao.Configurada;
+  const operational = integracao.operacional ?? integracao.Operacional ?? false;
   const ambiente = integracao.ambiente || integracao.Ambiente || 'Não configurado';
+  const pendencias = testResult?.pendencias || integracao.pendencias || [];
+  const referencia = testResult?.referencia || integracao.referencia;
+  const detalhe = testResult?.detalhe || integracao.detalhe;
+  const status = testResult?.status || integracao.status;
+
+  const runTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const response = await integracoesAPI.testar(integracao.slug);
+      setTestResult(response.data);
+    } catch (error) {
+      setTestResult({
+        status: 'Erro no teste',
+        operacional: false,
+        detalhe: error.response?.data?.detail || error.message || 'Não foi possível testar esta integração.',
+        pendencias: ['Confira se a API pública está respondendo e tente novamente.'],
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
 
   return (
     <section className="space-y-6">
@@ -1203,14 +1249,35 @@ function IntegrationWorkspace({ integracao, guide, onBack }) {
               <h3 className="mt-2 text-3xl font-black text-slate-950">{integracao.nome}</h3>
               <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-500">{guide.description}</p>
             </div>
-            <span className={`rounded-full px-4 py-2 text-sm font-black ${configured ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-900'}`}>
-              {integracao.status}
-            </span>
+            <div className="flex flex-col items-start gap-3 sm:items-end">
+              <span className={`rounded-full px-4 py-2 text-sm font-black ${operational ? 'bg-emerald-50 text-emerald-800' : configured ? 'bg-blue-50 text-blue-800' : 'bg-amber-50 text-amber-900'}`}>
+                {status}
+              </span>
+              <button
+                type="button"
+                onClick={runTest}
+                disabled={testing}
+                className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-black text-white transition hover:bg-[#C9A227] hover:text-slate-950 disabled:cursor-wait disabled:opacity-60"
+              >
+                {testing ? 'Testando...' : 'Testar conexão real'}
+              </button>
+            </div>
           </div>
           <div className="mt-6 rounded-lg border border-slate-100 bg-slate-50 p-5">
             <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Leitura real da API</p>
-            <p className="mt-2 font-bold text-slate-800">{integracao.detalhe}</p>
+            <p className="mt-2 font-bold text-slate-800">{detalhe}</p>
+            {referencia && <p className="mt-2 text-xs font-black uppercase tracking-[0.12em] text-slate-400">Referência: {referencia}</p>}
           </div>
+          {pendencias.length > 0 && (
+            <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-5">
+              <h4 className="font-black text-amber-950">Pendências para ficar 100%</h4>
+              <div className="mt-3 space-y-2">
+                {pendencias.map((pendencia) => (
+                  <p key={pendencia} className="text-sm font-bold text-amber-900">• {pendencia}</p>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="mt-6">
             <h4 className="font-black text-slate-950">Requisitos para ativação</h4>
             <div className="mt-3 space-y-3">
