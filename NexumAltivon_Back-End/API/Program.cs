@@ -94,7 +94,7 @@ builder.Services.AddSwaggerGen(options =>
     options.SwaggerDoc("v1", new OpenApiInfo
     {
         Title = "Nexum Altivon API",
-        Version = "v1.1.0",
+        Version = "v1.1.4",
         Description = "API funcional inicial para site e painel administrativo Nexum Altivon."
     });
 
@@ -123,11 +123,7 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
-var healthChecks = builder.Services.AddHealthChecks();
-if (!string.IsNullOrWhiteSpace(connectionString))
-{
-    healthChecks.AddDbContextCheck<NexumDbContext>();
-}
+builder.Services.AddHealthChecks();
 
 builder.Services
     .AddDataProtection()
@@ -151,7 +147,28 @@ if (app.Environment.IsDevelopment() || app.Environment.IsStaging())
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapHealthChecks("/health");
+app.MapGet("/health", () => Results.Text("Healthy", "text/plain"));
+app.MapGet("/health/db", async (IServiceProvider services, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        return Results.Ok(new { status = "sem_banco_configurado" });
+    }
+
+    try
+    {
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexumDbContext>();
+        var canConnect = await db.Database.CanConnectAsync(ct);
+        return canConnect
+            ? Results.Ok(new { status = "Healthy" })
+            : Results.Problem("Banco configurado, mas sem conexão.");
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message);
+    }
+});
 
 app.MapGet("/", (IHostEnvironment environment) =>
     environment.IsDevelopment() || environment.IsStaging()
@@ -160,7 +177,7 @@ app.MapGet("/", (IHostEnvironment environment) =>
         {
             status = "online",
             service = "Nexum Altivon API",
-            version = "1.1.0"
+            version = "1.1.4"
         }));
 
 app.MapPost("/api/auth/login", (

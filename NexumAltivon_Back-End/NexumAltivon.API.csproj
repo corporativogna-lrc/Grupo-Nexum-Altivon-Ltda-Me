@@ -25,6 +25,8 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
+    <Content Remove="bin\**;obj\**;wwwroot\uploads\**;appsettings.Development.json;appsettings.ERP.json" />
+    <None Remove="bin\**;obj\**;wwwroot\uploads\**;appsettings.Development.json;appsettings.ERP.json" />
   </ItemGroup>
 
   <ItemGroup>

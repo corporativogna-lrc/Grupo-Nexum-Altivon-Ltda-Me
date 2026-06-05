@@ -598,7 +598,7 @@
           <h3 style="color:#C9A227;font-family:'Playfair Display',serif;">Sistema</h3>
           <div class="view-row" style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><span style="color:#A0A0A0;">Nome:</span> <span>Grupo Nexum Altivon</span></div>
           <div class="view-row" style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><span style="color:#A0A0A0;">Email:</span> <span>corporativo.gna@gmail.com</span></div>
-          <div class="view-row" style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><span style="color:#A0A0A0;">VersÃ£o:</span> <span>1.1.0</span></div>
+          <div class="view-row" style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><span style="color:#A0A0A0;">VersÃ£o:</span> <span>1.1.4</span></div>
           <div class="view-row" style="padding:10px 0;"><span style="color:#A0A0A0;">Backend:</span> <span style="color:#10B981;">â— Online</span></div>
         </div>
         <div style="background:rgba(20,20,20,0.5);padding:25px;border-radius:8px;border:1px solid rgba(201,162,39,0.15);">

@@ -60,6 +60,8 @@ artifacts/
 # Runtime local
 .codex/
 .nexum-runtime/
+runtime-logs/
+NexumAltivon_Back-End/wwwroot/uploads/
 
 # Node.js (futuro front-end)
 node_modules/

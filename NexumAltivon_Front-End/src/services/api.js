@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { HTTP_UNAUTHORIZED, STORAGE_KEYS } from '../constants';
 
-const PUBLIC_API_URL = 'https://went-bent-sets-hunt.trycloudflare.com';
+const PUBLIC_API_URL = 'https://api.nexumaltivon.com';
 
 const getDefaultApiUrl = () => {
   if (typeof window === 'undefined') return 'http://localhost:5000';
