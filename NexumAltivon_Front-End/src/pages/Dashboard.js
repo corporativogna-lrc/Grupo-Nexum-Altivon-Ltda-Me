@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { categoriaAPI, clienteAPI, dashboardAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI } from '../services/api';
 import { fallbackCategories, fallbackLeads, fallbackPedidos, fallbackProducts, fallbackResumo } from '../data/mockStore';
@@ -87,6 +87,8 @@ const fallbackIntegracoes = [
 ];
 
 const navSections = ['Principal', 'Cadastros', 'Gestão', 'Marketing & CRM', 'Integrações', 'Sistema'];
+const validTabIds = new Set(tabs.map((tab) => tab.id));
+const validCadastroIds = new Set(cadastroTabs.map((tab) => tab.id));
 
 const fallbackClientes = [
   { id: 1, nome: 'Ana Carolina Silva', email: 'ana.silva@email.com', telefone: '(14) 99876-5432', cpf: '123.456.789-00' },
@@ -140,6 +142,35 @@ const chart = [
 
 const normalizeText = (value) => String(value ?? '').trim().toLowerCase();
 const normalizeDocument = (value) => String(value ?? '').replace(/\D/g, '');
+
+const getDashboardRouteState = (path = '') => {
+  const segments = String(path || '').split('/').filter(Boolean);
+
+  if (segments[0] === 'cadastros' && validCadastroIds.has(segments[1])) {
+    return { activeTab: `cadastro-${segments[1]}`, activeCadastroTab: segments[1] };
+  }
+
+  if (segments[0] === 'cadastros') {
+    return { activeTab: 'cadastros', activeCadastroTab: 'produtos' };
+  }
+
+  if (validTabIds.has(segments[0])) {
+    const cadastroId = segments[0].replace('cadastro-', '');
+    return {
+      activeTab: segments[0],
+      activeCadastroTab: validCadastroIds.has(cadastroId) ? cadastroId : 'produtos',
+    };
+  }
+
+  return { activeTab: 'overview', activeCadastroTab: 'produtos' };
+};
+
+const getDashboardPath = (tabId, cadastroId = 'produtos') => {
+  if (tabId === 'overview') return '/dashboard';
+  if (tabId === 'cadastros') return '/dashboard/cadastros';
+  if (tabId.startsWith('cadastro-')) return `/dashboard/cadastros/${cadastroId}`;
+  return `/dashboard/${tabId}`;
+};
 
 const fileToDataUrl = (file) =>
   new Promise((resolve, reject) => {
@@ -241,7 +272,10 @@ function StatCard({ title, value, detail, icon: Icon, trend, tone = 'slate' }) {
 }
 
 export default function Dashboard() {
+  const navigate = useNavigate();
+  const params = useParams();
   const { user, isAuthenticated, loading: authLoading, logout } = useAuth();
+  const routeState = useMemo(() => getDashboardRouteState(params['*']), [params]);
   const [resumo, setResumo] = useState(allowDemoData ? fallbackResumo : emptyResumo);
   const [pedidos, setPedidos] = useState(allowDemoData ? fallbackPedidos : []);
   const [leads, setLeads] = useState(allowDemoData ? fallbackLeads : []);
@@ -252,8 +286,8 @@ export default function Dashboard() {
   const [integracoes, setIntegracoes] = useState(fallbackIntegracoes);
   const [loading, setLoading] = useState(true);
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [activeTab, setActiveTab] = useState('overview');
-  const [activeCadastroTab, setActiveCadastroTab] = useState('produtos');
+  const [activeTab, setActiveTab] = useState(routeState.activeTab);
+  const [activeCadastroTab, setActiveCadastroTab] = useState(routeState.activeCadastroTab);
   const [query, setQuery] = useState('');
   const [produtoForm, setProdutoForm] = useState(emptyProduto);
   const [clienteForm, setClienteForm] = useState(emptyCliente);
@@ -295,6 +329,12 @@ export default function Dashboard() {
       loadData();
     }
   }, [isAuthenticated, loadData]);
+
+  useEffect(() => {
+    setActiveTab(routeState.activeTab);
+    setActiveCadastroTab(routeState.activeCadastroTab);
+    setFormStatus('');
+  }, [routeState.activeCadastroTab, routeState.activeTab]);
 
   const submitProduto = async (event) => {
     event.preventDefault();
@@ -429,18 +469,12 @@ export default function Dashboard() {
   };
 
   const openCadastro = (id) => {
-    setActiveCadastroTab(id);
-    setActiveTab(`cadastro-${id}`);
-    setFormStatus('');
+    navigate(getDashboardPath(`cadastro-${id}`, id));
   };
 
   const openMainTab = (id) => {
-    if (id.startsWith('cadastro-')) {
-      setActiveCadastroTab(id.replace('cadastro-', ''));
-    }
-
-    setActiveTab(id);
-    setFormStatus('');
+    const cadastroId = id.startsWith('cadastro-') ? id.replace('cadastro-', '') : activeCadastroTab;
+    navigate(getDashboardPath(id, cadastroId));
   };
 
   const statusCounts = useMemo(() => {
@@ -691,7 +725,7 @@ export default function Dashboard() {
                         <h2 className="text-xl font-black text-slate-950">Pedidos recentes</h2>
                         <p className="mt-1 text-sm text-slate-500">Últimas movimentações do e-commerce.</p>
                       </div>
-                      <button onClick={() => setActiveTab('pedidos')} className="inline-flex items-center gap-1 text-sm font-black text-slate-950">
+                      <button onClick={() => openMainTab('pedidos')} className="inline-flex items-center gap-1 text-sm font-black text-slate-950">
                         Ver lista
                         <ChevronRight size={16} />
                       </button>

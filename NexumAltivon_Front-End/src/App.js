@@ -47,7 +47,7 @@ function AppShell() {
         <Route path="/carrinho" element={<Carrinho />} />
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/login" element={<Login />} />
-        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/dashboard/*" element={<Dashboard />} />
         <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
