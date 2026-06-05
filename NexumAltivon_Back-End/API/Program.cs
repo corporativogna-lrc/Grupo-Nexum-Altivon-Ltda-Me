@@ -533,7 +533,13 @@ app.MapPost("/api/uploads/produtos/imagens", [Authorize(Policy = "Gerente")] asy
     var filePath = Path.Combine(uploadDir, fileName);
     await File.WriteAllBytesAsync(filePath, bytes, ct);
 
-    var publicUrl = $"{http.Request.Scheme}://{http.Request.Host}/uploads/produtos/{fileName}";
+    var forwardedProto = http.Request.Headers["X-Forwarded-Proto"].FirstOrDefault();
+    var scheme = !string.IsNullOrWhiteSpace(forwardedProto)
+        ? forwardedProto
+        : http.Request.Host.Host.EndsWith("trycloudflare.com", StringComparison.OrdinalIgnoreCase)
+            ? "https"
+            : http.Request.Scheme;
+    var publicUrl = $"{scheme}://{http.Request.Host}/uploads/produtos/{fileName}";
     return Results.Ok(ApiResponse<UploadImagemDto>.Ok(new UploadImagemDto(publicUrl), "Imagem enviada."));
 })
 .WithName("UploadImagemProduto")
