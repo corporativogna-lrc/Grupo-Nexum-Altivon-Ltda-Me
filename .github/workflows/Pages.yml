@@ -46,7 +46,7 @@ jobs:
         env:
           CI: false
           PUBLIC_URL: /
-          REACT_APP_BACKEND_URL: https://api.nexumaltivon.com
+          REACT_APP_BACKEND_URL: https://herald-syndication-convicted-salad.trycloudflare.com
 
       - name: Configurar dominio customizado
         run: echo "www.nexumaltivon.com" > NexumAltivon_Front-End/build/CNAME
@@ -68,3 +68,4 @@ jobs:
       - name: Deploy GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+

@@ -80,7 +80,7 @@ jobs:
         working-directory: ${{ env.FRONTEND_PATH }}
         run: npm run build
         env:
-          REACT_APP_BACKEND_URL: https://api.nexumaltivon.com
+          REACT_APP_BACKEND_URL: https://herald-syndication-convicted-salad.trycloudflare.com
 
       - name: Upload frontend artifact
         uses: actions/upload-artifact@v4
@@ -164,7 +164,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            REACT_APP_BACKEND_URL=https://api.nexumaltivon.com
+            REACT_APP_BACKEND_URL=https://herald-syndication-convicted-salad.trycloudflare.com
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -211,3 +211,4 @@ jobs:
             $COMPOSE -f docker/docker-compose.prod.yml --env-file .env pull
             $COMPOSE -f docker/docker-compose.prod.yml --env-file .env up -d
             docker system prune -f
+
