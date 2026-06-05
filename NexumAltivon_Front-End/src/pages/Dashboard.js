@@ -3,7 +3,7 @@ import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { categoriaAPI, clienteAPI, dashboardAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI } from '../services/api';
 import { fallbackCategories, fallbackLeads, fallbackPedidos, fallbackProducts, fallbackResumo } from '../data/mockStore';
-import { formatDate, formatPrice, getLeadStatusClass, getPedidoStatusClass } from '../utils/formatters';
+import { formatDate, formatPrice, getLeadStatusClass, getPagamentoLabel, getPedidoStatusClass } from '../utils/formatters';
 import {
   Activity,
   ArrowDownRight,
@@ -1303,19 +1303,20 @@ function CompactList({ title, items, fields }) {
 function OrdersTable({ pedidos, onStatusChange }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[720px]">
+      <table className="w-full min-w-[920px]">
         <thead className="bg-slate-50">
           <tr>
             <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Pedido</th>
             <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Total</th>
             <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Status</th>
+            <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Pagamento / Frete</th>
             <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Data</th>
             <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Ação</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
           {pedidos.length === 0 ? (
-            <tr><td colSpan="5" className="px-6 py-8 text-center text-slate-500">Nenhum pedido encontrado</td></tr>
+            <tr><td colSpan="6" className="px-6 py-8 text-center text-slate-500">Nenhum pedido encontrado</td></tr>
           ) : (
             pedidos.map((pedido) => (
               <tr key={pedido.id} className="hover:bg-slate-50" data-testid={`pedido-${pedido.id}`}>
@@ -1325,6 +1326,15 @@ function OrdersTable({ pedidos, onStatusChange }) {
                   <span className={`rounded-full px-3 py-1 text-xs font-black ${getPedidoStatusClass(pedido.status)}`}>
                     {pedido.status}
                   </span>
+                </td>
+                <td className="px-6 py-4 text-sm">
+                  <p className="font-black text-slate-950">{pedido.status_pagamento || 'Aguardando pagamento'}</p>
+                  <p className="mt-1 font-semibold text-slate-500">
+                    {getPagamentoLabel(pedido.meio_pagamento || '')} · {pedido.gateway_pagamento || 'Gateway pendente'}
+                  </p>
+                  <p className="mt-1 text-xs font-semibold text-slate-400">
+                    {pedido.frete_metodo || 'Frete a combinar'} · {pedido.frete_transportadora || 'Nexum Altivon'}
+                  </p>
                 </td>
                 <td className="px-6 py-4 text-sm font-semibold text-slate-500">{formatDate(pedido.created_at)}</td>
                 <td className="px-6 py-4">

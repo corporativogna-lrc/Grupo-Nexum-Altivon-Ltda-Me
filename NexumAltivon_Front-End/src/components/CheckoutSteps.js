@@ -272,6 +272,23 @@ export function CheckoutSuccess({ pedido, onContinue }) {
           </p>
           <p className="mt-4 text-sm text-[#A0A0A0]">Total:</p>
           <p className="text-2xl font-bold">{formatPrice(pedido.total)}</p>
+          <div className="mt-5 grid gap-3 rounded-2xl border border-[#2A2A2A] bg-black/40 p-4 text-sm text-[#D8D8D8] sm:grid-cols-2">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#777]">Pagamento</p>
+              <p className="mt-1 font-bold text-white">{pedido.status_pagamento || 'Aguardando pagamento'}</p>
+              <p className="text-[#A0A0A0]">{getPagamentoLabel(pedido.meio_pagamento || '')}</p>
+            </div>
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#777]">Entrega</p>
+              <p className="mt-1 font-bold text-white">{pedido.frete_metodo || 'Entrega a combinar'}</p>
+              <p className="text-[#A0A0A0]">{pedido.frete_transportadora || 'Nexum Altivon'}</p>
+            </div>
+          </div>
+          {pedido.instrucao_pagamento && (
+            <p className="mt-4 rounded-xl border border-[#C9A227]/30 bg-[#C9A227]/10 p-3 text-sm font-semibold text-[#F7E7A6]">
+              {pedido.instrucao_pagamento}
+            </p>
+          )}
         </div>
 
         <button onClick={onContinue}

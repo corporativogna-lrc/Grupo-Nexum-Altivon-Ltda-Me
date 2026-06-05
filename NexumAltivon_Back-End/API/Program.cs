@@ -871,6 +871,7 @@ app.MapGet("/api/pedidos", [Authorize(Policy = "Gerente")] async (NexumDbContext
 {
     var pedidos = await db.Pedidos
         .AsNoTracking()
+        .Include(pedido => pedido.Pagamentos)
         .OrderByDescending(pedido => pedido.CreatedAt)
         .Take(500)
         .Select(pedido => new
@@ -879,6 +880,14 @@ app.MapGet("/api/pedidos", [Authorize(Policy = "Gerente")] async (NexumDbContext
             pedido.NumeroPedido,
             pedido.Total,
             pedido.Status,
+            pedido.StatusPagamento,
+            pedido.MeioPagamento,
+            pedido.GatewayPagamento,
+            pedido.GatewayTransacaoId,
+            pedido.FreteValor,
+            pedido.FreteMetodo,
+            pedido.FreteTransportadora,
+            pedido.FretePrazoDias,
             pedido.CreatedAt
         })
         .ToListAsync(ct);
@@ -888,7 +897,16 @@ app.MapGet("/api/pedidos", [Authorize(Policy = "Gerente")] async (NexumDbContext
         pedido.NumeroPedido,
         pedido.Total,
         FormatStatusPedido(pedido.Status),
-        pedido.CreatedAt)).ToList();
+        pedido.CreatedAt,
+        FormatStatusPagamento(pedido.StatusPagamento),
+        pedido.MeioPagamento,
+        pedido.GatewayPagamento,
+        pedido.GatewayTransacaoId,
+        pedido.FreteValor,
+        pedido.FreteMetodo,
+        pedido.FreteTransportadora,
+        pedido.FretePrazoDias,
+        BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId))).ToList();
 
     return Results.Ok(ApiResponse<List<PedidoLojaDto>>.Ok(dtos));
 })
@@ -904,6 +922,7 @@ app.MapPut("/api/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
     await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
     var pedido = await db.Pedidos
         .Include(item => item.Itens)
+        .Include(item => item.Pagamentos)
         .FirstOrDefaultAsync(item => item.Id == id, ct);
     if (pedido is null)
     {
@@ -971,11 +990,43 @@ app.MapPut("/api/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
     {
         pedido.StatusPagamento = StatusPagamento.Cancelado;
     }
+
+    if (pedido.Pagamentos is { Count: > 0 })
+    {
+        foreach (var pagamento in pedido.Pagamentos)
+        {
+            pagamento.Status = pedido.StatusPagamento switch
+            {
+                StatusPagamento.Aprovado => StatusPagamentoDetalhado.Aprovado,
+                StatusPagamento.Recusado => StatusPagamentoDetalhado.Recusado,
+                StatusPagamento.Estornado => StatusPagamentoDetalhado.Estornado,
+                StatusPagamento.Cancelado => StatusPagamentoDetalhado.Cancelado,
+                _ => pagamento.Status
+            };
+            pagamento.DataProcessamento ??= pedido.DataPagamento;
+            pagamento.UpdatedAt = DateTime.UtcNow;
+        }
+    }
+
     pedido.UpdatedAt = DateTime.UtcNow;
     await db.SaveChangesAsync(ct);
     await transaction.CommitAsync(ct);
 
-    var dto = new PedidoLojaDto(pedido.Id, pedido.NumeroPedido, pedido.Total, FormatStatusPedido(pedido.Status), pedido.CreatedAt);
+    var dto = new PedidoLojaDto(
+        pedido.Id,
+        pedido.NumeroPedido,
+        pedido.Total,
+        FormatStatusPedido(pedido.Status),
+        pedido.CreatedAt,
+        FormatStatusPagamento(pedido.StatusPagamento),
+        pedido.MeioPagamento,
+        pedido.GatewayPagamento,
+        pedido.GatewayTransacaoId,
+        pedido.FreteValor,
+        pedido.FreteMetodo,
+        pedido.FreteTransportadora,
+        pedido.FretePrazoDias,
+        BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId));
     return Results.Ok(ApiResponse<PedidoLojaDto>.Ok(dto, "Status do pedido atualizado."));
 })
 .WithName("AtualizarStatusPedido")
@@ -1131,11 +1182,39 @@ app.MapPost("/api/pedidos", async (PedidoRequest request, NexumDbContext db, Htt
         Itens = itens
     };
 
+    pedido.Pagamentos = new List<Pagamento>
+    {
+        new()
+        {
+            Gateway = string.IsNullOrWhiteSpace(pedido.GatewayPagamento) ? "ConfiguracaoPendente" : pedido.GatewayPagamento,
+            Metodo = ParseMetodoPagamento(pedido.MeioPagamento),
+            Status = StatusPagamentoDetalhado.Pendente,
+            Valor = pedido.Total,
+            Parcelas = 1,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        }
+    };
+
     db.Pedidos.Add(pedido);
     await db.SaveChangesAsync(ct);
     await transaction.CommitAsync(ct);
 
-    var dto = new PedidoLojaDto(pedido.Id, pedido.NumeroPedido, pedido.Total, FormatStatusPedido(pedido.Status), pedido.CreatedAt);
+    var dto = new PedidoLojaDto(
+        pedido.Id,
+        pedido.NumeroPedido,
+        pedido.Total,
+        FormatStatusPedido(pedido.Status),
+        pedido.CreatedAt,
+        FormatStatusPagamento(pedido.StatusPagamento),
+        pedido.MeioPagamento,
+        pedido.GatewayPagamento,
+        pedido.GatewayTransacaoId,
+        pedido.FreteValor,
+        pedido.FreteMetodo,
+        pedido.FreteTransportadora,
+        pedido.FretePrazoDias,
+        BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId));
     return Results.Ok(ApiResponse<PedidoLojaDto>.Ok(dto, "Pedido criado com sucesso."));
 })
 .AllowAnonymous()
@@ -1380,6 +1459,54 @@ static string FormatStatusPedido(StatusPedido status) =>
         StatusPedido.EmSeparacao => "Processando",
         _ => status.ToString()
     };
+
+static string FormatStatusPagamento(StatusPagamento status) =>
+    status switch
+    {
+        StatusPagamento.Aguardando => "Aguardando pagamento",
+        StatusPagamento.Aprovado => "Pagamento aprovado",
+        StatusPagamento.Recusado => "Pagamento recusado",
+        StatusPagamento.Estornado => "Pagamento estornado",
+        StatusPagamento.Cancelado => "Pagamento cancelado",
+        _ => status.ToString()
+    };
+
+static MetodoPagamento ParseMetodoPagamento(string? metodo)
+{
+    var token = (metodo ?? string.Empty).Trim().ToLowerInvariant();
+    return token switch
+    {
+        "pix" => MetodoPagamento.PIX,
+        "cartao" or "cartão" or "cartao_credito" or "cartãocredito" or "cartaocredito" => MetodoPagamento.CartaoCredito,
+        "cartao_debito" or "cartãodebito" or "cartaodebito" => MetodoPagamento.CartaoDebito,
+        "boleto" => MetodoPagamento.Boleto,
+        "transferencia" or "transferência" => MetodoPagamento.Transferencia,
+        "wallet" or "carteira" => MetodoPagamento.Wallet,
+        _ => MetodoPagamento.Outro
+    };
+}
+
+static string BuildPedidoInstruction(StatusPagamento statusPagamento, string? metodoPagamento, string? transacaoId)
+{
+    if (!string.IsNullOrWhiteSpace(transacaoId))
+    {
+        return "Pagamento iniciado no gateway. Acompanhe a confirmação automática pelo painel.";
+    }
+
+    return statusPagamento switch
+    {
+        StatusPagamento.Aprovado => "Pagamento confirmado. Pedido pronto para separação e logística.",
+        StatusPagamento.Cancelado => "Pagamento cancelado. Não separar mercadoria.",
+        StatusPagamento.Recusado => "Pagamento recusado. Entrar em contato com o cliente antes de reenviar cobrança.",
+        StatusPagamento.Estornado => "Pagamento estornado. Conferir financeiro e estoque.",
+        _ when string.Equals(metodoPagamento, "pix", StringComparison.OrdinalIgnoreCase) =>
+            "Pedido reservado. Configure o gateway Pix para gerar QR Code e baixa automática.",
+        _ when string.Equals(metodoPagamento, "boleto", StringComparison.OrdinalIgnoreCase) =>
+            "Pedido reservado. Configure o gateway de boleto para gerar linha digitável e vencimento.",
+        _ =>
+            "Pedido reservado. Configure o gateway para cobrança real e confirmação automática."
+    };
+}
 
 static bool TryParseStatusPedido(string? raw, out StatusPedido status)
 {
@@ -1702,7 +1829,21 @@ public sealed record EnderecoEntregaRequest(
     string? Cidade,
     string? Estado);
 
-public sealed record PedidoLojaDto(int Id, string NumeroPedido, decimal Total, string Status, DateTime CreatedAt);
+public sealed record PedidoLojaDto(
+    int Id,
+    string NumeroPedido,
+    decimal Total,
+    string Status,
+    DateTime CreatedAt,
+    string StatusPagamento,
+    string? MeioPagamento,
+    string? GatewayPagamento,
+    string? GatewayTransacaoId,
+    decimal FreteValor,
+    string? FreteMetodo,
+    string? FreteTransportadora,
+    int FretePrazoDias,
+    string InstrucaoPagamento);
 
 public sealed record IntegracaoStatusDto(
     string Nome,
@@ -1779,9 +1920,9 @@ public static class StoreData
 
     public static readonly List<PedidoLojaDto> Pedidos =
     [
-        new(1029, "NA-1029", 6490, "Processando", DateTime.UtcNow.AddHours(-2)),
-        new(1028, "NA-1028", 4290, "Enviado", DateTime.UtcNow.AddHours(-5)),
-        new(1027, "NA-1027", 7580, "Entregue", DateTime.UtcNow.AddDays(-1))
+        new(1029, "NA-1029", 6490, "Processando", DateTime.UtcNow.AddHours(-2), "Aguardando pagamento", "pix", "ConfiguracaoPendente", null, 0, "Retirada / combinar entrega", "Nexum Altivon", 0, "Pedido reservado. Configure o gateway para cobrança real e confirmação automática."),
+        new(1028, "NA-1028", 4290, "Enviado", DateTime.UtcNow.AddHours(-5), "Pagamento aprovado", "cartao", "MercadoPago", "demo-1028", 29.9m, "Entrega padrão", "Correios / Melhor Envio", 7, "Pagamento confirmado. Pedido pronto para separação e logística."),
+        new(1027, "NA-1027", 7580, "Entregue", DateTime.UtcNow.AddDays(-1), "Pagamento aprovado", "boleto", "MercadoPago", "demo-1027", 49.9m, "Entrega expressa", "Transportadora parceira", 3, "Pagamento confirmado. Pedido pronto para separação e logística.")
     ];
 
     public static readonly List<LeadLojaDto> Leads =
