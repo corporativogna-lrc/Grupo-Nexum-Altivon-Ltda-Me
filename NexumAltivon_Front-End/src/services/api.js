@@ -204,6 +204,11 @@ export const fornecedorAPI = {
   create: (data) => api.post('/fornecedores', data),
 };
 
+export const empresaGrupoAPI = {
+  getAll: () => api.get('/erp/empresas'),
+  create: (data) => api.post('/erp/empresas', data),
+};
+
 export const leadAPI = {
   getAll: (params) => api.get('/crm/leads', { params }),
   create: (data) => api.post('/crm/leads', data),

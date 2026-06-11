@@ -14,6 +14,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using NexumAltivon.API.Data;
 using NexumAltivon.API.Models;
+using NexumAltivon.API.Services;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -142,12 +143,19 @@ builder.Services.AddHttpClient("mercado-livre", client =>
     client.BaseAddress = new Uri("https://api.mercadolibre.com/");
     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 });
+builder.Services.AddHttpClient("Notificacoes", client =>
+{
+    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+});
+builder.Services.AddScoped<INotificacaoService, NotificacaoService>();
 
 builder.Services
     .AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(Path.GetTempPath(), "nexum-altivon-api-keys")));
 
 var app = builder.Build();
+
+await EnsureOperationalSchemaAsync(app.Services, app.Logger);
 
 app.UseCors("NexumCorsPolicy");
 app.UseStaticFiles();
@@ -1564,6 +1572,9 @@ app.MapGet("/api/crm/leads", [Authorize(Policy = "Gerente")] async (NexumDbConte
                 nome AS Nome,
                 COALESCE(email, '') AS Email,
                 COALESCE(telefone, '') AS Telefone,
+                COALESCE(empresa, '') AS Empresa,
+                CAST(origem AS CHAR) AS Origem,
+                COALESCE(anotacoes, '') AS Mensagem,
                 CAST(status AS CHAR) AS Status,
                 created_at AS CreatedAt
             FROM crm_leads
@@ -1578,39 +1589,89 @@ app.MapGet("/api/crm/leads", [Authorize(Policy = "Gerente")] async (NexumDbConte
         lead.Email,
         lead.Telefone,
         FormatStatusLeadValue(lead.Status),
-        lead.CreatedAt)).ToList();
+        lead.CreatedAt,
+        lead.Empresa,
+        FormatOrigemLeadValue(lead.Origem),
+        lead.Mensagem)).ToList();
 
     return Results.Ok(ApiResponse<List<LeadLojaDto>>.Ok(dtos));
 })
 .WithName("Leads")
 ;
 
-app.MapPost("/api/crm/leads", [Authorize(Policy = "Gerente")] async (LeadRequest request, NexumDbContext db, CancellationToken ct) =>
+app.MapPost("/api/crm/leads", async (LeadRequest request, NexumDbContext db, INotificacaoService notificacaoService, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(request.Nome))
     {
         return Results.BadRequest(ApiResponse<string>.Erro("Nome do lead obrigatorio."));
     }
 
-    var lead = new CrmLead
+    var email = NormalizeEmail(request.Email);
+    if (string.IsNullOrWhiteSpace(email))
     {
-        Nome = request.Nome.Trim(),
-        Email = request.Email,
-        Telefone = request.Telefone,
-        Status = TryParseStatusLead(request.Status, out var status) ? status : StatusLead.Novo,
-        Origem = TryParseOrigemLead(request.Origem, out var origem) ? origem : OrigemLead.Site,
-        Anotacoes = request.Observacao,
+        return Results.BadRequest(ApiResponse<string>.Erro("E-mail do lead obrigatorio."));
+    }
+
+    var telefone = NormalizePhone(request.Telefone);
+    var whatsapp = NormalizePhone(request.Whatsapp) ?? telefone;
+    var cnpj = NormalizeDocument(request.Cnpj);
+
+    var existingLead = await db.CrmLeads
+        .FirstOrDefaultAsync(item =>
+            item.Email == email
+            || (!string.IsNullOrWhiteSpace(telefone) && item.Telefone == telefone)
+            || (!string.IsNullOrWhiteSpace(cnpj) && item.Cnpj == cnpj), ct);
+
+    var lead = existingLead ?? new CrmLead
+    {
         CreatedAt = DateTime.UtcNow,
-        UpdatedAt = DateTime.UtcNow
+        Status = StatusLead.Novo
     };
 
-    db.CrmLeads.Add(lead);
+    lead.Nome = request.Nome.Trim();
+    lead.Email = email;
+    lead.Telefone = telefone;
+    lead.Whatsapp = whatsapp;
+    lead.Empresa = TrimOrNull(request.Empresa);
+    lead.Cnpj = cnpj;
+    lead.Segmento = TrimOrNull(request.Segmento);
+    lead.Tipo = TryParseTipoLead(request.Tipo, out var tipo) ? tipo : TipoLead.ClienteVIP;
+    lead.Status = TryParseStatusLead(request.Status, out var status) ? status : lead.Status;
+    lead.Origem = TryParseOrigemLead(request.Origem, out var origem) ? origem : OrigemLead.Site;
+    lead.Anotacoes = AppendLeadNotes(lead.Anotacoes, BuildLeadObservacao(request));
+    lead.UpdatedAt = DateTime.UtcNow;
+
+    if (existingLead is null)
+    {
+        db.CrmLeads.Add(lead);
+    }
+
     await db.SaveChangesAsync(ct);
 
-    var dto = new LeadLojaDto(lead.Id, lead.Nome, lead.Email ?? string.Empty, lead.Telefone ?? string.Empty, FormatStatusLead(lead.Status), lead.CreatedAt);
-    return Results.Ok(ApiResponse<LeadLojaDto>.Ok(dto, "Lead cadastrado no CRM."));
+    await notificacaoService.EnviarEmailAsync(
+        "corporativo.gna@gmail.com",
+        existingLead is null ? $"Novo lead público: {lead.Nome}" : $"Lead público atualizado: {lead.Nome}",
+        BuildLeadNotificationEmail(lead));
+
+    var dto = new LeadLojaDto(
+        lead.Id,
+        lead.Nome,
+        lead.Email ?? string.Empty,
+        lead.Telefone ?? string.Empty,
+        FormatStatusLead(lead.Status),
+        lead.CreatedAt,
+        lead.Empresa,
+        FormatOrigemLead(lead.Origem),
+        lead.Anotacoes);
+
+    var message = existingLead is null
+        ? "Lead cadastrado no CRM."
+        : "Lead já existente reaproveitado e atualizado no CRM.";
+
+    return Results.Ok(ApiResponse<LeadLojaDto>.Ok(dto, message));
 })
 .WithName("CriarLead")
+.AllowAnonymous()
 ;
 
 app.MapPut("/api/crm/leads/{id}/status", [Authorize(Policy = "Gerente")] async (int id, StatusUpdateRequest request, NexumDbContext db, CancellationToken ct) =>
@@ -1631,10 +1692,305 @@ app.MapPut("/api/crm/leads/{id}/status", [Authorize(Policy = "Gerente")] async (
     lead.UpdatedAt = DateTime.UtcNow;
     await db.SaveChangesAsync(ct);
 
-    var dto = new LeadLojaDto(lead.Id, lead.Nome, lead.Email ?? string.Empty, lead.Telefone ?? string.Empty, FormatStatusLead(lead.Status), lead.CreatedAt);
+    var dto = new LeadLojaDto(
+        lead.Id,
+        lead.Nome,
+        lead.Email ?? string.Empty,
+        lead.Telefone ?? string.Empty,
+        FormatStatusLead(lead.Status),
+        lead.CreatedAt,
+        lead.Empresa,
+        FormatOrigemLead(lead.Origem),
+        lead.Anotacoes);
     return Results.Ok(ApiResponse<LeadLojaDto>.Ok(dto, "Status do lead atualizado."));
 })
 .WithName("AtualizarStatusLead")
+;
+
+app.MapGet("/api/erp/empresas", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var empresas = await db.EmpresasGrupo
+        .AsNoTracking()
+        .OrderByDescending(item => item.EmitentePreferencial)
+        .ThenBy(item => item.PrioridadeFiscal)
+        .ThenBy(item => item.RazaoSocial)
+        .Select(item => new EmpresaGrupoDto(
+            item.Id,
+            item.TipoCadastro,
+            item.RazaoSocial,
+            item.NomeFantasia,
+            item.Cnpj,
+            item.InscricaoEstadual,
+            item.InscricaoMunicipal,
+            item.MatrizFilial,
+            item.CodigoEmpresa,
+            item.RegimeTributario,
+            item.Crt,
+            item.CnaePrincipal,
+            item.CnaesSecundarios,
+            item.CategoriaFiscal,
+            item.SubcategoriaFiscal,
+            item.NcmPadrao,
+            item.NaturezaOperacaoPadrao,
+            item.ResponsavelLegal,
+            item.ResponsavelFiscal,
+            item.EmailFiscal,
+            item.EmailComercial,
+            item.Telefone,
+            item.Whatsapp,
+            item.Cep,
+            item.Logradouro,
+            item.Numero,
+            item.Complemento,
+            item.Bairro,
+            item.Cidade,
+            item.Estado,
+            item.Pais,
+            item.AmbienteNfe,
+            item.SerieNfe,
+            item.SerieNfce,
+            item.ModeloDocumentoPdv,
+            item.AmbienteNfce,
+            item.ProximaNfceNumero,
+            item.NfceCsc,
+            item.NfceCscIdToken,
+            item.PdvSerieSat,
+            item.PdvImpressoraFiscal,
+            item.PdvNomeCaixaPadrao,
+            item.PdvContingenciaOffline,
+            item.ProximaNfeNumero,
+            item.CfopPadraoInterno,
+            item.CfopPadraoInterestadual,
+            item.AliquotaIcmsInterna,
+            item.AliquotaIcmsInterestadual,
+            item.AliquotaPis,
+            item.AliquotaCofins,
+            item.AliquotaIss,
+            item.AliquotaIpi,
+            item.CargaTributariaPercentual,
+            item.CustoOperacionalPercentual,
+            item.MargemMinimaPercentual,
+            item.PrioridadeFiscal,
+            item.PermiteNfeEntrada,
+            item.PermiteNfeSaida,
+            item.PermiteDropshipping,
+            item.PermiteMarketplace,
+            item.EmitentePreferencial,
+            item.Ativa,
+            item.BeneficiosEstrategicos,
+            item.ContratoResumo,
+            item.Observacoes,
+            item.CreatedAt,
+            item.UpdatedAt))
+        .ToListAsync(ct);
+
+    return Results.Ok(ApiResponse<List<EmpresaGrupoDto>>.Ok(empresas));
+})
+.WithName("EmpresasGrupo")
+;
+
+app.MapPost("/api/erp/empresas", [Authorize(Policy = "Gerente")] async (EmpresaGrupoRequest request, NexumDbContext db, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.RazaoSocial) || string.IsNullOrWhiteSpace(request.Cnpj))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Razão social e CNPJ são obrigatórios."));
+    }
+
+    var cnpj = NormalizeDocument(request.Cnpj);
+    if (string.IsNullOrWhiteSpace(cnpj))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("CNPJ inválido."));
+    }
+
+    var codigoEmpresa = TrimOrNull(request.CodigoEmpresa);
+    var emailFiscal = NormalizeEmail(request.EmailFiscal);
+
+    var duplicate = await db.EmpresasGrupo.AsNoTracking().FirstOrDefaultAsync(item =>
+        item.Cnpj == cnpj
+        || (!string.IsNullOrWhiteSpace(codigoEmpresa) && item.CodigoEmpresa == codigoEmpresa)
+        || (!string.IsNullOrWhiteSpace(emailFiscal) && item.EmailFiscal == emailFiscal), ct);
+
+    if (duplicate is not null)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Já existe empresa fiscal cadastrada com CNPJ, código interno ou e-mail fiscal informado."));
+    }
+
+    var empresa = new EmpresaGrupo
+    {
+        TipoCadastro = TrimOrNull(request.TipoCadastro) ?? "GrupoSocietario",
+        RazaoSocial = request.RazaoSocial.Trim(),
+        NomeFantasia = TrimOrNull(request.NomeFantasia),
+        Cnpj = cnpj,
+        InscricaoEstadual = TrimOrNull(request.InscricaoEstadual),
+        InscricaoMunicipal = TrimOrNull(request.InscricaoMunicipal),
+        MatrizFilial = TrimOrNull(request.MatrizFilial),
+        CodigoEmpresa = codigoEmpresa,
+        RegimeTributario = TrimOrNull(request.RegimeTributario),
+        Crt = TrimOrNull(request.Crt),
+        CnaePrincipal = TrimOrNull(request.CnaePrincipal),
+        CnaesSecundarios = TrimOrNull(request.CnaesSecundarios),
+        CategoriaFiscal = TrimOrNull(request.CategoriaFiscal),
+        SubcategoriaFiscal = TrimOrNull(request.SubcategoriaFiscal),
+        NcmPadrao = TrimOrNull(request.NcmPadrao),
+        NaturezaOperacaoPadrao = TrimOrNull(request.NaturezaOperacaoPadrao),
+        ResponsavelLegal = TrimOrNull(request.ResponsavelLegal),
+        ResponsavelFiscal = TrimOrNull(request.ResponsavelFiscal),
+        EmailFiscal = emailFiscal,
+        EmailComercial = NormalizeEmail(request.EmailComercial),
+        Telefone = NormalizePhone(request.Telefone),
+        Whatsapp = NormalizePhone(request.Whatsapp),
+        Cep = TrimOrNull(request.Cep),
+        Logradouro = TrimOrNull(request.Logradouro),
+        Numero = TrimOrNull(request.Numero),
+        Complemento = TrimOrNull(request.Complemento),
+        Bairro = TrimOrNull(request.Bairro),
+        Cidade = TrimOrNull(request.Cidade),
+        Estado = TrimOrNull(request.Estado)?.ToUpperInvariant(),
+        Pais = TrimOrNull(request.Pais) ?? "Brasil",
+        AmbienteNfe = TrimOrNull(request.AmbienteNfe),
+        SerieNfe = TrimOrNull(request.SerieNfe),
+        SerieNfce = TrimOrNull(request.SerieNfce),
+        ModeloDocumentoPdv = TrimOrNull(request.ModeloDocumentoPdv) ?? "NFCe",
+        AmbienteNfce = TrimOrNull(request.AmbienteNfce) ?? TrimOrNull(request.AmbienteNfe),
+        ProximaNfceNumero = request.ProximaNfceNumero,
+        NfceCsc = TrimOrNull(request.NfceCsc),
+        NfceCscIdToken = TrimOrNull(request.NfceCscIdToken),
+        PdvSerieSat = TrimOrNull(request.PdvSerieSat),
+        PdvImpressoraFiscal = TrimOrNull(request.PdvImpressoraFiscal),
+        PdvNomeCaixaPadrao = TrimOrNull(request.PdvNomeCaixaPadrao),
+        PdvContingenciaOffline = request.PdvContingenciaOffline ?? false,
+        ProximaNfeNumero = request.ProximaNfeNumero,
+        CfopPadraoInterno = TrimOrNull(request.CfopPadraoInterno),
+        CfopPadraoInterestadual = TrimOrNull(request.CfopPadraoInterestadual),
+        AliquotaIcmsInterna = request.AliquotaIcmsInterna,
+        AliquotaIcmsInterestadual = request.AliquotaIcmsInterestadual,
+        AliquotaPis = request.AliquotaPis,
+        AliquotaCofins = request.AliquotaCofins,
+        AliquotaIss = request.AliquotaIss,
+        AliquotaIpi = request.AliquotaIpi,
+        CargaTributariaPercentual = request.CargaTributariaPercentual,
+        CustoOperacionalPercentual = request.CustoOperacionalPercentual,
+        MargemMinimaPercentual = request.MargemMinimaPercentual,
+        PrioridadeFiscal = request.PrioridadeFiscal ?? 100,
+        PermiteNfeEntrada = request.PermiteNfeEntrada ?? true,
+        PermiteNfeSaida = request.PermiteNfeSaida ?? true,
+        PermiteDropshipping = request.PermiteDropshipping ?? false,
+        PermiteMarketplace = request.PermiteMarketplace ?? false,
+        EmitentePreferencial = request.EmitentePreferencial ?? false,
+        Ativa = request.Ativa ?? true,
+        BeneficiosEstrategicos = TrimOrNull(request.BeneficiosEstrategicos),
+        ContratoResumo = TrimOrNull(request.ContratoResumo),
+        Observacoes = TrimOrNull(request.Observacoes),
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
+    };
+
+    db.EmpresasGrupo.Add(empresa);
+    await db.SaveChangesAsync(ct);
+
+    var dto = new EmpresaGrupoDto(
+        empresa.Id,
+        empresa.TipoCadastro,
+        empresa.RazaoSocial,
+        empresa.NomeFantasia,
+        empresa.Cnpj,
+        empresa.InscricaoEstadual,
+        empresa.InscricaoMunicipal,
+        empresa.MatrizFilial,
+        empresa.CodigoEmpresa,
+        empresa.RegimeTributario,
+        empresa.Crt,
+        empresa.CnaePrincipal,
+        empresa.CnaesSecundarios,
+        empresa.CategoriaFiscal,
+        empresa.SubcategoriaFiscal,
+        empresa.NcmPadrao,
+        empresa.NaturezaOperacaoPadrao,
+        empresa.ResponsavelLegal,
+        empresa.ResponsavelFiscal,
+        empresa.EmailFiscal,
+        empresa.EmailComercial,
+        empresa.Telefone,
+        empresa.Whatsapp,
+        empresa.Cep,
+        empresa.Logradouro,
+        empresa.Numero,
+        empresa.Complemento,
+        empresa.Bairro,
+        empresa.Cidade,
+        empresa.Estado,
+        empresa.Pais,
+        empresa.AmbienteNfe,
+        empresa.SerieNfe,
+        empresa.SerieNfce,
+        empresa.ModeloDocumentoPdv,
+        empresa.AmbienteNfce,
+        empresa.ProximaNfceNumero,
+        empresa.NfceCsc,
+        empresa.NfceCscIdToken,
+        empresa.PdvSerieSat,
+        empresa.PdvImpressoraFiscal,
+        empresa.PdvNomeCaixaPadrao,
+        empresa.PdvContingenciaOffline,
+        empresa.ProximaNfeNumero,
+        empresa.CfopPadraoInterno,
+        empresa.CfopPadraoInterestadual,
+        empresa.AliquotaIcmsInterna,
+        empresa.AliquotaIcmsInterestadual,
+        empresa.AliquotaPis,
+        empresa.AliquotaCofins,
+        empresa.AliquotaIss,
+        empresa.AliquotaIpi,
+        empresa.CargaTributariaPercentual,
+        empresa.CustoOperacionalPercentual,
+        empresa.MargemMinimaPercentual,
+        empresa.PrioridadeFiscal,
+        empresa.PermiteNfeEntrada,
+        empresa.PermiteNfeSaida,
+        empresa.PermiteDropshipping,
+        empresa.PermiteMarketplace,
+        empresa.EmitentePreferencial,
+        empresa.Ativa,
+        empresa.BeneficiosEstrategicos,
+        empresa.ContratoResumo,
+        empresa.Observacoes,
+        empresa.CreatedAt,
+        empresa.UpdatedAt);
+
+    return Results.Ok(ApiResponse<EmpresaGrupoDto>.Ok(dto, "Empresa societária/fiscal cadastrada com sucesso."));
+})
+.WithName("CriarEmpresaGrupo")
+;
+
+app.MapGet("/api/fiscal/pdv/configuracoes", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var configuracoes = await db.EmpresasGrupo
+        .AsNoTracking()
+        .Where(item => item.Ativa && item.PermiteNfeSaida)
+        .OrderByDescending(item => item.EmitentePreferencial)
+        .ThenBy(item => item.PrioridadeFiscal)
+        .Select(item => new PdvFiscalConfigDto(
+            item.Id,
+            item.CodigoEmpresa,
+            item.RazaoSocial,
+            item.Cnpj,
+            item.ModeloDocumentoPdv ?? "NFCe",
+            item.AmbienteNfce ?? item.AmbienteNfe,
+            item.SerieNfce,
+            item.ProximaNfceNumero,
+            item.NfceCscIdToken,
+            !string.IsNullOrWhiteSpace(item.NfceCsc),
+            item.PdvSerieSat,
+            item.PdvImpressoraFiscal,
+            item.PdvNomeCaixaPadrao,
+            item.PdvContingenciaOffline,
+            item.EmitentePreferencial,
+            item.Estado))
+        .ToListAsync(ct);
+
+    return Results.Ok(ApiResponse<List<PdvFiscalConfigDto>>.Ok(configuracoes));
+})
+.WithName("PdvFiscalConfiguracoes")
 ;
 
 static string? Slugify(string? value)
@@ -1691,6 +2047,20 @@ static string? NormalizeDocument(string? value)
     var digits = new string(value.Where(char.IsDigit).ToArray());
     return digits.Length == 0 ? null : digits;
 }
+
+static string? NormalizePhone(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return null;
+    }
+
+    var digits = new string(value.Where(char.IsDigit).ToArray());
+    return digits.Length == 0 ? null : digits;
+}
+
+static string? TrimOrNull(string? value) =>
+    string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
 static string FormatStatusPedido(StatusPedido status) =>
     status switch
@@ -2353,6 +2723,23 @@ static string FormatStatusLead(StatusLead status) =>
         _ => status.ToString()
     };
 
+static string FormatOrigemLead(OrigemLead origem) =>
+    origem switch
+    {
+        OrigemLead.WhatsApp => "WhatsApp",
+        _ => origem.ToString()
+    };
+
+static string FormatOrigemLeadValue(string? raw)
+{
+    if (TryParseOrigemLead(raw, out var origem))
+    {
+        return FormatOrigemLead(origem);
+    }
+
+    return string.IsNullOrWhiteSpace(raw) ? "Site" : raw.Trim();
+}
+
 static string FormatStatusLeadValue(string? raw)
 {
     if (TryParseStatusLead(raw, out var status))
@@ -2448,6 +2835,227 @@ static bool TryParseOrigemLead(string? raw, out OrigemLead origem)
     }
 
     return Enum.TryParse(raw.Trim(), ignoreCase: true, out origem);
+}
+
+static bool TryParseTipoLead(string? raw, out TipoLead tipo)
+{
+    tipo = TipoLead.ClienteVIP;
+
+    if (string.IsNullOrWhiteSpace(raw))
+    {
+        return false;
+    }
+
+    var token = raw.Trim().ToLowerInvariant()
+        .Replace(" ", "", StringComparison.Ordinal)
+        .Replace("-", "", StringComparison.Ordinal)
+        .Replace("_", "", StringComparison.Ordinal);
+
+    switch (token)
+    {
+        case "cliente":
+        case "clientevip":
+            tipo = TipoLead.ClienteVIP;
+            return true;
+        case "dropshipping":
+            tipo = TipoLead.Dropshipping;
+            return true;
+        case "fornecedor":
+            tipo = TipoLead.Fornecedor;
+            return true;
+        case "parceiro":
+            tipo = TipoLead.Parceiro;
+            return true;
+        case "afiliado":
+            tipo = TipoLead.Afiliado;
+            return true;
+        case "outro":
+            tipo = TipoLead.Outro;
+            return true;
+    }
+
+    return Enum.TryParse(raw.Trim(), ignoreCase: true, out tipo);
+}
+
+static string? BuildLeadObservacao(LeadRequest request)
+{
+    var notes = new List<string>();
+
+    if (!string.IsNullOrWhiteSpace(request.Mensagem))
+    {
+        notes.Add($"Mensagem: {request.Mensagem.Trim()}");
+    }
+
+    if (!string.IsNullOrWhiteSpace(request.Observacao))
+    {
+        notes.Add($"Observação: {request.Observacao.Trim()}");
+    }
+
+    if (!string.IsNullOrWhiteSpace(request.Segmento))
+    {
+        notes.Add($"Segmento: {request.Segmento.Trim()}");
+    }
+
+    return notes.Count == 0 ? null : string.Join(Environment.NewLine, notes);
+}
+
+static string? AppendLeadNotes(string? current, string? incoming)
+{
+    var currentValue = TrimOrNull(current);
+    var incomingValue = TrimOrNull(incoming);
+
+    if (string.IsNullOrWhiteSpace(currentValue))
+    {
+        return incomingValue;
+    }
+
+    if (string.IsNullOrWhiteSpace(incomingValue))
+    {
+        return currentValue;
+    }
+
+    if (currentValue.Contains(incomingValue, StringComparison.OrdinalIgnoreCase))
+    {
+        return currentValue;
+    }
+
+    return $"{currentValue}{Environment.NewLine}{Environment.NewLine}{incomingValue}";
+}
+
+static string BuildLeadNotificationEmail(CrmLead lead)
+{
+    var origem = FormatOrigemLead(lead.Origem);
+    var tipo = lead.Tipo.ToString();
+    var empresa = string.IsNullOrWhiteSpace(lead.Empresa) ? "-" : lead.Empresa;
+    var telefone = string.IsNullOrWhiteSpace(lead.Telefone) ? "-" : lead.Telefone;
+    var whatsapp = string.IsNullOrWhiteSpace(lead.Whatsapp) ? "-" : lead.Whatsapp;
+    var segmento = string.IsNullOrWhiteSpace(lead.Segmento) ? "-" : lead.Segmento;
+    var observacoes = string.IsNullOrWhiteSpace(lead.Anotacoes) ? "-" : lead.Anotacoes.Replace(Environment.NewLine, "<br/>");
+
+    return $"""
+    <html>
+      <body style="font-family:Arial,sans-serif;background:#f8fafc;color:#0f172a;">
+        <div style="max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;padding:24px;">
+          <h2 style="margin-top:0;color:#0f172a;">Novo contato recebido no site Nexum Altivon</h2>
+          <p>Um lead público acabou de entrar pelo portal de vendas.</p>
+          <table style="width:100%;border-collapse:collapse;">
+            <tr><td style="padding:8px 0;font-weight:bold;">Nome</td><td>{lead.Nome}</td></tr>
+            <tr><td style="padding:8px 0;font-weight:bold;">E-mail</td><td>{lead.Email}</td></tr>
+            <tr><td style="padding:8px 0;font-weight:bold;">Telefone</td><td>{telefone}</td></tr>
+            <tr><td style="padding:8px 0;font-weight:bold;">WhatsApp</td><td>{whatsapp}</td></tr>
+            <tr><td style="padding:8px 0;font-weight:bold;">Empresa</td><td>{empresa}</td></tr>
+            <tr><td style="padding:8px 0;font-weight:bold;">CNPJ</td><td>{lead.Cnpj ?? "-"}</td></tr>
+            <tr><td style="padding:8px 0;font-weight:bold;">Segmento</td><td>{segmento}</td></tr>
+            <tr><td style="padding:8px 0;font-weight:bold;">Origem</td><td>{origem}</td></tr>
+            <tr><td style="padding:8px 0;font-weight:bold;">Tipo</td><td>{tipo}</td></tr>
+            <tr><td style="padding:8px 0;font-weight:bold;">Status inicial</td><td>{FormatStatusLead(lead.Status)}</td></tr>
+          </table>
+          <div style="margin-top:16px;padding:16px;background:#f8fafc;border-radius:12px;">
+            <strong>Observações / mensagem</strong>
+            <div style="margin-top:8px;">{observacoes}</div>
+          </div>
+        </div>
+      </body>
+    </html>
+    """;
+}
+
+static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogger logger)
+{
+    using var scope = services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<NexumDbContext>();
+
+    if (!await db.Database.CanConnectAsync())
+    {
+        logger.LogWarning("Banco indisponível durante a verificação de esquema operacional.");
+        return;
+    }
+
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        CREATE TABLE IF NOT EXISTS erp_empresas_grupo (
+            id INT NOT NULL AUTO_INCREMENT,
+            tipo_cadastro VARCHAR(40) NOT NULL,
+            razao_social VARCHAR(200) NOT NULL,
+            nome_fantasia VARCHAR(200) NULL,
+            cnpj VARCHAR(18) NOT NULL,
+            inscricao_estadual VARCHAR(30) NULL,
+            inscricao_municipal VARCHAR(30) NULL,
+            matriz_filial VARCHAR(20) NULL,
+            codigo_empresa VARCHAR(50) NULL,
+            regime_tributario VARCHAR(60) NULL,
+            crt VARCHAR(10) NULL,
+            cnae_principal VARCHAR(20) NULL,
+            cnaes_secundarios TEXT NULL,
+            categoria_fiscal VARCHAR(100) NULL,
+            subcategoria_fiscal VARCHAR(100) NULL,
+            ncm_padrao VARCHAR(20) NULL,
+            natureza_operacao_padrao VARCHAR(120) NULL,
+            responsavel_legal VARCHAR(150) NULL,
+            responsavel_fiscal VARCHAR(150) NULL,
+            email_fiscal VARCHAR(150) NULL,
+            email_comercial VARCHAR(150) NULL,
+            telefone VARCHAR(25) NULL,
+            whatsapp VARCHAR(25) NULL,
+            cep VARCHAR(12) NULL,
+            logradouro VARCHAR(200) NULL,
+            numero VARCHAR(20) NULL,
+            complemento VARCHAR(120) NULL,
+            bairro VARCHAR(120) NULL,
+            cidade VARCHAR(120) NULL,
+            estado VARCHAR(2) NULL,
+            pais VARCHAR(60) NULL,
+            ambiente_nfe VARCHAR(30) NULL,
+            serie_nfe VARCHAR(10) NULL,
+            serie_nfce VARCHAR(10) NULL,
+            modelo_documento_pdv VARCHAR(20) NULL,
+            ambiente_nfce VARCHAR(30) NULL,
+            proxima_nfce_numero INT NULL,
+            nfce_csc VARCHAR(120) NULL,
+            nfce_csc_id_token VARCHAR(20) NULL,
+            pdv_serie_sat VARCHAR(20) NULL,
+            pdv_impressora_fiscal VARCHAR(120) NULL,
+            pdv_nome_caixa_padrao VARCHAR(80) NULL,
+            pdv_contingencia_offline TINYINT(1) NOT NULL DEFAULT 0,
+            proxima_nfe_numero INT NULL,
+            cfop_padrao_interno VARCHAR(10) NULL,
+            cfop_padrao_interestadual VARCHAR(10) NULL,
+            aliquota_icms_interna DECIMAL(10,4) NULL,
+            aliquota_icms_interestadual DECIMAL(10,4) NULL,
+            aliquota_pis DECIMAL(10,4) NULL,
+            aliquota_cofins DECIMAL(10,4) NULL,
+            aliquota_iss DECIMAL(10,4) NULL,
+            aliquota_ipi DECIMAL(10,4) NULL,
+            carga_tributaria_percentual DECIMAL(10,4) NULL,
+            custo_operacional_percentual DECIMAL(10,4) NULL,
+            margem_minima_percentual DECIMAL(10,4) NULL,
+            prioridade_fiscal INT NOT NULL DEFAULT 100,
+            permite_nfe_entrada TINYINT(1) NOT NULL DEFAULT 1,
+            permite_nfe_saida TINYINT(1) NOT NULL DEFAULT 1,
+            permite_dropshipping TINYINT(1) NOT NULL DEFAULT 0,
+            permite_marketplace TINYINT(1) NOT NULL DEFAULT 0,
+            emitente_preferencial TINYINT(1) NOT NULL DEFAULT 0,
+            ativa TINYINT(1) NOT NULL DEFAULT 1,
+            beneficios_estrategicos TEXT NULL,
+            contrato_resumo TEXT NULL,
+            observacoes TEXT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY ux_erp_empresas_grupo_cnpj (cnpj),
+            UNIQUE KEY ux_erp_empresas_grupo_codigo_empresa (codigo_empresa)
+        );
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS modelo_documento_pdv VARCHAR(20) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS ambiente_nfce VARCHAR(30) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS proxima_nfce_numero INT NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS nfce_csc VARCHAR(120) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS nfce_csc_id_token VARCHAR(20) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS pdv_serie_sat VARCHAR(20) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS pdv_impressora_fiscal VARCHAR(120) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS pdv_nome_caixa_padrao VARCHAR(80) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS pdv_contingencia_offline TINYINT(1) NOT NULL DEFAULT 0;");
 }
 
 app.Run();
@@ -2718,7 +3326,16 @@ public sealed record DashboardResumoDto(
     decimal Conversao,
     decimal TicketMedio);
 
-public sealed record LeadLojaDto(int Id, string Nome, string Email, string Telefone, string Status, DateTime CreatedAt);
+public sealed record LeadLojaDto(
+    int Id,
+    string Nome,
+    string Email,
+    string Telefone,
+    string Status,
+    DateTime CreatedAt,
+    string? Empresa,
+    string? Origem,
+    string? Mensagem);
 
 public sealed class LeadRow
 {
@@ -2726,11 +3343,179 @@ public sealed class LeadRow
     public string Nome { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string Telefone { get; set; } = string.Empty;
+    public string Empresa { get; set; } = string.Empty;
+    public string Origem { get; set; } = string.Empty;
+    public string Mensagem { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
 }
 
-public sealed record LeadRequest(string Nome, string Email, string? Telefone, string? Status, string? Origem, string? Observacao);
+public sealed record LeadRequest(
+    string Nome,
+    string Email,
+    string? Telefone,
+    string? Status,
+    string? Origem,
+    string? Observacao,
+    string? Empresa,
+    string? Cnpj,
+    string? Segmento,
+    string? Mensagem,
+    string? Whatsapp,
+    string? Tipo);
+
+public sealed record EmpresaGrupoRequest(
+    string? TipoCadastro,
+    string RazaoSocial,
+    string? NomeFantasia,
+    string Cnpj,
+    string? InscricaoEstadual,
+    string? InscricaoMunicipal,
+    string? MatrizFilial,
+    string? CodigoEmpresa,
+    string? RegimeTributario,
+    string? Crt,
+    string? CnaePrincipal,
+    string? CnaesSecundarios,
+    string? CategoriaFiscal,
+    string? SubcategoriaFiscal,
+    string? NcmPadrao,
+    string? NaturezaOperacaoPadrao,
+    string? ResponsavelLegal,
+    string? ResponsavelFiscal,
+    string? EmailFiscal,
+    string? EmailComercial,
+    string? Telefone,
+    string? Whatsapp,
+    string? Cep,
+    string? Logradouro,
+    string? Numero,
+    string? Complemento,
+    string? Bairro,
+    string? Cidade,
+    string? Estado,
+    string? Pais,
+    string? AmbienteNfe,
+    string? SerieNfe,
+    string? SerieNfce,
+    string? ModeloDocumentoPdv,
+    string? AmbienteNfce,
+    int? ProximaNfceNumero,
+    string? NfceCsc,
+    string? NfceCscIdToken,
+    string? PdvSerieSat,
+    string? PdvImpressoraFiscal,
+    string? PdvNomeCaixaPadrao,
+    bool? PdvContingenciaOffline,
+    int? ProximaNfeNumero,
+    string? CfopPadraoInterno,
+    string? CfopPadraoInterestadual,
+    decimal? AliquotaIcmsInterna,
+    decimal? AliquotaIcmsInterestadual,
+    decimal? AliquotaPis,
+    decimal? AliquotaCofins,
+    decimal? AliquotaIss,
+    decimal? AliquotaIpi,
+    decimal? CargaTributariaPercentual,
+    decimal? CustoOperacionalPercentual,
+    decimal? MargemMinimaPercentual,
+    int? PrioridadeFiscal,
+    bool? PermiteNfeEntrada,
+    bool? PermiteNfeSaida,
+    bool? PermiteDropshipping,
+    bool? PermiteMarketplace,
+    bool? EmitentePreferencial,
+    bool? Ativa,
+    string? BeneficiosEstrategicos,
+    string? ContratoResumo,
+    string? Observacoes);
+
+public sealed record EmpresaGrupoDto(
+    int Id,
+    string TipoCadastro,
+    string RazaoSocial,
+    string? NomeFantasia,
+    string Cnpj,
+    string? InscricaoEstadual,
+    string? InscricaoMunicipal,
+    string? MatrizFilial,
+    string? CodigoEmpresa,
+    string? RegimeTributario,
+    string? Crt,
+    string? CnaePrincipal,
+    string? CnaesSecundarios,
+    string? CategoriaFiscal,
+    string? SubcategoriaFiscal,
+    string? NcmPadrao,
+    string? NaturezaOperacaoPadrao,
+    string? ResponsavelLegal,
+    string? ResponsavelFiscal,
+    string? EmailFiscal,
+    string? EmailComercial,
+    string? Telefone,
+    string? Whatsapp,
+    string? Cep,
+    string? Logradouro,
+    string? Numero,
+    string? Complemento,
+    string? Bairro,
+    string? Cidade,
+    string? Estado,
+    string? Pais,
+    string? AmbienteNfe,
+    string? SerieNfe,
+    string? SerieNfce,
+    string? ModeloDocumentoPdv,
+    string? AmbienteNfce,
+    int? ProximaNfceNumero,
+    string? NfceCsc,
+    string? NfceCscIdToken,
+    string? PdvSerieSat,
+    string? PdvImpressoraFiscal,
+    string? PdvNomeCaixaPadrao,
+    bool PdvContingenciaOffline,
+    int? ProximaNfeNumero,
+    string? CfopPadraoInterno,
+    string? CfopPadraoInterestadual,
+    decimal? AliquotaIcmsInterna,
+    decimal? AliquotaIcmsInterestadual,
+    decimal? AliquotaPis,
+    decimal? AliquotaCofins,
+    decimal? AliquotaIss,
+    decimal? AliquotaIpi,
+    decimal? CargaTributariaPercentual,
+    decimal? CustoOperacionalPercentual,
+    decimal? MargemMinimaPercentual,
+    int PrioridadeFiscal,
+    bool PermiteNfeEntrada,
+    bool PermiteNfeSaida,
+    bool PermiteDropshipping,
+    bool PermiteMarketplace,
+    bool EmitentePreferencial,
+    bool Ativa,
+    string? BeneficiosEstrategicos,
+    string? ContratoResumo,
+    string? Observacoes,
+    DateTime CreatedAt,
+    DateTime UpdatedAt);
+
+public sealed record PdvFiscalConfigDto(
+    int Id,
+    string? CodigoEmpresa,
+    string RazaoSocial,
+    string Cnpj,
+    string ModeloDocumentoPdv,
+    string? AmbienteNfce,
+    string? SerieNfce,
+    int? ProximaNfceNumero,
+    string? NfceCscIdToken,
+    bool PossuiCscConfigurado,
+    string? PdvSerieSat,
+    string? PdvImpressoraFiscal,
+    string? PdvNomeCaixaPadrao,
+    bool PdvContingenciaOffline,
+    bool EmitentePreferencial,
+    string? Estado);
 
 public static class StoreData
 {
@@ -2783,9 +3568,9 @@ public static class StoreData
 
     public static readonly List<LeadLojaDto> Leads =
     [
-        new(210, "Marina Alves", "marina.alves@email.com", "(11) 98221-4400", "Qualificado", DateTime.UtcNow.AddHours(-3)),
-        new(209, "Rafael Monteiro", "rafael.m@email.com", "(21) 99774-1030", "Negociacao", DateTime.UtcNow.AddHours(-8)),
-        new(208, "Bianca Torres", "bianca.t@email.com", "(31) 98812-5511", "Novo", DateTime.UtcNow.AddDays(-1))
+        new(210, "Marina Alves", "marina.alves@email.com", "(11) 98221-4400", "Qualificado", DateTime.UtcNow.AddHours(-3), "Marina Atelier", "Site", "Lead de demonstração qualificado."),
+        new(209, "Rafael Monteiro", "rafael.m@email.com", "(21) 99774-1030", "Negociacao", DateTime.UtcNow.AddHours(-8), "RM Distribuição", "WhatsApp", "Contato comercial em andamento."),
+        new(208, "Bianca Torres", "bianca.t@email.com", "(31) 98812-5511", "Novo", DateTime.UtcNow.AddDays(-1), "BT Boutique", "Site", "Solicitou retorno comercial.")
     ];
 }
 

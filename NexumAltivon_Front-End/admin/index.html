@@ -876,13 +876,47 @@
 
     <script>
         // ===== CONFIGURAÃ‡ÃƒO DA API =====
+        const RUNTIME_API_CONFIG_URL = '../api-runtime.json';
+        const PUBLIC_API_URL = 'https://api.nexumaltivon.com';
         const API_BASE = window.location.protocol === 'file:' || window.location.hostname === 'localhost'
             ? 'http://localhost:5000/api'
-            : 'https://api.nexumaltivon.com/api';
+            : null;
         const TOKEN_KEY = 'nexum_admin_token';
         const USER_KEY = 'nexum_admin_user';
         let dashboardData = null;
         let chartInstances = [];
+        let resolvedApiBasePromise = null;
+
+        function normalizeApiUrl(value) {
+            const url = String(value || '').trim().replace(/\/+$/, '');
+            return /^https?:\/\//i.test(url) ? url : '';
+        }
+
+        async function resolveApiBase() {
+            if (API_BASE) return API_BASE;
+            if (resolvedApiBasePromise) return resolvedApiBasePromise;
+
+            resolvedApiBasePromise = (async () => {
+                try {
+                    const response = await fetch(`${RUNTIME_API_CONFIG_URL}?t=${Date.now()}`, {
+                        cache: 'no-store',
+                        headers: { Accept: 'application/json' }
+                    });
+
+                    if (response.ok) {
+                        const config = await response.json();
+                        const runtimeUrl = normalizeApiUrl(config.apiUrl || config.api_url || config.url);
+                        if (runtimeUrl) return `${runtimeUrl}/api`;
+                    }
+                } catch (error) {
+                    console.warn('Falha ao carregar api-runtime.json', error);
+                }
+
+                return `${PUBLIC_API_URL}/api`;
+            })();
+
+            return resolvedApiBasePromise;
+        }
 
         async function apiFetch(path, options = {}) {
             const headers = {
@@ -892,7 +926,8 @@
             const token = sessionStorage.getItem(TOKEN_KEY);
             if (token) headers.Authorization = `Bearer ${token}`;
 
-            const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+            const resolvedApiBase = await resolveApiBase();
+            const response = await fetch(`${resolvedApiBase}${path}`, { ...options, headers });
             if (response.status === 401) throw new Error('unauthorized');
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             return response.json();

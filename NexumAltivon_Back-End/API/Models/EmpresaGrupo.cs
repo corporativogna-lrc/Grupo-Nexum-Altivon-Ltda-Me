@@ -60,6 +60,22 @@ public class EmpresaGrupo
     [Column("cnaes_secundarios")]
     public string? CnaesSecundarios { get; set; }
 
+    [Column("categoria_fiscal")]
+    [MaxLength(100)]
+    public string? CategoriaFiscal { get; set; }
+
+    [Column("subcategoria_fiscal")]
+    [MaxLength(100)]
+    public string? SubcategoriaFiscal { get; set; }
+
+    [Column("ncm_padrao")]
+    [MaxLength(20)]
+    public string? NcmPadrao { get; set; }
+
+    [Column("natureza_operacao_padrao")]
+    [MaxLength(120)]
+    public string? NaturezaOperacaoPadrao { get; set; }
+
     [Column("responsavel_legal")]
     [MaxLength(150)]
     public string? ResponsavelLegal { get; set; }
@@ -127,6 +143,40 @@ public class EmpresaGrupo
     [Column("serie_nfce")]
     [MaxLength(10)]
     public string? SerieNfce { get; set; }
+
+    [Column("modelo_documento_pdv")]
+    [MaxLength(20)]
+    public string? ModeloDocumentoPdv { get; set; }
+
+    [Column("ambiente_nfce")]
+    [MaxLength(30)]
+    public string? AmbienteNfce { get; set; }
+
+    [Column("proxima_nfce_numero")]
+    public int? ProximaNfceNumero { get; set; }
+
+    [Column("nfce_csc")]
+    [MaxLength(120)]
+    public string? NfceCsc { get; set; }
+
+    [Column("nfce_csc_id_token")]
+    [MaxLength(20)]
+    public string? NfceCscIdToken { get; set; }
+
+    [Column("pdv_serie_sat")]
+    [MaxLength(20)]
+    public string? PdvSerieSat { get; set; }
+
+    [Column("pdv_impressora_fiscal")]
+    [MaxLength(120)]
+    public string? PdvImpressoraFiscal { get; set; }
+
+    [Column("pdv_nome_caixa_padrao")]
+    [MaxLength(80)]
+    public string? PdvNomeCaixaPadrao { get; set; }
+
+    [Column("pdv_contingencia_offline")]
+    public bool PdvContingenciaOffline { get; set; }
 
     [Column("proxima_nfe_numero")]
     public int? ProximaNfeNumero { get; set; }

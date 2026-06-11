@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { categoriaAPI, clienteAPI, dashboardAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI } from '../services/api';
+import { categoriaAPI, clienteAPI, dashboardAPI, empresaGrupoAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI } from '../services/api';
 import { fallbackCategories, fallbackLeads, fallbackPedidos, fallbackProducts, fallbackResumo } from '../data/mockStore';
 import { formatDate, formatPrice, getLeadStatusClass, getPagamentoLabel, getPedidoStatusClass } from '../utils/formatters';
 import {
@@ -43,6 +43,7 @@ const tabs = [
   { id: 'cadastro-clientes', label: 'Clientes', icon: Users, section: 'Cadastros' },
   { id: 'cadastro-fornecedores', label: 'Fornecedores', icon: Building2, section: 'Cadastros' },
   { id: 'erp', label: 'ERP', icon: Database, section: 'Gestão', badge: 'desktop' },
+  { id: 'erp-empresas', label: 'Empresas do Grupo', icon: Building2, section: 'Gestão', badge: 'fiscal' },
   { id: 'integracoes', label: 'Integrações', icon: Globe2, section: 'Integrações', badge: 'paralelo' },
 ];
 
@@ -69,6 +70,12 @@ const cadastroHighlights = {
     'A lista lateral mostra o que já está ativo na base real.',
   ],
 };
+
+const empresaGrupoHighlights = [
+  'CNPJ, código interno e e-mail fiscal são conferidos antes de salvar.',
+  'O cadastro reúne fiscal, tributário, contato, emissão e prioridade estratégica.',
+  'A base fica pronta para roteamento inteligente de NF-e entre empresas do grupo e parceiras.',
+];
 
 const plannedModules = [
   { label: 'Lojas', icon: Building2, section: 'Gestão' },
@@ -194,6 +201,8 @@ const fallbackFornecedores = [
   { id: 2, nome: 'Luxury Cases Brasil', documento: '98.765.432/0001-10', email: 'vendas@luxurycases.com', telefone: '(21) 4040-2211', categoria: 'Acessorios' },
 ];
 
+const fallbackEmpresasGrupo = [];
+
 const emptyProduto = {
   id: '',
   nome: '',
@@ -210,6 +219,72 @@ const emptyProduto = {
 const emptyCliente = { nome: '', email: '', telefone: '', cpf: '' };
 const emptyFornecedor = { nome: '', documento: '', email: '', telefone: '', categoria: 'Geral' };
 const emptyLead = { nome: '', email: '', telefone: '', status: 'Novo', origem: 'Site', observacao: '' };
+const emptyEmpresaGrupo = {
+  tipoCadastro: 'GrupoSocietario',
+  razaoSocial: '',
+  nomeFantasia: '',
+  cnpj: '',
+  inscricaoEstadual: '',
+  inscricaoMunicipal: '',
+  matrizFilial: 'Matriz',
+  codigoEmpresa: '',
+  regimeTributario: 'Simples Nacional',
+  crt: '1',
+  cnaePrincipal: '',
+  cnaesSecundarios: '',
+  categoriaFiscal: '',
+  subcategoriaFiscal: '',
+  ncmPadrao: '',
+  naturezaOperacaoPadrao: 'Venda de mercadoria',
+  responsavelLegal: '',
+  responsavelFiscal: '',
+  emailFiscal: 'corporativo.gna@gmail.com',
+  emailComercial: 'corporativo.gna@gmail.com',
+  telefone: '',
+  whatsapp: '',
+  cep: '',
+  logradouro: '',
+  numero: '',
+  complemento: '',
+  bairro: '',
+  cidade: '',
+  estado: '',
+  pais: 'Brasil',
+  ambienteNfe: 'Homologacao',
+  serieNfe: '1',
+  serieNfce: '1',
+  modeloDocumentoPdv: 'NFCe',
+  ambienteNfce: 'Homologacao',
+  proximaNfceNumero: '1',
+  nfceCsc: '',
+  nfceCscIdToken: '',
+  pdvSerieSat: '',
+  pdvImpressoraFiscal: '',
+  pdvNomeCaixaPadrao: 'Caixa 01',
+  pdvContingenciaOffline: true,
+  proximaNfeNumero: '1',
+  cfopPadraoInterno: '5102',
+  cfopPadraoInterestadual: '6102',
+  aliquotaIcmsInterna: '',
+  aliquotaIcmsInterestadual: '',
+  aliquotaPis: '',
+  aliquotaCofins: '',
+  aliquotaIss: '',
+  aliquotaIpi: '',
+  cargaTributariaPercentual: '',
+  custoOperacionalPercentual: '',
+  margemMinimaPercentual: '',
+  prioridadeFiscal: '100',
+  permiteNfeEntrada: true,
+  permiteNfeSaida: true,
+  permiteDropshipping: false,
+  permiteMarketplace: false,
+  emitentePreferencial: false,
+  ativa: true,
+  beneficiosEstrategicos: '',
+  contratoResumo: '',
+  observacoes: '',
+};
 const pedidoStatusOptions = ['Pendente', 'Processando', 'Enviado', 'Entregue', 'Cancelado'];
 const leadStatusOptions = ['Novo', 'Contato', 'Qualificado', 'Negociacao', 'Ganho', 'Perdido'];
 const allowDemoData = process.env.NODE_ENV !== 'production';
@@ -341,6 +416,35 @@ const getFornecedorDuplicateMessage = (form, fornecedores) => {
   return '';
 };
 
+const getEmpresaGrupoDuplicateMessage = (form, empresas) => {
+  const cnpj = normalizeDocument(form.cnpj);
+  const codigoEmpresa = normalizeText(form.codigoEmpresa);
+  const emailFiscal = normalizeText(form.emailFiscal);
+  const razaoSocial = normalizeText(form.razaoSocial);
+
+  if (cnpj) {
+    const duplicate = empresas.find((empresa) => normalizeDocument(empresa.cnpj) === cnpj);
+    if (duplicate) return `Empresa já cadastrada com este CNPJ: ${duplicate.razaoSocial || duplicate.nomeFantasia || duplicate.cnpj}.`;
+  }
+
+  if (codigoEmpresa) {
+    const duplicate = empresas.find((empresa) => normalizeText(empresa.codigoEmpresa) === codigoEmpresa);
+    if (duplicate) return `Código interno já vinculado a ${duplicate.razaoSocial || duplicate.nomeFantasia || duplicate.cnpj}.`;
+  }
+
+  if (emailFiscal) {
+    const duplicate = empresas.find((empresa) => normalizeText(empresa.emailFiscal) === emailFiscal);
+    if (duplicate) return `E-mail fiscal já vinculado a ${duplicate.razaoSocial || duplicate.nomeFantasia || duplicate.cnpj}.`;
+  }
+
+  if (razaoSocial) {
+    const duplicate = empresas.find((empresa) => normalizeText(empresa.razaoSocial) === razaoSocial);
+    if (duplicate) return 'Já existe empresa com esta razão social na base fiscal.';
+  }
+
+  return '';
+};
+
 function StatCard({ title, value, detail, icon: Icon, trend, tone = 'slate' }) {
   const toneClass = {
     slate: 'bg-slate-950 text-white',
@@ -381,6 +485,7 @@ export default function Dashboard() {
   const [categorias, setCategorias] = useState(allowDemoData ? fallbackCategories : []);
   const [clientes, setClientes] = useState(allowDemoData ? fallbackClientes : []);
   const [fornecedores, setFornecedores] = useState(allowDemoData ? fallbackFornecedores : []);
+  const [empresasGrupo, setEmpresasGrupo] = useState(allowDemoData ? fallbackEmpresasGrupo : []);
   const [integracoes, setIntegracoes] = useState(fallbackIntegracoes);
   const [loading, setLoading] = useState(true);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -392,11 +497,12 @@ export default function Dashboard() {
   const [clienteForm, setClienteForm] = useState(emptyCliente);
   const [fornecedorForm, setFornecedorForm] = useState(emptyFornecedor);
   const [leadForm, setLeadForm] = useState(emptyLead);
+  const [empresaGrupoForm, setEmpresaGrupoForm] = useState(emptyEmpresaGrupo);
   const [formStatus, setFormStatus] = useState('');
 
   const loadData = useCallback(async () => {
     try {
-      const [resumoRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, integracoesRes] = await Promise.all([
+      const [resumoRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, empresasGrupoRes, integracoesRes] = await Promise.all([
         dashboardAPI.getResumo(),
         pedidoAPI.getAll(),
         leadAPI.getAll(),
@@ -404,6 +510,7 @@ export default function Dashboard() {
         categoriaAPI.getAll(),
         clienteAPI.getAll(),
         fornecedorAPI.getAll(),
+        empresaGrupoAPI.getAll().catch(() => ({ data: [] })),
         integracoesAPI.getDiagnostico()
           .catch(() => integracoesAPI.getStatus())
           .catch(() => ({ data: fallbackIntegracoes })),
@@ -415,6 +522,7 @@ export default function Dashboard() {
       if (Array.isArray(categoriasRes.data) && categoriasRes.data.length > 0) setCategorias(categoriasRes.data);
       if (Array.isArray(clientesRes.data) && clientesRes.data.length > 0) setClientes(clientesRes.data);
       if (Array.isArray(fornecedoresRes.data) && fornecedoresRes.data.length > 0) setFornecedores(fornecedoresRes.data);
+      if (Array.isArray(empresasGrupoRes.data) && empresasGrupoRes.data.length > 0) setEmpresasGrupo(empresasGrupoRes.data);
       if (Array.isArray(integracoesRes.data) && integracoesRes.data.length > 0) setIntegracoes(integracoesRes.data);
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
@@ -534,6 +642,37 @@ export default function Dashboard() {
     setFormStatus('Lead cadastrado no CRM.');
   };
 
+  const submitEmpresaGrupo = async (event) => {
+    event.preventDefault();
+    setFormStatus('');
+    const duplicateMessage = getEmpresaGrupoDuplicateMessage(empresaGrupoForm, empresasGrupo);
+    if (duplicateMessage) {
+      setFormStatus(duplicateMessage);
+      return;
+    }
+
+    const payload = {
+      ...empresaGrupoForm,
+      proximaNfceNumero: empresaGrupoForm.proximaNfceNumero ? Number(empresaGrupoForm.proximaNfceNumero) : null,
+      proximaNfeNumero: empresaGrupoForm.proximaNfeNumero ? Number(empresaGrupoForm.proximaNfeNumero) : null,
+      aliquotaIcmsInterna: empresaGrupoForm.aliquotaIcmsInterna ? Number(empresaGrupoForm.aliquotaIcmsInterna) : null,
+      aliquotaIcmsInterestadual: empresaGrupoForm.aliquotaIcmsInterestadual ? Number(empresaGrupoForm.aliquotaIcmsInterestadual) : null,
+      aliquotaPis: empresaGrupoForm.aliquotaPis ? Number(empresaGrupoForm.aliquotaPis) : null,
+      aliquotaCofins: empresaGrupoForm.aliquotaCofins ? Number(empresaGrupoForm.aliquotaCofins) : null,
+      aliquotaIss: empresaGrupoForm.aliquotaIss ? Number(empresaGrupoForm.aliquotaIss) : null,
+      aliquotaIpi: empresaGrupoForm.aliquotaIpi ? Number(empresaGrupoForm.aliquotaIpi) : null,
+      cargaTributariaPercentual: empresaGrupoForm.cargaTributariaPercentual ? Number(empresaGrupoForm.cargaTributariaPercentual) : null,
+      custoOperacionalPercentual: empresaGrupoForm.custoOperacionalPercentual ? Number(empresaGrupoForm.custoOperacionalPercentual) : null,
+      margemMinimaPercentual: empresaGrupoForm.margemMinimaPercentual ? Number(empresaGrupoForm.margemMinimaPercentual) : null,
+      prioridadeFiscal: empresaGrupoForm.prioridadeFiscal ? Number(empresaGrupoForm.prioridadeFiscal) : 100,
+    };
+
+    const response = await empresaGrupoAPI.create(payload);
+    setEmpresasGrupo((current) => [response.data, ...current]);
+    setEmpresaGrupoForm(emptyEmpresaGrupo);
+    setFormStatus('Empresa fiscal cadastrada no ERP.');
+  };
+
   const updateLeadStatus = async (id, status) => {
     const response = await leadAPI.updateStatus(id, status);
     setLeads((current) => current.map((lead) => (lead.id === id ? response.data : lead)));
@@ -563,6 +702,7 @@ export default function Dashboard() {
   const produtoDuplicateMessage = useMemo(() => getProdutoDuplicateMessage(produtoForm, produtos), [produtoForm, produtos]);
   const clienteDuplicateMessage = useMemo(() => getClienteDuplicateMessage(clienteForm, clientes), [clienteForm, clientes]);
   const fornecedorDuplicateMessage = useMemo(() => getFornecedorDuplicateMessage(fornecedorForm, fornecedores), [fornecedorForm, fornecedores]);
+  const empresaGrupoDuplicateMessage = useMemo(() => getEmpresaGrupoDuplicateMessage(empresaGrupoForm, empresasGrupo), [empresaGrupoForm, empresasGrupo]);
   const selectedCadastro = cadastroTabs.find((item) => item.id === activeCadastroTab) || cadastroTabs[0];
   const cadastroCounts = {
     produtos: produtos.length,
@@ -1089,6 +1229,123 @@ export default function Dashboard() {
                 </section>
               )}
 
+              {activeTab === 'erp-empresas' && (
+                <section className="space-y-6">
+                  <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Cadastro fiscal mestre</p>
+                    <h2 className="mt-2 text-2xl font-black text-slate-950">Empresas do grupo e parceiras</h2>
+                    <p className="mt-1 max-w-3xl text-sm text-slate-500">
+                      Cadastre as empresas com o máximo de detalhes fiscais, tributários e operacionais para suportar a decisão automática de emissão.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_380px]">
+                    <SimpleForm
+                      title="Nova empresa fiscal"
+                      subtitle="Este cadastro alimenta o motor tributário, relatórios e a futura automação de NF-e."
+                      onSubmit={submitEmpresaGrupo}
+                      buttonLabel="Salvar empresa fiscal"
+                      alertMessage={formStatus || empresaGrupoDuplicateMessage}
+                    >
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Base societária</p>
+                        <div className="mt-4 grid gap-4 md:grid-cols-2">
+                          <SelectField label="Tipo de cadastro" value={empresaGrupoForm.tipoCadastro} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, tipoCadastro: value }))} options={['GrupoSocietario', 'ParceiraEstrategica']} />
+                          <SelectField label="Matriz / filial" value={empresaGrupoForm.matrizFilial} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, matrizFilial: value }))} options={['Matriz', 'Filial', 'Unidade']} />
+                          <Field label="Razão social" value={empresaGrupoForm.razaoSocial} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, razaoSocial: value }))} required />
+                          <Field label="Nome fantasia" value={empresaGrupoForm.nomeFantasia} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, nomeFantasia: value }))} />
+                          <Field label="CNPJ" value={empresaGrupoForm.cnpj} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, cnpj: value }))} required />
+                          <Field label="Código interno" value={empresaGrupoForm.codigoEmpresa} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, codigoEmpresa: value }))} />
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Fiscal e contábil</p>
+                        <div className="mt-4 grid gap-4 md:grid-cols-2">
+                          <Field label="Inscrição estadual" value={empresaGrupoForm.inscricaoEstadual} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, inscricaoEstadual: value }))} />
+                          <Field label="Inscrição municipal" value={empresaGrupoForm.inscricaoMunicipal} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, inscricaoMunicipal: value }))} />
+                          <SelectField label="Regime tributário" value={empresaGrupoForm.regimeTributario} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, regimeTributario: value }))} options={['Simples Nacional', 'Lucro Presumido', 'Lucro Real']} />
+                          <Field label="CRT" value={empresaGrupoForm.crt} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, crt: value }))} />
+                          <Field label="CNAE principal" value={empresaGrupoForm.cnaePrincipal} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, cnaePrincipal: value }))} />
+                          <Field label="NCM padrão" value={empresaGrupoForm.ncmPadrao} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, ncmPadrao: value }))} />
+                          <Field label="Categoria fiscal" value={empresaGrupoForm.categoriaFiscal} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, categoriaFiscal: value }))} />
+                          <Field label="Subcategoria fiscal" value={empresaGrupoForm.subcategoriaFiscal} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, subcategoriaFiscal: value }))} />
+                          <Field label="CFOP interno" value={empresaGrupoForm.cfopPadraoInterno} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, cfopPadraoInterno: value }))} />
+                          <Field label="CFOP interestadual" value={empresaGrupoForm.cfopPadraoInterestadual} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, cfopPadraoInterestadual: value }))} />
+                        </div>
+                        <TextAreaField label="CNAEs secundários" value={empresaGrupoForm.cnaesSecundarios} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, cnaesSecundarios: value }))} />
+                        <TextAreaField label="Natureza padrão de operação" value={empresaGrupoForm.naturezaOperacaoPadrao} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, naturezaOperacaoPadrao: value }))} rows={3} />
+                      </div>
+
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Contato e emissão</p>
+                        <div className="mt-4 grid gap-4 md:grid-cols-2">
+                          <Field label="Responsável legal" value={empresaGrupoForm.responsavelLegal} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, responsavelLegal: value }))} />
+                          <Field label="Responsável fiscal" value={empresaGrupoForm.responsavelFiscal} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, responsavelFiscal: value }))} />
+                          <Field label="E-mail fiscal" type="email" value={empresaGrupoForm.emailFiscal} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, emailFiscal: value }))} />
+                          <Field label="E-mail comercial" type="email" value={empresaGrupoForm.emailComercial} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, emailComercial: value }))} />
+                          <Field label="Telefone" value={empresaGrupoForm.telefone} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, telefone: value }))} />
+                          <Field label="WhatsApp" value={empresaGrupoForm.whatsapp} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, whatsapp: value }))} />
+                          <SelectField label="Ambiente NF-e" value={empresaGrupoForm.ambienteNfe} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, ambienteNfe: value }))} options={['Homologacao', 'Producao']} />
+                          <Field label="Série NF-e" value={empresaGrupoForm.serieNfe} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, serieNfe: value }))} />
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">PDV e cupom fiscal</p>
+                        <div className="mt-4 grid gap-4 md:grid-cols-2">
+                          <SelectField label="Documento fiscal do PDV" value={empresaGrupoForm.modeloDocumentoPdv} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, modeloDocumentoPdv: value }))} options={['NFCe', 'SAT', 'MFe', 'ECF']} />
+                          <SelectField label="Ambiente NFC-e" value={empresaGrupoForm.ambienteNfce} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, ambienteNfce: value }))} options={['Homologacao', 'Producao']} />
+                          <Field label="Série NFC-e" value={empresaGrupoForm.serieNfce} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, serieNfce: value }))} />
+                          <Field label="Próximo número NFC-e" type="number" value={empresaGrupoForm.proximaNfceNumero} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, proximaNfceNumero: value }))} />
+                          <Field label="CSC NFC-e" value={empresaGrupoForm.nfceCsc} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, nfceCsc: value }))} />
+                          <Field label="ID Token CSC" value={empresaGrupoForm.nfceCscIdToken} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, nfceCscIdToken: value }))} />
+                          <Field label="Série SAT / MFe" value={empresaGrupoForm.pdvSerieSat} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, pdvSerieSat: value }))} />
+                          <Field label="Impressora fiscal" value={empresaGrupoForm.pdvImpressoraFiscal} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, pdvImpressoraFiscal: value }))} />
+                          <Field label="Nome padrão do caixa" value={empresaGrupoForm.pdvNomeCaixaPadrao} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, pdvNomeCaixaPadrao: value }))} />
+                        </div>
+                        <div className="mt-4 grid gap-3 md:grid-cols-2">
+                          <ToggleField label="Contingência offline no PDV" checked={empresaGrupoForm.pdvContingenciaOffline} onChange={(checked) => setEmpresaGrupoForm((form) => ({ ...form, pdvContingenciaOffline: checked }))} />
+                          <ToggleField label="Habilitar emissão fiscal no caixa" checked={empresaGrupoForm.permiteNfeSaida} onChange={(checked) => setEmpresaGrupoForm((form) => ({ ...form, permiteNfeSaida: checked }))} />
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Custo e decisão automática</p>
+                        <div className="mt-4 grid gap-4 md:grid-cols-2">
+                          <Field label="Próxima NF-e" type="number" value={empresaGrupoForm.proximaNfeNumero} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, proximaNfeNumero: value }))} />
+                          <Field label="Prioridade fiscal" type="number" value={empresaGrupoForm.prioridadeFiscal} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, prioridadeFiscal: value }))} />
+                          <Field label="ICMS interna (%)" type="number" value={empresaGrupoForm.aliquotaIcmsInterna} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, aliquotaIcmsInterna: value }))} />
+                          <Field label="ICMS interestadual (%)" type="number" value={empresaGrupoForm.aliquotaIcmsInterestadual} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, aliquotaIcmsInterestadual: value }))} />
+                          <Field label="PIS (%)" type="number" value={empresaGrupoForm.aliquotaPis} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, aliquotaPis: value }))} />
+                          <Field label="COFINS (%)" type="number" value={empresaGrupoForm.aliquotaCofins} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, aliquotaCofins: value }))} />
+                          <Field label="Carga tributária (%)" type="number" value={empresaGrupoForm.cargaTributariaPercentual} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, cargaTributariaPercentual: value }))} />
+                          <Field label="Custo operacional (%)" type="number" value={empresaGrupoForm.custoOperacionalPercentual} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, custoOperacionalPercentual: value }))} />
+                          <Field label="Margem mínima (%)" type="number" value={empresaGrupoForm.margemMinimaPercentual} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, margemMinimaPercentual: value }))} />
+                        </div>
+                        <div className="mt-4 grid gap-3 md:grid-cols-2">
+                          <ToggleField label="NF-e entrada" checked={empresaGrupoForm.permiteNfeEntrada} onChange={(checked) => setEmpresaGrupoForm((form) => ({ ...form, permiteNfeEntrada: checked }))} />
+                          <ToggleField label="NF-e saída" checked={empresaGrupoForm.permiteNfeSaida} onChange={(checked) => setEmpresaGrupoForm((form) => ({ ...form, permiteNfeSaida: checked }))} />
+                          <ToggleField label="Pode dropshipping" checked={empresaGrupoForm.permiteDropshipping} onChange={(checked) => setEmpresaGrupoForm((form) => ({ ...form, permiteDropshipping: checked }))} />
+                          <ToggleField label="Pode marketplace" checked={empresaGrupoForm.permiteMarketplace} onChange={(checked) => setEmpresaGrupoForm((form) => ({ ...form, permiteMarketplace: checked }))} />
+                          <ToggleField label="Emitente preferencial" checked={empresaGrupoForm.emitentePreferencial} onChange={(checked) => setEmpresaGrupoForm((form) => ({ ...form, emitentePreferencial: checked }))} />
+                          <ToggleField label="Empresa ativa" checked={empresaGrupoForm.ativa} onChange={(checked) => setEmpresaGrupoForm((form) => ({ ...form, ativa: checked }))} />
+                        </div>
+                      </div>
+
+                      <TextAreaField label="Benefícios estratégicos" value={empresaGrupoForm.beneficiosEstrategicos} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, beneficiosEstrategicos: value }))} />
+                      <TextAreaField label="Resumo contratual" value={empresaGrupoForm.contratoResumo} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, contratoResumo: value }))} />
+                      <TextAreaField label="Observações fiscais e operacionais" value={empresaGrupoForm.observacoes} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, observacoes: value }))} />
+                    </SimpleForm>
+
+                    <div className="space-y-6">
+                      <CadastroInsightPanel title="Proteções do cadastro fiscal" checks={empresaGrupoHighlights} />
+                      <CompactList title="Empresas já mapeadas" items={empresasGrupo} fields={['razaoSocial', 'cnpj', 'regimeTributario', 'cidade']} />
+                    </div>
+                  </div>
+                </section>
+              )}
+
               {activeTab === 'integracoes' && (
                 <section className="space-y-6">
                   <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -1571,6 +1828,52 @@ function LeadsTable({ leads, onStatusChange }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+function SelectField({ label, value, onChange, options, className = '' }) {
+  return (
+    <label className={`block text-sm font-bold text-slate-700 ${className}`}>
+      {label}
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none transition focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>{option}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function TextAreaField({ label, value, onChange, rows = 4, className = '' }) {
+  return (
+    <label className={`block text-sm font-bold text-slate-700 ${className}`}>
+      {label}
+      <textarea
+        value={value}
+        rows={rows}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-semibold outline-none transition focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+      />
+    </label>
+  );
+}
+
+function ToggleField({ label, checked, onChange, className = '' }) {
+  return (
+    <label className={`flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 ${className}`}>
+      <span className="text-sm font-black text-slate-700">{label}</span>
+      <button
+        type="button"
+        onClick={() => onChange(!checked)}
+        className={`inline-flex h-7 w-14 items-center rounded-full px-1 transition ${checked ? 'bg-emerald-500' : 'bg-slate-300'}`}
+      >
+        <span className={`h-5 w-5 rounded-full bg-white shadow transition ${checked ? 'translate-x-7' : 'translate-x-0'}`} />
+      </button>
+    </label>
   );
 }
 

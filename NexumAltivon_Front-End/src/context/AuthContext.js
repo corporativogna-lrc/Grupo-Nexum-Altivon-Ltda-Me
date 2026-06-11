@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { STORAGE_KEYS, ADMIN_ROLES } from '../constants';
-import api, { API_BASE_URL } from '../services/api';
+import api, { API_BASE_URL, getRuntimeApiBaseUrl } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -54,11 +54,14 @@ export function AuthProvider({ children }) {
       return { success: true };
     } catch (error) {
       const isNetworkError = !error.response;
+      const runtimeApiBaseUrl = isNetworkError
+        ? await getRuntimeApiBaseUrl().catch(() => API_BASE_URL)
+        : API_BASE_URL;
 
       return {
         success: false,
         error: isNetworkError
-          ? `API pública indisponível no momento (${API_BASE_URL}). Verifique Cloudflare/DNS e tente novamente.`
+          ? `API indisponível no momento (${runtimeApiBaseUrl}). Verifique a ponte pública da API e tente novamente.`
           : error.response?.data?.detail || error.response?.data?.mensagem || 'Erro ao fazer login'
       };
     }

@@ -13,8 +13,8 @@ namespace NexumAltivon.API.Services
     {
         Task EnviarConfirmacaoPedidoAsync(Cliente cliente, Pedido pedido);
         Task EnviarConfirmacaoPagamentoAsync(Cliente cliente, Pedido pedido);
-        Task EnviarNotificacaoWhatsAppAsync(string telefone, string mensagem);
-        Task EnviarEmailAsync(string destinatario, string assunto, string corpoHtml);
+        Task EnviarNotificacaoWhatsAppAsync(string? telefone, string mensagem);
+        Task EnviarEmailAsync(string? destinatario, string assunto, string corpoHtml);
         Task EnviarAlertaEstoqueBaixoAsync(Produto produto);
         Task EnviarStatusPedidoAsync(Cliente cliente, Pedido pedido, string mensagemPersonalizada);
     }
@@ -24,12 +24,12 @@ namespace NexumAltivon.API.Services
         private readonly HttpClient _httpClient;
         private readonly IConfiguration _config;
         private readonly ILogger<NotificacaoService> _logger;
-        private readonly string _sendGridKey;
+        private readonly string? _sendGridKey;
         private readonly string _fromEmail;
         private readonly string _fromName;
         private readonly bool _whatsappAtivo;
-        private readonly string _whatsappApiUrl;
-        private readonly string _whatsappApiKey;
+        private readonly string? _whatsappApiUrl;
+        private readonly string? _whatsappApiKey;
 
         public NotificacaoService(IHttpClientFactory factory, IConfiguration config, ILogger<NotificacaoService> logger)
         {
@@ -65,7 +65,7 @@ h1 {{ color: #C9A227; font-size: 24px; }}
 <div class='pedido-info'>
 <p><strong>Total:</strong> R$ {pedido.Total:N2}</p>
 <p><strong>Status:</strong> Aguardando pagamento</p>
-<p><strong>Data:</strong> {pedido.CriadoEm:dd/MM/yyyy HH:mm}</p>
+<p><strong>Data:</strong> {pedido.CreatedAt:dd/MM/yyyy HH:mm}</p>
 </div>
 <p>Assim que o pagamento for confirmado, iniciaremos a separaÃ§Ã£o do seu pedido.</p>
 <div class='footer'>
@@ -105,7 +105,7 @@ h1 {{ color: #C9A227; }}
             await EnviarEmailAsync(cliente.Email, assunto, corpo);
         }
 
-        public async Task EnviarNotificacaoWhatsAppAsync(string telefone, string mensagem)
+        public async Task EnviarNotificacaoWhatsAppAsync(string? telefone, string mensagem)
         {
             if (!_whatsappAtivo || string.IsNullOrEmpty(telefone)) return;
 
@@ -132,10 +132,16 @@ h1 {{ color: #C9A227; }}
             }
         }
 
-        public async Task EnviarEmailAsync(string destinatario, string assunto, string corpoHtml)
+        public async Task EnviarEmailAsync(string? destinatario, string assunto, string corpoHtml)
         {
             try
             {
+                if (string.IsNullOrWhiteSpace(destinatario))
+                {
+                    _logger.LogWarning("Tentativa de envio de e-mail ignorada por destinatário vazio. Assunto: {Assunto}", assunto);
+                    return;
+                }
+
                 if (string.IsNullOrEmpty(_sendGridKey))
                 {
                     _logger.LogWarning("SendGrid nÃ£o configurado. E-mail simulado para {Email}: {Assunto}", destinatario, assunto);
@@ -179,7 +185,7 @@ h1 {{ color: #C9A227; }}
         {
             var assunto = $"[ALERTA] Estoque Baixo - {produto.Nome}";
             var corpo = $@"<p>Produto <strong>{produto.Nome}</strong> (SKU: {produto.Sku}) atingiu estoque baixo.</p>
-<p>Estoque atual: <strong>{produto.Estoque}</strong> | MÃ­nimo: {produto.EstoqueMinimo}</p>
+<p>Estoque atual: <strong>{produto.EstoqueAtual}</strong> | MÃ­nimo: {produto.EstoqueMinimo}</p>
 <p>Loja: {produto.Loja?.Nome}</p>";
 
             var emailsAdmin = _config["Alertas:EstoqueEmailAdmin"] ?? "corporativo.gna@gmail.com";
