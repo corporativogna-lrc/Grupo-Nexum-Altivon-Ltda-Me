@@ -1,0 +1,89 @@
+2026-06-04T06:02:06Z INF Thank you for trying Cloudflare Tunnel. Doing so, without a Cloudflare account, is a quick way to experiment and try it out. However, be aware that these account-less Tunnels have no uptime guarantee, are subject to the Cloudflare Online Services Terms of Use (https://www.cloudflare.com/website-terms/), and Cloudflare reserves the right to investigate your use of Tunnels for violations of such terms. If you intend to use Tunnels in production you should use a pre-created named tunnel by following: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps
+2026-06-04T06:02:06Z INF Requesting new quick Tunnel on trycloudflare.com...
+2026-06-04T06:02:10Z INF +--------------------------------------------------------------------------------------------+
+2026-06-04T06:02:10Z INF |  Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):  |
+2026-06-04T06:02:10Z INF |  https://cuts-accompanying-specialists-ordering.trycloudflare.com                          |
+2026-06-04T06:02:10Z INF +--------------------------------------------------------------------------------------------+
+2026-06-04T06:02:10Z INF Cannot determine default configuration path. No file [config.yml config.yaml] in [~/.cloudflared ~/.cloudflare-warp ~/cloudflare-warp]
+2026-06-04T06:02:10Z INF Version 2026.5.2 (Checksum 20b9638f685333d623798e733effbad2487093f15ba592f6c7752360ff3b7ab7)
+2026-06-04T06:02:10Z INF GOOS: windows, GOVersion: go1.26.3, GoArch: amd64
+2026-06-04T06:02:10Z INF Settings: map[ha-connections:1 no-autoupdate:true p:http2 protocol:http2 url:http://localhost:5010]
+2026-06-04T06:02:10Z INF cloudflared will not automatically update on Windows systems.
+2026-06-04T06:02:10Z INF Generated Connector ID: 6b875002-22a1-4181-a943-d04c1556fb66
+2026-06-04T06:02:10Z INF Initial protocol http2
+2026-06-04T06:02:10Z INF ICMP proxy will use 192.168.1.68 as source for IPv4
+2026-06-04T06:02:10Z INF ICMP proxy will use ::1 in zone Loopback Pseudo-Interface 1 as source for IPv6
+2026-06-04T06:02:10Z INF cloudflared does not support loading the system root certificate pool on Windows. Please use --origin-ca-pool <PATH> to specify the path to the certificate pool
+2026-06-04T06:02:10Z INF ICMP proxy will use 192.168.1.68 as source for IPv4
+2026-06-04T06:02:10Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.200.193
+2026-06-04T06:02:10Z INF ICMP proxy will use ::1 in zone Loopback Pseudo-Interface 1 as source for IPv6
+2026-06-04T06:02:10Z INF Starting metrics server on 127.0.0.1:20242/metrics
+2026-06-04T06:02:10Z INF +-------------------------------------------------------------------------------------+
+2026-06-04T06:02:10Z INF |                               CONNECTIVITY PRE-CHECKS                               |
+2026-06-04T06:02:10Z INF +-------------------------------------------------------------------------------------+
+2026-06-04T06:02:10Z ERR failed to serve incoming request error="Unauthorized: Tunnel not found"
+2026-06-04T06:02:10Z INF |  COMPONENT         TARGET                     STATUS  DETAILS                       |
+2026-06-04T06:02:10Z INF |  DNS Resolution    region1.v2.argotunnel.com  PASS    DNS Resolved successfully     |
+2026-06-04T06:02:10Z INF |  DNS Resolution    region2.v2.argotunnel.com  PASS    DNS Resolved successfully     |
+2026-06-04T06:02:10Z INF |  UDP Connectivity  region1.v2.argotunnel.com  PASS    QUIC connection successful    |
+2026-06-04T06:02:10Z INF |  UDP Connectivity  region2.v2.argotunnel.com  PASS    QUIC connection successful    |
+2026-06-04T06:02:10Z INF |  TCP Connectivity  region1.v2.argotunnel.com  PASS    HTTP/2 connection successful  |
+2026-06-04T06:02:10Z INF |  TCP Connectivity  region2.v2.argotunnel.com  PASS    HTTP/2 connection successful  |
+2026-06-04T06:02:10Z ERR Register tunnel error from server side error="Unauthorized: Tunnel not found" connIndex=0 event=0 ip=198.41.200.193
+2026-06-04T06:02:10Z INF Retrying connection in up to 2s connIndex=0 event=0 ip=198.41.200.193
+2026-06-04T06:02:10Z INF |  Cloudflare API    api.cloudflare.com:443     PASS    API is reachable              |
+2026-06-04T06:02:10Z INF |                                                                                     |
+2026-06-04T06:02:10Z INF |  SUMMARY: Environment is healthy. cloudflared will use 'quic' as primary protocol.  |
+2026-06-04T06:02:10Z INF +-------------------------------------------------------------------------------------+
+2026-06-04T06:02:10Z INF precheck component="DNS Resolution" details="DNS Resolved successfully" run_id=0e16e15c-ad71-4571-b371-52189bf6378a status=pass target=region1.v2.argotunnel.com
+2026-06-04T06:02:10Z INF precheck component="DNS Resolution" details="DNS Resolved successfully" run_id=0e16e15c-ad71-4571-b371-52189bf6378a status=pass target=region2.v2.argotunnel.com
+2026-06-04T06:02:10Z INF precheck component="UDP Connectivity" details="QUIC connection successful" run_id=0e16e15c-ad71-4571-b371-52189bf6378a status=pass target=region1.v2.argotunnel.com
+2026-06-04T06:02:10Z INF precheck component="UDP Connectivity" details="QUIC connection successful" run_id=0e16e15c-ad71-4571-b371-52189bf6378a status=pass target=region2.v2.argotunnel.com
+2026-06-04T06:02:10Z INF precheck component="TCP Connectivity" details="HTTP/2 connection successful" run_id=0e16e15c-ad71-4571-b371-52189bf6378a status=pass target=region1.v2.argotunnel.com
+2026-06-04T06:02:10Z INF precheck component="TCP Connectivity" details="HTTP/2 connection successful" run_id=0e16e15c-ad71-4571-b371-52189bf6378a status=pass target=region2.v2.argotunnel.com
+2026-06-04T06:02:10Z INF precheck component="Cloudflare API" details="API is reachable" run_id=0e16e15c-ad71-4571-b371-52189bf6378a status=pass target=api.cloudflare.com:443
+2026-06-04T06:02:10Z INF precheck complete hard_fail=false run_id=0e16e15c-ad71-4571-b371-52189bf6378a suggested_protocol=quic
+2026-06-04T06:02:11Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.200.193
+2026-06-04T06:02:11Z ERR failed to serve incoming request error="Unauthorized: Tunnel not found"
+2026-06-04T06:02:11Z ERR Register tunnel error from server side error="Unauthorized: Tunnel not found" connIndex=0 event=0 ip=198.41.200.193
+2026-06-04T06:02:11Z INF Retrying connection in up to 4s connIndex=0 event=0 ip=198.41.200.193
+2026-06-04T06:02:11Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.200.193
+2026-06-04T06:02:11Z ERR failed to serve incoming request error="Unauthorized: Tunnel not found"
+2026-06-04T06:02:11Z ERR Register tunnel error from server side error="Unauthorized: Tunnel not found" connIndex=0 event=0 ip=198.41.200.193
+2026-06-04T06:02:11Z INF Retrying connection in up to 8s connIndex=0 event=0 ip=198.41.200.193
+2026-06-04T06:02:14Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.200.193
+2026-06-04T06:02:14Z INF Registered tunnel connection connIndex=0 connection=3716ca68-8484-4989-a832-cfce05bb741e event=0 ip=198.41.200.193 location=gru19 protocol=http2
+2026-06-04T08:47:24Z ERR failed to serve incoming request error="Error shutting down control stream: client disconnected"
+2026-06-04T08:47:24Z ERR Serve tunnel error error="Error shutting down control stream: client disconnected" connIndex=0 event=0 ip=198.41.200.193
+2026-06-04T08:47:24Z INF Retrying connection in up to 1s connIndex=0 event=0 ip=198.41.200.193
+2026-06-04T08:47:25Z ERR Connection terminated error="Error shutting down control stream: client disconnected" connIndex=0
+2026-06-04T08:47:32Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.200.193
+2026-06-04T08:47:32Z INF Registered tunnel connection connIndex=0 connection=57028bb3-9c40-4954-a13e-b9256c95d5a2 event=0 ip=198.41.200.193 location=gru19 protocol=http2
+2026-06-04T12:53:59Z ERR Failed to refresh feature selector error="lookup cfd-features.argotunnel.com: dnsquery: No DNS servers configured for local system."
+2026-06-04T12:54:04Z ERR Failed to refresh DNS local resolver error="lookup region1.v2.argotunnel.com: i/o timeout"
+2026-06-04T12:54:04Z INF Lost connection with the edge connIndex=0
+2026-06-04T12:54:04Z ERR Serve tunnel error error="connection with edge closed" connIndex=0 event=0 ip=198.41.200.193
+2026-06-04T12:54:04Z INF Retrying connection in up to 1s connIndex=0 event=0 ip=198.41.200.193
+2026-06-04T12:54:04Z ERR failed to serve incoming request error="Error shutting down control stream: client disconnected"
+2026-06-04T12:54:05Z ERR Connection terminated error="connection with edge closed" connIndex=0
+2026-06-04T12:54:17Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.200.193
+2026-06-04T12:54:32Z ERR Unable to establish connection with Cloudflare edge error="DialContext error: dial tcp 198.41.200.193:7844: i/o timeout" connIndex=0 event=0 ip=198.41.200.193
+2026-06-04T12:54:33Z ERR Serve tunnel error error="DialContext error: dial tcp 198.41.200.193:7844: i/o timeout" connIndex=0 event=0 ip=198.41.200.193
+2026-06-04T12:54:33Z INF Retrying connection in up to 4s connIndex=0 event=0 ip=198.41.200.193
+2026-06-04T12:54:36Z ERR Connection terminated error="DialContext error: dial tcp 198.41.200.193:7844: i/o timeout" connIndex=0
+2026-06-04T12:54:48Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.200.43
+2026-06-04T12:54:48Z ERR Unable to establish connection with Cloudflare edge error="DialContext error: dial tcp 198.41.200.43:7844: connectex: A socket operation was attempted to an unreachable network." connIndex=0 event=0 ip=198.41.200.43
+2026-06-04T12:54:48Z ERR Serve tunnel error error="DialContext error: dial tcp 198.41.200.43:7844: connectex: A socket operation was attempted to an unreachable network." connIndex=0 event=0 ip=198.41.200.43
+2026-06-04T12:54:48Z INF Retrying connection in up to 8s connIndex=0 event=0 ip=198.41.200.43
+2026-06-04T12:54:52Z ERR Connection terminated error="DialContext error: dial tcp 198.41.200.43:7844: connectex: A socket operation was attempted to an unreachable network." connIndex=0
+2026-06-04T12:55:58Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.200.113
+2026-06-04T12:55:58Z ERR failed to serve incoming request error="Unauthorized: Tunnel not found"
+2026-06-04T12:55:58Z ERR Register tunnel error from server side error="Unauthorized: Tunnel not found" connIndex=0 event=0 ip=198.41.200.113
+2026-06-04T12:55:58Z INF Retrying connection in up to 16s connIndex=0 event=0 ip=198.41.200.113
+2026-06-04T12:55:59Z ERR Connection terminated error="Unauthorized: Tunnel not found" connIndex=0
+2026-06-04T12:57:30Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.200.113
+2026-06-04T12:57:30Z ERR failed to serve incoming request error="Unauthorized: Tunnel not found"
+2026-06-04T12:57:30Z ERR Register tunnel error from server side error="Unauthorized: Tunnel not found" connIndex=0 event=0 ip=198.41.200.113
+2026-06-04T12:57:30Z INF Retrying connection in up to 32s connIndex=0 event=0 ip=198.41.200.113
+2026-06-04T12:58:01Z ERR Connection terminated error="Unauthorized: Tunnel not found" connIndex=0
+2026-06-04T12:58:46Z INF Initiating graceful shutdown due to signal terminated ...

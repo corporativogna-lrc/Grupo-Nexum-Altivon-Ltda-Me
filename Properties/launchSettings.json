@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "NexumAltivon.ERP": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:60896;http://localhost:60897"
+    }
+  }
+}

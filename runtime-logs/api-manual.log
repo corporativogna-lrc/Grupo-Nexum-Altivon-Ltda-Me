@@ -1,0 +1,62 @@
+warn: Microsoft.AspNetCore.StaticFiles.StaticFileMiddleware[16]
+      The WebRootPath was not found: C:\Users\Rodrigo Costa\Documents\Codex\2026-05-28\files-mentioned-by-the-user-nexumaltivon\NexumAltivon.com\NexumAltivon_Back-End\wwwroot. Static files may be unavailable.
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:5010
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Production
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: C:\Users\Rodrigo Costa\Documents\Codex\2026-05-28\files-mentioned-by-the-user-nexumaltivon\NexumAltivon.com\NexumAltivon_Back-End
+fail: Microsoft.EntityFrameworkCore.Query[10100]
+      An exception occurred while iterating over the results of a query for context type 'NexumAltivon.API.Data.NexumDbContext'.
+      System.InvalidCastException: Can't convert Enum to Int32
+         at MySqlConnector.Core.Row.GetInt32(Int32 ordinal) in /_/src/MySqlConnector/Core/Row.cs:line 248
+         at lambda_method521(Closure, QueryContext, DbDataReader, ResultContext, SingleQueryResultCoordinator)
+         at Microsoft.EntityFrameworkCore.Query.Internal.SingleQueryingEnumerable`1.AsyncEnumerator.MoveNextAsync()
+      System.InvalidCastException: Can't convert Enum to Int32
+         at MySqlConnector.Core.Row.GetInt32(Int32 ordinal) in /_/src/MySqlConnector/Core/Row.cs:line 248
+         at lambda_method521(Closure, QueryContext, DbDataReader, ResultContext, SingleQueryResultCoordinator)
+         at Microsoft.EntityFrameworkCore.Query.Internal.SingleQueryingEnumerable`1.AsyncEnumerator.MoveNextAsync()
+fail: Microsoft.AspNetCore.Server.Kestrel[13]
+      Connection id "0HNM2GHSJLUB2", Request id "0HNM2GHSJLUB2:00000004": An unhandled exception was thrown by the application.
+      System.InvalidCastException: Can't convert Enum to Int32
+         at MySqlConnector.Core.Row.GetInt32(Int32 ordinal) in /_/src/MySqlConnector/Core/Row.cs:line 248
+         at lambda_method521(Closure, QueryContext, DbDataReader, ResultContext, SingleQueryResultCoordinator)
+         at Microsoft.EntityFrameworkCore.Query.Internal.SingleQueryingEnumerable`1.AsyncEnumerator.MoveNextAsync()
+         at Microsoft.EntityFrameworkCore.Query.ShapedQueryCompilingExpressionVisitor.SingleOrDefaultAsync[TSource](IAsyncEnumerable`1 asyncEnumerable, CancellationToken cancellationToken)
+         at Microsoft.EntityFrameworkCore.Query.ShapedQueryCompilingExpressionVisitor.SingleOrDefaultAsync[TSource](IAsyncEnumerable`1 asyncEnumerable, CancellationToken cancellationToken)
+         at Program.<>c.<<<Main>$>b__0_20>d.MoveNext() in C:\Users\Rodrigo Costa\Documents\Codex\2026-05-28\files-mentioned-by-the-user-nexumaltivon\NexumAltivon.com\NexumAltivon_Back-End\API\Program.cs:line 741
+      --- End of stack trace from previous location ---
+         at Microsoft.AspNetCore.Http.RequestDelegateFactory.ExecuteTaskResult[T](Task`1 task, HttpContext httpContext)
+         at Microsoft.AspNetCore.Http.RequestDelegateFactory.<>c__DisplayClass102_2.<<HandleRequestBodyAndCompileRequestDelegateForJson>b__2>d.MoveNext()
+      --- End of stack trace from previous location ---
+         at Microsoft.AspNetCore.Authorization.AuthorizationMiddleware.Invoke(HttpContext context)
+         at Microsoft.AspNetCore.Authentication.AuthenticationMiddleware.Invoke(HttpContext context)
+         at Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http.HttpProtocol.ProcessRequests[TContext](IHttpApplication`1 application)
+fail: Microsoft.EntityFrameworkCore.Query[10100]
+      An exception occurred while iterating over the results of a query for context type 'NexumAltivon.API.Data.NexumDbContext'.
+      System.InvalidCastException: Can't convert Enum to Int32
+         at MySqlConnector.Core.Row.GetInt32(Int32 ordinal) in /_/src/MySqlConnector/Core/Row.cs:line 248
+         at lambda_method521(Closure, QueryContext, DbDataReader, ResultContext, SingleQueryResultCoordinator)
+         at Microsoft.EntityFrameworkCore.Query.Internal.SingleQueryingEnumerable`1.AsyncEnumerator.MoveNextAsync()
+      System.InvalidCastException: Can't convert Enum to Int32
+         at MySqlConnector.Core.Row.GetInt32(Int32 ordinal) in /_/src/MySqlConnector/Core/Row.cs:line 248
+         at lambda_method521(Closure, QueryContext, DbDataReader, ResultContext, SingleQueryResultCoordinator)
+         at Microsoft.EntityFrameworkCore.Query.Internal.SingleQueryingEnumerable`1.AsyncEnumerator.MoveNextAsync()
+fail: Microsoft.AspNetCore.Server.Kestrel[13]
+      Connection id "0HNM2GHSJLUB2", Request id "0HNM2GHSJLUB2:00000005": An unhandled exception was thrown by the application.
+      System.InvalidCastException: Can't convert Enum to Int32
+         at MySqlConnector.Core.Row.GetInt32(Int32 ordinal) in /_/src/MySqlConnector/Core/Row.cs:line 248
+         at lambda_method521(Closure, QueryContext, DbDataReader, ResultContext, SingleQueryResultCoordinator)
+         at Microsoft.EntityFrameworkCore.Query.Internal.SingleQueryingEnumerable`1.AsyncEnumerator.MoveNextAsync()
+         at Microsoft.EntityFrameworkCore.Query.ShapedQueryCompilingExpressionVisitor.SingleOrDefaultAsync[TSource](IAsyncEnumerable`1 asyncEnumerable, CancellationToken cancellationToken)
+         at Microsoft.EntityFrameworkCore.Query.ShapedQueryCompilingExpressionVisitor.SingleOrDefaultAsync[TSource](IAsyncEnumerable`1 asyncEnumerable, CancellationToken cancellationToken)
+         at Program.<>c.<<<Main>$>b__0_20>d.MoveNext() in C:\Users\Rodrigo Costa\Documents\Codex\2026-05-28\files-mentioned-by-the-user-nexumaltivon\NexumAltivon.com\NexumAltivon_Back-End\API\Program.cs:line 741
+      --- End of stack trace from previous location ---
+         at Microsoft.AspNetCore.Http.RequestDelegateFactory.ExecuteTaskResult[T](Task`1 task, HttpContext httpContext)
+         at Microsoft.AspNetCore.Http.RequestDelegateFactory.<>c__DisplayClass102_2.<<HandleRequestBodyAndCompileRequestDelegateForJson>b__2>d.MoveNext()
+      --- End of stack trace from previous location ---
+         at Microsoft.AspNetCore.Authorization.AuthorizationMiddleware.Invoke(HttpContext context)
+         at Microsoft.AspNetCore.Authentication.AuthenticationMiddleware.Invoke(HttpContext context)
+         at Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http.HttpProtocol.ProcessRequests[TContext](IHttpApplication`1 application)
