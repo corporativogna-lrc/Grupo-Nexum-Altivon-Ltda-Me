@@ -1,0 +1,104 @@
+version: '3.8'
+
+# ============================================
+# Docker Compose — Ambiente de Desenvolvimento
+# Grupo Nexum Altivon ME | www.nexumaltivon.com
+# Fase 6 — Orquestração de Containers
+# ============================================
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: nexum-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root_dev
+      MYSQL_DATABASE: nexum_altivon
+      MYSQL_USER: nexum_dev
+      MYSQL_PASSWORD: nexum_dev_2026
+    ports:
+      - "3309:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ../NexumAltivon_Back-End/Database/nexum_altivon_schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ../Database/erp_schema_update.sql:/docker-entrypoint-initdb.d/02-erp.sql:ro
+    networks:
+      - nexum-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    container_name: nexum-api
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: "http://+:8080"
+      ConnectionStrings__DefaultConnection: "Server=mysql;Port=3306;Database=nexum_altivon;Uid=nexum_dev;Pwd=nexum_dev_2026;"
+      ConnectionStrings__NexumDb: "Server=mysql;Port=3306;Database=nexum_altivon;Uid=nexum_dev;Pwd=nexum_dev_2026;"
+      JwtSettings__SecretKey: "NexumAltivon_DevSecret_2026_GenesisGest_Core_256bits!"
+    ports:
+      - "5000:8080"
+      - "5001:8081"
+    networks:
+      - nexum-network
+    volumes:
+      - ./logs:/app/logs
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+      args:
+        REACT_APP_BACKEND_URL: "http://localhost:5000"
+    container_name: nexum-frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "3000:80"
+    networks:
+      - nexum-network
+
+  # Serviço opcional: Redis para cache distribuído
+  redis:
+    image: redis:7-alpine
+    container_name: nexum-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - nexum-network
+
+  # Serviço opcional: Nginx como reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: nexum-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - frontend
+      - api
+    networks:
+      - nexum-network
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  nexum-network:
+    driver: bridge

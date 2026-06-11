@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  api:
+    image: ghcr.io/corporativogna-lrc/grupo-nexum-altivon-ltda-m-api:main
+    container_name: nexum-api
+    restart: always
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__DefaultConnection: ${API_DEFAULT_CONNECTION}
+      ConnectionStrings__NexumDb: ${API_DEFAULT_CONNECTION}
+      JwtSettings__SecretKey: ${JWT_SECRET_KEY}
+      AdminUser__Email: ${ADMIN_EMAIL}
+      AdminUser__Password: ${ADMIN_PASSWORD}
+      AdminUser__Name: ${ADMIN_NAME}
+      AdminUser__Role: ${ADMIN_ROLE}
+      ApiSettings__CorsOrigins__0: https://www.nexumaltivon.com
+      ApiSettings__CorsOrigins__1: https://nexumaltivon.com
+      ApiSettings__CorsOrigins__2: https://admin.nexumaltivon.com
+      ApiSettings__CorsOrigins__3: https://api.nexumaltivon.com
+      ApiSettings__CorsOrigins__4: https://back.nexumaltivon.com
+      ApiSettings__CorsOrigins__5: https://erp.nexumaltivon.com
+      ApiSettings__CorsOrigins__6: https://crm.nexumaltivon.com
+      ApiSettings__CorsOrigins__7: https://pdv.nexumaltivon.com
+      Integracoes__MercadoPago__AccessToken: ${MP_ACCESS_TOKEN}
+      Integracoes__SendGrid__ApiKey: ${SENDGRID_API_KEY}
+    expose:
+      - "8080"
+    networks:
+      - nexum-prod-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    image: ghcr.io/corporativogna-lrc/grupo-nexum-altivon-ltda-m-frontend:main
+    container_name: nexum-frontend
+    restart: always
+    expose:
+      - "80"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - nexum-prod-network
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: nexum-nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - api
+    networks:
+      - nexum-prod-network
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: nexum-watchtower
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_POLL_INTERVAL: 300
+      WATCHTOWER_CLEANUP: "true"
+    command: --interval 300 nexum-api nexum-frontend nexum-nginx
+
+networks:
+  nexum-prod-network:
+    driver: bridge
