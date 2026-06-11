@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { HTTP_UNAUTHORIZED, STORAGE_KEYS } from '../constants';
 
-const PUBLIC_API_URL = 'https://visual-both-textile-modeling.trycloudflare.com';
+const PUBLIC_API_URL = 'https://api.nexumaltivon.com';
 const RUNTIME_API_CONFIG_URL = '/api-runtime.json';
 const RUNTIME_CACHE_KEY = 'nexum_api_runtime_url';
 
@@ -13,7 +13,7 @@ const getDefaultApiUrl = () => {
   const { hostname } = window.location;
   const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
 
-  return isLocalhost ? 'http://localhost:5010' : PUBLIC_API_URL;
+  return isLocalhost ? 'http://localhost:5011' : PUBLIC_API_URL;
 };
 
 export const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || getDefaultApiUrl();
@@ -195,6 +195,7 @@ export const pedidoAPI = {
 
 export const clienteAPI = {
   getAll: () => api.get('/clientes'),
+  verificarCadastro: (params) => api.get('/clientes/verificar', { params }),
   create: (data) => api.post('/clientes', data),
 };
 

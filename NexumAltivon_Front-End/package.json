@@ -58,7 +58,7 @@
   "scripts": {
     "start": "craco start",
     "build": "craco build",
-    "postbuild": "node -e \"require('fs').copyFileSync('build/index.html','build/404.html')\"",
+    "postbuild": "node scripts/postbuild-pages.js",
     "test": "craco test"
   },
   "browserslist": {

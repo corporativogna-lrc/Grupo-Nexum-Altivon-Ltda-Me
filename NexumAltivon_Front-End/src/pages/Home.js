@@ -1,20 +1,93 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  ArrowLeft,
   ArrowRight,
   BadgeCheck,
   Building2,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Gift,
   Hammer,
   Headphones,
+  LoaderCircle,
+  Mail,
+  Phone,
   Plane,
   ShieldCheck,
   Shirt,
   Smartphone,
   Store,
   Truck,
+  UserPlus,
   Watch,
 } from 'lucide-react';
+import { clienteAPI } from '../services/api';
+
+const heroSlides = [
+  {
+    id: 'ecommerce',
+    badge: 'Grupo Nexum Altivon',
+    title: 'O Futuro do',
+    highlight: 'E-Commerce',
+    description:
+      'Seis lojas, uma operação conectada e uma proposta premium para transformar a experiência de compra online.',
+    image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1920&q=88',
+  },
+  {
+    id: 'marcas',
+    badge: '6 marcas em expansão',
+    title: 'Uma operação,',
+    highlight: 'múltiplos mercados',
+    description:
+      'Turismo, relógios, moda, tecnologia, construção e festas com a mesma curadoria comercial do Grupo Nexum Altivon.',
+    image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=1920&q=88',
+  },
+  {
+    id: 'tecnologia',
+    badge: 'Experiência tecnológica',
+    title: 'Compra segura com',
+    highlight: 'atendimento humano',
+    description:
+      'Fluxos preparados para catálogo, clientes, pedidos, integrações e relacionamento com visão de crescimento contínuo.',
+    image: 'https://images.unsplash.com/photo-1524805444758-089113d48a6d?auto=format&fit=crop&w=1920&q=88',
+  },
+  {
+    id: 'audio',
+    badge: 'Qualidade premium',
+    title: 'Produtos escolhidos',
+    highlight: 'a dedo para você',
+    description:
+      'Curadoria, confiança e posicionamento visual forte para acelerar as vendas com identidade própria.',
+    image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=1920&q=88',
+  },
+  {
+    id: 'luxo',
+    badge: 'Nexum Altivon',
+    title: 'Presença digital com',
+    highlight: 'força de marca',
+    description:
+      'Uma vitrine mais elegante, mais viva e preparada para receber clientes, parceiros e operações reais.',
+    image: 'https://images.unsplash.com/photo-1546868871-af0c7a6b6f7f?auto=format&fit=crop&w=1920&q=88',
+  },
+  {
+    id: 'mobile',
+    badge: 'Operação em evolução',
+    title: 'Pronto para',
+    highlight: 'escalar o negócio',
+    description:
+      'Estrutura pensada para integrar e-commerce, dropshipping, logística, gateways e relacionamento com o cliente.',
+    image: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=1920&q=88',
+  },
+];
+
+const emptyCadastro = {
+  nome: '',
+  email: '',
+  telefone: '',
+  cpf: '',
+};
 
 const lojas = [
   {
@@ -92,32 +165,123 @@ const parceiros = [
   },
 ];
 
+const normalizeText = (value) => String(value || '').trim().toLowerCase();
+const normalizeDocument = (value) => String(value || '').replace(/\D/g, '');
+
 export default function Home() {
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [cadastroForm, setCadastroForm] = useState(emptyCadastro);
+  const [cadastroStatus, setCadastroStatus] = useState({ tone: '', message: '' });
+  const [loadingCadastro, setLoadingCadastro] = useState(false);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setCurrentSlide((slide) => (slide + 1) % heroSlides.length);
+    }, 5000);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const activeSlide = heroSlides[currentSlide];
+
+  const cadastroDuplicadoLocal = useMemo(() => {
+    if (!cadastroStatus.message || cadastroStatus.tone !== 'info') return false;
+    return true;
+  }, [cadastroStatus]);
+
+  const changeSlide = (direction) => {
+    setCurrentSlide((slide) => {
+      if (direction === 'prev') {
+        return slide === 0 ? heroSlides.length - 1 : slide - 1;
+      }
+
+      return (slide + 1) % heroSlides.length;
+    });
+  };
+
+  const handleCadastroChange = (field, value) => {
+    setCadastroForm((current) => ({ ...current, [field]: value }));
+    if (cadastroStatus.message) {
+      setCadastroStatus({ tone: '', message: '' });
+    }
+  };
+
+  const handleCadastroSubmit = async (event) => {
+    event.preventDefault();
+
+    const payload = {
+      nome: cadastroForm.nome.trim(),
+      email: cadastroForm.email.trim(),
+      telefone: cadastroForm.telefone.trim(),
+      cpf: cadastroForm.cpf.trim(),
+    };
+
+    if (!payload.nome || !payload.email) {
+      setCadastroStatus({ tone: 'error', message: 'Preencha pelo menos nome completo e e-mail para concluir seu cadastro.' });
+      return;
+    }
+
+    setLoadingCadastro(true);
+    setCadastroStatus({ tone: '', message: '' });
+
+    try {
+      const email = normalizeText(payload.email);
+      const cpf = normalizeDocument(payload.cpf);
+      const verificacao = await clienteAPI.verificarCadastro({ email, cpf });
+
+      if (verificacao.data?.existe) {
+        const nomeExistente = verificacao.data?.cliente?.nome || payload.nome;
+        setCadastroStatus({
+          tone: 'info',
+          message: `Já existe um cadastro para ${nomeExistente}. Não vamos duplicar seus dados; você pode seguir comprando com esse mesmo registro.`,
+        });
+        return;
+      }
+
+      await clienteAPI.create(payload);
+
+      setCadastroForm(emptyCadastro);
+      setCadastroStatus({
+        tone: 'success',
+        message: 'Cadastro realizado com sucesso. Seus dados já ficaram disponíveis para as próximas compras e atendimentos.',
+      });
+    } catch (error) {
+      const detail =
+        error.response?.data?.detail ||
+        error.response?.data?.mensagem ||
+        error.message ||
+        'Não foi possível concluir seu cadastro agora.';
+
+      setCadastroStatus({ tone: 'error', message: detail });
+    } finally {
+      setLoadingCadastro(false);
+    }
+  };
+
   return (
     <main className="nexum-front-original bg-[#050505] text-[#f5f5f5]">
-      <section id="home" className="relative min-h-[78vh] overflow-hidden">
-        <div className="absolute inset-0">
-          <img
-            src="https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1920&q=88"
-            alt="Grupo Nexum Altivon"
-            className="h-full w-full object-cover opacity-55"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-black via-black/55 to-black/70" />
-        </div>
+      <section id="home" className="relative min-h-[84vh] overflow-hidden">
+        {heroSlides.map((slide, index) => (
+          <div
+            key={slide.id}
+            className={`absolute inset-0 transition-opacity duration-1000 ${index === currentSlide ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+          >
+            <img src={slide.image} alt={slide.highlight} className="h-full w-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-r from-black via-black/55 to-black/75" />
+          </div>
+        ))}
 
-        <div className="relative mx-auto flex min-h-[78vh] max-w-7xl items-center px-4 py-20 sm:px-6 lg:px-8">
+        <div className="relative mx-auto flex min-h-[84vh] max-w-7xl items-center px-4 py-20 sm:px-6 lg:px-8">
           <div className="max-w-3xl">
             <p className="mb-5 inline-flex items-center rounded-full border border-[#C9A227]/40 bg-black/40 px-4 py-2 text-xs font-bold uppercase tracking-[0.25em] text-[#E8D5A3]">
-              Grupo Nexum Altivon
+              {activeSlide.badge}
             </p>
             <h1 className="font-serif text-5xl font-bold leading-[1.02] text-white sm:text-6xl lg:text-7xl" data-testid="hero-title">
-              O Futuro do
-              <span className="block text-[#C9A227]">E-Commerce</span>
+              {activeSlide.title}
+              <span className="block text-[#C9A227]">{activeSlide.highlight}</span>
             </h1>
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-zinc-200 sm:text-xl">
-              Seis lojas, uma só essência: transformar a experiência de compra online com qualidade premium,
-              atendimento diferenciado e preços que cabem no seu bolso.
-            </p>
+            <p className="mt-6 max-w-2xl text-lg leading-8 text-zinc-200 sm:text-xl">{activeSlide.description}</p>
+
             <div className="mt-9 flex flex-col gap-3 sm:flex-row">
               <a
                 href="#lojas"
@@ -127,14 +291,46 @@ export default function Home() {
                 Conheça Nossas Lojas
                 <ArrowRight size={18} />
               </a>
-              <Link
-                to="/produtos"
-                className="inline-flex items-center justify-center rounded-full border border-white/35 px-7 py-4 text-sm font-black uppercase tracking-wide text-white transition hover:border-[#C9A227] hover:text-[#C9A227]"
+              <a
+                href="#cadastro"
+                className="inline-flex items-center justify-center gap-2 rounded-full border border-white/35 px-7 py-4 text-sm font-black uppercase tracking-wide text-white transition hover:border-[#C9A227] hover:text-[#C9A227]"
               >
-                Ver catálogo
-              </Link>
+                Fazer meu cadastro
+                <UserPlus size={18} />
+              </a>
+            </div>
+
+            <div className="mt-8 flex flex-wrap items-center gap-3">
+              {heroSlides.map((slide, index) => (
+                <button
+                  key={slide.id}
+                  type="button"
+                  aria-label={`Exibir banner ${index + 1}`}
+                  onClick={() => setCurrentSlide(index)}
+                  className={`h-3 rounded-full transition-all ${index === currentSlide ? 'w-10 bg-[#C9A227]' : 'w-3 bg-white/40 hover:bg-white/70'}`}
+                />
+              ))}
             </div>
           </div>
+        </div>
+
+        <div className="pointer-events-none absolute inset-y-0 left-0 right-0 mx-auto hidden max-w-7xl items-center justify-between px-4 sm:flex sm:px-6 lg:px-8">
+          <button
+            type="button"
+            onClick={() => changeSlide('prev')}
+            className="pointer-events-auto inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-black/35 text-white transition hover:border-[#C9A227] hover:text-[#C9A227]"
+            aria-label="Banner anterior"
+          >
+            <ChevronLeft size={22} />
+          </button>
+          <button
+            type="button"
+            onClick={() => changeSlide('next')}
+            className="pointer-events-auto inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-black/35 text-white transition hover:border-[#C9A227] hover:text-[#C9A227]"
+            aria-label="Próximo banner"
+          >
+            <ChevronRight size={22} />
+          </button>
         </div>
       </section>
 
@@ -152,6 +348,128 @@ export default function Home() {
           <p className="mt-4 text-zinc-400">Seis marcas. Uma visão. Milhares de produtos escolhidos a dedo para você.</p>
           <div className="mx-auto mt-8 inline-flex rounded-full border border-[#C9A227]/35 bg-[#C9A227]/10 px-6 py-3 text-sm font-black uppercase tracking-[0.18em] text-[#E8D5A3]">
             www.nexumaltivon.com
+          </div>
+        </div>
+      </section>
+
+      <section id="cadastro" className="bg-[#101010] px-4 py-20">
+        <div className="mx-auto grid max-w-7xl gap-10 sm:px-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-start lg:px-8">
+          <div>
+            <p className="text-sm font-black uppercase tracking-[0.25em] text-[#E8D5A3]">Cadastro do cliente</p>
+            <h2 className="mt-4 font-serif text-4xl font-bold leading-tight text-[#C9A227]">Seu cadastro direto na home, sem duplicidade</h2>
+            <p className="mt-6 max-w-2xl leading-8 text-zinc-300">
+              Agora o próprio cliente já consegue se registrar por aqui. Antes de salvar, o sistema verifica e-mail e CPF/CNPJ para evitar cadastro duplicado.
+            </p>
+
+            <div className="mt-8 grid gap-4">
+              {[
+                'Verificação prévia de e-mail e documento antes do envio.',
+                'Mesmo cadastro reutilizado no checkout e nos fluxos comerciais.',
+                'Base preparada para relacionamento, histórico e futuras áreas do cliente.',
+              ].map((item) => (
+                <div key={item} className="flex items-start gap-3 rounded-xl border border-[#2A2A2A] bg-black/30 px-4 py-4 text-sm font-semibold text-zinc-100">
+                  <BadgeCheck className="mt-0.5 text-[#C9A227]" size={18} />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-[28px] border border-[#C9A227]/20 bg-[#171717] p-6 shadow-2xl shadow-black/30 sm:p-8">
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-black uppercase tracking-[0.22em] text-[#E8D5A3]">Auto cadastro</p>
+                <h3 className="mt-2 text-2xl font-black text-white">Quero começar meu relacionamento</h3>
+              </div>
+              <div className="hidden h-14 w-14 items-center justify-center rounded-2xl bg-[#C9A227] text-black sm:flex">
+                <UserPlus size={26} />
+              </div>
+            </div>
+
+            <form className="grid gap-4" onSubmit={handleCadastroSubmit}>
+              <label className="grid gap-2 text-sm font-semibold text-zinc-200">
+                Nome completo / Razão social
+                <input
+                  type="text"
+                  value={cadastroForm.nome}
+                  onChange={(event) => handleCadastroChange('nome', event.target.value)}
+                  className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none transition focus:border-[#C9A227]"
+                  placeholder="Digite seu nome"
+                  required
+                />
+              </label>
+
+              <label className="grid gap-2 text-sm font-semibold text-zinc-200">
+                E-mail principal
+                <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/30 px-4 py-3 focus-within:border-[#C9A227]">
+                  <Mail size={18} className="text-[#C9A227]" />
+                  <input
+                    type="email"
+                    value={cadastroForm.email}
+                    onChange={(event) => handleCadastroChange('email', event.target.value)}
+                    className="w-full bg-transparent text-white outline-none"
+                    placeholder="voce@empresa.com"
+                    required
+                  />
+                </div>
+              </label>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="grid gap-2 text-sm font-semibold text-zinc-200">
+                  Telefone / WhatsApp
+                  <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/30 px-4 py-3 focus-within:border-[#C9A227]">
+                    <Phone size={18} className="text-[#C9A227]" />
+                    <input
+                      type="text"
+                      value={cadastroForm.telefone}
+                      onChange={(event) => handleCadastroChange('telefone', event.target.value)}
+                      className="w-full bg-transparent text-white outline-none"
+                      placeholder="(14) 99999-9999"
+                    />
+                  </div>
+                </label>
+
+                <label className="grid gap-2 text-sm font-semibold text-zinc-200">
+                  CPF / CNPJ
+                  <input
+                    type="text"
+                    value={cadastroForm.cpf}
+                    onChange={(event) => handleCadastroChange('cpf', event.target.value)}
+                    className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none transition focus:border-[#C9A227]"
+                    placeholder="Somente para evitar duplicidade"
+                  />
+                </label>
+              </div>
+
+              {cadastroStatus.message && (
+                <div
+                  className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${
+                    cadastroStatus.tone === 'success'
+                      ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
+                      : cadastroStatus.tone === 'info'
+                        ? 'border-amber-400/30 bg-amber-500/10 text-amber-100'
+                        : 'border-red-400/30 bg-red-500/10 text-red-200'
+                  }`}
+                >
+                  {cadastroStatus.message}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loadingCadastro}
+                className="inline-flex items-center justify-center gap-3 rounded-2xl bg-[#C9A227] px-6 py-4 text-sm font-black uppercase tracking-[0.18em] text-black transition hover:bg-[#E8D5A3] disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {loadingCadastro ? <LoaderCircle className="animate-spin" size={18} /> : <UserPlus size={18} />}
+                {loadingCadastro ? 'Validando cadastro...' : 'Cadastrar agora'}
+              </button>
+
+              <p className="text-xs leading-6 text-zinc-500">
+                {cadastroDuplicadoLocal
+                  ? 'O sistema encontrou um cadastro compatível e evitou a duplicidade antes de qualquer novo registro.'
+                  : 'Usamos seus dados apenas para relacionamento comercial, compras e atendimentos do Grupo Nexum Altivon.'}
+              </p>
+            </form>
           </div>
         </div>
       </section>
@@ -259,6 +577,31 @@ export default function Home() {
                 </article>
               );
             })}
+          </div>
+        </div>
+      </section>
+
+      <section className="border-t border-white/5 bg-[#050505] px-4 py-12">
+        <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-4 sm:px-6 md:flex-row md:items-center lg:px-8">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.25em] text-[#E8D5A3]">Grupo Nexum Altivon</p>
+            <p className="mt-3 text-sm leading-7 text-zinc-400">Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas.</p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <a
+              href="#home"
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 px-4 py-3 text-sm font-bold text-zinc-200 transition hover:border-[#C9A227] hover:text-[#C9A227]"
+            >
+              <ArrowLeft size={16} />
+              Voltar ao topo
+            </a>
+            <Link
+              to="/produtos"
+              className="inline-flex items-center gap-2 rounded-full bg-[#C9A227] px-5 py-3 text-sm font-black text-black transition hover:bg-[#E8D5A3]"
+            >
+              Explorar catálogo
+              <ArrowRight size={16} />
+            </Link>
           </div>
         </div>
       </section>

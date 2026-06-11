@@ -770,6 +770,40 @@ app.MapGet("/api/clientes", [Authorize(Policy = "Gerente")] async (NexumDbContex
 .WithName("Clientes")
 ;
 
+app.MapGet("/api/clientes/verificar", async (string? email, string? cpf, NexumDbContext db, CancellationToken ct) =>
+{
+    var normalizedEmail = NormalizeEmail(email);
+    var normalizedDocument = NormalizeDocument(cpf);
+
+    if (string.IsNullOrWhiteSpace(normalizedEmail) && string.IsNullOrWhiteSpace(normalizedDocument))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Informe email ou CPF/CNPJ para verificar o cadastro."));
+    }
+
+    var cliente = await db.Clientes
+        .AsNoTracking()
+        .OrderByDescending(item => item.UpdatedAt)
+        .FirstOrDefaultAsync(item =>
+            (!string.IsNullOrWhiteSpace(normalizedEmail) && item.Email == normalizedEmail) ||
+            (!string.IsNullOrWhiteSpace(normalizedDocument) &&
+             ((item.CpfCnpj ?? string.Empty)
+                 .Replace(".", string.Empty)
+                 .Replace("-", string.Empty)
+                 .Replace("/", string.Empty)
+                 .Replace(" ", string.Empty)) == normalizedDocument), ct);
+
+    var dto = cliente is null
+        ? null
+        : new ClienteLojaDto(cliente.Id, cliente.Nome, cliente.Email, cliente.Telefone, cliente.CpfCnpj);
+
+    return Results.Ok(ApiResponse<CadastroClienteStatusDto>.Ok(
+        new CadastroClienteStatusDto(cliente is not null, dto),
+        cliente is null ? "Cadastro disponível para criação." : "Cliente já cadastrado."));
+})
+.AllowAnonymous()
+.WithName("VerificarCadastroCliente")
+;
+
 app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Nome))
@@ -777,11 +811,16 @@ app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, C
         return Results.BadRequest(ApiResponse<string>.Erro("Nome e email sao obrigatorios."));
     }
 
-    var email = request.Email.Trim().ToLowerInvariant();
-    var cpfCnpj = string.IsNullOrWhiteSpace(request.Cpf) ? null : request.Cpf.Trim();
+    var email = NormalizeEmail(request.Email)!;
+    var cpfCnpj = NormalizeDocument(request.Cpf);
     var clienteExistente = await db.Clientes.FirstOrDefaultAsync(cliente =>
         cliente.Email == email ||
-        (!string.IsNullOrWhiteSpace(cpfCnpj) && cliente.CpfCnpj == cpfCnpj), ct);
+        (!string.IsNullOrWhiteSpace(cpfCnpj) &&
+         ((cliente.CpfCnpj ?? string.Empty)
+             .Replace(".", string.Empty)
+             .Replace("-", string.Empty)
+             .Replace("/", string.Empty)
+             .Replace(" ", string.Empty)) == cpfCnpj), ct);
 
     if (clienteExistente is not null)
     {
@@ -1635,6 +1674,22 @@ static string? Slugify(string? value)
 
     var slug = builder.ToString().Trim('-');
     return slug.Length == 0 ? null : slug;
+}
+
+static string? NormalizeEmail(string? value) =>
+    string.IsNullOrWhiteSpace(value)
+        ? null
+        : value.Trim().ToLowerInvariant();
+
+static string? NormalizeDocument(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return null;
+    }
+
+    var digits = new string(value.Where(char.IsDigit).ToArray());
+    return digits.Length == 0 ? null : digits;
 }
 
 static string FormatStatusPedido(StatusPedido status) =>
@@ -2530,6 +2585,8 @@ public sealed record CupomDto(string Codigo, decimal? DescontoPercentual, decima
 public sealed record ClienteRequest(string Nome, string Email, string? Cpf, string? Telefone);
 
 public sealed record ClienteLojaDto(int Id, string Nome, string Email, string? Telefone, string? Cpf = null);
+
+public sealed record CadastroClienteStatusDto(bool Existe, ClienteLojaDto? Cliente);
 
 public sealed record FornecedorRequest(string Nome, string? Documento, string? Email, string? Telefone, string? Categoria);
 
