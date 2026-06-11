@@ -42,6 +42,7 @@ const tabs = [
   { id: 'cadastro-produtos', label: 'Produtos', icon: PackageCheck, section: 'Cadastros' },
   { id: 'cadastro-clientes', label: 'Clientes', icon: Users, section: 'Cadastros' },
   { id: 'cadastro-fornecedores', label: 'Fornecedores', icon: Building2, section: 'Cadastros' },
+  { id: 'erp', label: 'ERP', icon: Database, section: 'Gestão', badge: 'desktop' },
   { id: 'integracoes', label: 'Integrações', icon: Globe2, section: 'Integrações', badge: 'paralelo' },
 ];
 
@@ -71,12 +72,54 @@ const cadastroHighlights = {
 
 const plannedModules = [
   { label: 'Lojas', icon: Building2, section: 'Gestão' },
-  { label: 'Financeiro / Gateways', icon: WalletCards, section: 'Gestão', track: 'paralelo' },
-  { label: 'Fiscal', icon: FileText, section: 'Gestão' },
-  { label: 'Logística / Fretes', icon: Boxes, section: 'Gestão', track: 'paralelo' },
   { label: 'Cupons', icon: CreditCard, section: 'Marketing & CRM' },
   { label: 'Marketing', icon: TrendingUp, section: 'Marketing & CRM' },
   { label: 'Configurações', icon: Cog, section: 'Sistema' },
+];
+
+const erpModules = [
+  {
+    title: 'Financeiro',
+    status: 'Operacional assistido',
+    icon: WalletCards,
+    metrics: ['Fluxo de caixa', 'Contas a pagar', 'Contas a receber', 'DRE'],
+    signal: 'Prioridade alta',
+  },
+  {
+    title: 'Fiscal',
+    status: 'Pronto para homologação',
+    icon: FileText,
+    metrics: ['NF-e entrada', 'NF-e saída', 'CFOP', 'Impostos'],
+    signal: 'Motor tributário',
+  },
+  {
+    title: 'Estoque e Logística',
+    status: 'Conectado ao pedido',
+    icon: Boxes,
+    metrics: ['Kardex', 'Inventário', 'Despacho', 'Rastreamento'],
+    signal: 'Operação diária',
+  },
+  {
+    title: 'Empresas e Parceiros',
+    status: 'Governança ERP',
+    icon: Building2,
+    metrics: ['Grupo societário', 'Parceiros', 'Contratos', 'Centros de custo'],
+    signal: 'Multisocietário',
+  },
+  {
+    title: 'Relatórios',
+    status: 'Gestão executiva',
+    icon: TrendingUp,
+    metrics: ['Margens', 'Lucro líquido', 'Receita por loja', 'Auditoria'],
+    signal: 'Decisão',
+  },
+  {
+    title: 'Acesso Desktop',
+    status: 'Disponível no Windows',
+    icon: Database,
+    metrics: ['Janela dedicada', 'Mesmo login', 'Mesma API', 'Dados centralizados'],
+    signal: 'Mesa de gestão',
+  },
 ];
 
 const fallbackIntegracoes = [
@@ -981,6 +1024,68 @@ export default function Dashboard() {
                     </SimpleForm>
                     <LeadsTable leads={filteredLeads} onStatusChange={updateLeadStatus} />
                   </div>
+                </section>
+              )}
+
+              {activeTab === 'erp' && (
+                <section className="space-y-6">
+                  <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Gestão absoluta</p>
+                        <h2 className="mt-2 text-2xl font-black text-slate-950">ERP Nexum Altivon</h2>
+                        <p className="mt-1 max-w-3xl text-sm text-slate-500">
+                          Central empresarial para financeiro, fiscal, logística, estoque, empresas do grupo e parceiros estratégicos.
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-slate-950 px-4 py-2 text-sm font-black text-[#C9A227]">Painel + Desktop</span>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+                    {erpModules.map((module) => {
+                      const Icon = module.icon;
+                      return (
+                        <section key={module.title} className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-950 text-[#C9A227]">
+                              <Icon size={23} />
+                            </div>
+                            <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black uppercase tracking-wide text-amber-900">
+                              {module.signal}
+                            </span>
+                          </div>
+                          <h3 className="mt-5 text-xl font-black text-slate-950">{module.title}</h3>
+                          <p className="mt-2 text-sm font-bold text-slate-500">{module.status}</p>
+                          <div className="mt-5 grid gap-2">
+                            {module.metrics.map((metric) => (
+                              <div key={metric} className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                                <span className="h-2 w-2 rounded-full bg-[#C9A227]" />
+                                <span className="text-sm font-bold text-slate-700">{metric}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </section>
+                      );
+                    })}
+                  </div>
+
+                  <section className="rounded-lg border border-slate-200 bg-slate-950 p-6 text-white shadow-sm">
+                    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-center">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Roteamento fiscal inteligente</p>
+                        <h3 className="mt-2 text-2xl font-black">Motor de decisão por empresa emitente</h3>
+                        <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-300">
+                          A análise compara empresa do grupo, regime tributário, CFOP, origem/destino, custo fiscal estimado e margem operacional para recomendar a emissão com menor ônus e maior lucratividade.
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-white/10 bg-white/5 p-5">
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Prontidão</p>
+                        <p className="mt-2 text-3xl font-black text-[#C9A227]">Staging</p>
+                        <p className="mt-2 text-sm font-bold text-slate-300">Estrutura pronta para credenciais, homologação fiscal e regras finais do contador.</p>
+                      </div>
+                    </div>
+                  </section>
                 </section>
               )}
 
