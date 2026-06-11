@@ -1,0 +1,2815 @@
+using System.Globalization;
+using System.IdentityModel.Tokens.Jwt;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Security.Claims;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
+using NexumAltivon.API.Data;
+using NexumAltivon.API.Models;
+using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
+
+builder.Configuration
+    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+    .AddJsonFile("API/appsettings.json", optional: true, reloadOnChange: true)
+    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
+    .AddJsonFile($"API/appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
+    .AddEnvironmentVariables();
+
+var jwtSettings = builder.Configuration.GetSection("JwtSettings");
+var apiSettings = builder.Configuration.GetSection("ApiSettings");
+var secretKey = jwtSettings["SecretKey"] ?? jwtSettings["Secret"] ?? throw new InvalidOperationException("JwtSettings:SecretKey nao configurada.");
+var issuer = jwtSettings["Issuer"] ?? "NexumAltivon.API";
+var audience = jwtSettings["Audience"] ?? "NexumAltivon.Admin";
+var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
+
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? builder.Configuration.GetConnectionString("NexumDb");
+
+if (!string.IsNullOrWhiteSpace(connectionString))
+{
+    var serverVersion = new MySqlServerVersion(new Version(8, 0, 0));
+    builder.Services.AddDbContext<NexumDbContext>(options =>
+        options.UseMySql(connectionString, serverVersion));
+}
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("NexumCorsPolicy", policy =>
+    {
+        var origins = apiSettings.GetSection("CorsOrigins").Get<string[]>()
+            ?? new[]
+            {
+                "http://localhost:5000",
+                "http://localhost:5001",
+                "http://localhost:3000",
+                "https://www.nexumaltivon.com",
+                "https://admin.nexumaltivon.com"
+            };
+
+        policy.WithOrigins(origins)
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .WithExposedHeaders("Token-Expired", "X-Total-Count", "X-Page-Count");
+    });
+});
+
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.RequireHttpsMetadata = false;
+        options.SaveToken = true;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = issuer,
+            ValidAudience = audience,
+            IssuerSigningKey = signingKey,
+            ClockSkew = TimeSpan.Zero
+        };
+    });
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("Gerente", policy => policy.RequireRole("SuperAdmin", "Admin", "Gerente"));
+});
+
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Nexum Altivon API",
+        Version = "v1.1.5",
+        Description = "API funcional inicial para site e painel administrativo Nexum Altivon."
+    });
+
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Description = "Informe: Bearer {token}",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey,
+        Scheme = "Bearer"
+    });
+
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
+
+builder.Services.AddHealthChecks();
+builder.Services.AddHttpClient("mercado-pago", client =>
+{
+    client.BaseAddress = new Uri("https://api.mercadopago.com/");
+    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+});
+builder.Services.AddHttpClient("melhor-envio", client =>
+{
+    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("NexumAltivon/1.1.5");
+});
+builder.Services.AddHttpClient("mercado-livre", client =>
+{
+    client.BaseAddress = new Uri("https://api.mercadolibre.com/");
+    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+});
+
+builder.Services
+    .AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(Path.GetTempPath(), "nexum-altivon-api-keys")));
+
+var app = builder.Build();
+
+app.UseCors("NexumCorsPolicy");
+app.UseStaticFiles();
+
+if (app.Environment.IsDevelopment() || app.Environment.IsStaging())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("/swagger/v1/swagger.json", "Nexum Altivon API v1");
+        options.DocumentTitle = "Nexum Altivon API";
+    });
+}
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapGet("/health", () => Results.Text("Healthy", "text/plain"));
+app.MapGet("/health/db", async (IServiceProvider services, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        return Results.Ok(new { status = "sem_banco_configurado" });
+    }
+
+    try
+    {
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexumDbContext>();
+        var canConnect = await db.Database.CanConnectAsync(ct);
+        return canConnect
+            ? Results.Ok(new { status = "Healthy" })
+            : Results.Problem("Banco configurado, mas sem conexão.");
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message);
+    }
+});
+
+app.MapGet("/", (IHostEnvironment environment) =>
+    environment.IsDevelopment() || environment.IsStaging()
+        ? Results.Redirect("/swagger")
+        : Results.Ok(new
+        {
+            status = "online",
+            service = "Nexum Altivon API",
+            version = "1.1.5"
+        }));
+
+app.MapPost("/api/auth/login", (
+    LoginRequest request,
+    IConfiguration configuration,
+    IHostEnvironment environment) =>
+{
+    var admin = configuration.GetSection("AdminUser");
+    var configuredEmail = admin["Email"] ?? "admin@nexumaltivon.com";
+    var configuredPassword = admin["Password"];
+    var configuredName = admin["Name"] ?? "Administrador Nexum";
+    var configuredRole = admin["Role"] ?? "Gerente";
+
+    if (string.IsNullOrWhiteSpace(configuredPassword))
+    {
+        if (environment.IsProduction())
+        {
+            return Results.Problem(
+                "AdminUser:Password nao configurada para producao.",
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
+
+        configuredPassword = "Admin@123";
+    }
+
+    if (!string.Equals(request.Email, configuredEmail, StringComparison.OrdinalIgnoreCase)
+        || request.Senha != configuredPassword)
+    {
+        return Results.Unauthorized();
+    }
+
+    var expiresAt = DateTime.UtcNow.AddHours(configuration.GetValue("JwtSettings:ExpirationHours", 24));
+    var claims = new[]
+    {
+        new Claim(JwtRegisteredClaimNames.Sub, "1"),
+        new Claim(JwtRegisteredClaimNames.Email, configuredEmail),
+        new Claim(ClaimTypes.Name, configuredName),
+        new Claim(ClaimTypes.Email, configuredEmail),
+        new Claim(ClaimTypes.Role, configuredRole)
+    };
+
+    var token = new JwtSecurityToken(
+        issuer,
+        audience,
+        claims,
+        expires: expiresAt,
+        signingCredentials: new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256));
+
+    var response = new LoginResponse(
+        new JwtSecurityTokenHandler().WriteToken(token),
+        string.Empty,
+        expiresAt,
+        new UsuarioDto(1, configuredName, configuredEmail, configuredRole));
+
+    return Results.Ok(ApiResponse<LoginResponse>.Ok(response, "Login realizado com sucesso."));
+})
+.AllowAnonymous()
+.WithName("Login");
+
+app.MapGet("/api/admin/dashboard/completo", [Authorize(Policy = "Gerente")] () =>
+{
+    var dashboard = DashboardCompletoDto.CreateSample();
+    return Results.Ok(ApiResponse<DashboardCompletoDto>.Ok(dashboard));
+})
+.WithName("DashboardCompleto")
+;
+
+app.MapGet("/api/admin/dashboard/kpis", [Authorize(Policy = "Gerente")] () =>
+    Results.Ok(ApiResponse<DashboardKpiDto>.Ok(DashboardCompletoDto.CreateSample().Kpis)))
+    .WithName("DashboardKpis")
+    ;
+
+app.MapGet("/api/lojas", async (NexumDbContext db, CancellationToken ct) =>
+{
+    var lojas = await db.Lojas
+        .AsNoTracking()
+        .OrderBy(loja => loja.OrdemExibicao)
+        .ThenBy(loja => loja.Nome)
+        .Select(loja => new LojaDto(
+            loja.Id,
+            loja.Nome,
+            loja.Slug,
+            loja.Segmento,
+            loja.Descricao,
+            loja.CorPrimaria,
+            loja.CorSecundaria,
+            loja.Ativa,
+            loja.OrdemExibicao))
+        .ToListAsync(ct);
+
+    if (lojas.Count == 0)
+    {
+        lojas = DashboardCompletoDto.Lojas;
+    }
+
+    return Results.Ok(ApiResponse<List<LojaDto>>.Ok(lojas));
+})
+.AllowAnonymous()
+.WithName("Lojas")
+;
+
+app.MapGet("/api/categorias", async (NexumDbContext db, CancellationToken ct) =>
+{
+    var categorias = await db.Categorias
+        .AsNoTracking()
+        .Where(categoria => categoria.Ativa)
+        .OrderBy(categoria => categoria.Ordem)
+        .ThenBy(categoria => categoria.Nome)
+        .Select(categoria => new CategoriaDto(
+            categoria.Slug,
+            categoria.Nome,
+            categoria.Descricao ?? string.Empty))
+        .ToListAsync(ct);
+
+    if (categorias.Count == 0)
+    {
+        categorias = StoreData.Categorias;
+    }
+
+    return Results.Ok(ApiResponse<List<CategoriaDto>>.Ok(categorias));
+})
+.AllowAnonymous()
+.WithName("Categorias")
+;
+
+app.MapPost("/api/categorias", [Authorize(Policy = "Gerente")] async (
+    CategoriaDto request,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var slug = Slugify(request.Id);
+    if (string.IsNullOrWhiteSpace(slug))
+    {
+        slug = Slugify(request.Nome);
+    }
+
+    if (string.IsNullOrWhiteSpace(slug))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Slug da categoria invalido."));
+    }
+
+    var exists = await db.Categorias.AnyAsync(categoria => categoria.Slug == slug, ct);
+    if (exists)
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("Categoria ja existe."));
+    }
+
+    var lojaId = await db.Lojas
+        .AsNoTracking()
+        .Where(loja => loja.Ativa)
+        .OrderBy(loja => loja.OrdemExibicao)
+        .Select(loja => loja.Id)
+        .FirstOrDefaultAsync(ct);
+
+    if (lojaId == 0)
+    {
+        return Results.Problem("Nenhuma loja ativa cadastrada.", statusCode: StatusCodes.Status500InternalServerError);
+    }
+
+    var categoria = new Categoria
+    {
+        LojaId = lojaId,
+        Nome = request.Nome,
+        Slug = slug,
+        Descricao = request.Descricao,
+        Ativa = true,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
+    };
+
+    db.Categorias.Add(categoria);
+    await db.SaveChangesAsync(ct);
+
+    return Results.Created($"/api/categorias/{categoria.Slug}", ApiResponse<CategoriaDto>.Ok(new CategoriaDto(categoria.Slug, categoria.Nome, categoria.Descricao ?? string.Empty), "Categoria cadastrada."));
+})
+.WithName("CriarCategoria")
+;
+
+app.MapGet("/api/produtos", async (string? categoria_id, NexumDbContext db, CancellationToken ct) =>
+{
+    const string defaultImage = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85";
+
+    IQueryable<Produto> query = db.Produtos.AsNoTracking().Where(produto => produto.Ativo);
+
+    if (!string.IsNullOrWhiteSpace(categoria_id))
+    {
+        var categoriaId = await db.Categorias
+            .AsNoTracking()
+            .Where(categoria => categoria.Slug == categoria_id)
+            .Select(categoria => (int?)categoria.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (categoriaId is null)
+        {
+            return Results.Ok(ApiResponse<List<ProdutoLojaDto>>.Ok([]));
+        }
+
+        query = query.Where(produto => produto.CategoriaId == categoriaId);
+    }
+
+    var produtos = await query
+        .OrderByDescending(produto => produto.Destaque)
+        .ThenByDescending(produto => produto.UpdatedAt)
+        .Select(produto => new ProdutoLojaDto(
+            produto.Slug,
+            produto.Nome,
+            produto.DescricaoCurta ?? produto.DescricaoLonga ?? string.Empty,
+            produto.Preco,
+            produto.PrecoPromocional,
+            produto.ImagemPrincipal ?? defaultImage,
+            produto.EstoqueAtual,
+            produto.Destaque,
+            produto.Sku,
+            produto.Categoria != null ? produto.Categoria.Slug : "classicos",
+            4.8m))
+        .ToListAsync(ct);
+
+    if (produtos.Count == 0)
+    {
+        produtos = string.IsNullOrWhiteSpace(categoria_id)
+            ? StoreData.Produtos
+            : StoreData.Produtos
+                .Where(produto => string.Equals(produto.CategoriaId, categoria_id, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+    }
+
+    return Results.Ok(ApiResponse<List<ProdutoLojaDto>>.Ok(produtos));
+})
+.AllowAnonymous()
+.WithName("Produtos")
+;
+
+app.MapGet("/api/produtos/destaques", async (NexumDbContext db, CancellationToken ct) =>
+{
+    const string defaultImage = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85";
+
+    var produtos = await db.Produtos
+        .AsNoTracking()
+        .Where(produto => produto.Ativo && produto.Destaque)
+        .OrderByDescending(produto => produto.UpdatedAt)
+        .Take(24)
+        .Select(produto => new ProdutoLojaDto(
+            produto.Slug,
+            produto.Nome,
+            produto.DescricaoCurta ?? produto.DescricaoLonga ?? string.Empty,
+            produto.Preco,
+            produto.PrecoPromocional,
+            produto.ImagemPrincipal ?? defaultImage,
+            produto.EstoqueAtual,
+            produto.Destaque,
+            produto.Sku,
+            produto.Categoria != null ? produto.Categoria.Slug : "classicos",
+            4.8m))
+        .ToListAsync(ct);
+
+    if (produtos.Count == 0)
+    {
+        produtos = StoreData.Produtos.Where(produto => produto.Destaque).ToList();
+    }
+
+    return Results.Ok(ApiResponse<List<ProdutoLojaDto>>.Ok(produtos));
+})
+.AllowAnonymous()
+.WithName("ProdutosDestaques")
+;
+
+app.MapGet("/api/produtos/{id}", async (string id, NexumDbContext db, CancellationToken ct) =>
+{
+    const string defaultImage = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85";
+
+    var dto = await db.Produtos
+        .AsNoTracking()
+        .Where(item => item.Slug == id)
+        .Select(item => new ProdutoLojaDto(
+            item.Slug,
+            item.Nome,
+            item.DescricaoCurta ?? item.DescricaoLonga ?? string.Empty,
+            item.Preco,
+            item.PrecoPromocional,
+            item.ImagemPrincipal ?? defaultImage,
+            item.EstoqueAtual,
+            item.Destaque,
+            item.Sku,
+            item.Categoria != null ? item.Categoria.Slug : "classicos",
+            4.8m))
+        .FirstOrDefaultAsync(ct);
+
+    if (dto is null)
+    {
+        var fallback = StoreData.Produtos.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+        return fallback is null
+            ? Results.NotFound(ApiResponse<string>.Erro("Produto nao encontrado."))
+            : Results.Ok(ApiResponse<ProdutoLojaDto>.Ok(fallback));
+    }
+
+    return Results.Ok(ApiResponse<ProdutoLojaDto>.Ok(dto));
+})
+.AllowAnonymous()
+.WithName("ProdutoPorId")
+;
+
+app.MapPost("/api/uploads/produtos/imagens", [Authorize(Policy = "Gerente")] async (
+    UploadImagemRequest request,
+    IWebHostEnvironment environment,
+    HttpContext http,
+    CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.DataUrl))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Imagem obrigatoria."));
+    }
+
+    var separatorIndex = request.DataUrl.IndexOf(",", StringComparison.Ordinal);
+    var header = separatorIndex > 0 ? request.DataUrl[..separatorIndex] : string.Empty;
+    var base64 = separatorIndex > 0 ? request.DataUrl[(separatorIndex + 1)..] : request.DataUrl;
+    var contentType = string.IsNullOrWhiteSpace(request.ContentType)
+        ? header.Contains("image/png", StringComparison.OrdinalIgnoreCase) ? "image/png" : "image/jpeg"
+        : request.ContentType.Trim().ToLowerInvariant();
+
+    var extension = contentType switch
+    {
+        "image/png" => ".png",
+        "image/webp" => ".webp",
+        "image/gif" => ".gif",
+        _ => ".jpg"
+    };
+
+    if (contentType is not ("image/jpeg" or "image/jpg" or "image/png" or "image/webp" or "image/gif"))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Formato de imagem invalido."));
+    }
+
+    byte[] bytes;
+    try
+    {
+        bytes = Convert.FromBase64String(base64);
+    }
+    catch
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Imagem invalida."));
+    }
+
+    if (bytes.Length == 0 || bytes.Length > 2 * 1024 * 1024)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Imagem deve ter ate 2MB."));
+    }
+
+    var root = environment.WebRootPath ?? Path.Combine(environment.ContentRootPath, "wwwroot");
+    var uploadDir = Path.Combine(root, "uploads", "produtos");
+    Directory.CreateDirectory(uploadDir);
+
+    var fileName = $"produto-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}{extension}";
+    var filePath = Path.Combine(uploadDir, fileName);
+    await File.WriteAllBytesAsync(filePath, bytes, ct);
+
+    var forwardedProto = http.Request.Headers["X-Forwarded-Proto"].FirstOrDefault();
+    var scheme = !string.IsNullOrWhiteSpace(forwardedProto)
+        ? forwardedProto
+        : http.Request.Host.Host.EndsWith("trycloudflare.com", StringComparison.OrdinalIgnoreCase)
+            ? "https"
+            : http.Request.Scheme;
+    var publicUrl = $"{scheme}://{http.Request.Host}/uploads/produtos/{fileName}";
+    return Results.Ok(ApiResponse<UploadImagemDto>.Ok(new UploadImagemDto(publicUrl), "Imagem enviada."));
+})
+.WithName("UploadImagemProduto")
+;
+
+app.MapPost("/api/produtos", [Authorize(Policy = "Gerente")] async (
+    ProdutoRequest request,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var slug = Slugify(request.Id) ?? Slugify(request.Nome);
+    if (string.IsNullOrWhiteSpace(slug))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Id do produto invalido."));
+    }
+
+    var exists = await db.Produtos.AnyAsync(produto => produto.Slug == slug, ct);
+    if (exists)
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("Produto ja existe."));
+    }
+
+    var sku = string.IsNullOrWhiteSpace(request.Sku)
+        ? $"NA-{Math.Abs(HashCode.Combine(request.Nome, request.Preco)):000000}"
+        : request.Sku.Trim();
+
+    if (await db.Produtos.AnyAsync(produto => produto.Sku == sku, ct))
+    {
+        sku = $"{sku}-{Random.Shared.Next(10, 99)}";
+    }
+
+    var lojaId = await db.Lojas
+        .AsNoTracking()
+        .Where(loja => loja.Ativa)
+        .OrderBy(loja => loja.OrdemExibicao)
+        .Select(loja => loja.Id)
+        .FirstOrDefaultAsync(ct);
+
+    if (lojaId == 0)
+    {
+        return Results.Problem("Nenhuma loja ativa cadastrada.", statusCode: StatusCodes.Status500InternalServerError);
+    }
+
+    int? categoriaId = null;
+    if (!string.IsNullOrWhiteSpace(request.CategoriaId))
+    {
+        categoriaId = await db.Categorias
+            .AsNoTracking()
+            .Where(categoria => categoria.Slug == request.CategoriaId)
+            .Select(categoria => (int?)categoria.Id)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    var produto = new Produto
+    {
+        LojaId = lojaId,
+        CategoriaId = categoriaId,
+        Sku = sku,
+        Nome = request.Nome,
+        Slug = slug,
+        DescricaoCurta = request.Descricao,
+        DescricaoLonga = request.Descricao,
+        Preco = request.Preco,
+        PrecoPromocional = request.PrecoPromocional,
+        ImagemPrincipal = request.ImagemUrl,
+        EstoqueAtual = request.Estoque,
+        Destaque = request.Destaque,
+        Ativo = true,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
+    };
+
+    db.Produtos.Add(produto);
+    await db.SaveChangesAsync(ct);
+
+    const string defaultImage = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85";
+    var dto = new ProdutoLojaDto(
+        produto.Slug,
+        produto.Nome,
+        produto.DescricaoCurta ?? produto.DescricaoLonga ?? string.Empty,
+        produto.Preco,
+        produto.PrecoPromocional,
+        produto.ImagemPrincipal ?? defaultImage,
+        produto.EstoqueAtual,
+        produto.Destaque,
+        produto.Sku,
+        request.CategoriaId ?? "classicos",
+        4.8m);
+
+    return Results.Created($"/api/produtos/{produto.Slug}", ApiResponse<ProdutoLojaDto>.Ok(dto, "Produto cadastrado."));
+})
+.WithName("CriarProduto")
+;
+
+app.MapPut("/api/produtos/{id}", [Authorize(Policy = "Gerente")] async (
+    string id,
+    ProdutoRequest request,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var produto = await db.Produtos.FirstOrDefaultAsync(item => item.Slug == id, ct);
+    if (produto is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Produto nao encontrado."));
+    }
+
+    if (!string.IsNullOrWhiteSpace(request.Sku) && !string.Equals(produto.Sku, request.Sku.Trim(), StringComparison.OrdinalIgnoreCase))
+    {
+        var sku = request.Sku.Trim();
+        var conflict = await db.Produtos.AnyAsync(item => item.Sku == sku && item.Id != produto.Id, ct);
+        if (conflict)
+        {
+            return Results.Conflict(ApiResponse<string>.Erro("SKU ja em uso."));
+        }
+
+        produto.Sku = sku;
+    }
+
+    produto.Nome = request.Nome;
+    produto.DescricaoCurta = request.Descricao;
+    produto.DescricaoLonga = request.Descricao;
+    produto.Preco = request.Preco;
+    produto.PrecoPromocional = request.PrecoPromocional;
+    produto.ImagemPrincipal = request.ImagemUrl;
+    produto.EstoqueAtual = request.Estoque;
+    produto.Destaque = request.Destaque;
+    produto.UpdatedAt = DateTime.UtcNow;
+
+    if (!string.IsNullOrWhiteSpace(request.CategoriaId))
+    {
+        var categoriaId = await db.Categorias
+            .AsNoTracking()
+            .Where(categoria => categoria.Slug == request.CategoriaId)
+            .Select(categoria => (int?)categoria.Id)
+            .FirstOrDefaultAsync(ct);
+
+        produto.CategoriaId = categoriaId;
+    }
+
+    await db.SaveChangesAsync(ct);
+
+    const string defaultImage = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85";
+    var dto = new ProdutoLojaDto(
+        produto.Slug,
+        produto.Nome,
+        produto.DescricaoCurta ?? produto.DescricaoLonga ?? string.Empty,
+        produto.Preco,
+        produto.PrecoPromocional,
+        produto.ImagemPrincipal ?? defaultImage,
+        produto.EstoqueAtual,
+        produto.Destaque,
+        produto.Sku,
+        request.CategoriaId ?? "classicos",
+        4.8m);
+
+    return Results.Ok(ApiResponse<ProdutoLojaDto>.Ok(dto, "Produto atualizado."));
+})
+.WithName("AtualizarProduto")
+;
+
+app.MapGet("/api/cupons/{codigo}", async (string codigo, NexumDbContext db, CancellationToken ct) =>
+{
+    var cupom = await db.Cupons
+        .AsNoTracking()
+        .FirstOrDefaultAsync(item => item.Codigo == codigo && item.Ativo, ct);
+
+    if (cupom is null)
+    {
+        var fallback = StoreData.Cupons.FirstOrDefault(item => string.Equals(item.Codigo, codigo, StringComparison.OrdinalIgnoreCase));
+        return fallback is null
+            ? Results.NotFound(ApiResponse<string>.Erro("Cupom invalido."))
+            : Results.Ok(ApiResponse<CupomDto>.Ok(fallback));
+    }
+
+    if (cupom.ValidoDe.HasValue && cupom.ValidoDe.Value > DateTime.UtcNow)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Cupom invalido."));
+    }
+
+    if (cupom.ValidoAte.HasValue && cupom.ValidoAte.Value < DateTime.UtcNow)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Cupom invalido."));
+    }
+
+    var dto = cupom.Tipo switch
+    {
+        TipoCupom.Percentual => new CupomDto(cupom.Codigo, cupom.Valor, null, cupom.ValorMinimoPedido),
+        TipoCupom.ValorFixo => new CupomDto(cupom.Codigo, null, cupom.Valor, cupom.ValorMinimoPedido),
+        TipoCupom.FreteGratis => new CupomDto(cupom.Codigo, null, cupom.Valor, cupom.ValorMinimoPedido),
+        _ => new CupomDto(cupom.Codigo, cupom.Valor, null, cupom.ValorMinimoPedido)
+    };
+
+    return Results.Ok(ApiResponse<CupomDto>.Ok(dto));
+})
+.AllowAnonymous()
+.WithName("CupomPorCodigo")
+;
+
+app.MapGet("/api/clientes", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var clientes = await db.Clientes
+        .AsNoTracking()
+        .OrderByDescending(cliente => cliente.CreatedAt)
+        .Take(500)
+        .Select(cliente => new ClienteLojaDto(cliente.Id, cliente.Nome, cliente.Email, cliente.Telefone, cliente.CpfCnpj))
+        .ToListAsync(ct);
+
+    return Results.Ok(ApiResponse<List<ClienteLojaDto>>.Ok(clientes));
+})
+.WithName("Clientes")
+;
+
+app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Nome))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Nome e email sao obrigatorios."));
+    }
+
+    var email = request.Email.Trim().ToLowerInvariant();
+    var cpfCnpj = string.IsNullOrWhiteSpace(request.Cpf) ? null : request.Cpf.Trim();
+    var clienteExistente = await db.Clientes.FirstOrDefaultAsync(cliente =>
+        cliente.Email == email ||
+        (!string.IsNullOrWhiteSpace(cpfCnpj) && cliente.CpfCnpj == cpfCnpj), ct);
+
+    if (clienteExistente is not null)
+    {
+        if (string.IsNullOrWhiteSpace(clienteExistente.Telefone) && !string.IsNullOrWhiteSpace(request.Telefone))
+        {
+            clienteExistente.Telefone = request.Telefone.Trim();
+            clienteExistente.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+
+        var existenteDto = new ClienteLojaDto(clienteExistente.Id, clienteExistente.Nome, clienteExistente.Email, clienteExistente.Telefone, clienteExistente.CpfCnpj);
+        return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(existenteDto, "Cliente ja cadastrado. Registro existente reutilizado."));
+    }
+
+    var cliente = new Cliente
+    {
+        Nome = request.Nome.Trim(),
+        Email = email,
+        Telefone = request.Telefone,
+        CpfCnpj = cpfCnpj,
+        Status = StatusCliente.Ativo,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
+    };
+
+    db.Clientes.Add(cliente);
+    await db.SaveChangesAsync(ct);
+
+    var dto = new ClienteLojaDto(cliente.Id, cliente.Nome, cliente.Email, cliente.Telefone, cliente.CpfCnpj);
+    return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(dto, "Cliente registrado."));
+})
+.AllowAnonymous()
+.WithName("CriarCliente")
+;
+
+app.MapGet("/api/fornecedores", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var fornecedores = await db.Fornecedores
+        .AsNoTracking()
+        .OrderByDescending(fornecedor => fornecedor.CreatedAt)
+        .Take(500)
+        .Select(fornecedor => new FornecedorDto(
+            fornecedor.Id,
+            string.IsNullOrWhiteSpace(fornecedor.NomeFantasia) ? fornecedor.RazaoSocial : fornecedor.NomeFantasia,
+            fornecedor.Cnpj ?? string.Empty,
+            fornecedor.Email ?? string.Empty,
+            fornecedor.Telefone ?? string.Empty,
+            fornecedor.Segmento ?? "Geral",
+            fornecedor.CreatedAt))
+        .ToListAsync(ct);
+
+    return Results.Ok(ApiResponse<List<FornecedorDto>>.Ok(fornecedores));
+})
+.WithName("Fornecedores")
+;
+
+app.MapPost("/api/fornecedores", [Authorize(Policy = "Gerente")] async (FornecedorRequest request, NexumDbContext db, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Nome))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Nome do fornecedor obrigatorio."));
+    }
+
+    var documento = string.IsNullOrWhiteSpace(request.Documento) ? null : request.Documento.Trim();
+    var email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim().ToLowerInvariant();
+    var fornecedorExistente = await db.Fornecedores.FirstOrDefaultAsync(fornecedor =>
+        (!string.IsNullOrWhiteSpace(documento) && fornecedor.Cnpj == documento) ||
+        (!string.IsNullOrWhiteSpace(email) && fornecedor.Email != null && fornecedor.Email.ToLower() == email), ct);
+
+    if (fornecedorExistente is not null)
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("Fornecedor ja cadastrado com este documento ou e-mail."));
+    }
+
+    var fornecedor = new Fornecedor
+    {
+        RazaoSocial = request.Nome.Trim(),
+        Cnpj = documento,
+        Email = email,
+        Telefone = request.Telefone,
+        Segmento = request.Categoria,
+        Status = StatusFornecedor.Ativo,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
+    };
+
+    db.Fornecedores.Add(fornecedor);
+    await db.SaveChangesAsync(ct);
+
+    var dto = new FornecedorDto(
+        fornecedor.Id,
+        string.IsNullOrWhiteSpace(fornecedor.NomeFantasia) ? fornecedor.RazaoSocial : fornecedor.NomeFantasia,
+        fornecedor.Cnpj ?? string.Empty,
+        fornecedor.Email ?? string.Empty,
+        fornecedor.Telefone ?? string.Empty,
+        fornecedor.Segmento ?? "Geral",
+        fornecedor.CreatedAt);
+
+    return Results.Ok(ApiResponse<FornecedorDto>.Ok(dto, "Fornecedor cadastrado."));
+})
+.WithName("CriarFornecedor")
+;
+
+app.MapGet("/api/pedidos", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var pedidos = await db.Pedidos
+        .AsNoTracking()
+        .Include(pedido => pedido.Pagamentos)
+        .OrderByDescending(pedido => pedido.CreatedAt)
+        .Take(500)
+        .Select(pedido => new
+        {
+            pedido.Id,
+            pedido.NumeroPedido,
+            pedido.Total,
+            pedido.Status,
+            pedido.StatusPagamento,
+            pedido.MeioPagamento,
+            pedido.GatewayPagamento,
+            pedido.GatewayTransacaoId,
+            pedido.FreteValor,
+            pedido.FreteMetodo,
+            pedido.FreteTransportadora,
+            pedido.FretePrazoDias,
+            pedido.CreatedAt
+        })
+        .ToListAsync(ct);
+
+    var dtos = pedidos.Select(pedido => new PedidoLojaDto(
+        pedido.Id,
+        pedido.NumeroPedido,
+        pedido.Total,
+        FormatStatusPedido(pedido.Status),
+        pedido.CreatedAt,
+        FormatStatusPagamento(pedido.StatusPagamento),
+        pedido.MeioPagamento,
+        pedido.GatewayPagamento,
+        pedido.GatewayTransacaoId,
+        pedido.FreteValor,
+        pedido.FreteMetodo,
+        pedido.FreteTransportadora,
+        pedido.FretePrazoDias,
+        BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId))).ToList();
+
+    return Results.Ok(ApiResponse<List<PedidoLojaDto>>.Ok(dtos));
+})
+.WithName("Pedidos")
+;
+
+app.MapPut("/api/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
+    int id,
+    StatusUpdateRequest request,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+    var pedido = await db.Pedidos
+        .Include(item => item.Itens)
+        .Include(item => item.Pagamentos)
+        .FirstOrDefaultAsync(item => item.Id == id, ct);
+    if (pedido is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Pedido nao encontrado."));
+    }
+
+    if (!TryParseStatusPedido(request.NovoStatus, out var status))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Status do pedido invalido."));
+    }
+
+    var statusAnterior = pedido.Status;
+    var statusAnteriorConfirmaEstoque = statusAnterior is StatusPedido.Pago or StatusPedido.EmSeparacao or StatusPedido.Enviado or StatusPedido.Entregue;
+    var novoStatusConfirmaEstoque = status is StatusPedido.Pago or StatusPedido.EmSeparacao or StatusPedido.Enviado or StatusPedido.Entregue;
+    var novoStatusCancelaEstoque = status is StatusPedido.Cancelado or StatusPedido.Devolvido or StatusPedido.Reembolsado;
+
+    if (pedido.Itens is { Count: > 0 } && statusAnterior != status)
+    {
+        var produtoIds = pedido.Itens
+            .Where(item => item.ProdutoId.HasValue)
+            .Select(item => item.ProdutoId!.Value)
+            .Distinct()
+            .ToList();
+        var produtos = await db.Produtos
+            .Where(produto => produtoIds.Contains(produto.Id))
+            .ToDictionaryAsync(produto => produto.Id, ct);
+
+        foreach (var item in pedido.Itens)
+        {
+            if (!item.ProdutoId.HasValue || !produtos.TryGetValue(item.ProdutoId.Value, out var produto))
+            {
+                return Results.BadRequest(ApiResponse<string>.Erro($"Produto do pedido nao encontrado: {item.NomeProduto}."));
+            }
+
+            if (!statusAnteriorConfirmaEstoque && novoStatusConfirmaEstoque)
+            {
+                if (produto.EstoqueAtual < item.Quantidade)
+                {
+                    return Results.BadRequest(ApiResponse<string>.Erro($"Estoque insuficiente para confirmar {item.NomeProduto}."));
+                }
+
+                produto.EstoqueReservado = Math.Max(0, produto.EstoqueReservado - item.Quantidade);
+                produto.EstoqueAtual -= item.Quantidade;
+            }
+            else if (!statusAnteriorConfirmaEstoque && novoStatusCancelaEstoque)
+            {
+                produto.EstoqueReservado = Math.Max(0, produto.EstoqueReservado - item.Quantidade);
+            }
+            else if (statusAnteriorConfirmaEstoque && novoStatusCancelaEstoque)
+            {
+                produto.EstoqueAtual += item.Quantidade;
+            }
+
+            produto.UpdatedAt = DateTime.UtcNow;
+        }
+    }
+
+    pedido.Status = status;
+    if (novoStatusConfirmaEstoque && pedido.StatusPagamento == StatusPagamento.Aguardando)
+    {
+        pedido.StatusPagamento = StatusPagamento.Aprovado;
+        pedido.DataPagamento ??= DateTime.UtcNow;
+    }
+    else if (status == StatusPedido.Cancelado && pedido.StatusPagamento == StatusPagamento.Aguardando)
+    {
+        pedido.StatusPagamento = StatusPagamento.Cancelado;
+    }
+
+    if (pedido.Pagamentos is { Count: > 0 })
+    {
+        foreach (var pagamento in pedido.Pagamentos)
+        {
+            pagamento.Status = pedido.StatusPagamento switch
+            {
+                StatusPagamento.Aprovado => StatusPagamentoDetalhado.Aprovado,
+                StatusPagamento.Recusado => StatusPagamentoDetalhado.Recusado,
+                StatusPagamento.Estornado => StatusPagamentoDetalhado.Estornado,
+                StatusPagamento.Cancelado => StatusPagamentoDetalhado.Cancelado,
+                _ => pagamento.Status
+            };
+            pagamento.DataProcessamento ??= pedido.DataPagamento;
+            pagamento.UpdatedAt = DateTime.UtcNow;
+        }
+    }
+
+    pedido.UpdatedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync(ct);
+    await transaction.CommitAsync(ct);
+
+    var dto = new PedidoLojaDto(
+        pedido.Id,
+        pedido.NumeroPedido,
+        pedido.Total,
+        FormatStatusPedido(pedido.Status),
+        pedido.CreatedAt,
+        FormatStatusPagamento(pedido.StatusPagamento),
+        pedido.MeioPagamento,
+        pedido.GatewayPagamento,
+        pedido.GatewayTransacaoId,
+        pedido.FreteValor,
+        pedido.FreteMetodo,
+        pedido.FreteTransportadora,
+        pedido.FretePrazoDias,
+        BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId));
+    return Results.Ok(ApiResponse<PedidoLojaDto>.Ok(dto, "Status do pedido atualizado."));
+})
+.WithName("AtualizarStatusPedido")
+;
+
+app.MapPost("/api/pedidos", async (
+    PedidoRequest request,
+    NexumDbContext db,
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    HttpContext http,
+    CancellationToken ct) =>
+{
+    if (request.Itens is null || request.Itens.Count == 0)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Itens do pedido obrigatorios."));
+    }
+
+    if (request.Itens.Any(item => string.IsNullOrWhiteSpace(item.ProdutoId) || item.Quantidade <= 0))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Produto e quantidade devem ser validos."));
+    }
+
+    var itensSolicitados = request.Itens
+        .GroupBy(item => item.ProdutoId.Trim(), StringComparer.OrdinalIgnoreCase)
+        .Select(group => new PedidoItemRequest(group.Key, group.Sum(item => item.Quantidade)))
+        .ToList();
+
+    var cliente = await db.Clientes.FirstOrDefaultAsync(item => item.Id == request.ClienteId, ct);
+    if (cliente is null)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Cliente invalido."));
+    }
+
+    int? lojaId = null;
+    if (int.TryParse(request.LojaId, out var lojaIdParsed))
+    {
+        lojaId = lojaIdParsed;
+    }
+
+    await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+    var produtoSlugs = itensSolicitados.Select(item => item.ProdutoId).ToList();
+    var produtosMap = await db.Produtos
+        .Where(produto => produto.Ativo && produtoSlugs.Contains(produto.Slug))
+        .ToDictionaryAsync(produto => produto.Slug, ct);
+
+    if (produtosMap.Count != produtoSlugs.Count)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Um ou mais produtos nao estao disponiveis."));
+    }
+
+    decimal subtotal = 0m;
+    var itens = new List<PedidoItem>(itensSolicitados.Count);
+    foreach (var item in itensSolicitados)
+    {
+        if (!produtosMap.TryGetValue(item.ProdutoId, out var produto))
+        {
+            return Results.BadRequest(ApiResponse<string>.Erro("Produto invalido."));
+        }
+
+        var estoqueDisponivel = produto.EstoqueAtual - produto.EstoqueReservado;
+        if (estoqueDisponivel < item.Quantidade)
+        {
+            return Results.BadRequest(ApiResponse<string>.Erro(
+                $"Estoque insuficiente para {produto.Nome}. Disponivel: {Math.Max(0, estoqueDisponivel)}."));
+        }
+
+        var precoUnitario = produto.PrecoPromocional ?? produto.Preco;
+        var precoTotal = precoUnitario * item.Quantidade;
+        subtotal += precoTotal;
+        produto.EstoqueReservado += item.Quantidade;
+        produto.UpdatedAt = DateTime.UtcNow;
+
+        itens.Add(new PedidoItem
+        {
+            ProdutoId = produto.Id,
+            NomeProduto = produto.Nome,
+            SkuProduto = produto.Sku,
+            ImagemProduto = produto.ImagemPrincipal,
+            Quantidade = item.Quantidade,
+            PrecoUnitario = precoUnitario,
+            PrecoTotal = precoTotal,
+            CreatedAt = DateTime.UtcNow
+        });
+    }
+
+    decimal desconto = 0m;
+    if (!string.IsNullOrWhiteSpace(request.CupomCodigo))
+    {
+        var cupom = await db.Cupons.AsNoTracking().FirstOrDefaultAsync(c => c.Codigo == request.CupomCodigo && c.Ativo, ct);
+        if (cupom is not null && subtotal >= cupom.ValorMinimoPedido)
+        {
+            desconto = cupom.Tipo switch
+            {
+                TipoCupom.Percentual => subtotal * (cupom.Valor / 100m),
+                TipoCupom.ValorFixo => cupom.Valor,
+                TipoCupom.FreteGratis => cupom.Valor,
+                _ => 0m
+            };
+            desconto = Math.Min(desconto, subtotal);
+        }
+    }
+
+    int? enderecoEntregaId = null;
+    if (request.EnderecoEntrega is not null)
+    {
+        var enderecoJson = System.Text.Json.JsonSerializer.Serialize(request.EnderecoEntrega);
+        var enderecoRequest = System.Text.Json.JsonSerializer.Deserialize<EnderecoEntregaRequest>(
+            enderecoJson,
+            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        if (enderecoRequest is not null && !string.IsNullOrWhiteSpace(enderecoRequest.Cep) && !string.IsNullOrWhiteSpace(enderecoRequest.Logradouro))
+        {
+            var endereco = new Endereco
+            {
+                ClienteId = cliente.Id,
+                Tipo = TipoEndereco.Entrega,
+                Apelido = "Entrega",
+                Cep = enderecoRequest.Cep.Trim(),
+                Logradouro = enderecoRequest.Logradouro.Trim(),
+                Numero = enderecoRequest.Numero?.Trim() ?? "S/N",
+                Complemento = enderecoRequest.Complemento,
+                Bairro = enderecoRequest.Bairro,
+                Cidade = enderecoRequest.Cidade,
+                Estado = enderecoRequest.Estado,
+                Pais = "Brasil",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            db.Enderecos.Add(endereco);
+            await db.SaveChangesAsync(ct);
+            enderecoEntregaId = endereco.Id;
+        }
+    }
+
+    var pedido = new Pedido
+    {
+        NumeroPedido = $"NX{DateTime.UtcNow:yyMMddHHmmss}{Random.Shared.Next(10, 99)}",
+        ClienteId = cliente.Id,
+        EnderecoEntregaId = enderecoEntregaId,
+        LojaId = lojaId,
+        Status = StatusPedido.Pendente,
+        StatusPagamento = StatusPagamento.Aguardando,
+        MeioPagamento = request.MetodoPagamento,
+        GatewayPagamento = string.IsNullOrWhiteSpace(request.GatewayPagamento) ? "ConfiguracaoPendente" : request.GatewayPagamento,
+        Subtotal = subtotal,
+        Desconto = desconto,
+        FreteValor = request.FreteValor ?? 0m,
+        FreteMetodo = request.FreteMetodo,
+        FreteTransportadora = request.FreteTransportadora,
+        FretePrazoDias = request.FretePrazoDias ?? 0,
+        Total = Math.Max(0m, subtotal + (request.FreteValor ?? 0m) - desconto),
+        CupomCodigo = request.CupomCodigo,
+        Origem = OrigemPedido.Site,
+        IpCliente = http.Connection.RemoteIpAddress?.ToString(),
+        UserAgent = http.Request.Headers.UserAgent.ToString(),
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow,
+        Itens = itens
+    };
+
+    pedido.Pagamentos = new List<Pagamento>
+    {
+        new()
+        {
+            Gateway = string.IsNullOrWhiteSpace(pedido.GatewayPagamento) ? "ConfiguracaoPendente" : pedido.GatewayPagamento,
+            Metodo = ParseMetodoPagamento(pedido.MeioPagamento),
+            Status = StatusPagamentoDetalhado.Pendente,
+            Valor = pedido.Total,
+            Parcelas = 1,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        }
+    };
+
+    db.Pedidos.Add(pedido);
+    await db.SaveChangesAsync(ct);
+    await transaction.CommitAsync(ct);
+
+    var gatewayResult = await TryStartGatewayPaymentAsync(pedido, cliente, configuration, httpClientFactory, http, ct);
+    if (gatewayResult.Started)
+    {
+        pedido.GatewayPagamento = gatewayResult.Gateway;
+        pedido.GatewayTransacaoId = gatewayResult.TransactionId;
+        pedido.StatusPagamento = StatusPagamento.Aguardando;
+        var pagamento = pedido.Pagamentos?.FirstOrDefault();
+        if (pagamento is not null)
+        {
+            pagamento.Gateway = gatewayResult.Gateway;
+            pagamento.GatewayTransacaoId = gatewayResult.TransactionId;
+            pagamento.PixQrcode = gatewayResult.PixQrcode;
+            pagamento.BoletoUrl = gatewayResult.PaymentUrl;
+            pagamento.Status = StatusPagamentoDetalhado.Pendente;
+            pagamento.WebhookPayload = gatewayResult.RawPayload;
+            pagamento.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    var dto = new PedidoLojaDto(
+        pedido.Id,
+        pedido.NumeroPedido,
+        pedido.Total,
+        FormatStatusPedido(pedido.Status),
+        pedido.CreatedAt,
+        FormatStatusPagamento(pedido.StatusPagamento),
+        pedido.MeioPagamento,
+        pedido.GatewayPagamento,
+        pedido.GatewayTransacaoId,
+        pedido.FreteValor,
+        pedido.FreteMetodo,
+        pedido.FreteTransportadora,
+        pedido.FretePrazoDias,
+        BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId));
+    return Results.Ok(ApiResponse<PedidoLojaDto>.Ok(dto, "Pedido criado com sucesso."));
+})
+.AllowAnonymous()
+.WithName("CriarPedido")
+;
+
+app.MapGet("/api/integracoes/status", [Authorize(Policy = "Gerente")] async (
+    IConfiguration configuration,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var mercadoPagoConfigurado = IsConfiguredSecret(GetIntegrationValue(configuration, "MercadoPago:AccessToken", "Integracoes:MercadoPago:AccessToken"));
+    var melhorEnvioConfigurado = IsConfiguredSecret(GetIntegrationValue(configuration, "MelhorEnvio:Token", "Integracoes:MelhorEnvio:Token"));
+    var mercadoLivreConfigurado = IsConfiguredSecret(GetIntegrationValue(configuration, "MercadoLivre:AccessToken", "Integracoes:MercadoLivre:AccessToken"));
+    var mercadoLivreOAuthPronto = HasAllIntegrationValues(
+        configuration,
+        ("MercadoLivre:AppId", "Integracoes:MercadoLivre:AppId"),
+        ("MercadoLivre:ClientSecret", "Integracoes:MercadoLivre:ClientSecret"),
+        ("MercadoLivre:RedirectUri", "Integracoes:MercadoLivre:RedirectUri"));
+    var fornecedoresAtivos = await db.Fornecedores
+        .AsNoTracking()
+        .CountAsync(fornecedor => fornecedor.Status == StatusFornecedor.Ativo, ct);
+    var dropshippingAtivos = await db.DropshippingConfigs
+        .AsNoTracking()
+        .CountAsync(config => config.Ativo, ct);
+
+    var modules = new List<IntegracaoStatusDto>
+    {
+        new(
+            "E-commerce e API",
+            "ecommerce",
+            "Operacional",
+            "Catalogo, clientes, pedidos, estoque e painel usam a API operacional.",
+            true,
+            "Producao"),
+        new(
+            "Dropshipping",
+            "dropshipping",
+            fornecedoresAtivos + dropshippingAtivos > 0 ? "Base ativa" : "Aguardando cadastros",
+            fornecedoresAtivos + dropshippingAtivos > 0
+                ? $"{fornecedoresAtivos} fornecedor(es) ativo(s) e {dropshippingAtivos} canal(is) dropshipping disponivel(is) para roteamento."
+                : "Cadastre fornecedores/canais e vincule produtos antes de liberar o roteamento.",
+            fornecedoresAtivos + dropshippingAtivos > 0,
+            "Producao assistida"),
+        new(
+            "Logistica e Fretes",
+            "logistica",
+            melhorEnvioConfigurado ? "Configurado" : "Aguardando credenciais",
+            melhorEnvioConfigurado
+                ? "Token logístico encontrado; falta concluir o teste de cotacao e etiqueta."
+                : "Checkout registra frete, mas cotacao e etiqueta dependem do token da transportadora.",
+            melhorEnvioConfigurado,
+            configuration.GetValue("MelhorEnvio:Sandbox", true) ? "Sandbox" : "Producao"),
+        new(
+            "Gateways de pagamento",
+            "gateways",
+            mercadoPagoConfigurado ? "Configurado" : "Aguardando credenciais",
+            mercadoPagoConfigurado
+                ? "Credencial do gateway encontrada; falta validar cobranca e webhook."
+                : "Pedido registra o metodo, mas a cobranca depende do token do gateway.",
+            mercadoPagoConfigurado,
+            mercadoPagoConfigurado ? "Configurado" : "Nao configurado"),
+        new(
+            "Marketplaces",
+            "marketplaces",
+            mercadoLivreConfigurado ? "Token ativo" : mercadoLivreOAuthPronto ? "OAuth pronto" : "Aguardando credenciais",
+            mercadoLivreConfigurado
+                ? "Access token encontrado; sincronizacao pode ser testada contra a API do Mercado Livre."
+                : mercadoLivreOAuthPronto
+                    ? "Aplicacao pronta para autorizacao do vendedor; falta concluir login OAuth e gerar access token."
+                    : "Importacao de catalogo e pedidos depende das credenciais do marketplace.",
+            mercadoLivreConfigurado || mercadoLivreOAuthPronto,
+            "Integracao externa"),
+        new(
+            "Bancos e conciliacao",
+            "bancaria",
+            "Planejado",
+            "A conciliacao bancaria sera ativada apos definir banco, convenio e credenciais seguras.",
+            false,
+            "Nao configurado")
+    };
+
+    return Results.Ok(ApiResponse<List<IntegracaoStatusDto>>.Ok(modules));
+})
+.WithName("IntegracoesStatus")
+;
+
+app.MapGet("/api/integracoes/diagnostico", [Authorize(Policy = "Gerente")] async (
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct) =>
+{
+    var slugs = new[] { "ecommerce", "mercadopago", "melhorenvio", "mercadolivre", "dropshipping", "bancaria" };
+    var resultados = new List<IntegracaoDiagnosticoDto>();
+
+    foreach (var slug in slugs)
+    {
+        resultados.Add(await BuildIntegracaoDiagnosticoAsync(slug, configuration, db, httpClientFactory, ct));
+    }
+
+    return Results.Ok(ApiResponse<List<IntegracaoDiagnosticoDto>>.Ok(resultados, "Diagnostico operacional das integracoes."));
+})
+.WithName("IntegracoesDiagnostico")
+;
+
+app.MapGet("/api/integracoes/credenciais-modelo", [Authorize(Policy = "Gerente")] () =>
+{
+    var credenciais = new List<IntegracaoCredencialDto>
+    {
+        new("Mercado Pago", "gateway", "MercadoPago__AccessToken", "Token privado do Mercado Pago para criar cobranças Pix/boleto/cartão.", true),
+        new("Mercado Pago", "gateway", "MercadoPago__PublicKey", "Chave pública usada no checkout transparente quando o front capturar cartão.", false),
+        new("Mercado Pago", "gateway", "MercadoPago__WebhookSecret", "Segredo para validar notificações/webhooks do Mercado Pago.", false),
+        new("Melhor Envio", "logistica", "MelhorEnvio__Token", "Token Bearer do Melhor Envio para cotação, compra de frete e etiqueta.", true),
+        new("Melhor Envio", "logistica", "MelhorEnvio__Sandbox", "true para homologação; false para produção.", false),
+        new("Mercado Livre", "marketplace", "MercadoLivre__AppId", "ID do aplicativo Mercado Livre.", true),
+        new("Mercado Livre", "marketplace", "MercadoLivre__ClientSecret", "Segredo do aplicativo Mercado Livre.", true),
+        new("Mercado Livre", "marketplace", "MercadoLivre__RedirectUri", "URL de retorno cadastrada exatamente no Mercado Livre.", true),
+        new("Mercado Livre", "marketplace", "MercadoLivre__AccessToken", "Token do vendedor após autorizar o aplicativo.", false),
+        new("Integrações bancárias", "bancaria", "Banco__Provider / Banco__ClientId / Banco__ClientSecret", "Credenciais do banco ou PSP escolhido para conciliação.", false)
+    };
+
+    return Results.Ok(ApiResponse<List<IntegracaoCredencialDto>>.Ok(credenciais, "Credenciais necessarias sem expor valores sensiveis."));
+})
+.WithName("IntegracoesCredenciaisModelo")
+;
+
+app.MapPost("/api/integracoes/testar/{slug}", [Authorize(Policy = "Gerente")] async (
+    string slug,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct) =>
+{
+    var resultado = await BuildIntegracaoDiagnosticoAsync(slug, configuration, db, httpClientFactory, ct);
+    return Results.Ok(ApiResponse<IntegracaoDiagnosticoDto>.Ok(resultado, $"Teste executado para {resultado.Nome}."));
+})
+.WithName("TestarIntegracao")
+;
+
+app.MapPost("/api/frete/cotar", async (
+    FreteCotacaoRequest request,
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct) =>
+{
+    var cotacoes = await CotarFreteAsync(request, configuration, httpClientFactory, ct);
+    return Results.Ok(ApiResponse<List<FreteCotacaoDto>>.Ok(cotacoes, cotacoes.Any(c => c.Fonte == "Melhor Envio")
+        ? "Cotacao consultada no Melhor Envio."
+        : "Cotacao operacional gerada pela tabela local ate configurar a transportadora."));
+})
+.AllowAnonymous()
+.WithName("CotarFrete")
+;
+
+app.MapPost("/api/webhooks/mercadopago", async (
+    HttpContext http,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct) =>
+{
+    using var reader = new StreamReader(http.Request.Body, Encoding.UTF8);
+    var payload = await reader.ReadToEndAsync(ct);
+    var paymentId = http.Request.Query["id"].FirstOrDefault()
+        ?? http.Request.Query["data.id"].FirstOrDefault()
+        ?? TryExtractJsonPath(payload, "data", "id")
+        ?? TryExtractJsonField(payload, "id");
+
+    if (!IsConfiguredSecret(paymentId))
+    {
+        return Results.Ok(new { received = true, updated = false, reason = "sem_id_pagamento" });
+    }
+
+    var token = GetIntegrationValue(configuration, "MercadoPago:AccessToken", "Integracoes:MercadoPago:AccessToken");
+    string? status = null;
+    string? rawPaymentPayload = null;
+
+    if (IsConfiguredSecret(token))
+    {
+        try
+        {
+            var client = httpClientFactory.CreateClient("mercado-pago");
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"v1/payments/{paymentId}");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            using var response = await client.SendAsync(request, ct);
+            rawPaymentPayload = await response.Content.ReadAsStringAsync(ct);
+            if (response.IsSuccessStatusCode)
+            {
+                status = TryExtractJsonField(rawPaymentPayload, "status");
+            }
+        }
+        catch
+        {
+            rawPaymentPayload = payload;
+        }
+    }
+
+    var pagamento = await db.Pagamentos
+        .Include(item => item.Pedido)
+        .FirstOrDefaultAsync(item => item.GatewayTransacaoId == paymentId, ct);
+
+    if (pagamento is null)
+    {
+        return Results.Ok(new { received = true, updated = false, reason = "pagamento_nao_encontrado" });
+    }
+
+    pagamento.WebhookPayload = rawPaymentPayload ?? payload;
+    pagamento.DataProcessamento = DateTime.UtcNow;
+    pagamento.UpdatedAt = DateTime.UtcNow;
+
+    if (!string.IsNullOrWhiteSpace(status))
+    {
+        ApplyMercadoPagoStatus(status, pagamento);
+    }
+
+    await db.SaveChangesAsync(ct);
+    return Results.Ok(new { received = true, updated = true, paymentId, status });
+})
+.AllowAnonymous()
+.WithName("WebhookMercadoPago")
+;
+
+app.MapGet("/api/dashboard/resumo", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var hoje = DateTime.UtcNow.Date;
+    var inicioMes = new DateTime(hoje.Year, hoje.Month, 1);
+
+    var pedidosHoje = await db.Pedidos.AsNoTracking().CountAsync(pedido => pedido.CreatedAt >= hoje, ct);
+    var totalClientes = await db.Clientes.AsNoTracking().CountAsync(ct);
+    var faturamentoMes = await db.Pedidos.AsNoTracking().Where(pedido => pedido.CreatedAt >= inicioMes).SumAsync(pedido => (decimal?)pedido.Total, ct) ?? 0m;
+    var leadsNovos = await db.CrmLeads.AsNoTracking().CountAsync(lead => lead.Status == StatusLead.Novo, ct);
+    var produtosEstoqueBaixo = await db.Produtos.AsNoTracking().CountAsync(produto => produto.Ativo && produto.EstoqueAtual <= produto.EstoqueMinimo, ct);
+
+    var totalLeads = await db.CrmLeads.AsNoTracking().CountAsync(ct);
+    var leadsConvertidos = await db.CrmLeads.AsNoTracking().CountAsync(lead => lead.Status == StatusLead.Convertido, ct);
+    var conversao = totalLeads == 0 ? 0m : Math.Round((decimal)leadsConvertidos / totalLeads * 100m, 2);
+
+    var ticketMedio = await db.Pedidos.AsNoTracking()
+        .Where(pedido => pedido.CreatedAt >= inicioMes)
+        .AverageAsync(pedido => (decimal?)pedido.Total, ct) ?? 0m;
+
+    var resumo = new DashboardResumoDto(
+        pedidosHoje,
+        totalClientes,
+        faturamentoMes,
+        leadsNovos,
+        produtosEstoqueBaixo,
+        conversao,
+        ticketMedio);
+
+    return Results.Ok(ApiResponse<DashboardResumoDto>.Ok(resumo));
+})
+.WithName("DashboardResumo")
+;
+
+app.MapGet("/api/crm/leads", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var leads = await db.Database.SqlQueryRaw<LeadRow>(
+            """
+            SELECT
+                id AS Id,
+                nome AS Nome,
+                COALESCE(email, '') AS Email,
+                COALESCE(telefone, '') AS Telefone,
+                CAST(status AS CHAR) AS Status,
+                created_at AS CreatedAt
+            FROM crm_leads
+            ORDER BY created_at DESC
+            LIMIT 500
+            """)
+        .ToListAsync(ct);
+
+    var dtos = leads.Select(lead => new LeadLojaDto(
+        lead.Id,
+        lead.Nome,
+        lead.Email,
+        lead.Telefone,
+        FormatStatusLeadValue(lead.Status),
+        lead.CreatedAt)).ToList();
+
+    return Results.Ok(ApiResponse<List<LeadLojaDto>>.Ok(dtos));
+})
+.WithName("Leads")
+;
+
+app.MapPost("/api/crm/leads", [Authorize(Policy = "Gerente")] async (LeadRequest request, NexumDbContext db, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Nome))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Nome do lead obrigatorio."));
+    }
+
+    var lead = new CrmLead
+    {
+        Nome = request.Nome.Trim(),
+        Email = request.Email,
+        Telefone = request.Telefone,
+        Status = TryParseStatusLead(request.Status, out var status) ? status : StatusLead.Novo,
+        Origem = TryParseOrigemLead(request.Origem, out var origem) ? origem : OrigemLead.Site,
+        Anotacoes = request.Observacao,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
+    };
+
+    db.CrmLeads.Add(lead);
+    await db.SaveChangesAsync(ct);
+
+    var dto = new LeadLojaDto(lead.Id, lead.Nome, lead.Email ?? string.Empty, lead.Telefone ?? string.Empty, FormatStatusLead(lead.Status), lead.CreatedAt);
+    return Results.Ok(ApiResponse<LeadLojaDto>.Ok(dto, "Lead cadastrado no CRM."));
+})
+.WithName("CriarLead")
+;
+
+app.MapPut("/api/crm/leads/{id}/status", [Authorize(Policy = "Gerente")] async (int id, StatusUpdateRequest request, NexumDbContext db, CancellationToken ct) =>
+{
+    var lead = await db.CrmLeads.FirstOrDefaultAsync(item => item.Id == id, ct);
+    if (lead is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Lead nao encontrado."));
+    }
+
+    if (!TryParseStatusLead(request.NovoStatus, out var status))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Status do lead invalido."));
+    }
+
+    lead.Status = status;
+    lead.ResponsavelId = request.ResponsavelId;
+    lead.UpdatedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync(ct);
+
+    var dto = new LeadLojaDto(lead.Id, lead.Nome, lead.Email ?? string.Empty, lead.Telefone ?? string.Empty, FormatStatusLead(lead.Status), lead.CreatedAt);
+    return Results.Ok(ApiResponse<LeadLojaDto>.Ok(dto, "Status do lead atualizado."));
+})
+.WithName("AtualizarStatusLead")
+;
+
+static string? Slugify(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return null;
+    }
+
+    var normalized = value.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD);
+    var builder = new StringBuilder(normalized.Length);
+    var lastWasDash = false;
+
+    foreach (var c in normalized)
+    {
+        if (CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.NonSpacingMark)
+        {
+            continue;
+        }
+
+        if (char.IsLetterOrDigit(c))
+        {
+            builder.Append(c);
+            lastWasDash = false;
+            continue;
+        }
+
+        if (c is ' ' or '-' or '_' or '/' or '\\' or '.')
+        {
+            if (!lastWasDash && builder.Length > 0)
+            {
+                builder.Append('-');
+                lastWasDash = true;
+            }
+        }
+    }
+
+    var slug = builder.ToString().Trim('-');
+    return slug.Length == 0 ? null : slug;
+}
+
+static string FormatStatusPedido(StatusPedido status) =>
+    status switch
+    {
+        StatusPedido.EmSeparacao => "Processando",
+        _ => status.ToString()
+    };
+
+static string FormatStatusPagamento(StatusPagamento status) =>
+    status switch
+    {
+        StatusPagamento.Aguardando => "Aguardando pagamento",
+        StatusPagamento.Aprovado => "Pagamento aprovado",
+        StatusPagamento.Recusado => "Pagamento recusado",
+        StatusPagamento.Estornado => "Pagamento estornado",
+        StatusPagamento.Cancelado => "Pagamento cancelado",
+        _ => status.ToString()
+    };
+
+static MetodoPagamento ParseMetodoPagamento(string? metodo)
+{
+    var token = (metodo ?? string.Empty).Trim().ToLowerInvariant();
+    return token switch
+    {
+        "pix" => MetodoPagamento.PIX,
+        "cartao" or "cartão" or "cartao_credito" or "cartãocredito" or "cartaocredito" => MetodoPagamento.CartaoCredito,
+        "cartao_debito" or "cartãodebito" or "cartaodebito" => MetodoPagamento.CartaoDebito,
+        "boleto" => MetodoPagamento.Boleto,
+        "transferencia" or "transferência" => MetodoPagamento.Transferencia,
+        "wallet" or "carteira" => MetodoPagamento.Wallet,
+        _ => MetodoPagamento.Outro
+    };
+}
+
+static string? GetIntegrationValue(IConfiguration configuration, params string[] keys)
+{
+    foreach (var key in keys)
+    {
+        var value = configuration[key];
+        if (IsConfiguredSecret(value))
+        {
+            return value;
+        }
+    }
+
+    return null;
+}
+
+static bool IsConfiguredSecret(string? value) =>
+    !string.IsNullOrWhiteSpace(value) &&
+    !value.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase) &&
+    !value.Contains("USE_ENV", StringComparison.OrdinalIgnoreCase) &&
+    !value.Equals("null", StringComparison.OrdinalIgnoreCase);
+
+static bool HasAllIntegrationValues(IConfiguration configuration, params (string Primary, string Secondary)[] keys) =>
+    keys.All(pair => IsConfiguredSecret(GetIntegrationValue(configuration, pair.Primary, pair.Secondary)));
+
+static async Task<IntegracaoDiagnosticoDto> BuildIntegracaoDiagnosticoAsync(
+    string slug,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct)
+{
+    var normalizedSlug = NormalizeIntegrationSlug(slug);
+    return normalizedSlug switch
+    {
+        "ecommerce" => await TestEcommerceAsync(db, ct),
+        "mercadopago" or "gateways" or "gateway" => await TestMercadoPagoAsync(configuration, httpClientFactory, ct),
+        "melhorenvio" or "logistica" or "frete" => await TestMelhorEnvioAsync(configuration, httpClientFactory, ct),
+        "mercadolivre" or "marketplaces" or "marketplace" => await TestMercadoLivreAsync(configuration, httpClientFactory, ct),
+        "dropshipping" or "dropship" => await TestDropshippingAsync(db, ct),
+        "bancaria" or "bancos" or "financeiro" => TestBancaria(configuration),
+        _ => new IntegracaoDiagnosticoDto(
+            slug,
+            normalizedSlug,
+            "Desconhecida",
+            false,
+            false,
+            "Integração não mapeada no Nexum Altivon.",
+            ["Use: ecommerce, mercadopago, melhorenvio, mercadolivre, dropshipping ou bancaria."],
+            DateTime.UtcNow,
+            null)
+    };
+}
+
+static async Task<IntegracaoDiagnosticoDto> TestEcommerceAsync(NexumDbContext db, CancellationToken ct)
+{
+    var canConnect = await db.Database.CanConnectAsync(ct);
+    var produtos = canConnect ? await db.Produtos.AsNoTracking().CountAsync(ct) : 0;
+    var pedidos = canConnect ? await db.Pedidos.AsNoTracking().CountAsync(ct) : 0;
+
+    return new IntegracaoDiagnosticoDto(
+        "E-commerce e API",
+        "ecommerce",
+        canConnect ? "Operacional" : "Indisponível",
+        true,
+        canConnect,
+        canConnect
+            ? $"API e banco respondendo. Produtos: {produtos}; pedidos: {pedidos}."
+            : "A API não conseguiu conectar ao banco de dados real.",
+        canConnect ? [] : ["Conferir serviço MariaDB/MySQL e ConnectionStrings__DefaultConnection."],
+        DateTime.UtcNow,
+        canConnect ? "Banco real conectado" : null);
+}
+
+static async Task<IntegracaoDiagnosticoDto> TestMercadoPagoAsync(
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct)
+{
+    var accessToken = GetIntegrationValue(configuration, "MercadoPago:AccessToken", "Integracoes:MercadoPago:AccessToken");
+    if (!IsConfiguredSecret(accessToken))
+    {
+        return MissingIntegration(
+            "Mercado Pago",
+            "mercadopago",
+            "Gateway pronto no sistema, aguardando token oficial.",
+            ["MercadoPago__AccessToken"]);
+    }
+
+    try
+    {
+        var client = httpClientFactory.CreateClient("mercado-pago");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "users/me");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var response = await client.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+
+        return new IntegracaoDiagnosticoDto(
+            "Mercado Pago",
+            "mercadopago",
+            response.IsSuccessStatusCode ? "Conectado" : "Credencial recusada",
+            true,
+            response.IsSuccessStatusCode,
+            response.IsSuccessStatusCode
+                ? "Mercado Pago respondeu com sucesso. Gateway apto para iniciar cobrança real."
+                : $"Mercado Pago retornou {(int)response.StatusCode}. Revise token, ambiente e permissões.",
+            response.IsSuccessStatusCode ? [] : ["Validar MercadoPago__AccessToken.", "Conferir se a conta tem Pix/Checkout ativo."],
+            DateTime.UtcNow,
+            TryExtractJsonField(body, "nickname") ?? TryExtractJsonField(body, "email"));
+    }
+    catch (Exception ex)
+    {
+        return ExternalError("Mercado Pago", "mercadopago", ex);
+    }
+}
+
+static async Task<IntegracaoDiagnosticoDto> TestMelhorEnvioAsync(
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct)
+{
+    var token = GetIntegrationValue(configuration, "MelhorEnvio:Token", "Integracoes:MelhorEnvio:Token");
+    var sandbox = configuration.GetValue("MelhorEnvio:Sandbox", configuration.GetValue("Integracoes:MelhorEnvio:Sandbox", true));
+    if (!IsConfiguredSecret(token))
+    {
+        return MissingIntegration(
+            "Melhor Envio",
+            "melhorenvio",
+            "Logística pronta no sistema, aguardando token da transportadora/hub.",
+            ["MelhorEnvio__Token"]);
+    }
+
+    try
+    {
+        var client = httpClientFactory.CreateClient("melhor-envio");
+        client.BaseAddress = new Uri(sandbox ? "https://sandbox.melhorenvio.com.br/" : "https://www.melhorenvio.com.br/");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/v2/me/shipment/services");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var response = await client.SendAsync(request, ct);
+
+        return new IntegracaoDiagnosticoDto(
+            "Melhor Envio",
+            "melhorenvio",
+            response.IsSuccessStatusCode ? "Conectado" : "Credencial recusada",
+            true,
+            response.IsSuccessStatusCode,
+            response.IsSuccessStatusCode
+                ? "Melhor Envio respondeu. Cotação/compra de frete pode ser ativada com dados completos de origem e volumes."
+                : $"Melhor Envio retornou {(int)response.StatusCode}. Revise token, sandbox/produção e permissões.",
+            response.IsSuccessStatusCode ? [] : ["Validar MelhorEnvio__Token.", "Confirmar se MelhorEnvio__Sandbox está no ambiente correto."],
+            DateTime.UtcNow,
+            sandbox ? "Sandbox" : "Produção");
+    }
+    catch (Exception ex)
+    {
+        return ExternalError("Melhor Envio", "melhorenvio", ex);
+    }
+}
+
+static async Task<IntegracaoDiagnosticoDto> TestMercadoLivreAsync(
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct)
+{
+    var accessToken = GetIntegrationValue(configuration, "MercadoLivre:AccessToken", "Integracoes:MercadoLivre:AccessToken");
+    var oauthReady = HasAllIntegrationValues(
+        configuration,
+        ("MercadoLivre:AppId", "Integracoes:MercadoLivre:AppId"),
+        ("MercadoLivre:ClientSecret", "Integracoes:MercadoLivre:ClientSecret"),
+        ("MercadoLivre:RedirectUri", "Integracoes:MercadoLivre:RedirectUri"));
+
+    if (!IsConfiguredSecret(accessToken))
+    {
+        return new IntegracaoDiagnosticoDto(
+            "Mercado Livre",
+            "mercadolivre",
+            oauthReady ? "OAuth pronto" : "Aguardando credenciais",
+            oauthReady,
+            false,
+            oauthReady
+                ? "Aplicativo configurado. Falta o vendedor autorizar para gerar access token e sincronizar anúncios/pedidos."
+                : "Marketplace preparado, mas ainda sem AppId, ClientSecret e RedirectUri completos.",
+            oauthReady ? ["Concluir autorização OAuth do vendedor.", "Salvar MercadoLivre__AccessToken e RefreshToken."] : ["MercadoLivre__AppId", "MercadoLivre__ClientSecret", "MercadoLivre__RedirectUri"],
+            DateTime.UtcNow,
+            null);
+    }
+
+    try
+    {
+        var client = httpClientFactory.CreateClient("mercado-livre");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "users/me");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var response = await client.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+
+        return new IntegracaoDiagnosticoDto(
+            "Mercado Livre",
+            "mercadolivre",
+            response.IsSuccessStatusCode ? "Conectado" : "Credencial recusada",
+            true,
+            response.IsSuccessStatusCode,
+            response.IsSuccessStatusCode
+                ? "Mercado Livre respondeu com o vendedor autenticado. Pronto para sincronizar catálogo e pedidos autorizados."
+                : $"Mercado Livre retornou {(int)response.StatusCode}. Refaça OAuth ou revise permissões.",
+            response.IsSuccessStatusCode ? [] : ["Refazer OAuth do vendedor.", "Atualizar MercadoLivre__AccessToken/RefreshToken."],
+            DateTime.UtcNow,
+            TryExtractJsonField(body, "nickname") ?? TryExtractJsonField(body, "id"));
+    }
+    catch (Exception ex)
+    {
+        return ExternalError("Mercado Livre", "mercadolivre", ex);
+    }
+}
+
+static async Task<IntegracaoDiagnosticoDto> TestDropshippingAsync(NexumDbContext db, CancellationToken ct)
+{
+    var fornecedores = await db.Fornecedores.AsNoTracking().CountAsync(fornecedor => fornecedor.Status == StatusFornecedor.Ativo, ct);
+    var canais = await db.DropshippingConfigs.AsNoTracking().CountAsync(config => config.Ativo, ct);
+    var operacional = fornecedores > 0 || canais > 0;
+
+    return new IntegracaoDiagnosticoDto(
+        "Dropshipping",
+        "dropshipping",
+        operacional ? "Base ativa" : "Aguardando cadastros",
+        operacional,
+        operacional,
+        operacional
+            ? $"{fornecedores} fornecedor(es) ativo(s) e {canais} canal(is) de dropshipping ativo(s)."
+            : "Sem fornecedor/canal ativo para roteamento real de dropshipping.",
+        operacional ? [] : ["Cadastrar fornecedor ativo.", "Vincular produtos ao fornecedor.", "Ativar canal de dropshipping com chave/API quando existir."],
+        DateTime.UtcNow,
+        "Roteamento interno");
+}
+
+static IntegracaoDiagnosticoDto TestBancaria(IConfiguration configuration)
+{
+    var provider = GetIntegrationValue(configuration, "Banco:Provider", "Integracoes:Banco:Provider");
+    var clientId = GetIntegrationValue(configuration, "Banco:ClientId", "Integracoes:Banco:ClientId");
+    var clientSecret = GetIntegrationValue(configuration, "Banco:ClientSecret", "Integracoes:Banco:ClientSecret");
+    var configured = IsConfiguredSecret(provider) && IsConfiguredSecret(clientId) && IsConfiguredSecret(clientSecret);
+
+    return new IntegracaoDiagnosticoDto(
+        "Bancos e conciliação",
+        "bancaria",
+        configured ? "Credenciais cadastradas" : "Aguardando provedor",
+        configured,
+        configured,
+        configured
+            ? "Credenciais bancárias encontradas. Próximo passo: homologar extrato/cobrança com o banco definido."
+            : "Ainda falta definir banco/PSP e cadastrar credenciais para conciliação automática.",
+        configured ? ["Homologar extrato/cobrança no provedor definido."] : ["Banco__Provider", "Banco__ClientId", "Banco__ClientSecret"],
+        DateTime.UtcNow,
+        provider);
+}
+
+static IntegracaoDiagnosticoDto MissingIntegration(string nome, string slug, string detalhe, List<string> pendencias) =>
+    new(nome, slug, "Aguardando credenciais", false, false, detalhe, pendencias, DateTime.UtcNow, null);
+
+static IntegracaoDiagnosticoDto ExternalError(string nome, string slug, Exception ex) =>
+    new(nome, slug, "Erro de comunicação", true, false, $"Falha ao testar provedor externo: {ex.Message}", ["Conferir internet do servidor.", "Repetir teste após validar token/provedor."], DateTime.UtcNow, null);
+
+static string NormalizeIntegrationSlug(string slug)
+{
+    var normalized = (slug ?? string.Empty).Normalize(NormalizationForm.FormD).ToLowerInvariant();
+    var builder = new StringBuilder(normalized.Length);
+    foreach (var character in normalized)
+    {
+        if (CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark && char.IsLetterOrDigit(character))
+        {
+            builder.Append(character);
+        }
+    }
+
+    return builder.ToString();
+}
+
+static string? TryExtractJsonField(string json, string propertyName)
+{
+    try
+    {
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.TryGetProperty(propertyName, out var property)
+            ? property.ToString()
+            : null;
+    }
+    catch
+    {
+        return null;
+    }
+}
+
+static string? TryExtractJsonPath(string json, params string[] path)
+{
+    try
+    {
+        using var document = JsonDocument.Parse(json);
+        var current = document.RootElement;
+        foreach (var segment in path)
+        {
+            if (!current.TryGetProperty(segment, out current))
+            {
+                return null;
+            }
+        }
+
+        return current.ToString();
+    }
+    catch
+    {
+        return null;
+    }
+}
+
+static void ApplyMercadoPagoStatus(string status, Pagamento pagamento)
+{
+    var normalized = status.Trim().ToLowerInvariant();
+    switch (normalized)
+    {
+        case "approved":
+        case "accredited":
+            pagamento.Status = StatusPagamentoDetalhado.Aprovado;
+            if (pagamento.Pedido is not null)
+            {
+                pagamento.Pedido.StatusPagamento = StatusPagamento.Aprovado;
+                pagamento.Pedido.Status = StatusPedido.Pago;
+                pagamento.Pedido.DataPagamento = DateTime.UtcNow;
+                pagamento.Pedido.UpdatedAt = DateTime.UtcNow;
+            }
+            break;
+        case "rejected":
+            pagamento.Status = StatusPagamentoDetalhado.Recusado;
+            if (pagamento.Pedido is not null)
+            {
+                pagamento.Pedido.StatusPagamento = StatusPagamento.Recusado;
+                pagamento.Pedido.UpdatedAt = DateTime.UtcNow;
+            }
+            break;
+        case "cancelled":
+            pagamento.Status = StatusPagamentoDetalhado.Cancelado;
+            if (pagamento.Pedido is not null)
+            {
+                pagamento.Pedido.StatusPagamento = StatusPagamento.Cancelado;
+                pagamento.Pedido.Status = StatusPedido.Cancelado;
+                pagamento.Pedido.UpdatedAt = DateTime.UtcNow;
+            }
+            break;
+        case "refunded":
+        case "charged_back":
+            pagamento.Status = normalized == "charged_back" ? StatusPagamentoDetalhado.Chargeback : StatusPagamentoDetalhado.Estornado;
+            if (pagamento.Pedido is not null)
+            {
+                pagamento.Pedido.StatusPagamento = StatusPagamento.Estornado;
+                pagamento.Pedido.Status = StatusPedido.Reembolsado;
+                pagamento.Pedido.UpdatedAt = DateTime.UtcNow;
+            }
+            break;
+        case "in_process":
+        case "pending":
+        default:
+            pagamento.Status = StatusPagamentoDetalhado.Pendente;
+            break;
+    }
+}
+
+static async Task<List<FreteCotacaoDto>> CotarFreteAsync(
+    FreteCotacaoRequest request,
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct)
+{
+    var token = GetIntegrationValue(configuration, "MelhorEnvio:Token", "Integracoes:MelhorEnvio:Token");
+    var sandbox = configuration.GetValue("MelhorEnvio:Sandbox", configuration.GetValue("Integracoes:MelhorEnvio:Sandbox", true));
+
+    if (IsConfiguredSecret(token) && !string.IsNullOrWhiteSpace(request.CepDestino))
+    {
+        try
+        {
+            var client = httpClientFactory.CreateClient("melhor-envio");
+            client.BaseAddress = new Uri(sandbox ? "https://sandbox.melhorenvio.com.br/" : "https://www.melhorenvio.com.br/");
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/v2/me/shipment/calculate");
+            httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            httpRequest.Content = JsonContent.Create(new
+            {
+                from = new { postal_code = request.CepOrigem ?? "17400000" },
+                to = new { postal_code = request.CepDestino },
+                products = request.Itens.Select((item, index) => new
+                {
+                    id = item.Sku ?? $"item-{index + 1}",
+                    width = item.LarguraCm ?? 16,
+                    height = item.AlturaCm ?? 8,
+                    length = item.ComprimentoCm ?? 24,
+                    weight = item.PesoKg ?? 0.5m,
+                    insurance_value = item.ValorUnitario,
+                    quantity = item.Quantidade <= 0 ? 1 : item.Quantidade
+                }).ToList()
+            });
+
+            using var response = await client.SendAsync(httpRequest, ct);
+            var json = await response.Content.ReadAsStringAsync(ct);
+            if (response.IsSuccessStatusCode)
+            {
+                var cotacoes = ParseMelhorEnvioCotacoes(json);
+                if (cotacoes.Count > 0)
+                {
+                    return cotacoes;
+                }
+            }
+        }
+        catch
+        {
+            // Se o provedor falhar, mantemos a venda com cotação local controlada.
+        }
+    }
+
+    var valorItens = request.Itens.Sum(item => Math.Max(1, item.Quantidade) * item.ValorUnitario);
+    var cepDestino = request.CepDestino ?? string.Empty;
+    var interiorSp = cepDestino.StartsWith("17", StringComparison.Ordinal);
+    var freteBase = valorItens >= 1000 ? 0m : interiorSp ? 29.90m : 49.90m;
+
+    return
+    [
+        new("local-padrao", "Entrega padrão Nexum", "Tabela local", freteBase, interiorSp ? 3 : 7, "Tabela local"),
+        new("local-expresso", "Entrega expressa assistida", "Tabela local", freteBase + 35m, interiorSp ? 1 : 4, "Tabela local")
+    ];
+}
+
+static async Task<GatewayPaymentStartResult> TryStartGatewayPaymentAsync(
+    Pedido pedido,
+    Cliente cliente,
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    HttpContext http,
+    CancellationToken ct)
+{
+    var metodo = (pedido.MeioPagamento ?? string.Empty).Trim().ToLowerInvariant();
+    if (metodo != "pix")
+    {
+        return GatewayPaymentStartResult.NotStarted();
+    }
+
+    var token = GetIntegrationValue(configuration, "MercadoPago:AccessToken", "Integracoes:MercadoPago:AccessToken");
+    if (!IsConfiguredSecret(token))
+    {
+        return GatewayPaymentStartResult.NotStarted();
+    }
+
+    try
+    {
+        var client = httpClientFactory.CreateClient("mercado-pago");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "v1/payments");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Headers.Add("X-Idempotency-Key", $"nexum-{pedido.NumeroPedido}");
+
+        var notificationUrl = BuildPublicUrl(http, "/api/webhooks/mercadopago");
+        request.Content = JsonContent.Create(new
+        {
+            transaction_amount = pedido.Total,
+            description = $"Pedido {pedido.NumeroPedido} - Nexum Altivon",
+            payment_method_id = "pix",
+            notification_url = notificationUrl,
+            external_reference = pedido.NumeroPedido,
+            payer = new
+            {
+                email = cliente.Email,
+                first_name = cliente.Nome.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? cliente.Nome,
+                identification = new
+                {
+                    type = string.IsNullOrWhiteSpace(cliente.CpfCnpj) || cliente.CpfCnpj.Length > 14 ? "CNPJ" : "CPF",
+                    number = new string((cliente.CpfCnpj ?? string.Empty).Where(char.IsDigit).ToArray())
+                }
+            }
+        });
+
+        using var response = await client.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            return GatewayPaymentStartResult.NotStarted(body);
+        }
+
+        using var document = JsonDocument.Parse(body);
+        var root = document.RootElement;
+        var transactionId = root.TryGetProperty("id", out var id) ? id.ToString() : null;
+        string? qrCode = null;
+        string? paymentUrl = null;
+
+        if (root.TryGetProperty("point_of_interaction", out var pointOfInteraction)
+            && pointOfInteraction.TryGetProperty("transaction_data", out var transactionData))
+        {
+            qrCode = transactionData.TryGetProperty("qr_code", out var qrCodeProp) ? qrCodeProp.ToString() : null;
+            paymentUrl = transactionData.TryGetProperty("ticket_url", out var ticketUrlProp) ? ticketUrlProp.ToString() : null;
+        }
+
+        return GatewayPaymentStartResult.Success("MercadoPago", transactionId, qrCode, paymentUrl, body);
+    }
+    catch (Exception ex)
+    {
+        return GatewayPaymentStartResult.NotStarted(ex.Message);
+    }
+}
+
+static string BuildPublicUrl(HttpContext http, string path)
+{
+    var forwardedProto = http.Request.Headers["X-Forwarded-Proto"].FirstOrDefault();
+    var forwardedHost = http.Request.Headers["X-Forwarded-Host"].FirstOrDefault();
+    var scheme = string.IsNullOrWhiteSpace(forwardedProto) ? http.Request.Scheme : forwardedProto;
+    var host = string.IsNullOrWhiteSpace(forwardedHost) ? http.Request.Host.Value : forwardedHost;
+
+    if (string.IsNullOrWhiteSpace(host) || host.Contains("localhost", StringComparison.OrdinalIgnoreCase))
+    {
+        host = "api.nexumaltivon.com";
+        scheme = "https";
+    }
+
+    return $"{scheme}://{host}{path}";
+}
+
+static List<FreteCotacaoDto> ParseMelhorEnvioCotacoes(string json)
+{
+    var cotacoes = new List<FreteCotacaoDto>();
+    try
+    {
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.ValueKind != JsonValueKind.Array)
+        {
+            return cotacoes;
+        }
+
+        foreach (var item in document.RootElement.EnumerateArray())
+        {
+            var id = item.TryGetProperty("id", out var idProp) ? idProp.ToString() : Guid.NewGuid().ToString("N");
+            var name = item.TryGetProperty("name", out var nameProp) ? nameProp.ToString() : "Frete Melhor Envio";
+            var company = item.TryGetProperty("company", out var companyProp) && companyProp.TryGetProperty("name", out var companyName)
+                ? companyName.ToString()
+                : "Melhor Envio";
+            var priceText = item.TryGetProperty("price", out var priceProp) ? priceProp.ToString() : "0";
+            var prazo = item.TryGetProperty("delivery_time", out var prazoProp) && prazoProp.TryGetInt32(out var prazoInt) ? prazoInt : 0;
+
+            if (decimal.TryParse(priceText, NumberStyles.Any, CultureInfo.InvariantCulture, out var price))
+            {
+                cotacoes.Add(new FreteCotacaoDto(id, name, company, price, prazo, "Melhor Envio"));
+            }
+        }
+    }
+    catch
+    {
+        return [];
+    }
+
+    return cotacoes;
+}
+
+static string BuildPedidoInstruction(StatusPagamento statusPagamento, string? metodoPagamento, string? transacaoId)
+{
+    if (!string.IsNullOrWhiteSpace(transacaoId))
+    {
+        return "Pagamento iniciado no gateway. Acompanhe a confirmação automática pelo painel.";
+    }
+
+    return statusPagamento switch
+    {
+        StatusPagamento.Aprovado => "Pagamento confirmado. Pedido pronto para separação e logística.",
+        StatusPagamento.Cancelado => "Pagamento cancelado. Não separar mercadoria.",
+        StatusPagamento.Recusado => "Pagamento recusado. Entrar em contato com o cliente antes de reenviar cobrança.",
+        StatusPagamento.Estornado => "Pagamento estornado. Conferir financeiro e estoque.",
+        _ when string.Equals(metodoPagamento, "pix", StringComparison.OrdinalIgnoreCase) =>
+            "Pedido reservado. Configure o gateway Pix para gerar QR Code e baixa automática.",
+        _ when string.Equals(metodoPagamento, "boleto", StringComparison.OrdinalIgnoreCase) =>
+            "Pedido reservado. Configure o gateway de boleto para gerar linha digitável e vencimento.",
+        _ =>
+            "Pedido reservado. Configure o gateway para cobrança real e confirmação automática."
+    };
+}
+
+static bool TryParseStatusPedido(string? raw, out StatusPedido status)
+{
+    status = StatusPedido.Pendente;
+
+    if (string.IsNullOrWhiteSpace(raw))
+    {
+        return false;
+    }
+
+    var token = raw.Trim().ToLowerInvariant();
+    token = token.Replace(" ", "", StringComparison.Ordinal)
+        .Replace("-", "", StringComparison.Ordinal)
+        .Replace("_", "", StringComparison.Ordinal);
+
+    switch (token)
+    {
+        case "pendente":
+        case "recebido":
+            status = StatusPedido.Pendente;
+            return true;
+        case "pago":
+            status = StatusPedido.Pago;
+            return true;
+        case "processando":
+        case "emseparacao":
+        case "separacao":
+            status = StatusPedido.EmSeparacao;
+            return true;
+        case "enviado":
+            status = StatusPedido.Enviado;
+            return true;
+        case "entregue":
+            status = StatusPedido.Entregue;
+            return true;
+        case "cancelado":
+            status = StatusPedido.Cancelado;
+            return true;
+        case "devolvido":
+            status = StatusPedido.Devolvido;
+            return true;
+        case "reembolsado":
+            status = StatusPedido.Reembolsado;
+            return true;
+    }
+
+    return Enum.TryParse(raw.Trim(), ignoreCase: true, out status);
+}
+
+static string FormatStatusLead(StatusLead status) =>
+    status switch
+    {
+        StatusLead.EmAtendimento => "Contato",
+        StatusLead.Convertido => "Ganho",
+        _ => status.ToString()
+    };
+
+static string FormatStatusLeadValue(string? raw)
+{
+    if (TryParseStatusLead(raw, out var status))
+    {
+        return FormatStatusLead(status);
+    }
+
+    return string.IsNullOrWhiteSpace(raw) ? "Novo" : raw.Trim();
+}
+
+static bool TryParseStatusLead(string? raw, out StatusLead status)
+{
+    status = StatusLead.Novo;
+
+    if (string.IsNullOrWhiteSpace(raw))
+    {
+        return false;
+    }
+
+    var token = raw.Trim().ToLowerInvariant();
+    token = token.Replace(" ", "", StringComparison.Ordinal)
+        .Replace("-", "", StringComparison.Ordinal)
+        .Replace("_", "", StringComparison.Ordinal);
+
+    switch (token)
+    {
+        case "novo":
+            status = StatusLead.Novo;
+            return true;
+        case "contato":
+        case "negociacao":
+        case "ematendimento":
+            status = StatusLead.EmAtendimento;
+            return true;
+        case "qualificado":
+            status = StatusLead.Qualificado;
+            return true;
+        case "ganho":
+        case "convertido":
+            status = StatusLead.Convertido;
+            return true;
+        case "perdido":
+            status = StatusLead.Perdido;
+            return true;
+        case "arquivado":
+            status = StatusLead.Arquivado;
+            return true;
+    }
+
+    return Enum.TryParse(raw.Trim(), ignoreCase: true, out status);
+}
+
+static bool TryParseOrigemLead(string? raw, out OrigemLead origem)
+{
+    origem = OrigemLead.Site;
+
+    if (string.IsNullOrWhiteSpace(raw))
+    {
+        return false;
+    }
+
+    var token = raw.Trim().ToLowerInvariant();
+    token = token.Replace(" ", "", StringComparison.Ordinal)
+        .Replace("-", "", StringComparison.Ordinal)
+        .Replace("_", "", StringComparison.Ordinal);
+
+    switch (token)
+    {
+        case "site":
+            origem = OrigemLead.Site;
+            return true;
+        case "whatsapp":
+            origem = OrigemLead.WhatsApp;
+            return true;
+        case "email":
+            origem = OrigemLead.Email;
+            return true;
+        case "telefone":
+            origem = OrigemLead.Telefone;
+            return true;
+        case "marketplace":
+            origem = OrigemLead.Marketplace;
+            return true;
+        case "indicacao":
+            origem = OrigemLead.Indicacao;
+            return true;
+        case "campanha":
+            origem = OrigemLead.Campanha;
+            return true;
+        case "outro":
+            origem = OrigemLead.Outro;
+            return true;
+    }
+
+    return Enum.TryParse(raw.Trim(), ignoreCase: true, out origem);
+}
+
+app.Run();
+
+public sealed record LoginRequest(string Email, string Senha);
+
+public sealed record LoginResponse(string Token, string RefreshToken, DateTime ExpiraEm, UsuarioDto Usuario);
+
+public sealed record UsuarioDto(int Id, string Nome, string Email, string Perfil);
+
+public sealed record ApiResponse<T>(
+    bool Sucesso,
+    string? Mensagem,
+    T? Dados,
+    List<string>? Erros = null,
+    int? TotalRegistros = null,
+    int? PaginaAtual = null,
+    int? TotalPaginas = null)
+{
+    public static ApiResponse<T> Ok(T dados, string? mensagem = null, int? total = null, int? pagina = null, int? totalPaginas = null)
+        => new(true, mensagem, dados, null, total, pagina, totalPaginas);
+
+    public static ApiResponse<T> Erro(string mensagem, List<string>? erros = null)
+        => new(false, mensagem, default, erros);
+}
+
+public sealed record LojaDto(
+    int Id,
+    string Nome,
+    string Slug,
+    string Segmento,
+    string? Descricao,
+    string CorPrimaria,
+    string CorSecundaria,
+    bool Ativa,
+    int OrdemExibicao);
+
+public sealed record DashboardKpiDto(
+    decimal FaturamentoHoje,
+    decimal FaturamentoMes,
+    decimal FaturamentoAno,
+    int PedidosHoje,
+    int PedidosMes,
+    int PedidosPendentes,
+    int PedidosEnviados,
+    int PedidosEntregues,
+    int ClientesNovosMes,
+    int ClientesAtivos,
+    int TotalClientes,
+    decimal TicketMedio,
+    decimal TaxaConversao,
+    int ProdutosAtivos,
+    int ProdutosEstoqueBaixo,
+    int ProdutosSemEstoque,
+    int LeadsNovos,
+    int LeadsConvertidos,
+    int LeadsEmAtendimento);
+
+public sealed record FaturamentoPorPeriodoDto(string Periodo, decimal Faturamento, int QuantidadePedidos);
+
+public sealed record VendasPorLojaDto(string LojaNome, string LojaSlug, decimal Faturamento, int Pedidos, decimal TicketMedio, decimal Percentual);
+
+public sealed record ProdutosMaisVendidosDto(int ProdutoId, string Nome, string? Imagem, string LojaNome, int QuantidadeVendida, decimal ReceitaTotal);
+
+public sealed record ClientesRecentesDto(int Id, string Nome, string Email, string? Whatsapp, DateTime DataCadastro, int TotalPedidos, decimal TotalGasto);
+
+public sealed record PedidosRecentesDto(int Id, string NumeroPedido, string ClienteNome, decimal Total, string Status, string StatusPagamento, string? LojaNome, DateTime DataPedido);
+
+public sealed record LeadsRecentesDto(int Id, string Nome, string Tipo, string Status, string Prioridade, string? Email, string? Whatsapp, DateTime DataCriacao);
+
+public sealed record CategoriaDto(string Id, string Nome, string Descricao);
+
+public sealed record ProdutoLojaDto(
+    string Id,
+    string Nome,
+    string Descricao,
+    decimal Preco,
+    decimal? PrecoPromocional,
+    string ImagemUrl,
+    int Estoque,
+    bool Destaque,
+    string Sku,
+    string CategoriaId,
+    decimal Avaliacao);
+
+public sealed record ProdutoRequest(
+    string? Id,
+    string Nome,
+    string? Descricao,
+    decimal Preco,
+    decimal? PrecoPromocional,
+    string? ImagemUrl,
+    int Estoque,
+    bool Destaque,
+    string? Sku,
+    string? CategoriaId,
+    decimal? Avaliacao)
+{
+    public ProdutoLojaDto ToProduto(string? id = null)
+    {
+        var produtoId = string.IsNullOrWhiteSpace(id) ? Id : id;
+        if (string.IsNullOrWhiteSpace(produtoId))
+        {
+            produtoId = Nome.ToLowerInvariant()
+                .Replace(" ", "-")
+                .Replace("/", "-")
+                .Replace("\\", "-");
+        }
+
+        var sku = string.IsNullOrWhiteSpace(Sku)
+            ? $"NA-{Math.Abs(HashCode.Combine(Nome, Preco)):000000}"
+            : Sku;
+
+        return new ProdutoLojaDto(
+            produtoId,
+            Nome,
+            Descricao ?? string.Empty,
+            Preco,
+            PrecoPromocional,
+            ImagemUrl ?? "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85",
+            Estoque,
+            Destaque,
+            sku,
+            string.IsNullOrWhiteSpace(CategoriaId) ? "classicos" : CategoriaId,
+            Avaliacao ?? 4.8m);
+    }
+}
+
+public sealed record UploadImagemRequest(string? FileName, string? ContentType, string DataUrl);
+
+public sealed record UploadImagemDto(string Url);
+
+public sealed record CupomDto(string Codigo, decimal? DescontoPercentual, decimal? DescontoValor, decimal? ValorMinimo);
+
+public sealed record ClienteRequest(string Nome, string Email, string? Cpf, string? Telefone);
+
+public sealed record ClienteLojaDto(int Id, string Nome, string Email, string? Telefone, string? Cpf = null);
+
+public sealed record FornecedorRequest(string Nome, string? Documento, string? Email, string? Telefone, string? Categoria);
+
+public sealed record FornecedorDto(int Id, string Nome, string Documento, string Email, string Telefone, string Categoria, DateTime CreatedAt);
+
+public sealed record StatusUpdateRequest(
+    [property: JsonPropertyName("novo_status")] string NovoStatus,
+    [property: JsonPropertyName("responsavel_id")] int? ResponsavelId);
+
+public sealed record PedidoItemRequest(string ProdutoId, int Quantidade);
+
+public sealed record PedidoRequest(
+    [property: JsonPropertyName("cliente_id")] int ClienteId,
+    [property: JsonPropertyName("loja_id")] string LojaId,
+    [property: JsonPropertyName("itens")] List<PedidoItemRequest> Itens,
+    [property: JsonPropertyName("cupom_codigo")] string? CupomCodigo,
+    [property: JsonPropertyName("endereco_entrega")] object? EnderecoEntrega,
+    [property: JsonPropertyName("metodo_pagamento")] string? MetodoPagamento,
+    [property: JsonPropertyName("gateway_pagamento")] string? GatewayPagamento,
+    [property: JsonPropertyName("frete_valor")] decimal? FreteValor,
+    [property: JsonPropertyName("frete_metodo")] string? FreteMetodo,
+    [property: JsonPropertyName("frete_transportadora")] string? FreteTransportadora,
+    [property: JsonPropertyName("frete_prazo_dias")] int? FretePrazoDias);
+
+public sealed record EnderecoEntregaRequest(
+    string? Cep,
+    string? Logradouro,
+    string? Numero,
+    string? Complemento,
+    string? Bairro,
+    string? Cidade,
+    string? Estado);
+
+public sealed record PedidoLojaDto(
+    int Id,
+    string NumeroPedido,
+    decimal Total,
+    string Status,
+    DateTime CreatedAt,
+    string StatusPagamento,
+    string? MeioPagamento,
+    string? GatewayPagamento,
+    string? GatewayTransacaoId,
+    decimal FreteValor,
+    string? FreteMetodo,
+    string? FreteTransportadora,
+    int FretePrazoDias,
+    string InstrucaoPagamento);
+
+public sealed record IntegracaoStatusDto(
+    string Nome,
+    string Slug,
+    string Status,
+    string Detalhe,
+    bool Configurada = false,
+    string Ambiente = "Nao configurado");
+
+public sealed record IntegracaoDiagnosticoDto(
+    string Nome,
+    string Slug,
+    string Status,
+    bool Configurada,
+    bool Operacional,
+    string Detalhe,
+    List<string> Pendencias,
+    DateTime VerificadoEm,
+    string? Referencia);
+
+public sealed record IntegracaoCredencialDto(
+    string Provedor,
+    string Categoria,
+    string Chave,
+    string Uso,
+    bool Obrigatoria);
+
+public sealed record FreteCotacaoRequest(
+    [property: JsonPropertyName("cep_origem")]
+    string? CepOrigem,
+    [property: JsonPropertyName("cep_destino")]
+    string? CepDestino,
+    [property: JsonPropertyName("itens")]
+    List<FreteCotacaoItemRequest> Itens);
+
+public sealed record FreteCotacaoItemRequest(
+    [property: JsonPropertyName("sku")]
+    string? Sku,
+    [property: JsonPropertyName("quantidade")]
+    int Quantidade,
+    [property: JsonPropertyName("valor_unitario")]
+    decimal ValorUnitario,
+    [property: JsonPropertyName("peso_kg")]
+    decimal? PesoKg,
+    [property: JsonPropertyName("altura_cm")]
+    decimal? AlturaCm,
+    [property: JsonPropertyName("largura_cm")]
+    decimal? LarguraCm,
+    [property: JsonPropertyName("comprimento_cm")]
+    decimal? ComprimentoCm);
+
+public sealed record FreteCotacaoDto(
+    string Codigo,
+    string Nome,
+    string Transportadora,
+    decimal Valor,
+    int PrazoDias,
+    string Fonte);
+
+public sealed record GatewayPaymentStartResult(
+    bool Started,
+    string Gateway,
+    string? TransactionId,
+    string? PixQrcode,
+    string? PaymentUrl,
+    string? RawPayload)
+{
+    public static GatewayPaymentStartResult Success(string gateway, string? transactionId, string? pixQrcode, string? paymentUrl, string? rawPayload) =>
+        new(true, gateway, transactionId, pixQrcode, paymentUrl, rawPayload);
+
+    public static GatewayPaymentStartResult NotStarted(string? rawPayload = null) =>
+        new(false, "ConfiguracaoPendente", null, null, null, rawPayload);
+}
+
+public sealed record DashboardResumoDto(
+    int PedidosHoje,
+    int TotalClientes,
+    decimal FaturamentoMes,
+    int LeadsNovos,
+    int ProdutosEstoqueBaixo,
+    decimal Conversao,
+    decimal TicketMedio);
+
+public sealed record LeadLojaDto(int Id, string Nome, string Email, string Telefone, string Status, DateTime CreatedAt);
+
+public sealed class LeadRow
+{
+    public int Id { get; set; }
+    public string Nome { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string Telefone { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+}
+
+public sealed record LeadRequest(string Nome, string Email, string? Telefone, string? Status, string? Origem, string? Observacao);
+
+public static class StoreData
+{
+    public static readonly List<CategoriaDto> Categorias =
+    [
+        new("automaticos", "Automaticos", "Movimento mecanico com presenca executiva"),
+        new("cronografos", "Cronografos", "Performance, precisao e leitura esportiva"),
+        new("classicos", "Classicos", "Pecas discretas para rotina premium"),
+        new("smart-luxo", "Smart Luxo", "Tecnologia conectada com acabamento refinado")
+    ];
+
+    public static readonly List<ProdutoLojaDto> Produtos =
+    [
+        new("na-atlas-chrono", "Atlas Chronograph Black", "Cronografo em aco escovado, safira antirrisco e pulseira intercambiavel para uso executivo.", 4890, 4290, "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85", 8, true, "NA-ATL-BLK", "cronografos", 4.9m),
+        new("na-orion-gold", "Orion Gold Reserve", "Relogio automatico dourado com mostrador sunray, reserva de marcha e acabamento premium.", 6990, 6490, "https://images.unsplash.com/photo-1547996160-81dfa63595aa?auto=format&fit=crop&w=900&q=85", 12, true, "NA-ORI-GLD", "automaticos", 4.8m),
+        new("na-heritage-silver", "Heritage Silver 40mm", "Design classico em caixa fina, pulseira em couro italiano e resistencia a agua para o dia a dia.", 2990, null, "https://images.unsplash.com/photo-1539874754764-5a96559165b0?auto=format&fit=crop&w=900&q=85", 24, true, "NA-HER-SLV", "classicos", 4.7m),
+        new("na-venture-carbon", "Venture Carbon Pro", "Caixa em carbono, pulseira esportiva premium e leitura de alta visibilidade para jornadas intensas.", 5290, 4990, "https://images.unsplash.com/photo-1434056886845-dac89ffe9b56?auto=format&fit=crop&w=900&q=85", 5, false, "NA-VEN-CBN", "cronografos", 4.6m),
+        new("na-lumina-smart", "Lumina Smart Luxe", "Tela AMOLED, monitoramento completo e corpo metalico com acabamento de relojoaria.", 3890, null, "https://images.unsplash.com/photo-1508685096489-7aacd43bd3b1?auto=format&fit=crop&w=900&q=85", 18, false, "NA-LUM-SMT", "smart-luxo", 4.8m),
+        new("na-minimal-rose", "Minimal Rose Mesh", "Perfil ultrafino, malha milanesa rose e mostrador minimalista para composicoes sofisticadas.", 2590, 2290, "https://images.unsplash.com/photo-1524592094714-0f0654e20314?auto=format&fit=crop&w=900&q=85", 31, false, "NA-MIN-RSE", "classicos", 4.7m)
+    ];
+
+    public static readonly List<CupomDto> Cupons =
+    [
+        new("NEXUM10", 10, null, 500),
+        new("FRETEGRATIS", null, 89, 1000)
+    ];
+
+    public static readonly List<ClienteLojaDto> Clientes =
+    [
+        new(1, "Ana Carolina Silva", "ana.silva@email.com", "(14) 99876-5432"),
+        new(2, "Bruno Oliveira", "bruno.oliveira@email.com", "(14) 99765-4321"),
+        new(3, "Carla Mendes", "carla.mendes@email.com", "(14) 99654-3210")
+    ];
+
+    public static readonly List<FornecedorDto> Fornecedores =
+    [
+        new(1, "Chronos Imports", "12.345.678/0001-90", "comercial@chronosimports.com", "(11) 3030-1122", "Relogios", DateTime.UtcNow.AddDays(-9)),
+        new(2, "Luxury Cases Brasil", "98.765.432/0001-10", "vendas@luxurycases.com", "(21) 4040-2211", "Acessorios", DateTime.UtcNow.AddDays(-5)),
+        new(3, "Embalagens Prime", "45.111.222/0001-33", "atendimento@embalagensprime.com", "(31) 3333-9191", "Operacional", DateTime.UtcNow.AddDays(-2))
+    ];
+
+    public static readonly DashboardResumoDto Resumo = new(38, 1248, 286420, 64, 7, 7.8m, 3280);
+
+    public static readonly List<PedidoLojaDto> Pedidos =
+    [
+        new(1029, "NA-1029", 6490, "Processando", DateTime.UtcNow.AddHours(-2), "Aguardando pagamento", "pix", "ConfiguracaoPendente", null, 0, "Retirada / combinar entrega", "Nexum Altivon", 0, "Pedido reservado. Configure o gateway para cobrança real e confirmação automática."),
+        new(1028, "NA-1028", 4290, "Enviado", DateTime.UtcNow.AddHours(-5), "Pagamento aprovado", "cartao", "MercadoPago", "demo-1028", 29.9m, "Entrega padrão", "Correios / Melhor Envio", 7, "Pagamento confirmado. Pedido pronto para separação e logística."),
+        new(1027, "NA-1027", 7580, "Entregue", DateTime.UtcNow.AddDays(-1), "Pagamento aprovado", "boleto", "MercadoPago", "demo-1027", 49.9m, "Entrega expressa", "Transportadora parceira", 3, "Pagamento confirmado. Pedido pronto para separação e logística.")
+    ];
+
+    public static readonly List<LeadLojaDto> Leads =
+    [
+        new(210, "Marina Alves", "marina.alves@email.com", "(11) 98221-4400", "Qualificado", DateTime.UtcNow.AddHours(-3)),
+        new(209, "Rafael Monteiro", "rafael.m@email.com", "(21) 99774-1030", "Negociacao", DateTime.UtcNow.AddHours(-8)),
+        new(208, "Bianca Torres", "bianca.t@email.com", "(31) 98812-5511", "Novo", DateTime.UtcNow.AddDays(-1))
+    ];
+}
+
+public sealed record DashboardCompletoDto(
+    DashboardKpiDto Kpis,
+    List<FaturamentoPorPeriodoDto> FaturamentoSemanal,
+    List<FaturamentoPorPeriodoDto> FaturamentoMensal,
+    List<VendasPorLojaDto> VendasPorLoja,
+    List<ProdutosMaisVendidosDto> ProdutosMaisVendidos,
+    List<ClientesRecentesDto> ClientesRecentes,
+    List<PedidosRecentesDto> PedidosRecentes,
+    List<LeadsRecentesDto> LeadsRecentes)
+{
+    public static readonly List<LojaDto> Lojas =
+    [
+        new(1, "Geracao Top+", "geracao-top", "Tecnologia", "Eletronicos e acessorios", "#C9A227", "#0A0A0A", true, 1),
+        new(2, "Moda Mim", "moda-mim", "Moda", "Moda feminina e lifestyle", "#D81B60", "#0A0A0A", true, 2),
+        new(3, "Chronos", "chronos", "Relogios", "Relogios e presentes", "#C9A227", "#1E3A5F", true, 3),
+        new(4, "Grann-Tur", "grann-tur", "Viagens", "Turismo e malas", "#1E88E5", "#0A0A0A", true, 4),
+        new(5, "Estruturaline", "estruturaline", "Construcao", "Materiais e solucoes estruturais", "#546E7A", "#0A0A0A", true, 5),
+        new(6, "Gran-fest-festas", "gran-fest", "Festas", "Artigos para eventos", "#8E24AA", "#0A0A0A", true, 6)
+    ];
+
+    public static DashboardCompletoDto CreateSample()
+    {
+        var hoje = DateTime.Today;
+
+        return new DashboardCompletoDto(
+            new DashboardKpiDto(2847.50m, 45230.80m, 387450.00m, 12, 186, 23, 45, 892, 34, 1247, 3856, 243.50m, 3.2m, 1245, 18, 5, 12, 8, 15),
+            [
+                new("17/05", 1850.00m, 8),
+                new("18/05", 2340.50m, 10),
+                new("19/05", 1560.00m, 6),
+                new("20/05", 3120.80m, 13),
+                new("21/05", 2780.00m, 11),
+                new("22/05", 1950.00m, 8),
+                new("23/05", 2847.50m, 12)
+            ],
+            [
+                new("jun/25", 32450.00m, 142),
+                new("jul/25", 38920.50m, 168),
+                new("ago/25", 35670.00m, 154),
+                new("set/25", 42180.80m, 182),
+                new("out/25", 39850.00m, 172),
+                new("nov/25", 44560.00m, 195),
+                new("dez/25", 52340.00m, 228),
+                new("jan/26", 28950.00m, 126),
+                new("fev/26", 31240.00m, 138),
+                new("mar/26", 36780.00m, 162),
+                new("abr/26", 41250.00m, 178),
+                new("mai/26", 45230.80m, 186)
+            ],
+            [
+                new("Geracao Top+", "geracao-top", 98560.00m, 412, 239.22m, 25.4m),
+                new("Moda Mim", "moda-mim", 72340.00m, 298, 242.75m, 18.7m),
+                new("Chronos", "chronos", 67890.00m, 245, 277.10m, 17.5m),
+                new("Grann-Tur", "grann-tur", 54230.00m, 198, 273.89m, 14.0m),
+                new("Estruturaline", "estruturaline", 45670.00m, 156, 292.76m, 11.8m),
+                new("Gran-fest-festas", "gran-fest", 48760.00m, 187, 260.75m, 12.6m)
+            ],
+            [
+                new(1, "Smartphone Galaxy S24", null, "Geracao Top+", 142, 213400.00m),
+                new(2, "Relogio Chronos Elite", null, "Chronos", 98, 78400.00m),
+                new(3, "Mala de Viagem Premium", null, "Grann-Tur", 87, 43500.00m),
+                new(4, "Vestido Floral Verao", null, "Moda Mim", 76, 22800.00m),
+                new(5, "Kit Festa Premium", null, "Gran-fest-festas", 65, 19500.00m)
+            ],
+            [
+                new(1, "Ana Carolina Silva", "ana.silva@email.com", "(14) 99876-5432", hoje.AddDays(-1), 3, 1250.00m),
+                new(2, "Bruno Oliveira", "bruno.oliveira@email.com", "(14) 99765-4321", hoje.AddDays(-1), 1, 450.00m),
+                new(3, "Carla Mendes", "carla.mendes@email.com", "(14) 99654-3210", hoje.AddDays(-2), 5, 2340.00m)
+            ],
+            [
+                new(1, "NX2605230001", "Ana Carolina Silva", 450.00m, "Pago", "Aprovado", "Geracao Top+", hoje.AddHours(-2)),
+                new(2, "NX2605230002", "Bruno Oliveira", 890.00m, "EmSeparacao", "Aprovado", "Moda Mim", hoje.AddHours(-4)),
+                new(3, "NX2605230003", "Carla Mendes", 1250.00m, "Pendente", "Aguardando", "Chronos", hoje.AddHours(-6))
+            ],
+            [
+                new(1, "Fernando Lopes", "Fornecedor", "Novo", "Alta", "fernando@fornecedor.com", "(11) 98765-4321", hoje.AddHours(-3)),
+                new(2, "Gabriela Rocha", "Dropshipping", "EmAtendimento", "Media", "gabriela@dropship.com", "(21) 97654-3210", hoje.AddHours(-8)),
+                new(3, "Henrique Almeida", "Parceiro", "Qualificado", "Alta", "henrique@parceiro.com", "(31) 96543-2109", hoje.AddDays(-1))
+            ]);
+    }
+}
