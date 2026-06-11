@@ -77,7 +77,8 @@ public sealed class FiscalRoutingEngine : IFiscalRoutingEngine
         var justificativas = new List<string>();
         var receitaBruta = request.ValorProdutos + request.ValorFrete;
 
-        var mesmaUf = string.Equals(request.EstadoOrigem, request.EstadoDestino, StringComparison.OrdinalIgnoreCase);
+        var estadoOrigem = string.IsNullOrWhiteSpace(empresa.Estado) ? request.EstadoOrigem : empresa.Estado;
+        var mesmaUf = string.Equals(estadoOrigem, request.EstadoDestino, StringComparison.OrdinalIgnoreCase);
         var icms = mesmaUf ? empresa.AliquotaIcmsInterna : empresa.AliquotaIcmsInterestadual;
         var tributosPercentuais = icms + empresa.AliquotaPis + empresa.AliquotaCofins + empresa.AliquotaIss + empresa.AliquotaIpi;
 
@@ -125,11 +126,11 @@ public sealed class FiscalRoutingEngine : IFiscalRoutingEngine
 
         if (mesmaUf)
         {
-            justificativas.Add("Operação interna: ICMS interno aplicado.");
+            justificativas.Add($"Operação interna a partir de {estadoOrigem}: ICMS interno aplicado.");
         }
         else
         {
-            justificativas.Add("Operação interestadual: ICMS interestadual aplicado.");
+            justificativas.Add($"Operação interestadual saindo de {estadoOrigem} para {request.EstadoDestino}: ICMS interestadual aplicado.");
         }
 
         if (request.ExigeMarketplace && empresa.PermiteMarketplace)

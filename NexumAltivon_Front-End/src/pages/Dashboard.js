@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { categoriaAPI, clienteAPI, dashboardAPI, empresaGrupoAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI } from '../services/api';
+import { categoriaAPI, clienteAPI, dashboardAPI, empresaGrupoAPI, fiscalAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI } from '../services/api';
 import { fallbackCategories, fallbackLeads, fallbackPedidos, fallbackProducts, fallbackResumo } from '../data/mockStore';
 import { formatDate, formatPrice, getLeadStatusClass, getPagamentoLabel, getPedidoStatusClass } from '../utils/formatters';
 import {
@@ -23,6 +23,7 @@ import {
   LayoutDashboard,
   LogOut,
   PackageCheck,
+  Trash2,
   Save,
   Search,
   ShoppingBag,
@@ -43,7 +44,13 @@ const tabs = [
   { id: 'cadastro-clientes', label: 'Clientes', icon: Users, section: 'Cadastros' },
   { id: 'cadastro-fornecedores', label: 'Fornecedores', icon: Building2, section: 'Cadastros' },
   { id: 'erp', label: 'ERP', icon: Database, section: 'Gestão', badge: 'desktop' },
+  { id: 'erp-financeiro', label: 'Financeiro', icon: WalletCards, section: 'Gestão', badge: 'caixa' },
   { id: 'erp-empresas', label: 'Empresas do Grupo', icon: Building2, section: 'Gestão', badge: 'fiscal' },
+  { id: 'erp-fiscal', label: 'Notas e Fiscal', icon: FileText, section: 'Gestão', badge: 'auto' },
+  { id: 'erp-logistica', label: 'Logística', icon: Truck, section: 'Gestão', badge: 'estoque' },
+  { id: 'erp-rh', label: 'RH', icon: UserRound, section: 'Gestão', badge: 'equipe' },
+  { id: 'erp-compras', label: 'Compras', icon: ShoppingBag, section: 'Gestão', badge: 'fornec' },
+  { id: 'erp-relatorios', label: 'Relatórios', icon: TrendingUp, section: 'Gestão', badge: 'kpi' },
   { id: 'integracoes', label: 'Integrações', icon: Globe2, section: 'Integrações', badge: 'paralelo' },
 ];
 
@@ -72,7 +79,7 @@ const cadastroHighlights = {
 };
 
 const empresaGrupoHighlights = [
-  'CNPJ, código interno e e-mail fiscal são conferidos antes de salvar.',
+  'CNPJ e código interno são conferidos antes de salvar.',
   'O cadastro reúne fiscal, tributário, contato, emissão e prioridade estratégica.',
   'A base fica pronta para roteamento inteligente de NF-e entre empresas do grupo e parceiras.',
 ];
@@ -87,6 +94,7 @@ const plannedModules = [
 const erpModules = [
   {
     title: 'Financeiro',
+    tabId: 'erp-financeiro',
     status: 'Operacional assistido',
     icon: WalletCards,
     metrics: ['Fluxo de caixa', 'Contas a pagar', 'Contas a receber', 'DRE'],
@@ -94,6 +102,7 @@ const erpModules = [
   },
   {
     title: 'Fiscal',
+    tabId: 'erp-fiscal',
     status: 'Pronto para homologação',
     icon: FileText,
     metrics: ['NF-e entrada', 'NF-e saída', 'CFOP', 'Impostos'],
@@ -101,6 +110,7 @@ const erpModules = [
   },
   {
     title: 'Estoque e Logística',
+    tabId: 'erp-logistica',
     status: 'Conectado ao pedido',
     icon: Boxes,
     metrics: ['Kardex', 'Inventário', 'Despacho', 'Rastreamento'],
@@ -108,6 +118,7 @@ const erpModules = [
   },
   {
     title: 'Empresas e Parceiros',
+    tabId: 'erp-empresas',
     status: 'Governança ERP',
     icon: Building2,
     metrics: ['Grupo societário', 'Parceiros', 'Contratos', 'Centros de custo'],
@@ -115,16 +126,18 @@ const erpModules = [
   },
   {
     title: 'Relatórios',
+    tabId: 'erp-relatorios',
     status: 'Gestão executiva',
     icon: TrendingUp,
     metrics: ['Margens', 'Lucro líquido', 'Receita por loja', 'Auditoria'],
     signal: 'Decisão',
   },
   {
-    title: 'Acesso Desktop',
-    status: 'Disponível no Windows',
-    icon: Database,
-    metrics: ['Janela dedicada', 'Mesmo login', 'Mesma API', 'Dados centralizados'],
+    title: 'RH e Compras',
+    tabId: 'erp-rh',
+    status: 'Operação interna',
+    icon: UserRound,
+    metrics: ['Cargos', 'Equipe', 'Fornecedores', 'Solicitações'],
     signal: 'Mesa de gestão',
   },
 ];
@@ -206,14 +219,31 @@ const fallbackEmpresasGrupo = [];
 const emptyProduto = {
   id: '',
   nome: '',
+  descricaoCurta: '',
   descricao: '',
   preco: '',
   precoPromocional: '',
+  custo: '',
+  peso: '',
+  altura: '',
+  largura: '',
+  comprimento: '',
   imagemUrl: '',
+  imagensGaleria: '',
   estoque: '',
+  estoqueMinimo: '5',
+  estoqueReservado: '0',
   destaque: true,
+  ativo: true,
   sku: '',
   categoriaId: 'classicos',
+  tipoProduto: 'Proprio',
+  fornecedorId: '',
+  marca: '',
+  tags: '',
+  seoTitulo: '',
+  seoDescricao: '',
+  seoKeywords: '',
 };
 
 const emptyCliente = { nome: '', email: '', telefone: '', cpf: '' };
@@ -272,6 +302,9 @@ const emptyEmpresaGrupo = {
   aliquotaIss: '',
   aliquotaIpi: '',
   cargaTributariaPercentual: '',
+  perfilTributacao: 'TributacaoAtual',
+  usaStLegado: false,
+  destacaIcmsStSeparado: false,
   custoOperacionalPercentual: '',
   margemMinimaPercentual: '',
   prioridadeFiscal: '100',
@@ -310,6 +343,12 @@ const chart = [
 
 const normalizeText = (value) => String(value ?? '').trim().toLowerCase();
 const normalizeDocument = (value) => String(value ?? '').replace(/\D/g, '');
+const galleryToArray = (value) =>
+  String(value ?? '')
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+const galleryToText = (items) => items.filter(Boolean).join('\n');
 
 const getDashboardRouteState = (path = '') => {
   const segments = String(path || '').split('/').filter(Boolean);
@@ -419,7 +458,6 @@ const getFornecedorDuplicateMessage = (form, fornecedores) => {
 const getEmpresaGrupoDuplicateMessage = (form, empresas) => {
   const cnpj = normalizeDocument(form.cnpj);
   const codigoEmpresa = normalizeText(form.codigoEmpresa);
-  const emailFiscal = normalizeText(form.emailFiscal);
   const razaoSocial = normalizeText(form.razaoSocial);
 
   if (cnpj) {
@@ -430,11 +468,6 @@ const getEmpresaGrupoDuplicateMessage = (form, empresas) => {
   if (codigoEmpresa) {
     const duplicate = empresas.find((empresa) => normalizeText(empresa.codigoEmpresa) === codigoEmpresa);
     if (duplicate) return `Código interno já vinculado a ${duplicate.razaoSocial || duplicate.nomeFantasia || duplicate.cnpj}.`;
-  }
-
-  if (emailFiscal) {
-    const duplicate = empresas.find((empresa) => normalizeText(empresa.emailFiscal) === emailFiscal);
-    if (duplicate) return `E-mail fiscal já vinculado a ${duplicate.razaoSocial || duplicate.nomeFantasia || duplicate.cnpj}.`;
   }
 
   if (razaoSocial) {
@@ -473,6 +506,15 @@ function StatCard({ title, value, detail, icon: Icon, trend, tone = 'slate' }) {
   );
 }
 
+function StatMiniCard({ label, value }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+      <p className="mt-3 text-3xl font-black text-slate-950">{value}</p>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const params = useParams();
@@ -486,6 +528,7 @@ export default function Dashboard() {
   const [clientes, setClientes] = useState(allowDemoData ? fallbackClientes : []);
   const [fornecedores, setFornecedores] = useState(allowDemoData ? fallbackFornecedores : []);
   const [empresasGrupo, setEmpresasGrupo] = useState(allowDemoData ? fallbackEmpresasGrupo : []);
+  const [fiscalPedidos, setFiscalPedidos] = useState([]);
   const [integracoes, setIntegracoes] = useState(fallbackIntegracoes);
   const [loading, setLoading] = useState(true);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -502,7 +545,7 @@ export default function Dashboard() {
 
   const loadData = useCallback(async () => {
     try {
-      const [resumoRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, empresasGrupoRes, integracoesRes] = await Promise.all([
+      const [resumoRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, empresasGrupoRes, fiscalPedidosRes, integracoesRes] = await Promise.all([
         dashboardAPI.getResumo(),
         pedidoAPI.getAll(),
         leadAPI.getAll(),
@@ -511,6 +554,7 @@ export default function Dashboard() {
         clienteAPI.getAll(),
         fornecedorAPI.getAll(),
         empresaGrupoAPI.getAll().catch(() => ({ data: [] })),
+        fiscalAPI.getPedidos().catch(() => ({ data: [] })),
         integracoesAPI.getDiagnostico()
           .catch(() => integracoesAPI.getStatus())
           .catch(() => ({ data: fallbackIntegracoes })),
@@ -523,6 +567,7 @@ export default function Dashboard() {
       if (Array.isArray(clientesRes.data) && clientesRes.data.length > 0) setClientes(clientesRes.data);
       if (Array.isArray(fornecedoresRes.data) && fornecedoresRes.data.length > 0) setFornecedores(fornecedoresRes.data);
       if (Array.isArray(empresasGrupoRes.data) && empresasGrupoRes.data.length > 0) setEmpresasGrupo(empresasGrupoRes.data);
+      if (Array.isArray(fiscalPedidosRes.data) && fiscalPedidosRes.data.length > 0) setFiscalPedidos(fiscalPedidosRes.data);
       if (Array.isArray(integracoesRes.data) && integracoesRes.data.length > 0) setIntegracoes(integracoesRes.data);
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
@@ -559,8 +604,16 @@ export default function Dashboard() {
       ...produtoForm,
       preco: Number(produtoForm.preco),
       precoPromocional: produtoForm.precoPromocional ? Number(produtoForm.precoPromocional) : null,
+      custo: produtoForm.custo ? Number(produtoForm.custo) : null,
+      peso: produtoForm.peso ? Number(produtoForm.peso) : null,
+      altura: produtoForm.altura ? Number(produtoForm.altura) : null,
+      largura: produtoForm.largura ? Number(produtoForm.largura) : null,
+      comprimento: produtoForm.comprimento ? Number(produtoForm.comprimento) : null,
       estoque: Number(produtoForm.estoque),
+      estoqueMinimo: produtoForm.estoqueMinimo ? Number(produtoForm.estoqueMinimo) : null,
+      estoqueReservado: produtoForm.estoqueReservado ? Number(produtoForm.estoqueReservado) : null,
       categoriaId: produtoForm.categoriaId,
+      fornecedorId: produtoForm.fornecedorId ? Number(produtoForm.fornecedorId) : null,
     };
 
     const response = await produtoAPI.create(payload);
@@ -595,6 +648,56 @@ export default function Dashboard() {
       setFormStatus('Imagem enviada e vinculada ao produto.');
     } catch (error) {
       setFormStatus(error.response?.data?.detail || error.message || 'Não foi possível enviar a imagem.');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const uploadProdutoGaleria = async (files) => {
+    if (!files?.length) return;
+
+    const selectedFiles = Array.from(files);
+    const invalidFile = selectedFiles.find((file) => !file.type.startsWith('image/'));
+    if (invalidFile) {
+      setFormStatus(`Arquivo inválido na galeria: ${invalidFile.name}.`);
+      return;
+    }
+
+    const oversizedFile = selectedFiles.find((file) => file.size > 2 * 1024 * 1024);
+    if (oversizedFile) {
+      setFormStatus(`Arquivo muito grande na galeria: ${oversizedFile.name}. Use até 2MB por imagem.`);
+      return;
+    }
+
+    setUploadingImage(true);
+    setFormStatus('');
+
+    try {
+      const uploadedUrls = [];
+
+      for (const file of selectedFiles) {
+        const dataUrl = await fileToDataUrl(file);
+        const response = await produtoAPI.uploadImagem({
+          fileName: file.name,
+          contentType: file.type,
+          dataUrl,
+        });
+
+        const url = response.data?.url || response.data?.Url;
+        if (!url) {
+          throw new Error(`A API não retornou URL para ${file.name}.`);
+        }
+
+        uploadedUrls.push(url);
+      }
+
+      setProdutoForm((form) => {
+        const currentGallery = galleryToArray(form.imagensGaleria);
+        return { ...form, imagensGaleria: galleryToText([...currentGallery, ...uploadedUrls]) };
+      });
+      setFormStatus(`${uploadedUrls.length} imagem(ns) adicionada(s) à galeria do produto.`);
+    } catch (error) {
+      setFormStatus(error.response?.data?.detail || error.message || 'Não foi possível enviar a galeria do produto.');
     } finally {
       setUploadingImage(false);
     }
@@ -747,8 +850,8 @@ export default function Dashboard() {
           <Link to="/" className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#C9A227] text-sm font-black text-black">NA</div>
             <div>
-              <p className="font-serif text-lg font-black tracking-widest text-[#C9A227]">NEXUM ALTIVON</p>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">Painel Administrativo</p>
+              <p className="font-serif text-lg font-black tracking-widest text-[#C9A227]">GENESISGEST.NET</p>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">Painel administrativo Nexum Altivon</p>
             </div>
           </Link>
 
@@ -820,9 +923,14 @@ export default function Dashboard() {
           <div className="flex min-h-[76px] flex-col gap-4 px-4 py-4 sm:px-6 xl:flex-row xl:items-center xl:justify-between xl:px-8">
             <div>
               <p className="text-sm font-bold text-zinc-500"><span className="text-[#C9A227]">{tabs.find((tab) => tab.id === activeTab)?.label || 'Dashboard'}</span> / Gestão</p>
-              <h1 className="text-2xl font-black text-white" data-testid="dashboard-title">Painel Administrativo</h1>
+              <h1 className="text-2xl font-black text-white" data-testid="dashboard-title">GenesisGest.Net</h1>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="rounded-full border border-[#2A2A2A] bg-[#111111] px-4 py-2 text-right">
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-zinc-500">Operando como</p>
+                <p className="text-sm font-bold text-white">{user?.nome || user?.email || 'Equipe Nexum'}</p>
+                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[#E8D5A3]">Sophia assistente ERP</p>
+              </div>
               <div className="relative">
                 <Search className="absolute left-3 top-3 text-zinc-500" size={18} />
                 <input
@@ -1045,9 +1153,13 @@ export default function Dashboard() {
                           <Field label="Slug público / ID do produto" value={produtoForm.id} onChange={(value) => setProdutoForm((form) => ({ ...form, id: value }))} />
                           <Field label="Nome" value={produtoForm.nome} onChange={(value) => setProdutoForm((form) => ({ ...form, nome: value }))} required />
                           <Field label="SKU / Código interno" value={produtoForm.sku} onChange={(value) => setProdutoForm((form) => ({ ...form, sku: value }))} />
+                          <SelectField label="Tipo do produto" value={produtoForm.tipoProduto} onChange={(value) => setProdutoForm((form) => ({ ...form, tipoProduto: value }))} options={['Proprio', 'Dropshipping', 'Marketplace', 'Afiliado']} />
                           <Field label="Preço" type="number" value={produtoForm.preco} onChange={(value) => setProdutoForm((form) => ({ ...form, preco: value }))} required />
                           <Field label="Preço promocional" type="number" value={produtoForm.precoPromocional} onChange={(value) => setProdutoForm((form) => ({ ...form, precoPromocional: value }))} />
+                          <Field label="Custo interno" type="number" value={produtoForm.custo} onChange={(value) => setProdutoForm((form) => ({ ...form, custo: value }))} />
                           <Field label="Estoque inicial" type="number" value={produtoForm.estoque} onChange={(value) => setProdutoForm((form) => ({ ...form, estoque: value }))} required />
+                          <Field label="Estoque mínimo" type="number" value={produtoForm.estoqueMinimo} onChange={(value) => setProdutoForm((form) => ({ ...form, estoqueMinimo: value }))} />
+                          <Field label="Estoque reservado" type="number" value={produtoForm.estoqueReservado} onChange={(value) => setProdutoForm((form) => ({ ...form, estoqueReservado: value }))} />
                           <label className="block text-sm font-bold text-slate-700">
                             Categoria
                             <select
@@ -1060,6 +1172,26 @@ export default function Dashboard() {
                               ))}
                             </select>
                           </label>
+                          <label className="block text-sm font-bold text-slate-700">
+                            Fornecedor principal
+                            <select
+                              value={produtoForm.fornecedorId}
+                              onChange={(event) => setProdutoForm((form) => ({ ...form, fornecedorId: event.target.value }))}
+                              className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+                            >
+                              <option value="">Não vinculado</option>
+                              {fornecedores.map((fornecedor) => (
+                                <option key={fornecedor.id} value={fornecedor.id}>{fornecedor.nome}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <Field label="Marca" value={produtoForm.marca} onChange={(value) => setProdutoForm((form) => ({ ...form, marca: value }))} />
+                          <Field label="Tags / palavras-chave" value={produtoForm.tags} onChange={(value) => setProdutoForm((form) => ({ ...form, tags: value }))} />
+                          <Field label="Peso (kg)" type="number" value={produtoForm.peso} onChange={(value) => setProdutoForm((form) => ({ ...form, peso: value }))} />
+                          <Field label="Altura (cm)" type="number" value={produtoForm.altura} onChange={(value) => setProdutoForm((form) => ({ ...form, altura: value }))} />
+                          <Field label="Largura (cm)" type="number" value={produtoForm.largura} onChange={(value) => setProdutoForm((form) => ({ ...form, largura: value }))} />
+                          <Field label="Comprimento (cm)" type="number" value={produtoForm.comprimento} onChange={(value) => setProdutoForm((form) => ({ ...form, comprimento: value }))} />
+                          <Field label="Descrição curta" value={produtoForm.descricaoCurta} onChange={(value) => setProdutoForm((form) => ({ ...form, descricaoCurta: value }))} />
                           <label className="block text-sm font-bold text-slate-700 md:col-span-2">
                             Descrição comercial
                             <textarea
@@ -1075,6 +1207,23 @@ export default function Dashboard() {
                             uploading={uploadingImage}
                             className="md:col-span-2"
                           />
+                          <ImageGalleryField
+                            value={produtoForm.imagensGaleria}
+                            onChange={(value) => setProdutoForm((form) => ({ ...form, imagensGaleria: value }))}
+                            onUpload={uploadProdutoGaleria}
+                            uploading={uploadingImage}
+                            className="md:col-span-2"
+                          />
+                          <Field label="SEO título" value={produtoForm.seoTitulo} onChange={(value) => setProdutoForm((form) => ({ ...form, seoTitulo: value }))} />
+                          <Field label="SEO palavras-chave" value={produtoForm.seoKeywords} onChange={(value) => setProdutoForm((form) => ({ ...form, seoKeywords: value }))} />
+                          <label className="block text-sm font-bold text-slate-700 md:col-span-2">
+                            SEO descrição
+                            <textarea
+                              value={produtoForm.seoDescricao}
+                              onChange={(event) => setProdutoForm((form) => ({ ...form, seoDescricao: event.target.value }))}
+                              className="mt-2 min-h-24 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+                            />
+                          </label>
                           <label className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-3 text-sm font-bold text-slate-700">
                             <input
                               type="checkbox"
@@ -1173,7 +1322,7 @@ export default function Dashboard() {
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                       <div>
                         <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Gestão absoluta</p>
-                        <h2 className="mt-2 text-2xl font-black text-slate-950">ERP Nexum Altivon</h2>
+                        <h2 className="mt-2 text-2xl font-black text-slate-950">GenesisGest.Net</h2>
                         <p className="mt-1 max-w-3xl text-sm text-slate-500">
                           Central empresarial para financeiro, fiscal, logística, estoque, empresas do grupo e parceiros estratégicos.
                         </p>
@@ -1186,7 +1335,12 @@ export default function Dashboard() {
                     {erpModules.map((module) => {
                       const Icon = module.icon;
                       return (
-                        <section key={module.title} className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                        <button
+                          type="button"
+                          key={module.title}
+                          onClick={() => openMainTab(module.tabId)}
+                          className="rounded-lg border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-[#C9A227] hover:shadow-md"
+                        >
                           <div className="flex items-start justify-between gap-4">
                             <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-950 text-[#C9A227]">
                               <Icon size={23} />
@@ -1205,7 +1359,11 @@ export default function Dashboard() {
                               </div>
                             ))}
                           </div>
-                        </section>
+                          <div className="mt-5 inline-flex items-center gap-2 text-sm font-black text-slate-950">
+                            Abrir módulo
+                            <ChevronRight size={16} />
+                          </div>
+                        </button>
                       );
                     })}
                   </div>
@@ -1292,6 +1450,20 @@ export default function Dashboard() {
                       </div>
 
                       <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Endereço fiscal e operacional</p>
+                        <div className="mt-4 grid gap-4 md:grid-cols-2">
+                          <Field label="CEP" value={empresaGrupoForm.cep} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, cep: value }))} />
+                          <Field label="Logradouro" value={empresaGrupoForm.logradouro} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, logradouro: value }))} />
+                          <Field label="Número" value={empresaGrupoForm.numero} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, numero: value }))} />
+                          <Field label="Complemento" value={empresaGrupoForm.complemento} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, complemento: value }))} />
+                          <Field label="Bairro" value={empresaGrupoForm.bairro} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, bairro: value }))} />
+                          <Field label="Cidade" value={empresaGrupoForm.cidade} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, cidade: value }))} />
+                          <Field label="UF" value={empresaGrupoForm.estado} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, estado: value }))} />
+                          <Field label="País" value={empresaGrupoForm.pais} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, pais: value }))} />
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                         <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">PDV e cupom fiscal</p>
                         <div className="mt-4 grid gap-4 md:grid-cols-2">
                           <SelectField label="Documento fiscal do PDV" value={empresaGrupoForm.modeloDocumentoPdv} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, modeloDocumentoPdv: value }))} options={['NFCe', 'SAT', 'MFe', 'ECF']} />
@@ -1315,10 +1487,13 @@ export default function Dashboard() {
                         <div className="mt-4 grid gap-4 md:grid-cols-2">
                           <Field label="Próxima NF-e" type="number" value={empresaGrupoForm.proximaNfeNumero} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, proximaNfeNumero: value }))} />
                           <Field label="Prioridade fiscal" type="number" value={empresaGrupoForm.prioridadeFiscal} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, prioridadeFiscal: value }))} />
+                          <SelectField label="Perfil de tributação" value={empresaGrupoForm.perfilTributacao} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, perfilTributacao: value }))} options={['TributacaoAtual', 'LegadoST', 'Hibrido']} />
                           <Field label="ICMS interna (%)" type="number" value={empresaGrupoForm.aliquotaIcmsInterna} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, aliquotaIcmsInterna: value }))} />
                           <Field label="ICMS interestadual (%)" type="number" value={empresaGrupoForm.aliquotaIcmsInterestadual} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, aliquotaIcmsInterestadual: value }))} />
                           <Field label="PIS (%)" type="number" value={empresaGrupoForm.aliquotaPis} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, aliquotaPis: value }))} />
                           <Field label="COFINS (%)" type="number" value={empresaGrupoForm.aliquotaCofins} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, aliquotaCofins: value }))} />
+                          <Field label="ISS (%)" type="number" value={empresaGrupoForm.aliquotaIss} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, aliquotaIss: value }))} />
+                          <Field label="IPI (%)" type="number" value={empresaGrupoForm.aliquotaIpi} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, aliquotaIpi: value }))} />
                           <Field label="Carga tributária (%)" type="number" value={empresaGrupoForm.cargaTributariaPercentual} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, cargaTributariaPercentual: value }))} />
                           <Field label="Custo operacional (%)" type="number" value={empresaGrupoForm.custoOperacionalPercentual} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, custoOperacionalPercentual: value }))} />
                           <Field label="Margem mínima (%)" type="number" value={empresaGrupoForm.margemMinimaPercentual} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, margemMinimaPercentual: value }))} />
@@ -1326,6 +1501,8 @@ export default function Dashboard() {
                         <div className="mt-4 grid gap-3 md:grid-cols-2">
                           <ToggleField label="NF-e entrada" checked={empresaGrupoForm.permiteNfeEntrada} onChange={(checked) => setEmpresaGrupoForm((form) => ({ ...form, permiteNfeEntrada: checked }))} />
                           <ToggleField label="NF-e saída" checked={empresaGrupoForm.permiteNfeSaida} onChange={(checked) => setEmpresaGrupoForm((form) => ({ ...form, permiteNfeSaida: checked }))} />
+                          <ToggleField label="Usa ST legado" checked={empresaGrupoForm.usaStLegado} onChange={(checked) => setEmpresaGrupoForm((form) => ({ ...form, usaStLegado: checked }))} />
+                          <ToggleField label="Destaca ICMS-ST separado" checked={empresaGrupoForm.destacaIcmsStSeparado} onChange={(checked) => setEmpresaGrupoForm((form) => ({ ...form, destacaIcmsStSeparado: checked }))} />
                           <ToggleField label="Pode dropshipping" checked={empresaGrupoForm.permiteDropshipping} onChange={(checked) => setEmpresaGrupoForm((form) => ({ ...form, permiteDropshipping: checked }))} />
                           <ToggleField label="Pode marketplace" checked={empresaGrupoForm.permiteMarketplace} onChange={(checked) => setEmpresaGrupoForm((form) => ({ ...form, permiteMarketplace: checked }))} />
                           <ToggleField label="Emitente preferencial" checked={empresaGrupoForm.emitentePreferencial} onChange={(checked) => setEmpresaGrupoForm((form) => ({ ...form, emitentePreferencial: checked }))} />
@@ -1342,6 +1519,226 @@ export default function Dashboard() {
                       <CadastroInsightPanel title="Proteções do cadastro fiscal" checks={empresaGrupoHighlights} />
                       <CompactList title="Empresas já mapeadas" items={empresasGrupo} fields={['razaoSocial', 'cnpj', 'regimeTributario', 'cidade']} />
                     </div>
+                  </div>
+                </section>
+              )}
+
+              {activeTab === 'erp-fiscal' && (
+                <section className="space-y-6">
+                  <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Fiscal operacional</p>
+                    <h2 className="mt-2 text-2xl font-black text-slate-950">Notas e automação fiscal</h2>
+                    <p className="mt-1 max-w-3xl text-sm text-slate-500">
+                      A ERP agora expõe a fila fiscal dos pedidos, com empresa emitente sugerida, ambiente, CFOP e resumo da automação preparada no ato da compra.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-4">
+                    <StatMiniCard label="Pendências fiscais" value={fiscalPedidos.filter((item) => item.statusNfe === 'Pendente').length} />
+                    <StatMiniCard label="Autorizadas" value={fiscalPedidos.filter((item) => item.statusNfe === 'Autorizada').length} />
+                    <StatMiniCard label="Empresas emitentes" value={new Set(fiscalPedidos.map((item) => item.codigoEmpresaEmitente).filter(Boolean)).size} />
+                    <StatMiniCard label="Pedidos na fila" value={fiscalPedidos.length} />
+                  </div>
+
+                  <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                    <div className="border-b border-slate-200 px-6 py-5">
+                      <h3 className="text-lg font-black text-slate-950">Fila fiscal dos pedidos</h3>
+                      <p className="mt-1 text-sm text-slate-500">Pré-emissão automática gerada a partir do checkout e do roteamento fiscal.</p>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[1100px]">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Pedido</th>
+                            <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Emitente</th>
+                            <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Documento</th>
+                            <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">CFOP</th>
+                            <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Status</th>
+                            <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Total</th>
+                            <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Resumo</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {fiscalPedidos.length === 0 ? (
+                            <tr>
+                              <td colSpan="7" className="px-6 py-8 text-center text-slate-500">Nenhum registro fiscal gerado ainda.</td>
+                            </tr>
+                          ) : fiscalPedidos.map((item) => (
+                            <tr key={item.id} className="hover:bg-slate-50">
+                              <td className="px-6 py-4 font-mono text-sm font-black text-slate-950">#{item.pedidoId}</td>
+                              <td className="px-6 py-4">
+                                <p className="font-black text-slate-950">{item.empresaEmitente || '-'}</p>
+                                <p className="mt-1 text-xs font-semibold text-slate-500">{item.codigoEmpresaEmitente || '-'}</p>
+                              </td>
+                              <td className="px-6 py-4 text-sm font-semibold text-slate-600">
+                                <p>{item.modeloDocumento || 'NFe'}</p>
+                                <p className="mt-1 text-xs text-slate-400">{item.ambienteDocumento || '-'}</p>
+                              </td>
+                              <td className="px-6 py-4 text-sm font-black text-slate-700">{item.cfop || '-'}</td>
+                              <td className="px-6 py-4">
+                                <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-900">
+                                  {item.statusNfe} · {item.statusAutomacao || 'Aguardando'}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 text-sm font-black text-slate-950">{formatPrice(item.valorTotal || 0)}</td>
+                              <td className="px-6 py-4 text-sm font-semibold text-slate-500">{item.resumoRoteamento || '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                </section>
+              )}
+
+              {activeTab === 'erp-financeiro' && (
+                <section className="space-y-6">
+                  <ErpModuleHero
+                    eyebrow="Financeiro operacional"
+                    title="Fluxo de caixa, contas e conciliação"
+                    description="Tela dedicada para a retaguarda financeira com visão de entradas, saídas, recebimentos e base para DRE."
+                  />
+                  <div className="grid gap-4 md:grid-cols-4">
+                    <StatMiniCard label="Faturamento do mês" value={formatPrice(resumo.faturamento_mes || 0)} />
+                    <StatMiniCard label="Ticket médio" value={formatPrice(resumo.ticket_medio || 0)} />
+                    <StatMiniCard label="Pedidos hoje" value={resumo.pedidos_hoje || 0} />
+                    <StatMiniCard label="Conversão" value={`${resumo.conversao || 0}%`} />
+                  </div>
+                  <div className="grid gap-6 xl:grid-cols-2">
+                    <ErpChecklistCard
+                      title="Rotina financeira"
+                      items={[
+                        'Baixa automática por webhook de pagamento.',
+                        'Fluxo de caixa por pedido, loja e canal.',
+                        'Contas a pagar/receber com conciliação assistida.',
+                        'Preparação para DRE e balancete em tempo real.',
+                      ]}
+                    />
+                    <ErpChecklistCard
+                      title="Acessos rápidos"
+                      items={[
+                        'Conferir pedidos aprovados antes do faturamento.',
+                        'Relacionar gateway, taxa e liquidação.',
+                        'Separar receita operacional e custos logísticos.',
+                        'Base pronta para relatórios contábeis detalhados.',
+                      ]}
+                    />
+                  </div>
+                </section>
+              )}
+
+              {activeTab === 'erp-logistica' && (
+                <section className="space-y-6">
+                  <ErpModuleHero
+                    eyebrow="Logística e estoque"
+                    title="Despacho, rastreamento e posição operacional"
+                    description="Tela dedicada para separar estoque, despacho, rastreamento e estrutura de frete sem deixar a operação escondida."
+                  />
+                  <div className="grid gap-4 md:grid-cols-4">
+                    <StatMiniCard label="Pedidos na operação" value={pedidos.length} />
+                    <StatMiniCard label="Produtos ativos" value={produtos.length} />
+                    <StatMiniCard label="Fornecedores" value={fornecedores.length} />
+                    <StatMiniCard label="Integrações logísticas" value={integracoes.filter((item) => ['logistica', 'melhorenvio'].includes(item.slug)).length} />
+                  </div>
+                  <div className="grid gap-6 xl:grid-cols-2">
+                    <ErpChecklistCard
+                      title="Frentes logísticas"
+                      items={[
+                        'Rastreamento detalhado por evento.',
+                        'Despacho por transportadora e retirada local.',
+                        'Peso, volume e cubagem ligados ao cadastro do produto.',
+                        'Base pronta para etiqueta, CT-e e expedição.',
+                      ]}
+                    />
+                    <CompactList title="Produtos com foco logístico" items={produtos} fields={['nome', 'estoque', 'peso', 'altura']} />
+                  </div>
+                </section>
+              )}
+
+              {activeTab === 'erp-rh' && (
+                <section className="space-y-6">
+                  <ErpModuleHero
+                    eyebrow="RH e diretoria operacional"
+                    title="Equipe, cargos e supervisão da rotina"
+                    description="Tela separada para estruturar RH/DP, cargos, responsáveis e apoio operacional do GenesisGest.Net."
+                  />
+                  <div className="grid gap-6 xl:grid-cols-2">
+                    <ErpChecklistCard
+                      title="Estrutura prevista"
+                      items={[
+                        'Cadastro de cargos e salários.',
+                        'Vinculação de responsáveis por setor.',
+                        'Base para folha e custos por centro de resultado.',
+                        'Governança para diretoria e operação diária.',
+                      ]}
+                    />
+                    <ErpChecklistCard
+                      title="Sophia no apoio"
+                      items={[
+                        'Assistente da ERP para orientar fluxos internos.',
+                        'Leitura de indicadores e alertas de operação.',
+                        'Apoio na navegação entre módulos críticos.',
+                        'Preparação para rotinas executivas futuras.',
+                      ]}
+                    />
+                  </div>
+                </section>
+              )}
+
+              {activeTab === 'erp-compras' && (
+                <section className="space-y-6">
+                  <ErpModuleHero
+                    eyebrow="Compras e suprimentos"
+                    title="Fornecedores, reposição e estratégia de custo"
+                    description="Tela dedicada para compras, reposição e tomada de decisão entre fornecedores, dropshipping e parceiros."
+                  />
+                  <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                    <CompactList title="Fornecedores mapeados" items={fornecedores} fields={['nome', 'categoria', 'email', 'telefone']} />
+                    <ErpChecklistCard
+                      title="Critérios de compra"
+                      items={[
+                        'Menor custo com maior margem líquida.',
+                        'Comparação entre fornecedor próprio, parceiro e drop.',
+                        'Relação direta com estoque mínimo e reservado.',
+                        'Base pronta para aprovação de compras e contratos.',
+                      ]}
+                    />
+                  </div>
+                </section>
+              )}
+
+              {activeTab === 'erp-relatorios' && (
+                <section className="space-y-6">
+                  <ErpModuleHero
+                    eyebrow="Relatórios executivos"
+                    title="KPIs, gráficos e controle gerencial"
+                    description="Tela dedicada para consolidar indicadores da operação e abrir caminho para relatórios profundos do grupo."
+                  />
+                  <div className="grid gap-4 md:grid-cols-4">
+                    <StatMiniCard label="Clientes" value={clientes.length} />
+                    <StatMiniCard label="Leads" value={leads.length} />
+                    <StatMiniCard label="Empresas do grupo" value={empresasGrupo.length} />
+                    <StatMiniCard label="Pedidos" value={pedidos.length} />
+                  </div>
+                  <div className="grid gap-6 xl:grid-cols-2">
+                    <ErpChecklistCard
+                      title="Relatórios previstos"
+                      items={[
+                        'Margem por empresa emitente.',
+                        'Receita por loja e canal.',
+                        'Tributação e custo operacional por pedido.',
+                        'Auditoria de cadastro, pedido, cliente e fornecedor.',
+                      ]}
+                    />
+                    <ErpChecklistCard
+                      title="Visão de diretoria"
+                      items={[
+                        'Indicadores prontos para apresentação.',
+                        'Leitura executiva de produtividade comercial.',
+                        'Base para painéis financeiros e fiscais.',
+                        'Expansão futura para chao de fábrica e PDV premium.',
+                      ]}
+                    />
                   </div>
                 </section>
               )}
@@ -1454,6 +1851,32 @@ function CadastroInsightPanel({ title, checks }) {
         {checks.map((item) => (
           <div key={item} className="flex gap-3 rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm font-bold text-slate-700">
             <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+            <span>{item}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ErpModuleHero({ eyebrow, title, description }) {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">{eyebrow}</p>
+      <h2 className="mt-2 text-2xl font-black text-slate-950">{title}</h2>
+      <p className="mt-1 max-w-3xl text-sm text-slate-500">{description}</p>
+    </section>
+  );
+}
+
+function ErpChecklistCard({ title, items }) {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <h3 className="text-lg font-black text-slate-950">{title}</h3>
+      <div className="mt-5 space-y-3">
+        {items.map((item) => (
+          <div key={item} className="flex gap-3 rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm font-bold text-slate-700">
+            <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#C9A227]" />
             <span>{item}</span>
           </div>
         ))}
@@ -1827,6 +2250,69 @@ function LeadsTable({ leads, onStatusChange }) {
           )}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function ImageGalleryField({ value, onChange, onUpload, uploading, className = '' }) {
+  const items = galleryToArray(value);
+
+  const removeItem = (targetUrl) => {
+    onChange(galleryToText(items.filter((item) => item !== targetUrl)));
+  };
+
+  return (
+    <div className={`rounded-lg border border-slate-200 bg-slate-50 p-4 ${className}`}>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex-1">
+          <p className="text-sm font-bold text-slate-700">Galeria de imagens</p>
+          <p className="mt-2 text-xs font-semibold text-slate-500">
+            Você pode colar URLs ou enviar várias imagens de uma vez. O sistema monta a galeria automaticamente.
+          </p>
+        </div>
+        <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-black text-slate-800 hover:border-[#C9A227]">
+          <ImagePlus size={17} />
+          {uploading ? 'Enviando galeria...' : 'Adicionar imagens'}
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            multiple
+            className="hidden"
+            disabled={uploading}
+            onChange={(event) => onUpload(event.target.files)}
+          />
+        </label>
+      </div>
+
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-4 min-h-24 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-semibold outline-none transition focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+        placeholder="Uma URL por linha"
+      />
+
+      {items.length > 0 && (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {items.map((item) => (
+            <div key={item} className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <div className="aspect-square bg-slate-100">
+                <img src={item} alt="Galeria do produto" className="h-full w-full object-cover" />
+              </div>
+              <div className="flex items-center justify-between gap-2 px-3 py-2">
+                <p className="truncate text-xs font-semibold text-slate-500">{item}</p>
+                <button
+                  type="button"
+                  onClick={() => removeItem(item)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition hover:bg-rose-50 hover:text-rose-600"
+                  title="Remover imagem"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -210,6 +210,16 @@ public class EmpresaGrupo
     [Column("carga_tributaria_percentual")]
     public decimal? CargaTributariaPercentual { get; set; }
 
+    [Column("perfil_tributacao")]
+    [MaxLength(40)]
+    public string? PerfilTributacao { get; set; }
+
+    [Column("usa_st_legado")]
+    public bool UsaStLegado { get; set; }
+
+    [Column("destaca_icms_st_separado")]
+    public bool DestacaIcmsStSeparado { get; set; }
+
     [Column("custo_operacional_percentual")]
     public decimal? CustoOperacionalPercentual { get; set; }
 

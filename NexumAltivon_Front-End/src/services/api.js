@@ -197,6 +197,7 @@ export const clienteAPI = {
   getAll: () => api.get('/clientes'),
   verificarCadastro: (params) => api.get('/clientes/verificar', { params }),
   create: (data) => api.post('/clientes', data),
+  getPortal: () => api.get('/clientes/portal/me'),
 };
 
 export const fornecedorAPI = {
@@ -207,6 +208,12 @@ export const fornecedorAPI = {
 export const empresaGrupoAPI = {
   getAll: () => api.get('/erp/empresas'),
   create: (data) => api.post('/erp/empresas', data),
+};
+
+export const fiscalAPI = {
+  getPedidos: () => api.get('/fiscal/pedidos'),
+  getPdvConfiguracoes: () => api.get('/fiscal/pdv/configuracoes'),
+  simularRoteamento: (data) => api.post('/fiscal/simular-roteamento', data),
 };
 
 export const leadAPI = {

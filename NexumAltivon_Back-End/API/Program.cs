@@ -13,6 +13,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using NexumAltivon.API.Data;
+using NexumAltivon.API.ERP.FiscalRouting;
 using NexumAltivon.API.Models;
 using NexumAltivon.API.Services;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
@@ -90,6 +91,10 @@ builder.Services
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("Gerente", policy => policy.RequireRole("SuperAdmin", "Admin", "Gerente"));
+    options.AddPolicy("Admin", policy => policy.RequireRole("SuperAdmin", "Admin"));
+    options.AddPolicy("Financeiro", policy => policy.RequireRole("SuperAdmin", "Admin", "Gerente", "Financeiro"));
+    options.AddPolicy("Fiscal", policy => policy.RequireRole("SuperAdmin", "Admin", "Gerente", "Fiscal"));
+    options.AddPolicy("RH", policy => policy.RequireRole("SuperAdmin", "Admin", "Gerente", "RH"));
 });
 
 builder.Services.AddEndpointsApiExplorer();
@@ -128,6 +133,7 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 builder.Services.AddHealthChecks();
+builder.Services.AddSingleton<IFiscalRoutingEngine, FiscalRoutingEngine>();
 builder.Services.AddHttpClient("mercado-pago", client =>
 {
     client.BaseAddress = new Uri("https://api.mercadopago.com/");
@@ -206,10 +212,12 @@ app.MapGet("/", (IHostEnvironment environment) =>
             version = "1.1.5"
         }));
 
-app.MapPost("/api/auth/login", (
+app.MapPost("/api/auth/login", async (
     LoginRequest request,
     IConfiguration configuration,
-    IHostEnvironment environment) =>
+    IHostEnvironment environment,
+    NexumDbContext db,
+    CancellationToken ct) =>
 {
     var admin = configuration.GetSection("AdminUser");
     var configuredEmail = admin["Email"] ?? "admin@nexumaltivon.com";
@@ -229,36 +237,46 @@ app.MapPost("/api/auth/login", (
         configuredPassword = "Admin@123";
     }
 
-    if (!string.Equals(request.Email, configuredEmail, StringComparison.OrdinalIgnoreCase)
-        || request.Senha != configuredPassword)
+    var normalizedEmail = NormalizeEmail(request.Email);
+    if (string.IsNullOrWhiteSpace(normalizedEmail))
     {
         return Results.Unauthorized();
     }
 
-    var expiresAt = DateTime.UtcNow.AddHours(configuration.GetValue("JwtSettings:ExpirationHours", 24));
-    var claims = new[]
+    var expirationHours = configuration.GetValue("JwtSettings:ExpirationHours", 24);
+
+    if (string.Equals(normalizedEmail, configuredEmail, StringComparison.OrdinalIgnoreCase)
+        && request.Senha == configuredPassword)
     {
-        new Claim(JwtRegisteredClaimNames.Sub, "1"),
-        new Claim(JwtRegisteredClaimNames.Email, configuredEmail),
-        new Claim(ClaimTypes.Name, configuredName),
-        new Claim(ClaimTypes.Email, configuredEmail),
-        new Claim(ClaimTypes.Role, configuredRole)
-    };
+        var adminResponse = CreateLoginResponse(1, configuredName, configuredEmail, configuredRole, issuer, audience, signingKey, expirationHours);
+        return Results.Ok(ApiResponse<LoginResponse>.Ok(adminResponse, "Login administrativo realizado com sucesso."));
+    }
 
-    var token = new JwtSecurityToken(
-        issuer,
-        audience,
-        claims,
-        expires: expiresAt,
-        signingCredentials: new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256));
+    var usuario = await db.Usuarios
+        .AsNoTracking()
+        .FirstOrDefaultAsync(item => item.Email == normalizedEmail && item.Ativo, ct);
 
-    var response = new LoginResponse(
-        new JwtSecurityTokenHandler().WriteToken(token),
-        string.Empty,
-        expiresAt,
-        new UsuarioDto(1, configuredName, configuredEmail, configuredRole));
+    if (usuario is not null && BCrypt.Net.BCrypt.Verify(request.Senha, usuario.SenhaHash))
+    {
+        var perfil = usuario.Perfil.ToString();
+        var usuarioResponse = CreateLoginResponse(usuario.Id, usuario.Nome, usuario.Email, perfil, issuer, audience, signingKey, expirationHours);
+        return Results.Ok(ApiResponse<LoginResponse>.Ok(usuarioResponse, "Login realizado com sucesso."));
+    }
 
-    return Results.Ok(ApiResponse<LoginResponse>.Ok(response, "Login realizado com sucesso."));
+    var cliente = await db.Clientes
+        .FirstOrDefaultAsync(item => item.Email == normalizedEmail && item.Status == StatusCliente.Ativo, ct);
+
+    if (cliente is not null && !string.IsNullOrWhiteSpace(cliente.SenhaHash) && BCrypt.Net.BCrypt.Verify(request.Senha, cliente.SenhaHash))
+    {
+        cliente.UltimoAcesso = DateTime.UtcNow;
+        cliente.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+
+        var clienteResponse = CreateLoginResponse(cliente.Id, cliente.Nome, cliente.Email, "Cliente", issuer, audience, signingKey, expirationHours);
+        return Results.Ok(ApiResponse<LoginResponse>.Ok(clienteResponse, "Login do cliente realizado com sucesso."));
+    }
+
+    return Results.Unauthorized();
 })
 .AllowAnonymous()
 .WithName("Login");
@@ -411,14 +429,30 @@ app.MapGet("/api/produtos", async (string? categoria_id, NexumDbContext db, Canc
             produto.Slug,
             produto.Nome,
             produto.DescricaoCurta ?? produto.DescricaoLonga ?? string.Empty,
+            produto.DescricaoCurta,
             produto.Preco,
             produto.PrecoPromocional,
             produto.ImagemPrincipal ?? defaultImage,
             produto.EstoqueAtual,
+            produto.EstoqueMinimo,
+            produto.EstoqueReservado,
             produto.Destaque,
             produto.Sku,
             produto.Categoria != null ? produto.Categoria.Slug : "classicos",
-            4.8m))
+            4.8m,
+            produto.Custo,
+            produto.Peso,
+            produto.Altura,
+            produto.Largura,
+            produto.Comprimento,
+            produto.TipoProduto.ToString(),
+            produto.FornecedorId,
+            produto.Marca,
+            produto.Tags,
+            produto.SeoTitulo,
+            produto.SeoDescricao,
+            produto.SeoKeywords,
+            produto.ImagensGaleria))
         .ToListAsync(ct);
 
     if (produtos.Count == 0)
@@ -449,14 +483,30 @@ app.MapGet("/api/produtos/destaques", async (NexumDbContext db, CancellationToke
             produto.Slug,
             produto.Nome,
             produto.DescricaoCurta ?? produto.DescricaoLonga ?? string.Empty,
+            produto.DescricaoCurta,
             produto.Preco,
             produto.PrecoPromocional,
             produto.ImagemPrincipal ?? defaultImage,
             produto.EstoqueAtual,
+            produto.EstoqueMinimo,
+            produto.EstoqueReservado,
             produto.Destaque,
             produto.Sku,
             produto.Categoria != null ? produto.Categoria.Slug : "classicos",
-            4.8m))
+            4.8m,
+            produto.Custo,
+            produto.Peso,
+            produto.Altura,
+            produto.Largura,
+            produto.Comprimento,
+            produto.TipoProduto.ToString(),
+            produto.FornecedorId,
+            produto.Marca,
+            produto.Tags,
+            produto.SeoTitulo,
+            produto.SeoDescricao,
+            produto.SeoKeywords,
+            produto.ImagensGaleria))
         .ToListAsync(ct);
 
     if (produtos.Count == 0)
@@ -481,14 +531,30 @@ app.MapGet("/api/produtos/{id}", async (string id, NexumDbContext db, Cancellati
             item.Slug,
             item.Nome,
             item.DescricaoCurta ?? item.DescricaoLonga ?? string.Empty,
+            item.DescricaoCurta,
             item.Preco,
             item.PrecoPromocional,
             item.ImagemPrincipal ?? defaultImage,
             item.EstoqueAtual,
+            item.EstoqueMinimo,
+            item.EstoqueReservado,
             item.Destaque,
             item.Sku,
             item.Categoria != null ? item.Categoria.Slug : "classicos",
-            4.8m))
+            4.8m,
+            item.Custo,
+            item.Peso,
+            item.Altura,
+            item.Largura,
+            item.Comprimento,
+            item.TipoProduto.ToString(),
+            item.FornecedorId,
+            item.Marca,
+            item.Tags,
+            item.SeoTitulo,
+            item.SeoDescricao,
+            item.SeoKeywords,
+            item.ImagensGaleria))
         .FirstOrDefaultAsync(ct);
 
     if (dto is null)
@@ -626,12 +692,27 @@ app.MapPost("/api/produtos", [Authorize(Policy = "Gerente")] async (
         Sku = sku,
         Nome = request.Nome,
         Slug = slug,
-        DescricaoCurta = request.Descricao,
+        DescricaoCurta = TrimOrNull(request.DescricaoCurta) ?? TrimOrNull(request.Descricao),
         DescricaoLonga = request.Descricao,
         Preco = request.Preco,
         PrecoPromocional = request.PrecoPromocional,
+        Custo = request.Custo ?? 0m,
+        Peso = request.Peso ?? 0m,
+        Altura = request.Altura ?? 0m,
+        Largura = request.Largura ?? 0m,
+        Comprimento = request.Comprimento ?? 0m,
         ImagemPrincipal = request.ImagemUrl,
+        ImagensGaleria = TrimOrNull(request.ImagensGaleria),
+        EstoqueMinimo = request.EstoqueMinimo ?? 5,
         EstoqueAtual = request.Estoque,
+        EstoqueReservado = request.EstoqueReservado ?? 0,
+        TipoProduto = Enum.TryParse<NexumAltivon.API.Models.TipoProduto>(request.TipoProduto, true, out var tipoProduto) ? tipoProduto : NexumAltivon.API.Models.TipoProduto.Proprio,
+        FornecedorId = request.FornecedorId,
+        Marca = TrimOrNull(request.Marca),
+        Tags = TrimOrNull(request.Tags),
+        SeoTitulo = TrimOrNull(request.SeoTitulo),
+        SeoDescricao = TrimOrNull(request.SeoDescricao),
+        SeoKeywords = TrimOrNull(request.SeoKeywords),
         Destaque = request.Destaque,
         Ativo = true,
         CreatedAt = DateTime.UtcNow,
@@ -646,14 +727,30 @@ app.MapPost("/api/produtos", [Authorize(Policy = "Gerente")] async (
         produto.Slug,
         produto.Nome,
         produto.DescricaoCurta ?? produto.DescricaoLonga ?? string.Empty,
+        produto.DescricaoCurta,
         produto.Preco,
         produto.PrecoPromocional,
         produto.ImagemPrincipal ?? defaultImage,
         produto.EstoqueAtual,
+        produto.EstoqueMinimo,
+        produto.EstoqueReservado,
         produto.Destaque,
         produto.Sku,
         request.CategoriaId ?? "classicos",
-        4.8m);
+        4.8m,
+        produto.Custo,
+        produto.Peso,
+        produto.Altura,
+        produto.Largura,
+        produto.Comprimento,
+        produto.TipoProduto.ToString(),
+        produto.FornecedorId,
+        produto.Marca,
+        produto.Tags,
+        produto.SeoTitulo,
+        produto.SeoDescricao,
+        produto.SeoKeywords,
+        produto.ImagensGaleria);
 
     return Results.Created($"/api/produtos/{produto.Slug}", ApiResponse<ProdutoLojaDto>.Ok(dto, "Produto cadastrado."));
 })
@@ -685,12 +782,27 @@ app.MapPut("/api/produtos/{id}", [Authorize(Policy = "Gerente")] async (
     }
 
     produto.Nome = request.Nome;
-    produto.DescricaoCurta = request.Descricao;
+    produto.DescricaoCurta = TrimOrNull(request.DescricaoCurta) ?? TrimOrNull(request.Descricao);
     produto.DescricaoLonga = request.Descricao;
     produto.Preco = request.Preco;
     produto.PrecoPromocional = request.PrecoPromocional;
+    produto.Custo = request.Custo ?? produto.Custo;
+    produto.Peso = request.Peso ?? produto.Peso;
+    produto.Altura = request.Altura ?? produto.Altura;
+    produto.Largura = request.Largura ?? produto.Largura;
+    produto.Comprimento = request.Comprimento ?? produto.Comprimento;
     produto.ImagemPrincipal = request.ImagemUrl;
+    produto.ImagensGaleria = TrimOrNull(request.ImagensGaleria);
+    produto.EstoqueMinimo = request.EstoqueMinimo ?? produto.EstoqueMinimo;
     produto.EstoqueAtual = request.Estoque;
+    produto.EstoqueReservado = request.EstoqueReservado ?? produto.EstoqueReservado;
+    produto.TipoProduto = Enum.TryParse<NexumAltivon.API.Models.TipoProduto>(request.TipoProduto, true, out var tipoProdutoAtualizado) ? tipoProdutoAtualizado : produto.TipoProduto;
+    produto.FornecedorId = request.FornecedorId;
+    produto.Marca = TrimOrNull(request.Marca);
+    produto.Tags = TrimOrNull(request.Tags);
+    produto.SeoTitulo = TrimOrNull(request.SeoTitulo);
+    produto.SeoDescricao = TrimOrNull(request.SeoDescricao);
+    produto.SeoKeywords = TrimOrNull(request.SeoKeywords);
     produto.Destaque = request.Destaque;
     produto.UpdatedAt = DateTime.UtcNow;
 
@@ -712,14 +824,30 @@ app.MapPut("/api/produtos/{id}", [Authorize(Policy = "Gerente")] async (
         produto.Slug,
         produto.Nome,
         produto.DescricaoCurta ?? produto.DescricaoLonga ?? string.Empty,
+        produto.DescricaoCurta,
         produto.Preco,
         produto.PrecoPromocional,
         produto.ImagemPrincipal ?? defaultImage,
         produto.EstoqueAtual,
+        produto.EstoqueMinimo,
+        produto.EstoqueReservado,
         produto.Destaque,
         produto.Sku,
         request.CategoriaId ?? "classicos",
-        4.8m);
+        4.8m,
+        produto.Custo,
+        produto.Peso,
+        produto.Altura,
+        produto.Largura,
+        produto.Comprimento,
+        produto.TipoProduto.ToString(),
+        produto.FornecedorId,
+        produto.Marca,
+        produto.Tags,
+        produto.SeoTitulo,
+        produto.SeoDescricao,
+        produto.SeoKeywords,
+        produto.ImagensGaleria);
 
     return Results.Ok(ApiResponse<ProdutoLojaDto>.Ok(dto, "Produto atualizado."));
 })
@@ -832,12 +960,20 @@ app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, C
 
     if (clienteExistente is not null)
     {
+        if (string.IsNullOrWhiteSpace(clienteExistente.SenhaHash) && !string.IsNullOrWhiteSpace(request.Senha))
+        {
+            clienteExistente.SenhaHash = BCrypt.Net.BCrypt.HashPassword(request.Senha.Trim(), 12);
+        }
+
         if (string.IsNullOrWhiteSpace(clienteExistente.Telefone) && !string.IsNullOrWhiteSpace(request.Telefone))
         {
             clienteExistente.Telefone = request.Telefone.Trim();
             clienteExistente.UpdatedAt = DateTime.UtcNow;
-            await db.SaveChangesAsync(ct);
         }
+
+        clienteExistente.Newsletter = request.Newsletter ?? clienteExistente.Newsletter;
+        clienteExistente.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
 
         var existenteDto = new ClienteLojaDto(clienteExistente.Id, clienteExistente.Nome, clienteExistente.Email, clienteExistente.Telefone, clienteExistente.CpfCnpj);
         return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(existenteDto, "Cliente ja cadastrado. Registro existente reutilizado."));
@@ -848,7 +984,10 @@ app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, C
         Nome = request.Nome.Trim(),
         Email = email,
         Telefone = request.Telefone,
+        Whatsapp = request.Telefone,
         CpfCnpj = cpfCnpj,
+        SenhaHash = !string.IsNullOrWhiteSpace(request.Senha) ? BCrypt.Net.BCrypt.HashPassword(request.Senha.Trim(), 12) : null,
+        Newsletter = request.Newsletter ?? true,
         Status = StatusCliente.Ativo,
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow
@@ -862,6 +1001,83 @@ app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, C
 })
 .AllowAnonymous()
 .WithName("CriarCliente")
+;
+
+app.MapGet("/api/clientes/portal/me", [Authorize] async (ClaimsPrincipal principal, NexumDbContext db, CancellationToken ct) =>
+{
+    var email = principal.FindFirstValue(ClaimTypes.Email) ?? principal.FindFirstValue(JwtRegisteredClaimNames.Email);
+    if (string.IsNullOrWhiteSpace(email))
+    {
+        return Results.Unauthorized();
+    }
+
+    var cliente = await db.Clientes
+        .AsNoTracking()
+        .FirstOrDefaultAsync(item => item.Email == email, ct);
+
+    if (cliente is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Cliente nao localizado para esta sessao."));
+    }
+
+    var pedidos = await db.Pedidos
+        .AsNoTracking()
+        .Where(item => item.ClienteId == cliente.Id)
+        .OrderByDescending(item => item.CreatedAt)
+        .Select(item => new ClientePortalPedidoDto(
+            item.Id,
+            item.NumeroPedido,
+            item.Status.ToString(),
+            item.StatusPagamento.ToString(),
+            item.Total,
+            item.CreatedAt,
+            item.MeioPagamento ?? item.GatewayPagamento,
+            item.FreteCodigoRastreio,
+            item.FreteTransportadora))
+        .ToListAsync(ct);
+
+    var pedidoIds = pedidos.Select(item => item.Id).ToList();
+    var documentos = pedidoIds.Count == 0
+        ? []
+        : await db.Fiscais
+            .AsNoTracking()
+            .Where(item => pedidoIds.Contains(item.PedidoId))
+            .OrderByDescending(item => item.CreatedAt)
+            .Select(item => new ClientePortalDocumentoDto(
+                item.Id,
+                item.PedidoId,
+                item.NumeroNfe,
+                item.ModeloDocumento,
+                item.StatusNfe.ToString(),
+                item.ChaveAcesso,
+                item.DanfeUrl,
+                item.XmlUrl,
+                item.CreatedAt))
+            .ToListAsync(ct);
+
+    var totalCompras = pedidos.Sum(item => item.Total);
+    var score = cliente.Vip ? "Premium" : cliente.PontosFidelidade >= 500 ? "Gold" : cliente.PontosFidelidade >= 150 ? "Silver" : "Start";
+    var portal = new ClientePortalDto(
+        cliente.Id,
+        cliente.Nome,
+        cliente.Email,
+        cliente.Telefone,
+        cliente.CpfCnpj,
+        cliente.PontosFidelidade,
+        score,
+        cliente.Vip,
+        Math.Round(totalCompras / 10m, 2),
+        pedidos,
+        documentos,
+        [
+            "Canal direto com o Grupo Nexum Altivon.",
+            "Pontuação de fidelidade acumulada por compras aprovadas.",
+            "Espaço preparado para limites e relacionamento futuro."
+        ]);
+
+    return Results.Ok(ApiResponse<ClientePortalDto>.Ok(portal));
+})
+.WithName("ClientePortalMe")
 ;
 
 app.MapGet("/api/fornecedores", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
@@ -1101,6 +1317,7 @@ app.MapPost("/api/pedidos", async (
     PedidoRequest request,
     NexumDbContext db,
     IConfiguration configuration,
+    IFiscalRoutingEngine fiscalRoutingEngine,
     IHttpClientFactory httpClientFactory,
     HttpContext http,
     CancellationToken ct) =>
@@ -1268,6 +1485,9 @@ app.MapPost("/api/pedidos", async (
     };
 
     db.Pedidos.Add(pedido);
+    await db.SaveChangesAsync(ct);
+
+    await EnsurePedidoFiscalAutomationAsync(pedido, cliente, request, db, fiscalRoutingEngine, ct);
     await db.SaveChangesAsync(ct);
     await transaction.CommitAsync(ct);
 
@@ -1768,6 +1988,9 @@ app.MapGet("/api/erp/empresas", [Authorize(Policy = "Gerente")] async (NexumDbCo
             item.AliquotaIss,
             item.AliquotaIpi,
             item.CargaTributariaPercentual,
+            item.PerfilTributacao,
+            item.UsaStLegado,
+            item.DestacaIcmsStSeparado,
             item.CustoOperacionalPercentual,
             item.MargemMinimaPercentual,
             item.PrioridadeFiscal,
@@ -1807,12 +2030,11 @@ app.MapPost("/api/erp/empresas", [Authorize(Policy = "Gerente")] async (EmpresaG
 
     var duplicate = await db.EmpresasGrupo.AsNoTracking().FirstOrDefaultAsync(item =>
         item.Cnpj == cnpj
-        || (!string.IsNullOrWhiteSpace(codigoEmpresa) && item.CodigoEmpresa == codigoEmpresa)
-        || (!string.IsNullOrWhiteSpace(emailFiscal) && item.EmailFiscal == emailFiscal), ct);
+        || (!string.IsNullOrWhiteSpace(codigoEmpresa) && item.CodigoEmpresa == codigoEmpresa), ct);
 
     if (duplicate is not null)
     {
-        return Results.BadRequest(ApiResponse<string>.Erro("Já existe empresa fiscal cadastrada com CNPJ, código interno ou e-mail fiscal informado."));
+        return Results.BadRequest(ApiResponse<string>.Erro("Já existe empresa fiscal cadastrada com o CNPJ ou código interno informado."));
     }
 
     var empresa = new EmpresaGrupo
@@ -1869,6 +2091,9 @@ app.MapPost("/api/erp/empresas", [Authorize(Policy = "Gerente")] async (EmpresaG
         AliquotaIss = request.AliquotaIss,
         AliquotaIpi = request.AliquotaIpi,
         CargaTributariaPercentual = request.CargaTributariaPercentual,
+        PerfilTributacao = TrimOrNull(request.PerfilTributacao) ?? "TributacaoAtual",
+        UsaStLegado = request.UsaStLegado ?? false,
+        DestacaIcmsStSeparado = request.DestacaIcmsStSeparado ?? false,
         CustoOperacionalPercentual = request.CustoOperacionalPercentual,
         MargemMinimaPercentual = request.MargemMinimaPercentual,
         PrioridadeFiscal = request.PrioridadeFiscal ?? 100,
@@ -1942,6 +2167,9 @@ app.MapPost("/api/erp/empresas", [Authorize(Policy = "Gerente")] async (EmpresaG
         empresa.AliquotaIss,
         empresa.AliquotaIpi,
         empresa.CargaTributariaPercentual,
+        empresa.PerfilTributacao,
+        empresa.UsaStLegado,
+        empresa.DestacaIcmsStSeparado,
         empresa.CustoOperacionalPercentual,
         empresa.MargemMinimaPercentual,
         empresa.PrioridadeFiscal,
@@ -1991,6 +2219,91 @@ app.MapGet("/api/fiscal/pdv/configuracoes", [Authorize(Policy = "Gerente")] asyn
     return Results.Ok(ApiResponse<List<PdvFiscalConfigDto>>.Ok(configuracoes));
 })
 .WithName("PdvFiscalConfiguracoes")
+;
+
+app.MapGet("/api/fiscal/pedidos", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var registros = await db.Fiscais
+        .AsNoTracking()
+        .OrderByDescending(item => item.CreatedAt)
+        .Take(100)
+        .Select(item => new FiscalPedidoDto(
+            item.Id,
+            item.PedidoId,
+            item.EmpresaGrupoId,
+            item.EmpresaEmitente,
+            item.CodigoEmpresaEmitente,
+            item.CnpjEmitente,
+            item.NumeroNfe,
+            item.Serie,
+            item.StatusNfe.ToString(),
+            item.StatusAutomacao,
+            item.ModeloDocumento,
+            item.AmbienteDocumento,
+            item.Cfop,
+            item.NaturezaOperacao,
+            item.ValorTotal,
+            item.ResumoRoteamento,
+            item.CreatedAt,
+            item.UpdatedAt))
+        .ToListAsync(ct);
+
+    return Results.Ok(ApiResponse<List<FiscalPedidoDto>>.Ok(registros));
+})
+.WithName("FiscalPedidos")
+;
+
+app.MapPost("/api/fiscal/simular-roteamento", [Authorize(Policy = "Gerente")] async (
+    FiscalRoutingSimulationRequest request,
+    NexumDbContext db,
+    IFiscalRoutingEngine fiscalRoutingEngine,
+    CancellationToken ct) =>
+{
+    var empresas = await db.EmpresasGrupo
+        .AsNoTracking()
+        .Where(item => item.Ativa)
+        .ToListAsync(ct);
+
+    var decision = fiscalRoutingEngine.Evaluate(
+        new FiscalRoutingRequest(
+            request.TipoOperacao,
+            request.ValorProdutos,
+            request.ValorFrete,
+            request.EstadoOrigem,
+            request.EstadoDestino,
+            request.CategoriaFiscal,
+            request.SubcategoriaFiscal,
+            request.NaturezaOperacao,
+            request.ExigeMarketplace,
+            request.ExigeDropshipping,
+            request.RequerSaidaNfe,
+            request.RequerEntradaNfe),
+        empresas.Select(fiscalRoutingEngine.ToSnapshot).ToList());
+
+    var resultado = new FiscalRoutingSimulationDto(
+        decision.Sucesso,
+        decision.Resumo,
+        decision.EmpresaSelecionada?.CodigoEmpresa,
+        decision.EmpresaSelecionada?.RazaoSocial,
+        decision.EmpresaSelecionada?.Cnpj,
+        decision.EmpresaSelecionada?.Estado,
+        decision.Ranking.Select(item => new FiscalRoutingRankingDto(
+            item.Empresa.CodigoEmpresa,
+            item.Empresa.RazaoSocial,
+            item.Empresa.Cnpj,
+            item.Empresa.RegimeTributario,
+            item.Empresa.CategoriaFiscal,
+            item.Empresa.SubcategoriaFiscal,
+            item.CustoTributarioEstimado,
+            item.CustoOperacionalEstimado,
+            item.LucroEstimado,
+            item.MargemEstimadaPercentual,
+            item.Score,
+            item.Justificativas.ToList())).ToList());
+
+    return Results.Ok(ApiResponse<FiscalRoutingSimulationDto>.Ok(resultado));
+})
+.WithName("FiscalSimularRoteamento")
 ;
 
 static string? Slugify(string? value)
@@ -2046,6 +2359,214 @@ static string? NormalizeDocument(string? value)
 
     var digits = new string(value.Where(char.IsDigit).ToArray());
     return digits.Length == 0 ? null : digits;
+}
+
+static async Task EnsurePedidoFiscalAutomationAsync(
+    Pedido pedido,
+    Cliente cliente,
+    PedidoRequest request,
+    NexumDbContext db,
+    IFiscalRoutingEngine fiscalRoutingEngine,
+    CancellationToken ct)
+{
+    var pedidoFiscalExistente = await db.Fiscais.FirstOrDefaultAsync(item => item.PedidoId == pedido.Id, ct);
+    if (pedidoFiscalExistente is not null)
+    {
+        return;
+    }
+
+    var empresas = await db.EmpresasGrupo
+        .AsNoTracking()
+        .Where(item => item.Ativa)
+        .ToListAsync(ct);
+
+    if (empresas.Count == 0)
+    {
+        db.Fiscais.Add(new Fiscal
+        {
+            PedidoId = pedido.Id,
+            ValorTotal = pedido.Total,
+            NaturezaOperacao = "Venda de mercadoria",
+            ModeloDocumento = "NFe",
+            AmbienteDocumento = "Pendente",
+            StatusNfe = StatusNfe.Pendente,
+            StatusAutomacao = "Aguardando cadastro de empresa emitente",
+            ResumoRoteamento = "Nenhuma empresa fiscal ativa cadastrada para emitir a operação.",
+            PayloadOperacao = JsonSerializer.Serialize(new
+            {
+                pedido.NumeroPedido,
+                pedido.MeioPagamento,
+                pedido.GatewayPagamento,
+                pedido.Total
+            }),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        });
+        return;
+    }
+
+    var estadoDestino = InferDestinationState(request.EnderecoEntrega, cliente);
+    var empresaOrigemPadrao = empresas
+        .OrderByDescending(item => item.EmitentePreferencial)
+        .ThenBy(item => item.PrioridadeFiscal)
+        .First();
+
+    var routingRequest = new FiscalRoutingRequest(
+        string.Equals(estadoDestino, empresaOrigemPadrao.Estado, StringComparison.OrdinalIgnoreCase)
+            ? TipoOperacaoFiscal.VendaInterna
+            : TipoOperacaoFiscal.VendaInterestadual,
+        pedido.Subtotal,
+        pedido.FreteValor,
+        empresaOrigemPadrao.Estado ?? estadoDestino,
+        estadoDestino,
+        empresaOrigemPadrao.CategoriaFiscal,
+        empresaOrigemPadrao.SubcategoriaFiscal,
+        empresaOrigemPadrao.NaturezaOperacaoPadrao ?? "Venda de mercadoria",
+        !string.IsNullOrWhiteSpace(pedido.Origem.ToString()) && pedido.Origem == OrigemPedido.Marketplace,
+        false,
+        true,
+        false);
+
+    var decision = fiscalRoutingEngine.Evaluate(routingRequest, empresas.Select(fiscalRoutingEngine.ToSnapshot).ToList());
+    var selecionada = decision.EmpresaSelecionada;
+
+    var empresaEmitente = selecionada is null
+        ? empresaOrigemPadrao
+        : empresas.FirstOrDefault(item => item.Id == selecionada.Id) ?? empresaOrigemPadrao;
+
+    var mesmaUf = string.Equals(empresaEmitente.Estado, estadoDestino, StringComparison.OrdinalIgnoreCase);
+    var cfop = mesmaUf
+        ? empresaEmitente.CfopPadraoInterno
+        : empresaEmitente.CfopPadraoInterestadual;
+
+    var resumoPagamento = BuildFiscalPaymentSummary(pedido.MeioPagamento, pedido.GatewayPagamento);
+    var perfilTributacao = empresaEmitente.PerfilTributacao ?? "TributacaoAtual";
+
+    db.Fiscais.Add(new Fiscal
+    {
+        PedidoId = pedido.Id,
+        EmpresaGrupoId = empresaEmitente.Id,
+        EmpresaEmitente = empresaEmitente.RazaoSocial,
+        CodigoEmpresaEmitente = empresaEmitente.CodigoEmpresa,
+        CnpjEmitente = empresaEmitente.Cnpj,
+        NumeroNfe = empresaEmitente.ProximaNfeNumero?.ToString(),
+        Serie = empresaEmitente.SerieNfe,
+        ValorTotal = pedido.Total,
+        Cfop = cfop,
+        NaturezaOperacao = empresaEmitente.NaturezaOperacaoPadrao ?? "Venda de mercadoria",
+        ModeloDocumento = "NFe",
+        AmbienteDocumento = empresaEmitente.AmbienteNfe ?? "Homologacao",
+        StatusNfe = StatusNfe.Pendente,
+        StatusAutomacao = "Pré-emissão automática preparada",
+        ResumoRoteamento = $"{decision.Resumo} Perfil tributário: {perfilTributacao}. {resumoPagamento}",
+        PayloadOperacao = JsonSerializer.Serialize(new
+        {
+            pedido.Id,
+            pedido.NumeroPedido,
+            pedido.Total,
+            pedido.Subtotal,
+            pedido.FreteValor,
+            pedido.MeioPagamento,
+            pedido.GatewayPagamento,
+            resumoPagamento,
+            perfilTributacao,
+            usaStLegado = empresaEmitente.UsaStLegado,
+            destacaIcmsStSeparado = empresaEmitente.DestacaIcmsStSeparado,
+            cliente = new { cliente.Id, cliente.Nome, cliente.Email, cliente.CpfCnpj },
+            destino = new { estadoDestino },
+            ranking = decision.Ranking.Select(item => new
+            {
+                item.Empresa.CodigoEmpresa,
+                item.Empresa.RazaoSocial,
+                item.Score,
+                item.CustoTributarioEstimado,
+                item.CustoOperacionalEstimado,
+                item.MargemEstimadaPercentual,
+                item.Justificativas
+            }).ToList()
+        }),
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
+    });
+
+    if (empresaEmitente.ProximaNfeNumero.HasValue)
+    {
+        empresaEmitente.ProximaNfeNumero += 1;
+        db.EmpresasGrupo.Update(empresaEmitente);
+    }
+}
+
+static string InferDestinationState(object? enderecoEntrega, Cliente cliente)
+{
+    if (enderecoEntrega is not null)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(enderecoEntrega);
+            var enderecoRequest = JsonSerializer.Deserialize<EnderecoEntregaRequest>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            var estado = TrimOrNull(enderecoRequest?.Estado);
+            if (!string.IsNullOrWhiteSpace(estado))
+            {
+                return estado.ToUpperInvariant();
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    return "SP";
+}
+
+static string BuildFiscalPaymentSummary(string? metodoPagamento, string? gatewayPagamento)
+{
+    var metodo = TrimOrNull(metodoPagamento)?.ToUpperInvariant() ?? "NAO INFORMADO";
+    var gateway = TrimOrNull(gatewayPagamento) ?? "gateway-pendente";
+
+    return metodo switch
+    {
+        "CARTAO_CREDITO" or "CARTAO DE CREDITO" or "CREDITO" => $"Pagamento em cartão de crédito via {gateway}; considerar retenções, MDR e liquidação líquida no financeiro.",
+        "PIX" => $"Pagamento via PIX por {gateway}; liquidação e baixa automática por webhook.",
+        "BOLETO" => $"Pagamento via boleto por {gateway}; aguarda compensação e baixa automática.",
+        "DEBITO" => $"Pagamento em débito via {gateway}; tratar confirmação e liquidação bancária.",
+        "DEPOSITO" => $"Pagamento por depósito identificado; exigir conciliação bancária assistida.",
+        _ => $"Forma de pagamento {metodo} via {gateway}; validar regra financeira correspondente."
+    };
+}
+
+static LoginResponse CreateLoginResponse(
+    int id,
+    string nome,
+    string email,
+    string perfil,
+    string issuer,
+    string audience,
+    SymmetricSecurityKey signingKey,
+    int expirationHours)
+{
+    var expiresAt = DateTime.UtcNow.AddHours(expirationHours);
+    var claims = new[]
+    {
+        new Claim(JwtRegisteredClaimNames.Sub, id.ToString()),
+        new Claim(JwtRegisteredClaimNames.Email, email),
+        new Claim(ClaimTypes.Name, nome),
+        new Claim(ClaimTypes.Email, email),
+        new Claim(ClaimTypes.Role, perfil),
+        new Claim("perfil", perfil)
+    };
+
+    var token = new JwtSecurityToken(
+        issuer,
+        audience,
+        claims,
+        expires: expiresAt,
+        signingCredentials: new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256));
+
+    return new LoginResponse(
+        new JwtSecurityTokenHandler().WriteToken(token),
+        string.Empty,
+        expiresAt,
+        new UsuarioDto(id, nome, email, perfil));
 }
 
 static string? NormalizePhone(string? value)
@@ -3056,6 +3577,54 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS pdv_impressora_fiscal VARCHAR(120) NULL;");
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS pdv_nome_caixa_padrao VARCHAR(80) NULL;");
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS pdv_contingencia_offline TINYINT(1) NOT NULL DEFAULT 0;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS perfil_tributacao VARCHAR(40) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS usa_st_legado TINYINT(1) NOT NULL DEFAULT 0;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS destaca_icms_st_separado TINYINT(1) NOT NULL DEFAULT 0;");
+
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        CREATE TABLE IF NOT EXISTS fiscal (
+            id INT NOT NULL AUTO_INCREMENT,
+            pedido_id INT NOT NULL,
+            empresa_grupo_id INT NULL,
+            empresa_emitente VARCHAR(200) NULL,
+            codigo_empresa_emitente VARCHAR(50) NULL,
+            cnpj_emitente VARCHAR(18) NULL,
+            numero_nfe VARCHAR(20) NULL,
+            serie VARCHAR(5) NULL,
+            chave_acesso VARCHAR(44) NULL,
+            xml_url VARCHAR(255) NULL,
+            danfe_url VARCHAR(255) NULL,
+            status_nfe VARCHAR(30) NOT NULL DEFAULT 'Pendente',
+            valor_total DECIMAL(10,2) NULL,
+            cfop VARCHAR(10) NULL,
+            natureza_operacao VARCHAR(100) NULL,
+            ambiente_documento VARCHAR(30) NULL,
+            modelo_documento VARCHAR(20) NULL,
+            status_automacao VARCHAR(40) NULL,
+            resumo_roteamento TEXT NULL,
+            payload_operacao LONGTEXT NULL,
+            data_emissao DATETIME NULL,
+            data_autorizacao DATETIME NULL,
+            protocolo VARCHAR(50) NULL,
+            motivo_cancelamento TEXT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY ix_fiscal_pedido_id (pedido_id),
+            KEY ix_fiscal_empresa_grupo_id (empresa_grupo_id)
+        );
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS empresa_grupo_id INT NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS empresa_emitente VARCHAR(200) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS codigo_empresa_emitente VARCHAR(50) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS cnpj_emitente VARCHAR(18) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS ambiente_documento VARCHAR(30) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS modelo_documento VARCHAR(20) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS status_automacao VARCHAR(40) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS resumo_roteamento TEXT NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS payload_operacao LONGTEXT NULL;");
 }
 
 app.Run();
@@ -3132,27 +3701,59 @@ public sealed record ProdutoLojaDto(
     string Id,
     string Nome,
     string Descricao,
+    string? DescricaoCurta,
     decimal Preco,
     decimal? PrecoPromocional,
     string ImagemUrl,
     int Estoque,
+    int EstoqueMinimo,
+    int EstoqueReservado,
     bool Destaque,
     string Sku,
     string CategoriaId,
-    decimal Avaliacao);
+    decimal Avaliacao,
+    decimal Custo,
+    decimal Peso,
+    decimal Altura,
+    decimal Largura,
+    decimal Comprimento,
+    string TipoProduto,
+    int? FornecedorId,
+    string? Marca,
+    string? Tags,
+    string? SeoTitulo,
+    string? SeoDescricao,
+    string? SeoKeywords,
+    string? ImagensGaleria);
 
 public sealed record ProdutoRequest(
     string? Id,
     string Nome,
     string? Descricao,
+    string? DescricaoCurta,
     decimal Preco,
     decimal? PrecoPromocional,
     string? ImagemUrl,
     int Estoque,
+    int? EstoqueMinimo,
+    int? EstoqueReservado,
     bool Destaque,
     string? Sku,
     string? CategoriaId,
-    decimal? Avaliacao)
+    decimal? Avaliacao,
+    decimal? Custo,
+    decimal? Peso,
+    decimal? Altura,
+    decimal? Largura,
+    decimal? Comprimento,
+    string? TipoProduto,
+    int? FornecedorId,
+    string? Marca,
+    string? Tags,
+    string? SeoTitulo,
+    string? SeoDescricao,
+    string? SeoKeywords,
+    string? ImagensGaleria)
 {
     public ProdutoLojaDto ToProduto(string? id = null)
     {
@@ -3173,14 +3774,30 @@ public sealed record ProdutoRequest(
             produtoId,
             Nome,
             Descricao ?? string.Empty,
+            DescricaoCurta,
             Preco,
             PrecoPromocional,
             ImagemUrl ?? "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85",
             Estoque,
+            EstoqueMinimo ?? 5,
+            EstoqueReservado ?? 0,
             Destaque,
             sku,
             string.IsNullOrWhiteSpace(CategoriaId) ? "classicos" : CategoriaId,
-            Avaliacao ?? 4.8m);
+            Avaliacao ?? 4.8m,
+            Custo ?? 0m,
+            Peso ?? 0m,
+            Altura ?? 0m,
+            Largura ?? 0m,
+            Comprimento ?? 0m,
+            string.IsNullOrWhiteSpace(TipoProduto) ? "Proprio" : TipoProduto,
+            FornecedorId,
+            Marca,
+            Tags,
+            SeoTitulo,
+            SeoDescricao,
+            SeoKeywords,
+            ImagensGaleria);
     }
 }
 
@@ -3190,11 +3807,47 @@ public sealed record UploadImagemDto(string Url);
 
 public sealed record CupomDto(string Codigo, decimal? DescontoPercentual, decimal? DescontoValor, decimal? ValorMinimo);
 
-public sealed record ClienteRequest(string Nome, string Email, string? Cpf, string? Telefone);
+public sealed record ClienteRequest(string Nome, string Email, string? Cpf, string? Telefone, string? Senha = null, bool? Newsletter = null);
 
 public sealed record ClienteLojaDto(int Id, string Nome, string Email, string? Telefone, string? Cpf = null);
 
 public sealed record CadastroClienteStatusDto(bool Existe, ClienteLojaDto? Cliente);
+
+public sealed record ClientePortalPedidoDto(
+    int Id,
+    string NumeroPedido,
+    string Status,
+    string StatusPagamento,
+    decimal Total,
+    DateTime DataPedido,
+    string? MeioPagamento,
+    string? CodigoRastreio,
+    string? Transportadora);
+
+public sealed record ClientePortalDocumentoDto(
+    int Id,
+    int PedidoId,
+    string? NumeroDocumento,
+    string? ModeloDocumento,
+    string StatusDocumento,
+    string? ChaveAcesso,
+    string? DanfeUrl,
+    string? XmlUrl,
+    DateTime CreatedAt);
+
+public sealed record ClientePortalDto(
+    int Id,
+    string Nome,
+    string Email,
+    string? Telefone,
+    string? Documento,
+    int PontosFidelidade,
+    string ScoreRelacionamento,
+    bool Vip,
+    decimal LimiteFuturoEstimado,
+    List<ClientePortalPedidoDto> Pedidos,
+    List<ClientePortalDocumentoDto> Documentos,
+    List<string> Beneficios);
 
 public sealed record FornecedorRequest(string Nome, string? Documento, string? Email, string? Telefone, string? Categoria);
 
@@ -3417,6 +4070,9 @@ public sealed record EmpresaGrupoRequest(
     decimal? AliquotaIss,
     decimal? AliquotaIpi,
     decimal? CargaTributariaPercentual,
+    string? PerfilTributacao,
+    bool? UsaStLegado,
+    bool? DestacaIcmsStSeparado,
     decimal? CustoOperacionalPercentual,
     decimal? MargemMinimaPercentual,
     int? PrioridadeFiscal,
@@ -3484,6 +4140,9 @@ public sealed record EmpresaGrupoDto(
     decimal? AliquotaIss,
     decimal? AliquotaIpi,
     decimal? CargaTributariaPercentual,
+    string? PerfilTributacao,
+    bool UsaStLegado,
+    bool DestacaIcmsStSeparado,
     decimal? CustoOperacionalPercentual,
     decimal? MargemMinimaPercentual,
     int PrioridadeFiscal,
@@ -3517,6 +4176,63 @@ public sealed record PdvFiscalConfigDto(
     bool EmitentePreferencial,
     string? Estado);
 
+public sealed record FiscalPedidoDto(
+    int Id,
+    int PedidoId,
+    int? EmpresaGrupoId,
+    string? EmpresaEmitente,
+    string? CodigoEmpresaEmitente,
+    string? CnpjEmitente,
+    string? NumeroNfe,
+    string? Serie,
+    string StatusNfe,
+    string? StatusAutomacao,
+    string? ModeloDocumento,
+    string? AmbienteDocumento,
+    string? Cfop,
+    string? NaturezaOperacao,
+    decimal? ValorTotal,
+    string? ResumoRoteamento,
+    DateTime CreatedAt,
+    DateTime UpdatedAt);
+
+public sealed record FiscalRoutingSimulationRequest(
+    TipoOperacaoFiscal TipoOperacao,
+    decimal ValorProdutos,
+    decimal ValorFrete,
+    string EstadoOrigem,
+    string EstadoDestino,
+    string? CategoriaFiscal,
+    string? SubcategoriaFiscal,
+    string? NaturezaOperacao,
+    bool ExigeMarketplace,
+    bool ExigeDropshipping,
+    bool RequerSaidaNfe,
+    bool RequerEntradaNfe);
+
+public sealed record FiscalRoutingSimulationDto(
+    bool Sucesso,
+    string Resumo,
+    string? CodigoEmpresaSelecionada,
+    string? RazaoSocialSelecionada,
+    string? CnpjSelecionado,
+    string? EstadoSelecionado,
+    List<FiscalRoutingRankingDto> Ranking);
+
+public sealed record FiscalRoutingRankingDto(
+    string CodigoEmpresa,
+    string RazaoSocial,
+    string Cnpj,
+    string? RegimeTributario,
+    string? CategoriaFiscal,
+    string? SubcategoriaFiscal,
+    decimal CustoTributarioEstimado,
+    decimal CustoOperacionalEstimado,
+    decimal LucroEstimado,
+    decimal MargemEstimadaPercentual,
+    decimal Score,
+    List<string> Justificativas);
+
 public static class StoreData
 {
     public static readonly List<CategoriaDto> Categorias =
@@ -3529,12 +4245,12 @@ public static class StoreData
 
     public static readonly List<ProdutoLojaDto> Produtos =
     [
-        new("na-atlas-chrono", "Atlas Chronograph Black", "Cronografo em aco escovado, safira antirrisco e pulseira intercambiavel para uso executivo.", 4890, 4290, "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85", 8, true, "NA-ATL-BLK", "cronografos", 4.9m),
-        new("na-orion-gold", "Orion Gold Reserve", "Relogio automatico dourado com mostrador sunray, reserva de marcha e acabamento premium.", 6990, 6490, "https://images.unsplash.com/photo-1547996160-81dfa63595aa?auto=format&fit=crop&w=900&q=85", 12, true, "NA-ORI-GLD", "automaticos", 4.8m),
-        new("na-heritage-silver", "Heritage Silver 40mm", "Design classico em caixa fina, pulseira em couro italiano e resistencia a agua para o dia a dia.", 2990, null, "https://images.unsplash.com/photo-1539874754764-5a96559165b0?auto=format&fit=crop&w=900&q=85", 24, true, "NA-HER-SLV", "classicos", 4.7m),
-        new("na-venture-carbon", "Venture Carbon Pro", "Caixa em carbono, pulseira esportiva premium e leitura de alta visibilidade para jornadas intensas.", 5290, 4990, "https://images.unsplash.com/photo-1434056886845-dac89ffe9b56?auto=format&fit=crop&w=900&q=85", 5, false, "NA-VEN-CBN", "cronografos", 4.6m),
-        new("na-lumina-smart", "Lumina Smart Luxe", "Tela AMOLED, monitoramento completo e corpo metalico com acabamento de relojoaria.", 3890, null, "https://images.unsplash.com/photo-1508685096489-7aacd43bd3b1?auto=format&fit=crop&w=900&q=85", 18, false, "NA-LUM-SMT", "smart-luxo", 4.8m),
-        new("na-minimal-rose", "Minimal Rose Mesh", "Perfil ultrafino, malha milanesa rose e mostrador minimalista para composicoes sofisticadas.", 2590, 2290, "https://images.unsplash.com/photo-1524592094714-0f0654e20314?auto=format&fit=crop&w=900&q=85", 31, false, "NA-MIN-RSE", "classicos", 4.7m)
+        new("na-atlas-chrono", "Atlas Chronograph Black", "Cronografo em aco escovado, safira antirrisco e pulseira intercambiavel para uso executivo.", "Cronografo executivo premium", 4890, 4290, "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85", 8, 2, 0, true, "NA-ATL-BLK", "cronografos", 4.9m, 3150, 0.450m, 4.5m, 11m, 25m, "Proprio", null, "Nexum Altivon", "cronografo,aco,premium", "Atlas Chronograph Black", "Relógio cronógrafo premium Nexum Altivon", "relogio,cronografo,premium", null),
+        new("na-orion-gold", "Orion Gold Reserve", "Relogio automatico dourado com mostrador sunray, reserva de marcha e acabamento premium.", "Automático dourado premium", 6990, 6490, "https://images.unsplash.com/photo-1547996160-81dfa63595aa?auto=format&fit=crop&w=900&q=85", 12, 2, 0, true, "NA-ORI-GLD", "automaticos", 4.8m, 4520, 0.520m, 5m, 12m, 26m, "Proprio", null, "Nexum Altivon", "automatico,dourado,reserva", "Orion Gold Reserve", "Relógio automático dourado com reserva de marcha", "automatico,dourado,relogio", null),
+        new("na-heritage-silver", "Heritage Silver 40mm", "Design classico em caixa fina, pulseira em couro italiano e resistencia a agua para o dia a dia.", "Clássico prata 40mm", 2990, null, "https://images.unsplash.com/photo-1539874754764-5a96559165b0?auto=format&fit=crop&w=900&q=85", 24, 4, 0, true, "NA-HER-SLV", "classicos", 4.7m, 1890, 0.380m, 4m, 10m, 24m, "Proprio", null, "Nexum Altivon", "classico,prata,couro", "Heritage Silver 40mm", "Relógio clássico prata com pulseira em couro italiano", "classico,prata,couro", null),
+        new("na-venture-carbon", "Venture Carbon Pro", "Caixa em carbono, pulseira esportiva premium e leitura de alta visibilidade para jornadas intensas.", "Carbono esportivo premium", 5290, 4990, "https://images.unsplash.com/photo-1434056886845-dac89ffe9b56?auto=format&fit=crop&w=900&q=85", 5, 2, 0, false, "NA-VEN-CBN", "cronografos", 4.6m, 3380, 0.490m, 5m, 12m, 27m, "Dropshipping", null, "Nexum Altivon", "carbono,esportivo,aventura", "Venture Carbon Pro", "Relógio em carbono com leitura esportiva premium", "carbono,esportivo,relogio", null),
+        new("na-lumina-smart", "Lumina Smart Luxe", "Tela AMOLED, monitoramento completo e corpo metalico com acabamento de relojoaria.", "Smartwatch luxo AMOLED", 3890, null, "https://images.unsplash.com/photo-1508685096489-7aacd43bd3b1?auto=format&fit=crop&w=900&q=85", 18, 3, 0, false, "NA-LUM-SMT", "smart-luxo", 4.8m, 2470, 0.310m, 4m, 10m, 23m, "Marketplace", null, "Nexum Altivon", "smartwatch,amoled,luxo", "Lumina Smart Luxe", "Smartwatch premium com acabamento de relojoaria", "smartwatch,amoled,luxo", null),
+        new("na-minimal-rose", "Minimal Rose Mesh", "Perfil ultrafino, malha milanesa rose e mostrador minimalista para composicoes sofisticadas.", "Rose mesh minimalista", 2590, 2290, "https://images.unsplash.com/photo-1524592094714-0f0654e20314?auto=format&fit=crop&w=900&q=85", 31, 5, 0, false, "NA-MIN-RSE", "classicos", 4.7m, 1620, 0.280m, 3.8m, 9m, 22m, "Afiliado", null, "Nexum Altivon", "rose,minimalista,mesh", "Minimal Rose Mesh", "Relógio ultrafino rose com malha milanesa", "rose,minimalista,mesh", null)
     ];
 
     public static readonly List<CupomDto> Cupons =

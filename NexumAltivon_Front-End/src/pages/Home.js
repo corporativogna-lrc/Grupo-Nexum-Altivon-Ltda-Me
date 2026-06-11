@@ -87,6 +87,8 @@ const emptyCadastro = {
   email: '',
   telefone: '',
   cpf: '',
+  senha: '',
+  newsletter: true,
 };
 
 const lojas = [
@@ -214,10 +216,12 @@ export default function Home() {
       email: cadastroForm.email.trim(),
       telefone: cadastroForm.telefone.trim(),
       cpf: cadastroForm.cpf.trim(),
+      senha: cadastroForm.senha,
+      newsletter: Boolean(cadastroForm.newsletter),
     };
 
-    if (!payload.nome || !payload.email) {
-      setCadastroStatus({ tone: 'error', message: 'Preencha pelo menos nome completo e e-mail para concluir seu cadastro.' });
+    if (!payload.nome || !payload.email || !payload.senha) {
+      setCadastroStatus({ tone: 'error', message: 'Preencha nome, e-mail e uma senha para concluir o auto cadastro e liberar a área do cliente.' });
       return;
     }
 
@@ -360,6 +364,9 @@ export default function Home() {
             <p className="mt-6 max-w-2xl leading-8 text-zinc-300">
               Agora o próprio cliente já consegue se registrar por aqui. Antes de salvar, o sistema verifica e-mail e CPF/CNPJ para evitar cadastro duplicado.
             </p>
+            <div className="mt-6 inline-flex rounded-full border border-[#C9A227]/30 bg-[#C9A227]/10 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-[#E8D5A3]">
+              Yara será a recepção digital deste relacionamento
+            </div>
 
             <div className="mt-8 grid gap-4">
               {[
@@ -440,6 +447,28 @@ export default function Home() {
                   />
                 </label>
               </div>
+
+              <label className="grid gap-2 text-sm font-semibold text-zinc-200">
+                Senha de acesso
+                <input
+                  type="password"
+                  value={cadastroForm.senha}
+                  onChange={(event) => handleCadastroChange('senha', event.target.value)}
+                  className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none transition focus:border-[#C9A227]"
+                  placeholder="Crie uma senha para sua área do cliente"
+                  required
+                />
+              </label>
+
+              <label className="flex items-start gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm font-semibold text-zinc-200">
+                <input
+                  type="checkbox"
+                  checked={cadastroForm.newsletter}
+                  onChange={(event) => handleCadastroChange('newsletter', event.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-white/20 bg-transparent text-[#C9A227] focus:ring-[#C9A227]"
+                />
+                <span>Quero receber novidades, campanhas e comunicações comerciais do Grupo Nexum Altivon.</span>
+              </label>
 
               {cadastroStatus.message && (
                 <div

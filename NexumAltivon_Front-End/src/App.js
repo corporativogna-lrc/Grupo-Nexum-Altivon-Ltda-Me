@@ -14,6 +14,7 @@ import Carrinho from './pages/Carrinho';
 import Checkout from './pages/Checkout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import AreaCliente from './pages/AreaCliente';
 
 function getRouterBasename() {
   const publicUrl = process.env.PUBLIC_URL || '';
@@ -32,8 +33,7 @@ function getRouterBasename() {
 function AppShell() {
   const location = useLocation();
   const isBackoffice = location.pathname.startsWith('/dashboard');
-  const isAuthPage = location.pathname.startsWith('/login');
-  const showStoreShell = !isBackoffice && !isAuthPage;
+  const showStoreShell = !isBackoffice;
 
   return (
     <div className="min-h-screen bg-[#f5f7fb] text-slate-950">
@@ -47,6 +47,7 @@ function AppShell() {
         <Route path="/carrinho" element={<Carrinho />} />
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/area-cliente" element={<AreaCliente />} />
         <Route path="/dashboard/*" element={<Dashboard />} />
         <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
