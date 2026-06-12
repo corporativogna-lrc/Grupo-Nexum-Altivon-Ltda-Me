@@ -10,6 +10,7 @@ public enum TipoDropshipping
     Dropi,
     Cartpanda,
     Nuvemshop,
+    Shopify,
     Outro
 }
 

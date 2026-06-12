@@ -44,6 +44,8 @@ const PAGAMENTO_LABELS = {
   cartao: 'Cartão de Crédito',
   pix: 'PIX',
   boleto: 'Boleto',
+  debito: 'Cartão de Débito',
+  deposito: 'Depósito / Transferência',
 };
 
 export const getPagamentoLabel = (metodo) => {

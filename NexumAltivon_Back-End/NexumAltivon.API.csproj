@@ -14,7 +14,9 @@
   <ItemGroup>
     <Compile Include="API\Program.cs" />
     <Compile Include="API\Data\**\*.cs" />
+    <Compile Include="API\ERP\**\*.cs" />
     <Compile Include="API\Models\**\*.cs" />
+    <Compile Include="API\Services\NotificacaoService.cs" />
     <Compile Remove="API\Models\CarrinhoCheckoutPagamento.cs" />
     <Compile Remove="API\Models\IntegracoesModels.cs" />
   </ItemGroup>

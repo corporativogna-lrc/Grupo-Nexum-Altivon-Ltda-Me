@@ -1,6 +1,6 @@
 import { Link, NavLink } from 'react-router-dom';
-import { BarChart3, Menu, Search, ShoppingBag, User, X } from 'lucide-react';
-import { useState } from 'react';
+import { BarChart3, ChevronDown, LayoutDashboard, LogOut, Menu, Search, ShoppingBag, User, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 
@@ -13,9 +13,16 @@ const navItems = [
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
-  const { logout, isAuthenticated } = useAuth();
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const { logout, isAuthenticated, isAdmin, user } = useAuth();
   const { getItemCount } = useCart();
   const itemCount = getItemCount();
+  const displayName = useMemo(() => {
+    const rawName = String(user?.nome || user?.name || user?.email || '').trim();
+    return rawName ? rawName.split(' ')[0] : 'Conta';
+  }, [user]);
+  const portalLink = isAdmin ? '/dashboard' : '/area-cliente';
+  const portalLabel = isAdmin ? 'GenesisGest.Net' : 'Área do cliente';
   const navClass = ({ isActive }) =>
     `rounded-full px-4 py-2 text-sm font-semibold transition ${
       isActive ? 'bg-[#C9A227] text-black' : 'text-zinc-200 hover:bg-white/10 hover:text-[#E8D5A3]'
@@ -67,20 +74,60 @@ export default function Navbar() {
           </Link>
 
           {isAuthenticated ? (
-            <>
-              <Link
-                to="/dashboard"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#2A2A2A] text-zinc-300 transition hover:border-[#C9A227] hover:text-[#C9A227]"
-                aria-label="Painel"
-                title="Painel"
-                data-testid="nav-dashboard"
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsProfileOpen((current) => !current)}
+                className="inline-flex items-center gap-3 rounded-full border border-[#2A2A2A] bg-black/30 px-4 py-2 text-sm font-bold text-zinc-100 transition hover:border-[#C9A227] hover:text-[#E8D5A3]"
               >
-                <BarChart3 size={19} />
-              </Link>
-              <button onClick={logout} className="rounded-full px-4 py-2 text-sm font-bold text-zinc-300 transition hover:bg-white/10">
-                Sair
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#C9A227] text-sm font-black text-black">
+                  {displayName.slice(0, 2).toUpperCase()}
+                </span>
+                <span className="text-left leading-tight">
+                  <span className="block text-xs uppercase tracking-[0.18em] text-zinc-500">Logado como</span>
+                  <span className="block">{displayName}</span>
+                </span>
+                <ChevronDown size={16} />
               </button>
-            </>
+
+              {isProfileOpen && (
+                <div className="absolute right-0 top-14 w-64 rounded-3xl border border-[#2A2A2A] bg-[#111111] p-3 shadow-2xl">
+                  <div className="rounded-2xl border border-white/5 bg-white/5 p-4">
+                    <p className="text-sm font-black text-white">{user?.nome || user?.email}</p>
+                    <p className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">{user?.role || user?.perfil}</p>
+                  </div>
+                  <div className="mt-3 grid gap-2">
+                    <Link
+                      to={portalLink}
+                      onClick={() => setIsProfileOpen(false)}
+                      className="inline-flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold text-zinc-100 transition hover:bg-white/10"
+                    >
+                      {isAdmin ? <BarChart3 size={17} /> : <LayoutDashboard size={17} />}
+                      {portalLabel}
+                    </Link>
+                    <Link
+                      to="/carrinho"
+                      onClick={() => setIsProfileOpen(false)}
+                      className="inline-flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold text-zinc-100 transition hover:bg-white/10"
+                    >
+                      <ShoppingBag size={17} />
+                      Minhas compras
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsProfileOpen(false);
+                        logout();
+                      }}
+                      className="inline-flex items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-bold text-rose-200 transition hover:bg-rose-500/10"
+                    >
+                      <LogOut size={17} />
+                      Sair
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           ) : (
             <Link
               to="/login"
@@ -118,9 +165,27 @@ export default function Navbar() {
             <Link to="/carrinho" className="block rounded-lg px-3 py-3 text-sm font-bold text-zinc-200 hover:bg-white/10" onClick={() => setIsOpen(false)}>
               Carrinho ({itemCount})
             </Link>
-            <Link to={isAuthenticated ? '/dashboard' : '/login'} className="block rounded-lg bg-[#C9A227] px-3 py-3 text-sm font-bold text-black" onClick={() => setIsOpen(false)}>
-              {isAuthenticated ? 'Painel' : 'Entrar'}
-            </Link>
+            {isAuthenticated ? (
+              <>
+                <Link to={portalLink} className="block rounded-lg bg-[#C9A227] px-3 py-3 text-sm font-bold text-black" onClick={() => setIsOpen(false)}>
+                  {portalLabel}
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false);
+                    logout();
+                  }}
+                  className="block w-full rounded-lg border border-[#2A2A2A] px-3 py-3 text-left text-sm font-bold text-zinc-200 hover:bg-white/10"
+                >
+                  Sair
+                </button>
+              </>
+            ) : (
+              <Link to="/login" className="block rounded-lg bg-[#C9A227] px-3 py-3 text-sm font-bold text-black" onClick={() => setIsOpen(false)}>
+                Entrar
+              </Link>
+            )}
           </div>
         </div>
       )}

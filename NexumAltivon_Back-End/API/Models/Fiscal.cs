@@ -24,6 +24,21 @@ public class Fiscal
     [Column("pedido_id")]
     public int PedidoId { get; set; }
 
+    [Column("empresa_grupo_id")]
+    public int? EmpresaGrupoId { get; set; }
+
+    [Column("empresa_emitente")]
+    [MaxLength(200)]
+    public string? EmpresaEmitente { get; set; }
+
+    [Column("codigo_empresa_emitente")]
+    [MaxLength(50)]
+    public string? CodigoEmpresaEmitente { get; set; }
+
+    [Column("cnpj_emitente")]
+    [MaxLength(18)]
+    public string? CnpjEmitente { get; set; }
+
     [Column("numero_nfe")]
     [MaxLength(20)]
     public string? NumeroNfe { get; set; }
@@ -57,6 +72,24 @@ public class Fiscal
     [Column("natureza_operacao")]
     [MaxLength(100)]
     public string? NaturezaOperacao { get; set; }
+
+    [Column("ambiente_documento")]
+    [MaxLength(30)]
+    public string? AmbienteDocumento { get; set; }
+
+    [Column("modelo_documento")]
+    [MaxLength(20)]
+    public string? ModeloDocumento { get; set; }
+
+    [Column("status_automacao")]
+    [MaxLength(40)]
+    public string? StatusAutomacao { get; set; }
+
+    [Column("resumo_roteamento")]
+    public string? ResumoRoteamento { get; set; }
+
+    [Column("payload_operacao")]
+    public string? PayloadOperacao { get; set; }
 
     [Column("data_emissao")]
     public DateTime? DataEmissao { get; set; }

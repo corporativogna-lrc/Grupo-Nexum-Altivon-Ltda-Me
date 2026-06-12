@@ -1,9 +1,14 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { STORAGE_KEYS, ADMIN_ROLES } from '../constants';
-import api, { API_BASE_URL } from '../services/api';
+import api, { API_BASE_URL, getRuntimeApiBaseUrl } from '../services/api';
 
 const AuthContext = createContext();
+const CLIENT_ROLE = 'Cliente';
+
+const normalizeRole = (userData) => userData?.role || userData?.perfil || '';
+const isAdminRole = (userData) => ADMIN_ROLES.includes(normalizeRole(userData));
+const getPostLoginDestination = (userData) => (isAdminRole(userData) ? '/dashboard' : '/area-cliente');
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -36,6 +41,10 @@ export function AuthProvider({ children }) {
         email,
         role: payload.perfil || payload.role || 'Gerente',
       };
+      const normalizedUser = {
+        ...userData,
+        role: userData.role || userData.perfil || payload.perfil || payload.role || CLIENT_ROLE,
+      };
 
       if (!accessToken) {
         return {
@@ -46,19 +55,26 @@ export function AuthProvider({ children }) {
 
       localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
       localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(normalizedUser));
 
       axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
-      setUser(userData);
+      setUser(normalizedUser);
 
-      return { success: true };
+      return {
+        success: true,
+        destination: getPostLoginDestination(normalizedUser),
+        user: normalizedUser,
+      };
     } catch (error) {
       const isNetworkError = !error.response;
+      const runtimeApiBaseUrl = isNetworkError
+        ? await getRuntimeApiBaseUrl().catch(() => API_BASE_URL)
+        : API_BASE_URL;
 
       return {
         success: false,
         error: isNetworkError
-          ? `API pública indisponível no momento (${API_BASE_URL}). Verifique Cloudflare/DNS e tente novamente.`
+          ? `API indisponível no momento (${runtimeApiBaseUrl}). Verifique a ponte pública da API e tente novamente.`
           : error.response?.data?.detail || error.response?.data?.mensagem || 'Erro ao fazer login'
       };
     }
@@ -78,7 +94,8 @@ export function AuthProvider({ children }) {
     login,
     logout,
     isAuthenticated: !!user,
-    isAdmin: user ? ADMIN_ROLES.includes(user.role || user.perfil) : false
+    isAdmin: user ? isAdminRole(user) : false,
+    isCliente: user ? normalizeRole(user) === CLIENT_ROLE : false,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

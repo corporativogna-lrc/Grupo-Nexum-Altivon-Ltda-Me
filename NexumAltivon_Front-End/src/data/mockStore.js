@@ -1,8 +1,16 @@
 export const fallbackCategories = [
-  { id: 'automaticos', nome: 'Automaticos', descricao: 'Movimento mecanico com presenca executiva' },
-  { id: 'cronografos', nome: 'Cronografos', descricao: 'Performance, precisao e leitura esportiva' },
-  { id: 'classicos', nome: 'Classicos', descricao: 'Pecas discretas para rotina premium' },
-  { id: 'smart-luxo', nome: 'Smart Luxo', descricao: 'Tecnologia conectada com acabamento refinado' },
+  { id: 'automaticos', nome: 'Automaticos', descricao: 'Movimento mecanico com presenca executiva', categoria_pai_id: null, nivel: 1, caminho: 'Automaticos' },
+  { id: 'dress-watch', nome: 'Dress Watch', descricao: 'Subcategoria para modelos executivos e sociais.', categoria_pai_id: 'automaticos', nivel: 2, caminho: 'Automaticos / Dress Watch' },
+  { id: 'skeleton', nome: 'Skeleton', descricao: 'Subcategoria para mostradores abertos e mecânica aparente.', categoria_pai_id: 'automaticos', nivel: 2, caminho: 'Automaticos / Skeleton' },
+  { id: 'cronografos', nome: 'Cronografos', descricao: 'Performance, precisao e leitura esportiva', categoria_pai_id: null, nivel: 1, caminho: 'Cronografos' },
+  { id: 'corrida', nome: 'Corrida', descricao: 'Subcategoria para cronógrafos de perfil esportivo.', categoria_pai_id: 'cronografos', nivel: 2, caminho: 'Cronografos / Corrida' },
+  { id: 'aventura', nome: 'Aventura', descricao: 'Subcategoria para peças robustas e outdoor.', categoria_pai_id: 'cronografos', nivel: 2, caminho: 'Cronografos / Aventura' },
+  { id: 'classicos', nome: 'Classicos', descricao: 'Pecas discretas para rotina premium', categoria_pai_id: null, nivel: 1, caminho: 'Classicos' },
+  { id: 'social', nome: 'Social', descricao: 'Subcategoria para linha formal e corporativa.', categoria_pai_id: 'classicos', nivel: 2, caminho: 'Classicos / Social' },
+  { id: 'minimalista', nome: 'Minimalista', descricao: 'Subcategoria para peças leves e design limpo.', categoria_pai_id: 'classicos', nivel: 2, caminho: 'Classicos / Minimalista' },
+  { id: 'smart-luxo', nome: 'Smart Luxo', descricao: 'Tecnologia conectada com acabamento refinado', categoria_pai_id: null, nivel: 1, caminho: 'Smart Luxo' },
+  { id: 'fitness-premium', nome: 'Fitness Premium', descricao: 'Subcategoria para wearables esportivos premium.', categoria_pai_id: 'smart-luxo', nivel: 2, caminho: 'Smart Luxo / Fitness Premium' },
+  { id: 'executivo-connect', nome: 'Executivo Connect', descricao: 'Subcategoria para smartwatches de perfil executivo.', categoria_pai_id: 'smart-luxo', nivel: 2, caminho: 'Smart Luxo / Executivo Connect' },
 ];
 
 export const fallbackProducts = [

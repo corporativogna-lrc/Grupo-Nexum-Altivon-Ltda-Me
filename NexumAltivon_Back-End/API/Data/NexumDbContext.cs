@@ -31,6 +31,7 @@ public class NexumDbContext : DbContext
     public DbSet<ConfiguracaoSistema> ConfiguracoesSistema { get; set; } = null!;
     public DbSet<Marketplace> Marketplaces { get; set; } = null!;
     public DbSet<DropshippingConfig> DropshippingConfigs { get; set; } = null!;
+    public DbSet<EmpresaGrupo> EmpresasGrupo { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -71,6 +72,14 @@ public class NexumDbContext : DbContext
 
         modelBuilder.Entity<DropshippingConfig>()
             .HasIndex(d => d.Slug)
+            .IsUnique();
+
+        modelBuilder.Entity<EmpresaGrupo>()
+            .HasIndex(empresa => empresa.Cnpj)
+            .IsUnique();
+
+        modelBuilder.Entity<EmpresaGrupo>()
+            .HasIndex(empresa => empresa.CodigoEmpresa)
             .IsUnique();
 
         modelBuilder.Entity<Transportadora>()
@@ -168,6 +177,42 @@ public class NexumDbContext : DbContext
         modelBuilder.Entity<Pagamento>()
             .Property(p => p.Valor)
             .HasPrecision(10, 2);
+
+        modelBuilder.Entity<EmpresaGrupo>()
+            .Property(empresa => empresa.AliquotaIcmsInterna)
+            .HasPrecision(10, 4);
+
+        modelBuilder.Entity<EmpresaGrupo>()
+            .Property(empresa => empresa.AliquotaIcmsInterestadual)
+            .HasPrecision(10, 4);
+
+        modelBuilder.Entity<EmpresaGrupo>()
+            .Property(empresa => empresa.AliquotaPis)
+            .HasPrecision(10, 4);
+
+        modelBuilder.Entity<EmpresaGrupo>()
+            .Property(empresa => empresa.AliquotaCofins)
+            .HasPrecision(10, 4);
+
+        modelBuilder.Entity<EmpresaGrupo>()
+            .Property(empresa => empresa.AliquotaIss)
+            .HasPrecision(10, 4);
+
+        modelBuilder.Entity<EmpresaGrupo>()
+            .Property(empresa => empresa.AliquotaIpi)
+            .HasPrecision(10, 4);
+
+        modelBuilder.Entity<EmpresaGrupo>()
+            .Property(empresa => empresa.CargaTributariaPercentual)
+            .HasPrecision(10, 4);
+
+        modelBuilder.Entity<EmpresaGrupo>()
+            .Property(empresa => empresa.CustoOperacionalPercentual)
+            .HasPrecision(10, 4);
+
+        modelBuilder.Entity<EmpresaGrupo>()
+            .Property(empresa => empresa.MargemMinimaPercentual)
+            .HasPrecision(10, 4);
 
         // Seed inicial das 6 lojas
         modelBuilder.Entity<Loja>().HasData(

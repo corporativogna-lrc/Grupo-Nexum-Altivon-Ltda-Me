@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
 import { lojaAPI, clienteAPI, freteAPI, pedidoAPI } from '../services/api';
 import { fallbackCategories } from '../data/mockStore';
 import {
@@ -22,10 +23,26 @@ function calcularDesconto(cupomAplicado, subtotal) {
   return cupomAplicado.desconto_valor || 0;
 }
 
+function mapGatewayLabel(metodoPagamento) {
+  switch (metodoPagamento) {
+    case 'pix':
+      return 'PIX';
+    case 'boleto':
+      return 'Boleto';
+    case 'debito':
+      return 'Debito';
+    case 'deposito':
+      return 'Deposito';
+    default:
+      return 'Cartao';
+  }
+}
+
 export default function Checkout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { cart, getTotal, clearCart } = useCart();
+  const { isAuthenticated, isAdmin, user } = useAuth();
   const cupomAplicado = location.state?.cupomAplicado;
 
   const [lojas, setLojas] = useState([]);
@@ -33,6 +50,8 @@ export default function Checkout() {
   const [pedidoCriado, setPedidoCriado] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [checkoutInfo, setCheckoutInfo] = useState('');
+  const [clientePortal, setClientePortal] = useState(null);
 
   const [dadosCliente, setDadosCliente] = useState({
     nome: '', email: '', cpf: '', telefone: ''
@@ -45,6 +64,7 @@ export default function Checkout() {
 
   const [lojaId, setLojaId] = useState('');
   const [metodoPagamento, setMetodoPagamento] = useState('cartao');
+  const [parcelas, setParcelas] = useState(1);
   const [freteSelecionado, setFreteSelecionado] = useState('padrao');
   const [freteOptions, setFreteOptions] = useState([
     { id: 'retirada', nome: 'Retirada / combinar entrega', transportadora: 'Nexum Altivon', prazo: 0, valor: 0 },
@@ -77,6 +97,52 @@ export default function Checkout() {
     }
     loadLojas();
   }, [cart.length, pedidoCriado, navigate, loadLojas]);
+
+  useEffect(() => {
+    if (!isAuthenticated || isAdmin) {
+      setClientePortal(null);
+      setDadosCliente((current) => ({
+        ...current,
+        nome: current.nome || user?.nome || '',
+        email: current.email || user?.email || '',
+      }));
+      return;
+    }
+
+    let cancelled = false;
+
+    const hydrateLoggedCustomer = async () => {
+      try {
+        const response = await clienteAPI.getPortal();
+        const portal = response.data?.dados || response.data?.Dados || response.data?.data || response.data;
+        if (cancelled || !portal) return;
+
+        setClientePortal(portal);
+        setDadosCliente((current) => ({
+          ...current,
+          nome: portal.nome || current.nome || user?.nome || '',
+          email: portal.email || current.email || user?.email || '',
+          cpf: portal.documento || current.cpf || '',
+          telefone: portal.telefone || current.telefone || '',
+        }));
+        setCheckoutInfo('Cadastro do cliente logado carregado automaticamente para agilizar o checkout.');
+      } catch {
+        if (cancelled) return;
+        setClientePortal(null);
+        setDadosCliente((current) => ({
+          ...current,
+          nome: current.nome || user?.nome || '',
+          email: current.email || user?.email || '',
+        }));
+      }
+    };
+
+    hydrateLoggedCustomer();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isAdmin, user]);
 
   const subtotal = getTotal();
   const desconto = calcularDesconto(cupomAplicado, subtotal);
@@ -134,10 +200,29 @@ export default function Checkout() {
   const finalizarPedido = async () => {
     setLoading(true);
     setError('');
+    const previousCheckoutInfo = checkoutInfo;
+    setCheckoutInfo('');
 
     try {
-      const clienteRes = await clienteAPI.create(dadosCliente);
-      const clienteId = clienteRes.data.id;
+      let clienteId = clientePortal?.id;
+
+      if (clienteId) {
+        setCheckoutInfo('Pedido vinculado diretamente ao cadastro do cliente logado.');
+      } else {
+        const clienteVerificacao = await clienteAPI.verificarCadastro({
+          email: dadosCliente.email,
+          cpf: dadosCliente.cpf,
+        });
+
+        clienteId = clienteVerificacao.data?.cliente?.id;
+        if (clienteId) {
+          setCheckoutInfo('Cliente já existente reaproveitado para não duplicar cadastro.');
+        } else {
+          const clienteRes = await clienteAPI.create(dadosCliente);
+          clienteId = clienteRes.data.id;
+          setCheckoutInfo('Novo cliente registrado e vinculado ao pedido.');
+        }
+      }
 
       if (!clienteId) {
         throw new Error('Cliente nao confirmado pela API.');
@@ -153,7 +238,8 @@ export default function Checkout() {
         cupom_codigo: cupomAplicado?.codigo,
         endereco_entrega: endereco,
         metodo_pagamento: metodoPagamento,
-        gateway_pagamento: metodoPagamento === 'pix' ? 'PIX' : metodoPagamento === 'boleto' ? 'Boleto' : 'Cartao',
+        parcelas: metodoPagamento === 'cartao' ? parcelas : 1,
+        gateway_pagamento: mapGatewayLabel(metodoPagamento),
         frete_valor: frete.valor,
         frete_metodo: frete.nome,
         frete_transportadora: frete.transportadora,
@@ -168,6 +254,7 @@ export default function Checkout() {
     } catch (err) {
       const detail = err.response?.data?.detail;
       setError(detail || err.message || 'Erro ao processar pedido. Nenhum pedido foi registrado.');
+      setCheckoutInfo(previousCheckoutInfo);
     } finally {
       setLoading(false);
     }
@@ -190,6 +277,12 @@ export default function Checkout() {
             Cadastro do cliente, endereço, loja, forma de pagamento e criação do pedido seguem o fluxo real da API.
           </p>
         </div>
+
+        {checkoutInfo && (
+          <div className="mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-emerald-200">
+            {checkoutInfo}
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-rose-200"
@@ -224,6 +317,8 @@ export default function Checkout() {
                 setLojaId={setLojaId}
                 metodoPagamento={metodoPagamento}
                 setMetodoPagamento={setMetodoPagamento}
+                parcelas={parcelas}
+                setParcelas={setParcelas}
                 freteOptions={freteOptions}
                 freteSelecionado={freteSelecionado}
                 setFreteSelecionado={setFreteSelecionado}

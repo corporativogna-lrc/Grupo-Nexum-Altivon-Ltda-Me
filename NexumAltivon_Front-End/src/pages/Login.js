@@ -19,7 +19,7 @@ export default function Login() {
     const result = await login(email, senha);
 
     if (result.success) {
-      navigate('/dashboard');
+      navigate(result.destination || '/dashboard');
     } else {
       setError(result.error);
     }
@@ -34,8 +34,8 @@ export default function Login() {
           <div className="w-20 h-20 bg-[#C9A227] rounded-2xl flex items-center justify-center mx-auto mb-4">
             <LogIn className="text-white" size={40} />
           </div>
-          <h2 className="text-3xl font-bold text-white" data-testid="login-title">Acessar Painel Administrativo</h2>
-          <p className="mt-2 text-gray-300">Gestão operacional Grupo Nexum Altivon</p>
+          <h2 className="text-3xl font-bold text-white" data-testid="login-title">Acessar ambiente Nexum Altivon</h2>
+          <p className="mt-2 text-gray-300">Clientes seguem para a área do cliente. Equipe administrativa entra no GenesisGest.Net.</p>
         </div>
 
         <form className="bg-white p-8 rounded-2xl shadow-2xl space-y-6" onSubmit={handleSubmit}>
@@ -84,6 +84,7 @@ export default function Login() {
             <Link to="/" className="text-amber-600 hover:underline">← Voltar para Home</Link>
           </div>
         </form>
+
       </div>
     </div>
   );

@@ -1,11 +1,12 @@
 import axios from 'axios';
 import { HTTP_UNAUTHORIZED, STORAGE_KEYS } from '../constants';
 
-const PUBLIC_API_URL = 'https://visual-both-textile-modeling.trycloudflare.com';
+const PUBLIC_API_URL = 'https://api.nexumaltivon.com';
 const RUNTIME_API_CONFIG_URL = '/api-runtime.json';
 const RUNTIME_CACHE_KEY = 'nexum_api_runtime_url';
 
 let runtimeApiUrlPromise = null;
+const apiHealthCache = new Map();
 
 const getDefaultApiUrl = () => {
   if (typeof window === 'undefined') return 'http://localhost:5000';
@@ -13,7 +14,7 @@ const getDefaultApiUrl = () => {
   const { hostname } = window.location;
   const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
 
-  return isLocalhost ? 'http://localhost:5010' : PUBLIC_API_URL;
+  return isLocalhost ? 'http://localhost:5011' : PUBLIC_API_URL;
 };
 
 export const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || getDefaultApiUrl();
@@ -22,6 +23,33 @@ const API_URL = `${API_BASE_URL}/api`;
 const normalizeApiUrl = (value) => {
   const url = String(value || '').trim().replace(/\/+$/, '');
   return /^https?:\/\//i.test(url) ? url : '';
+};
+
+const canUseApiUrl = async (baseUrl) => {
+  const normalized = normalizeApiUrl(baseUrl);
+  if (!normalized) return false;
+
+  if (apiHealthCache.has(normalized)) {
+    return apiHealthCache.get(normalized);
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 4000);
+    const response = await fetch(`${normalized}/health?t=${Date.now()}`, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: { Accept: 'text/plain, application/json' },
+      signal: controller.signal,
+    });
+    window.clearTimeout(timeout);
+    const healthy = response.ok;
+    apiHealthCache.set(normalized, healthy);
+    return healthy;
+  } catch {
+    apiHealthCache.set(normalized, false);
+    return false;
+  }
 };
 
 const isLocalApi = () => {
@@ -36,6 +64,7 @@ export const getRuntimeApiBaseUrl = async () => {
 
   runtimeApiUrlPromise = (async () => {
     const cached = normalizeApiUrl(localStorage.getItem(RUNTIME_CACHE_KEY));
+    const candidates = [];
 
     try {
       const response = await fetch(`${RUNTIME_API_CONFIG_URL}?t=${Date.now()}`, {
@@ -47,12 +76,21 @@ export const getRuntimeApiBaseUrl = async () => {
         const config = await response.json();
         const runtimeUrl = normalizeApiUrl(config.apiUrl || config.api_url || config.url);
         if (runtimeUrl) {
-          localStorage.setItem(RUNTIME_CACHE_KEY, runtimeUrl);
-          return runtimeUrl;
+          candidates.push(runtimeUrl);
         }
       }
     } catch {
       // Mantém a última ponte funcional em cache quando a configuração pública oscila.
+    }
+
+    if (cached) candidates.push(cached);
+    candidates.push(API_BASE_URL);
+
+    for (const candidate of [...new Set(candidates.filter(Boolean))]) {
+      if (await canUseApiUrl(candidate)) {
+        localStorage.setItem(RUNTIME_CACHE_KEY, candidate);
+        return candidate;
+      }
     }
 
     return cached || API_BASE_URL;
@@ -69,6 +107,11 @@ const normalizeRecord = (record) => {
     preco_promocional: record.preco_promocional ?? record.precoPromocional,
     imagem_url: record.imagem_url ?? record.imagemUrl,
     categoria_id: record.categoria_id ?? record.categoriaId,
+    subcategoria_id: record.subcategoria_id ?? record.subcategoriaId,
+    categoria_pai_id: record.categoria_pai_id ?? record.categoriaPaiId,
+    nivel: record.nivel ?? record.Nivel,
+    caminho: record.caminho ?? record.Caminho,
+    ordem: record.ordem ?? record.Ordem,
     cpf: record.cpf ?? record.cpfCnpj ?? record.cpf_cnpj,
     documento: record.documento ?? record.cnpj ?? record.cpfCnpj ?? record.cpf_cnpj,
     numero_pedido: record.numero_pedido ?? record.numeroPedido,
@@ -76,6 +119,9 @@ const normalizeRecord = (record) => {
     meio_pagamento: record.meio_pagamento ?? record.meioPagamento,
     gateway_pagamento: record.gateway_pagamento ?? record.gatewayPagamento,
     gateway_transacao_id: record.gateway_transacao_id ?? record.gatewayTransacaoId,
+    parcelas: record.parcelas ?? record.Parcelas,
+    pix_qrcode: record.pix_qrcode ?? record.pixQrcode,
+    payment_url: record.payment_url ?? record.paymentUrl,
     frete_valor: record.frete_valor ?? record.freteValor,
     frete_metodo: record.frete_metodo ?? record.freteMetodo,
     frete_transportadora: record.frete_transportadora ?? record.freteTransportadora,
@@ -172,6 +218,12 @@ export const lojaAPI = {
   getById: (id) => api.get(`/lojas/${id}`),
 };
 
+export const siteAPI = {
+  getPublicConfig: () => api.get('/site/configuracoes/publico'),
+  getAll: () => api.get('/site/configuracoes'),
+  update: (itens) => api.put('/site/configuracoes', { itens }),
+};
+
 export const produtoAPI = {
   getAll: (params) => api.get('/produtos', { params }),
   getDestaques: () => api.get('/produtos/destaques'),
@@ -195,12 +247,25 @@ export const pedidoAPI = {
 
 export const clienteAPI = {
   getAll: () => api.get('/clientes'),
+  verificarCadastro: (params) => api.get('/clientes/verificar', { params }),
   create: (data) => api.post('/clientes', data),
+  getPortal: () => api.get('/clientes/portal/me'),
 };
 
 export const fornecedorAPI = {
   getAll: () => api.get('/fornecedores'),
   create: (data) => api.post('/fornecedores', data),
+};
+
+export const empresaGrupoAPI = {
+  getAll: () => api.get('/erp/empresas'),
+  create: (data) => api.post('/erp/empresas', data),
+};
+
+export const fiscalAPI = {
+  getPedidos: () => api.get('/fiscal/pedidos'),
+  getPdvConfiguracoes: () => api.get('/fiscal/pdv/configuracoes'),
+  simularRoteamento: (data) => api.post('/fiscal/simular-roteamento', data),
 };
 
 export const leadAPI = {
