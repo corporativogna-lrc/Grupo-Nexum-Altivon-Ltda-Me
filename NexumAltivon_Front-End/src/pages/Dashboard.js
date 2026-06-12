@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { categoriaAPI, clienteAPI, dashboardAPI, empresaGrupoAPI, fiscalAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI } from '../services/api';
+import { categoriaAPI, clienteAPI, dashboardAPI, empresaGrupoAPI, fiscalAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI, siteAPI } from '../services/api';
 import { fallbackCategories, fallbackLeads, fallbackPedidos, fallbackProducts, fallbackResumo } from '../data/mockStore';
 import { formatDate, formatPrice, getLeadStatusClass, getPagamentoLabel, getPedidoStatusClass } from '../utils/formatters';
 import {
@@ -52,6 +52,7 @@ const tabs = [
   { id: 'erp-compras', label: 'Compras', icon: ShoppingBag, section: 'Gestão', badge: 'fornec' },
   { id: 'erp-relatorios', label: 'Relatórios', icon: TrendingUp, section: 'Gestão', badge: 'kpi' },
   { id: 'integracoes', label: 'Integrações', icon: Globe2, section: 'Integrações', badge: 'paralelo' },
+  { id: 'configuracoes-site', label: 'Site & Banners', icon: Cog, section: 'Sistema', badge: 'home' },
 ];
 
 const cadastroTabs = [
@@ -213,6 +214,16 @@ const integrationGuides = {
 const navSections = ['Principal', 'Cadastros', 'Gestão', 'Marketing & CRM', 'Integrações', 'Sistema'];
 const validTabIds = new Set(tabs.map((tab) => tab.id));
 const validCadastroIds = new Set(cadastroTabs.map((tab) => tab.id));
+const integrationCredentialCategoryMap = {
+  gateways: ['gateway'],
+  mercadopago: ['gateway'],
+  logistica: ['logistica'],
+  melhorenvio: ['logistica'],
+  dropshipping: ['dropshipping'],
+  marketplaces: ['marketplace'],
+  mercadolivre: ['marketplace'],
+  bancaria: ['bancaria'],
+};
 
 const fallbackClientes = [
   { id: 1, nome: 'Ana Carolina Silva', email: 'ana.silva@email.com', telefone: '(14) 99876-5432', cpf: '123.456.789-00' },
@@ -329,6 +340,40 @@ const emptyEmpresaGrupo = {
   contratoResumo: '',
   observacoes: '',
 };
+const emptySiteConfigForm = {
+  site_nome: 'Grupo Nexum Altivon',
+  site_email_contato: 'corporativo.gna@gmail.com',
+  site_telefone: '(14) 99673-1879',
+  site_telefone_secundario: '(14) 99634-8409',
+  site_whatsapp: '5514996731879',
+  site_whatsapp_secundario: '5514996348409',
+  site_yara_email: 'corporativo.gna@gmail.com',
+  home_intro_titulo: 'Uma Nova Era Começa',
+  home_intro_texto_1: 'A Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro.',
+  home_intro_texto_2: 'Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso.',
+  home_intro_badge: 'www.nexumaltivon.com',
+  home_footer_texto: 'Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas.',
+  home_quality_items: '["Curadoria rigorosa de fornecedores","Atendimento humano e especializado","Política de devolução simplificada","Preços justos e acessíveis"]',
+  home_partner_cards: '[{"title":"Parceiros de Vendas","text":"Lojas físicas ou online podem ampliar seus horizontes de venda com nossa infraestrutura comercial e operação integrada.","cta":"Quero Vender","href":"https://wa.me/5514996731879?text=Olá! Tenho interesse em ser parceiro de vendas do Grupo Nexum Altivon.","icon":"Store"}]',
+  home_hero_slides: '[{"id":"ecommerce","badge":"Grupo Nexum Altivon","title":"O Futuro do","highlight":"E-Commerce","description":"Seis lojas, uma operação conectada e uma proposta premium para transformar a experiência de compra online.","image":"https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1920&q=88"}]',
+};
+const siteConfigFieldMeta = [
+  { key: 'site_nome', label: 'Nome do site', type: 'text', group: 'Geral', description: 'Nome público principal da operação.' },
+  { key: 'site_email_contato', label: 'E-mail público', type: 'text', group: 'Geral', description: 'Destino principal das mensagens do site.' },
+  { key: 'site_telefone', label: 'Telefone Rodrigo', type: 'text', group: 'Geral', description: 'Contato principal exibido na home.' },
+  { key: 'site_telefone_secundario', label: 'Telefone Vinicios', type: 'text', group: 'Geral', description: 'Contato secundário exibido na home.' },
+  { key: 'site_whatsapp', label: 'WhatsApp principal', type: 'text', group: 'Geral', description: 'Número usado em links do site.' },
+  { key: 'site_whatsapp_secundario', label: 'WhatsApp secundário', type: 'text', group: 'Geral', description: 'Número usado em parceria/fornecedores.' },
+  { key: 'site_yara_email', label: 'E-mail da Yara', type: 'text', group: 'Atendimento', description: 'Canal atual da Yara para atendimento comercial.' },
+  { key: 'home_intro_titulo', label: 'Título institucional', type: 'text', group: 'SiteHome', description: 'Título principal do bloco institucional.' },
+  { key: 'home_intro_texto_1', label: 'Texto institucional 1', type: 'textarea', group: 'SiteHome', description: 'Primeiro texto institucional da home.' },
+  { key: 'home_intro_texto_2', label: 'Texto institucional 2', type: 'textarea', group: 'SiteHome', description: 'Segundo texto institucional da home.' },
+  { key: 'home_intro_badge', label: 'Selo institucional', type: 'text', group: 'SiteHome', description: 'Texto do selo abaixo do bloco institucional.' },
+  { key: 'home_footer_texto', label: 'Rodapé público', type: 'textarea', group: 'SiteHome', description: 'Mensagem institucional no rodapé da home.' },
+  { key: 'home_quality_items', label: 'Itens de qualidade (JSON)', type: 'textarea', group: 'SiteHome', description: 'Array JSON de frases do bloco de qualidade.' },
+  { key: 'home_partner_cards', label: 'Cards de parceria (JSON)', type: 'textarea', group: 'SiteHome', description: 'Array JSON com title, text, cta, href e icon.' },
+  { key: 'home_hero_slides', label: 'Slides do banner (JSON)', type: 'textarea', group: 'SiteHome', description: 'Array JSON com id, badge, title, highlight, description e image.' },
+];
 const pedidoStatusOptions = ['Pendente', 'Processando', 'Enviado', 'Entregue', 'Cancelado'];
 const leadStatusOptions = ['Novo', 'Contato', 'Qualificado', 'Negociacao', 'Ganho', 'Perdido'];
 const allowDemoData = process.env.NODE_ENV !== 'production';
@@ -541,6 +586,9 @@ export default function Dashboard() {
   const [empresasGrupo, setEmpresasGrupo] = useState(allowDemoData ? fallbackEmpresasGrupo : []);
   const [fiscalPedidos, setFiscalPedidos] = useState([]);
   const [integracoes, setIntegracoes] = useState(fallbackIntegracoes);
+  const [credenciaisModelo, setCredenciaisModelo] = useState([]);
+  const [siteConfigItems, setSiteConfigItems] = useState([]);
+  const [siteConfigForm, setSiteConfigForm] = useState(emptySiteConfigForm);
   const [loading, setLoading] = useState(true);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [activeTab, setActiveTab] = useState(routeState.activeTab);
@@ -556,7 +604,7 @@ export default function Dashboard() {
 
   const loadData = useCallback(async () => {
     try {
-      const [resumoRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, empresasGrupoRes, fiscalPedidosRes, integracoesRes] = await Promise.all([
+      const [resumoRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, empresasGrupoRes, fiscalPedidosRes, integracoesRes, credenciaisRes, siteConfigRes] = await Promise.all([
         dashboardAPI.getResumo(),
         pedidoAPI.getAll(),
         leadAPI.getAll(),
@@ -569,6 +617,8 @@ export default function Dashboard() {
         integracoesAPI.getDiagnostico()
           .catch(() => integracoesAPI.getStatus())
           .catch(() => ({ data: fallbackIntegracoes })),
+        integracoesAPI.getCredenciaisModelo().catch(() => ({ data: [] })),
+        siteAPI.getAll().catch(() => ({ data: [] })),
       ]);
       if (resumoRes.data) setResumo({ ...fallbackResumo, ...resumoRes.data });
       if (Array.isArray(pedidosRes.data) && pedidosRes.data.length > 0) setPedidos(pedidosRes.data);
@@ -580,6 +630,13 @@ export default function Dashboard() {
       if (Array.isArray(empresasGrupoRes.data) && empresasGrupoRes.data.length > 0) setEmpresasGrupo(empresasGrupoRes.data);
       if (Array.isArray(fiscalPedidosRes.data) && fiscalPedidosRes.data.length > 0) setFiscalPedidos(fiscalPedidosRes.data);
       if (Array.isArray(integracoesRes.data) && integracoesRes.data.length > 0) setIntegracoes(integracoesRes.data);
+      if (Array.isArray(credenciaisRes.data) && credenciaisRes.data.length > 0) setCredenciaisModelo(credenciaisRes.data);
+      if (Array.isArray(siteConfigRes.data) && siteConfigRes.data.length > 0) {
+        setSiteConfigItems(siteConfigRes.data);
+        setSiteConfigForm((current) =>
+          siteConfigRes.data.reduce((acc, item) => ({ ...acc, [item.chave]: item.valor ?? '' }), { ...current }),
+        );
+      }
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
         console.error('Erro:', error);
@@ -754,6 +811,38 @@ export default function Dashboard() {
     setLeads((current) => [response.data, ...current]);
     setLeadForm(emptyLead);
     setFormStatus('Lead cadastrado no CRM.');
+  };
+
+  const submitSiteConfiguracoes = async (event) => {
+    event.preventDefault();
+    setFormStatus('');
+
+    const payload = siteConfigFieldMeta.map((field) => {
+      const existing = siteConfigItems.find((item) => item.chave === field.key);
+      const value = siteConfigForm[field.key] ?? '';
+      return {
+        chave: field.key,
+        valor: value,
+        tipo: field.type === 'textarea' && String(value).trim().startsWith('[') ? 'JSON' : existing?.tipo || 'Texto',
+        descricao: existing?.descricao || field.description,
+        grupo: existing?.grupo || field.group,
+        editavel: existing?.editavel ?? true,
+      };
+    });
+
+    await siteAPI.update(payload);
+
+    setSiteConfigItems(payload.map((item, index) => ({
+      id: siteConfigItems.find((config) => config.chave === item.chave)?.id || index + 1,
+      chave: item.chave,
+      valor: item.valor,
+      tipo: item.tipo,
+      descricao: item.descricao,
+      grupo: item.grupo,
+      editavel: item.editavel,
+      updatedAt: new Date().toISOString(),
+    })));
+    setFormStatus('Configurações da home, banners e contatos salvas no banco com sucesso.');
   };
 
   const submitEmpresaGrupo = async (event) => {
@@ -1803,6 +1892,67 @@ export default function Dashboard() {
                 </section>
               )}
 
+              {activeTab === 'configuracoes-site' && (
+                <section className="space-y-6">
+                  <ErpModuleHero
+                    eyebrow="Portal de vendas"
+                    title="Configurações públicas da home"
+                    description="Tudo o que aparece na vitrine principal deve sair do banco: banners, contatos, Yara, textos institucionais e cards de parceria."
+                  />
+                  <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
+                    <form onSubmit={submitSiteConfiguracoes} className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <h3 className="text-lg font-black text-slate-950">Editor da home comercial</h3>
+                          <p className="mt-1 text-sm text-slate-500">Salvar aqui atualiza o banco e prepara a home para banners, anúncios e contatos reais.</p>
+                        </div>
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-slate-600">
+                          {siteConfigItems.length || siteConfigFieldMeta.length} chaves
+                        </span>
+                      </div>
+                      <div className="mt-6 grid gap-4">
+                        {siteConfigFieldMeta.map((field) => (
+                          <label key={field.key} className="block text-sm font-bold text-slate-700">
+                            {field.label}
+                            {field.type === 'textarea' ? (
+                              <textarea
+                                value={siteConfigForm[field.key] ?? ''}
+                                onChange={(event) => setSiteConfigForm((current) => ({ ...current, [field.key]: event.target.value }))}
+                                className="mt-2 min-h-28 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+                              />
+                            ) : (
+                              <input
+                                type="text"
+                                value={siteConfigForm[field.key] ?? ''}
+                                onChange={(event) => setSiteConfigForm((current) => ({ ...current, [field.key]: event.target.value }))}
+                                className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+                              />
+                            )}
+                            <span className="mt-2 block text-xs font-semibold text-slate-400">{field.description}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <button className="mt-5 inline-flex h-11 items-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-black text-white">
+                        <Save size={17} />
+                        Salvar configuração pública
+                      </button>
+                    </form>
+                    <div className="space-y-6">
+                      <ErpChecklistCard
+                        title="O que já vinha pronto no banco"
+                        items={[
+                          'A tabela configuracoes_sistema já existia mas não estava servindo a home.',
+                          'Havia divergência de porta entre 3309 e 3306 na configuração da API.',
+                          'Banners, contatos e blocos institucionais estavam presos no front e não no banco.',
+                          'Agora a trilha comercial volta para o caminho certo: vitrine configurável sem mexer em código.',
+                        ]}
+                      />
+                      <CompactList title="Chaves carregadas do banco" items={siteConfigItems} fields={['chave', 'grupo', 'tipo']} />
+                    </div>
+                  </div>
+                </section>
+              )}
+
               {activeTab === 'integracoes' && (
                 <section className="space-y-6">
                   <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -1822,6 +1972,7 @@ export default function Dashboard() {
                     <IntegrationWorkspace
                       integracao={integracoes.find((item) => item.slug === activeIntegration)}
                       guide={integrationGuides[activeIntegration]}
+                      credenciaisModelo={credenciaisModelo}
                       onBack={() => navigate('/dashboard/integracoes')}
                     />
                   ) : (
@@ -2073,7 +2224,7 @@ function IntegrationCard({ integracao, onOpen }) {
   );
 }
 
-function IntegrationWorkspace({ integracao, guide, onBack }) {
+function IntegrationWorkspace({ integracao, guide, credenciaisModelo = [], onBack }) {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
 
@@ -2093,6 +2244,8 @@ function IntegrationWorkspace({ integracao, guide, onBack }) {
   const referencia = testResult?.referencia || integracao.referencia;
   const detalhe = testResult?.detalhe || integracao.detalhe;
   const status = testResult?.status || integracao.status;
+  const credentialCategories = integrationCredentialCategoryMap[integracao.slug] || [];
+  const relevantCredentials = credenciaisModelo.filter((item) => credentialCategories.includes((item.categoria || item.Categoria || '').toLowerCase()));
 
   const runTest = async () => {
     setTesting(true);
@@ -2165,6 +2318,34 @@ function IntegrationWorkspace({ integracao, guide, onBack }) {
               ))}
             </div>
           </div>
+          {relevantCredentials.length > 0 && (
+            <div className="mt-6">
+              <h4 className="font-black text-slate-950">Credenciais já preparadas no sistema</h4>
+              <div className="mt-3 grid gap-3">
+                {relevantCredentials.map((credencial) => {
+                  const provider = credencial.provedor || credencial.Provedor;
+                  const key = credencial.chave || credencial.Chave;
+                  const usage = credencial.uso || credencial.Uso;
+                  const required = credencial.obrigatoria ?? credencial.Obrigatoria;
+
+                  return (
+                    <div key={`${provider}-${key}`} className="rounded-lg border border-slate-100 bg-slate-50 p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-sm font-black text-slate-950">{provider}</p>
+                          <p className="mt-1 break-all text-xs font-black uppercase tracking-[0.12em] text-slate-500">{key}</p>
+                          <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{usage}</p>
+                        </div>
+                        <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-wide ${required ? 'bg-red-50 text-red-800' : 'bg-blue-50 text-blue-800'}`}>
+                          {required ? 'Obrigatória' : 'Estrutural'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
         <aside className="space-y-4">
           <div className="rounded-lg border border-slate-200 bg-slate-950 p-6 text-white shadow-sm">

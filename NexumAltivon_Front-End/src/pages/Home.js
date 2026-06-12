@@ -24,7 +24,7 @@ import {
   UserPlus,
   Watch,
 } from 'lucide-react';
-import { clienteAPI } from '../services/api';
+import { clienteAPI, siteAPI } from '../services/api';
 
 const heroSlides = [
   {
@@ -168,26 +168,67 @@ const parceiros = [
   },
 ];
 
+const partnerIconMap = {
+  Store,
+  Truck,
+  Building2,
+};
+
 const normalizeText = (value) => String(value || '').trim().toLowerCase();
 const normalizeDocument = (value) => String(value || '').replace(/\D/g, '');
-const yaraMailTo =
-  'mailto:corporativo.gna@gmail.com?subject=Yara%20-%20Atendimento%20de%20vendas&body=Ol%C3%A1%20Yara%2C%20preciso%20de%20ajuda%20com%20assuntos%20da%20empresa%2C%20produtos%20ou%20d%C3%BAvidas%20sobre%20a%20compra.';
-
 export default function Home() {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [siteConfig, setSiteConfig] = useState(null);
   const [cadastroForm, setCadastroForm] = useState(emptyCadastro);
   const [cadastroStatus, setCadastroStatus] = useState({ tone: '', message: '' });
   const [loadingCadastro, setLoadingCadastro] = useState(false);
 
+  const displaySlides = Array.isArray(siteConfig?.heroSlides) && siteConfig.heroSlides.length > 0 ? siteConfig.heroSlides : heroSlides;
+  const activeSlide = displaySlides[currentSlide] || displaySlides[0] || heroSlides[0];
+  const qualityItems = Array.isArray(siteConfig?.qualityItems) && siteConfig.qualityItems.length > 0 ? siteConfig.qualityItems : qualidade;
+  const partnerCards = Array.isArray(siteConfig?.partnerCards) && siteConfig.partnerCards.length > 0 ? siteConfig.partnerCards : parceiros;
+  const introTitle = siteConfig?.introTitle || 'Uma Nova Era Começa';
+  const introText1 =
+    siteConfig?.introText1 || 'A Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro.';
+  const introText2 =
+    siteConfig?.introText2 || 'Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso.';
+  const introBadge = siteConfig?.introBadge || 'www.nexumaltivon.com';
+  const primaryPhone = siteConfig?.primaryPhone || '+55 (14) 99673-1879';
+  const secondaryPhone = siteConfig?.secondaryPhone || '+55 (14) 99634-8409';
+  const publicContactEmail = siteConfig?.contactEmail || 'corporativo.gna@gmail.com';
+  const yaraEmail = siteConfig?.yaraEmail || publicContactEmail;
+  const yaraMailTo = `mailto:${encodeURIComponent(yaraEmail)}?subject=Yara%20-%20Atendimento%20de%20vendas&body=Ol%C3%A1%20Yara%2C%20preciso%20de%20ajuda%20com%20assuntos%20da%20empresa%2C%20produtos%20ou%20d%C3%BAvidas%20sobre%20a%20compra.`;
+
   useEffect(() => {
     const interval = window.setInterval(() => {
-      setCurrentSlide((slide) => (slide + 1) % heroSlides.length);
+      setCurrentSlide((slide) => (slide + 1) % displaySlides.length);
     }, 5000);
 
     return () => window.clearInterval(interval);
+  }, [displaySlides.length]);
+
+  useEffect(() => {
+    let active = true;
+
+    siteAPI
+      .getPublicConfig()
+      .then((response) => {
+        if (active && response.data) {
+          setSiteConfig(response.data);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
   }, []);
 
-  const activeSlide = heroSlides[currentSlide];
+  useEffect(() => {
+    if (currentSlide >= displaySlides.length) {
+      setCurrentSlide(0);
+    }
+  }, [currentSlide, displaySlides.length]);
 
   const cadastroDuplicadoLocal = useMemo(() => {
     if (!cadastroStatus.message || cadastroStatus.tone !== 'info') return false;
@@ -195,12 +236,12 @@ export default function Home() {
   }, [cadastroStatus]);
 
   const changeSlide = (direction) => {
-    setCurrentSlide((slide) => {
-      if (direction === 'prev') {
-        return slide === 0 ? heroSlides.length - 1 : slide - 1;
+      setCurrentSlide((slide) => {
+        if (direction === 'prev') {
+        return slide === 0 ? displaySlides.length - 1 : slide - 1;
       }
 
-      return (slide + 1) % heroSlides.length;
+      return (slide + 1) % displaySlides.length;
     });
   };
 
@@ -268,7 +309,7 @@ export default function Home() {
   return (
     <main className="nexum-front-original bg-[#050505] text-[#f5f5f5]">
       <section id="home" className="relative min-h-[84vh] overflow-hidden">
-        {heroSlides.map((slide, index) => (
+        {displaySlides.map((slide, index) => (
           <div
             key={slide.id}
             className={`absolute inset-0 transition-opacity duration-1000 ${index === currentSlide ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
@@ -308,7 +349,7 @@ export default function Home() {
             </div>
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
-              {heroSlides.map((slide, index) => (
+              {displaySlides.map((slide, index) => (
                 <button
                   key={slide.id}
                   type="button"
@@ -344,17 +385,16 @@ export default function Home() {
       <section className="relative overflow-hidden bg-gradient-to-br from-[#0A0A0A] to-[#1A1A1A] px-4 py-20 text-center">
         <div className="absolute left-1/2 top-0 h-96 w-96 -translate-x-1/2 rounded-full bg-[#C9A227]/5 blur-3xl" />
         <div className="relative mx-auto max-w-4xl">
-          <h2 className="font-serif text-4xl font-bold text-[#C9A227]">Uma Nova Era Começa</h2>
+          <h2 className="font-serif text-4xl font-bold text-[#C9A227]">{introTitle}</h2>
           <p className="mt-7 text-lg leading-8 text-zinc-100">
-            A <strong className="text-[#C9A227]">Nexum Altivon</strong> está chegando para transformar e inovar o mercado digital brasileiro.
+            {introText1}
           </p>
           <p className="mt-4 text-lg leading-8 text-zinc-100">
-            Nosso compromisso é claro: entregar <strong className="text-[#C9A227]">qualidade superior</strong>, atendimento que faz a diferença e
-            <strong className="text-[#C9A227]"> preços acessíveis</strong> que respeitam o seu bolso.
+            {introText2}
           </p>
           <p className="mt-4 text-zinc-400">Seis marcas. Uma visão. Milhares de produtos escolhidos a dedo para você.</p>
           <div className="mx-auto mt-8 inline-flex rounded-full border border-[#C9A227]/35 bg-[#C9A227]/10 px-6 py-3 text-sm font-black uppercase tracking-[0.18em] text-[#E8D5A3]">
-            www.nexumaltivon.com
+            {introBadge}
           </div>
         </div>
       </section>
@@ -379,7 +419,7 @@ export default function Home() {
               {[
                 'Verificação prévia de e-mail e documento antes do envio.',
                 'Mesmo cadastro reutilizado no checkout e nos fluxos comerciais.',
-                'Base preparada para relacionamento, histórico e futuras áreas do cliente.',
+                'Base preparada para relacionamento, histórico, NFs e futuras áreas do cliente.',
               ].map((item) => (
                 <div key={item} className="flex items-start gap-3 rounded-xl border border-[#2A2A2A] bg-black/30 px-4 py-4 text-sm font-semibold text-zinc-100">
                   <BadgeCheck className="mt-0.5 text-[#C9A227]" size={18} />
@@ -557,7 +597,7 @@ export default function Home() {
               curadoria e análise para atender aos padrões do mercado.
             </p>
             <div className="mt-8 grid gap-3">
-              {qualidade.map((item) => (
+              {qualityItems.map((item) => (
                 <div key={item} className="flex items-center gap-3 rounded-lg border border-[#2A2A2A] bg-[#0A0A0A] px-4 py-3 text-sm font-semibold text-zinc-100">
                   <Check className="text-[#C9A227]" size={18} />
                   {item}
@@ -592,8 +632,8 @@ export default function Home() {
             O Grupo Nexum Altivon está construindo uma rede forte de parcerias para venda, fornecimento e dropshipping.
           </p>
           <div className="mt-12 grid gap-6 lg:grid-cols-3">
-            {parceiros.map((item) => {
-              const Icon = item.icon;
+            {partnerCards.map((item) => {
+              const Icon = typeof item.icon === 'string' ? partnerIconMap[item.icon] || Building2 : item.icon;
               return (
                 <article key={item.title} className="rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] p-8 text-left transition hover:border-[#C9A227]">
                   <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#C9A227] text-black">
@@ -621,7 +661,10 @@ export default function Home() {
         <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-4 sm:px-6 md:flex-row md:items-center lg:px-8">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.25em] text-[#E8D5A3]">Grupo Nexum Altivon</p>
-            <p className="mt-3 text-sm leading-7 text-zinc-400">Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas.</p>
+            <p className="mt-3 text-sm leading-7 text-zinc-400">{siteConfig?.footerText || 'Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas.'}</p>
+            <p className="mt-2 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
+              Rodrigo: {primaryPhone} · Vinicios: {secondaryPhone} · {publicContactEmail}
+            </p>
           </div>
           <div className="flex flex-wrap gap-3">
             <a

@@ -210,6 +210,12 @@ export const lojaAPI = {
   getById: (id) => api.get(`/lojas/${id}`),
 };
 
+export const siteAPI = {
+  getPublicConfig: () => api.get('/site/configuracoes/publico'),
+  getAll: () => api.get('/site/configuracoes'),
+  update: (itens) => api.put('/site/configuracoes', { itens }),
+};
+
 export const produtoAPI = {
   getAll: (params) => api.get('/produtos', { params }),
   getDestaques: () => api.get('/produtos/destaques'),

@@ -323,6 +323,109 @@ app.MapGet("/api/lojas", async (NexumDbContext db, CancellationToken ct) =>
 .WithName("Lojas")
 ;
 
+app.MapGet("/api/site/configuracoes/publico", async (NexumDbContext db, CancellationToken ct) =>
+{
+    var configs = await db.ConfiguracoesSistema
+        .AsNoTracking()
+        .ToListAsync(ct);
+
+    var configMap = configs
+        .GroupBy(item => item.Chave, StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(group => group.Key, group => group.Last().Valor, StringComparer.OrdinalIgnoreCase);
+
+    var publicConfig = BuildPublicSiteConfig(configMap);
+    return Results.Ok(ApiResponse<SiteConfiguracaoPublicaDto>.Ok(publicConfig));
+})
+.AllowAnonymous()
+.WithName("SiteConfiguracoesPublicas")
+;
+
+app.MapGet("/api/site/configuracoes", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var items = await db.ConfiguracoesSistema
+        .AsNoTracking()
+        .OrderBy(item => item.Grupo)
+        .ThenBy(item => item.Chave)
+        .Select(item => new SiteConfiguracaoItemDto(
+            item.Id,
+            item.Chave,
+            item.Valor,
+            item.Tipo.ToString(),
+            item.Descricao,
+            item.Grupo,
+            item.Editavel,
+            item.UpdatedAt))
+        .ToListAsync(ct);
+
+    return Results.Ok(ApiResponse<List<SiteConfiguracaoItemDto>>.Ok(items));
+})
+.WithName("SiteConfiguracoesAdmin")
+;
+
+app.MapPut("/api/site/configuracoes", [Authorize(Policy = "Gerente")] async (SiteConfiguracaoUpdateRequest request, NexumDbContext db, CancellationToken ct) =>
+{
+    if (request.Itens is null || request.Itens.Count == 0)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Nenhuma configuração foi enviada."));
+    }
+
+    var requestedKeys = request.Itens
+        .Where(item => !string.IsNullOrWhiteSpace(item.Chave))
+        .Select(item => item.Chave.Trim())
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    var existing = await db.ConfiguracoesSistema
+        .Where(item => requestedKeys.Contains(item.Chave))
+        .ToListAsync(ct);
+
+    foreach (var item in request.Itens)
+    {
+        var chave = item.Chave?.Trim();
+        if (string.IsNullOrWhiteSpace(chave))
+        {
+            continue;
+        }
+
+        var entity = existing.FirstOrDefault(config => string.Equals(config.Chave, chave, StringComparison.OrdinalIgnoreCase));
+        if (entity is null)
+        {
+            entity = new ConfiguracaoSistema
+            {
+                Chave = chave,
+                CreatedAt = DateTime.UtcNow
+            };
+            db.ConfiguracoesSistema.Add(entity);
+            existing.Add(entity);
+        }
+
+        entity.Valor = item.Valor?.Trim();
+        entity.Descricao = item.Descricao?.Trim();
+        entity.Grupo = item.Grupo?.Trim();
+        entity.Editavel = item.Editavel ?? true;
+        entity.UpdatedAt = DateTime.UtcNow;
+
+        if (Enum.TryParse<TipoConfiguracao>(item.Tipo, true, out var tipo))
+        {
+            entity.Tipo = tipo;
+        }
+        else if (LooksLikeJson(entity.Valor))
+        {
+            entity.Tipo = TipoConfiguracao.JSON;
+        }
+        else
+        {
+            entity.Tipo = TipoConfiguracao.Texto;
+        }
+    }
+
+    await db.SaveChangesAsync(ct);
+
+    return Results.Ok(ApiResponse<string>.Ok("ok", "Configurações públicas do site atualizadas com sucesso."));
+})
+.WithName("AtualizarSiteConfiguracoes")
+;
+
 app.MapGet("/api/categorias", async (NexumDbContext db, CancellationToken ct) =>
 {
     var categorias = await db.Categorias
@@ -1644,6 +1747,10 @@ app.MapGet("/api/integracoes/credenciais-modelo", [Authorize(Policy = "Gerente")
         new("Gateway secundário", "gateway", "GatewaySecundario__Provider / GatewaySecundario__AccessToken / GatewaySecundario__PublicKey / GatewaySecundario__WebhookSecret", "Estrutura reserva para o segundo gateway adicional e contingência de cobrança.", false),
         new("Melhor Envio", "logistica", "MelhorEnvio__Token", "Token Bearer do Melhor Envio para cotação, compra de frete e etiqueta.", true),
         new("Melhor Envio", "logistica", "MelhorEnvio__Sandbox", "true para homologação; false para produção.", false),
+        new("Logística principal", "logistica", "LogisticaPrincipal__Provider / LogisticaPrincipal__ApiEndpoint / LogisticaPrincipal__Token / LogisticaPrincipal__ClientId / LogisticaPrincipal__ClientSecret", "Estrutura para a principal transportadora/hub escolhida para produção.", false),
+        new("Logística secundária", "logistica", "LogisticaSecundaria__Provider / LogisticaSecundaria__ApiEndpoint / LogisticaSecundaria__Token / LogisticaSecundaria__ClientId / LogisticaSecundaria__ClientSecret", "Estrutura de contingência para uma segunda transportadora ou hub logístico.", false),
+        new("Dropshipping principal", "dropshipping", "DropshippingPrincipal__Provider / DropshippingPrincipal__ApiEndpoint / DropshippingPrincipal__ApiKey / DropshippingPrincipal__ApiSecret", "Canal principal de dropshipping preparado para receber as credenciais reais.", false),
+        new("Dropshipping secundário", "dropshipping", "DropshippingSecundario__Provider / DropshippingSecundario__ApiEndpoint / DropshippingSecundario__ApiKey / DropshippingSecundario__ApiSecret", "Canal secundário para contingência ou operação paralela de dropshipping.", false),
         new("Mercado Livre", "marketplace", "MercadoLivre__AppId", "ID do aplicativo Mercado Livre.", true),
         new("Mercado Livre", "marketplace", "MercadoLivre__ClientSecret", "Segredo do aplicativo Mercado Livre.", true),
         new("Mercado Livre", "marketplace", "MercadoLivre__RedirectUri", "URL de retorno cadastrada exatamente no Mercado Livre.", true),
@@ -3483,6 +3590,98 @@ static string BuildLeadNotificationEmail(CrmLead lead)
     """;
 }
 
+static SiteConfiguracaoPublicaDto BuildPublicSiteConfig(IReadOnlyDictionary<string, string?> configMap)
+{
+    var contactEmail = GetConfigValue(configMap, "site_email_contato", "corporativo.gna@gmail.com");
+
+    return new SiteConfiguracaoPublicaDto(
+        GetConfigValue(configMap, "site_nome", "Grupo Nexum Altivon"),
+        GetConfigValue(configMap, "site_url", "https://www.nexumaltivon.com"),
+        contactEmail,
+        GetConfigValue(configMap, "site_telefone", "(14) 99673-1879"),
+        GetConfigValue(configMap, "site_telefone_secundario", "(14) 99634-8409"),
+        GetConfigValue(configMap, "site_whatsapp", "5514996731879"),
+        GetConfigValue(configMap, "site_whatsapp_secundario", "5514996348409"),
+        GetConfigValue(configMap, "site_yara_email", contactEmail),
+        GetConfigValue(configMap, "site_logo", "/assets/logo-2.jpg"),
+        ParseJsonList(GetConfigValue(configMap, "home_hero_slides", string.Empty), GetDefaultHeroSlides()),
+        GetConfigValue(configMap, "home_intro_titulo", "Uma Nova Era Começa"),
+        GetConfigValue(configMap, "home_intro_texto_1", "A Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro."),
+        GetConfigValue(configMap, "home_intro_texto_2", "Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso."),
+        GetConfigValue(configMap, "home_intro_badge", "www.nexumaltivon.com"),
+        ParseJsonStringList(GetConfigValue(configMap, "home_quality_items", string.Empty), [
+            "Curadoria rigorosa de fornecedores",
+            "Atendimento humano e especializado",
+            "Política de devolução simplificada",
+            "Preços justos e acessíveis"
+        ]),
+        ParseJsonList(GetConfigValue(configMap, "home_partner_cards", string.Empty), GetDefaultPartnerCards()),
+        GetConfigValue(configMap, "home_footer_texto", "Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas."));
+}
+
+static string GetConfigValue(IReadOnlyDictionary<string, string?> configMap, string key, string fallback) =>
+    configMap.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
+        ? value.Trim()
+        : fallback;
+
+static bool LooksLikeJson(string? value)
+{
+    var normalized = value?.Trim();
+    return !string.IsNullOrWhiteSpace(normalized)
+        && ((normalized.StartsWith("{") && normalized.EndsWith("}"))
+            || (normalized.StartsWith("[") && normalized.EndsWith("]")));
+}
+
+static List<string> ParseJsonStringList(string? json, List<string> fallback)
+{
+    if (string.IsNullOrWhiteSpace(json))
+    {
+        return fallback;
+    }
+
+    try
+    {
+        var parsed = JsonSerializer.Deserialize<List<string>>(json);
+        return parsed?.Where(item => !string.IsNullOrWhiteSpace(item)).Select(item => item.Trim()).ToList() ?? fallback;
+    }
+    catch
+    {
+        return fallback;
+    }
+}
+
+static List<T> ParseJsonList<T>(string? json, List<T> fallback)
+{
+    if (string.IsNullOrWhiteSpace(json))
+    {
+        return fallback;
+    }
+
+    try
+    {
+        var parsed = JsonSerializer.Deserialize<List<T>>(json);
+        return parsed is { Count: > 0 } ? parsed : fallback;
+    }
+    catch
+    {
+        return fallback;
+    }
+}
+
+static List<HeroSlideSiteDto> GetDefaultHeroSlides() =>
+[
+    new("ecommerce", "Grupo Nexum Altivon", "O Futuro do", "E-Commerce", "Seis lojas, uma operação conectada e uma proposta premium para transformar a experiência de compra online.", "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1920&q=88"),
+    new("marcas", "6 marcas em expansão", "Uma operação,", "múltiplos mercados", "Turismo, relógios, moda, tecnologia, construção e festas com a mesma curadoria comercial do Grupo Nexum Altivon.", "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=1920&q=88"),
+    new("tecnologia", "Experiência tecnológica", "Compra segura com", "atendimento humano", "Fluxos preparados para catálogo, clientes, pedidos, integrações e relacionamento com visão de crescimento contínuo.", "https://images.unsplash.com/photo-1524805444758-089113d48a6d?auto=format&fit=crop&w=1920&q=88")
+];
+
+static List<PartnerCardSiteDto> GetDefaultPartnerCards() =>
+[
+    new("Parceiros de Vendas", "Lojas físicas ou online podem ampliar seus horizontes de venda com nossa infraestrutura comercial e operação integrada.", "Quero Vender", "https://wa.me/5514996731879?text=Olá! Tenho interesse em ser parceiro de vendas do Grupo Nexum Altivon.", "Store"),
+    new("Fornecedores & Distribuidores", "Distribuidores e fabricantes encontram um canal de venda em crescimento, com visão de volume, relacionamento e longo prazo.", "Quero Fornecer", "https://wa.me/5514996348409?text=Olá! Sou fornecedor/distribuidor e tenho interesse em parceria com o Grupo Nexum Altivon.", "Truck"),
+    new("Dropshipping", "Integre seu catálogo às nossas lojas ou utilize nossa infraestrutura para conectar produtos, logística e novos canais.", "Quero Fazer Dropship", "https://wa.me/5514996731879?text=Olá! Tenho interesse em parceria de dropshipping com o Grupo Nexum Altivon.", "Building2")
+];
+
 static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogger logger)
 {
     using var scope = services.CreateScope();
@@ -3627,6 +3826,47 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS status_automacao VARCHAR(40) NULL;");
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS resumo_roteamento TEXT NULL;");
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS payload_operacao LONGTEXT NULL;");
+
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        CREATE TABLE IF NOT EXISTS configuracoes_sistema (
+            id INT NOT NULL AUTO_INCREMENT,
+            chave VARCHAR(100) NOT NULL,
+            valor TEXT NULL,
+            tipo VARCHAR(20) NOT NULL DEFAULT 'Texto',
+            descricao VARCHAR(255) NULL,
+            grupo VARCHAR(50) NULL,
+            editavel TINYINT(1) NOT NULL DEFAULT 1,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY ux_configuracoes_sistema_chave (chave),
+            KEY ix_configuracoes_sistema_grupo (grupo)
+        );
+        """);
+
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        INSERT INTO configuracoes_sistema (chave, valor, tipo, descricao, grupo, editavel)
+        VALUES
+            ('site_telefone_secundario', '(14) 99634-8409', 'Texto', 'Telefone comercial secundário', 'Geral', 1),
+            ('site_whatsapp_secundario', '5514996348409', 'Texto', 'WhatsApp comercial secundário', 'Geral', 1),
+            ('site_yara_email', 'corporativo.gna@gmail.com', 'Texto', 'E-mail de atendimento da Yara', 'Atendimento', 1),
+            ('home_intro_titulo', 'Uma Nova Era Começa', 'Texto', 'Título principal do bloco institucional da home', 'SiteHome', 1),
+            ('home_intro_texto_1', 'A Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro.', 'Texto', 'Primeiro texto institucional da home', 'SiteHome', 1),
+            ('home_intro_texto_2', 'Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso.', 'Texto', 'Segundo texto institucional da home', 'SiteHome', 1),
+            ('home_intro_badge', 'www.nexumaltivon.com', 'Texto', 'Texto do selo institucional da home', 'SiteHome', 1),
+            ('home_footer_texto', 'Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas.', 'Texto', 'Texto do rodapé público da home', 'SiteHome', 1),
+            ('home_quality_items', '["Curadoria rigorosa de fornecedores","Atendimento humano e especializado","Política de devolução simplificada","Preços justos e acessíveis"]', 'JSON', 'Itens do bloco de qualidade da home', 'SiteHome', 1),
+            ('home_partner_cards', '[{"title":"Parceiros de Vendas","text":"Lojas físicas ou online podem ampliar seus horizontes de venda com nossa infraestrutura comercial e operação integrada.","cta":"Quero Vender","href":"https://wa.me/5514996731879?text=Olá! Tenho interesse em ser parceiro de vendas do Grupo Nexum Altivon.","icon":"Store"},{"title":"Fornecedores & Distribuidores","text":"Distribuidores e fabricantes encontram um canal de venda em crescimento, com visão de volume, relacionamento e longo prazo.","cta":"Quero Fornecer","href":"https://wa.me/5514996348409?text=Olá! Sou fornecedor/distribuidor e tenho interesse em parceria com o Grupo Nexum Altivon.","icon":"Truck"},{"title":"Dropshipping","text":"Integre seu catálogo às nossas lojas ou utilize nossa infraestrutura para conectar produtos, logística e novos canais.","cta":"Quero Fazer Dropship","href":"https://wa.me/5514996731879?text=Olá! Tenho interesse em parceria de dropshipping com o Grupo Nexum Altivon.","icon":"Building2"}]', 'JSON', 'Cards de parceria da home', 'SiteHome', 1),
+            ('home_hero_slides', '[{"id":"ecommerce","badge":"Grupo Nexum Altivon","title":"O Futuro do","highlight":"E-Commerce","description":"Seis lojas, uma operação conectada e uma proposta premium para transformar a experiência de compra online.","image":"https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1920&q=88"},{"id":"marcas","badge":"6 marcas em expansão","title":"Uma operação,","highlight":"múltiplos mercados","description":"Turismo, relógios, moda, tecnologia, construção e festas com a mesma curadoria comercial do Grupo Nexum Altivon.","image":"https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=1920&q=88"},{"id":"tecnologia","badge":"Experiência tecnológica","title":"Compra segura com","highlight":"atendimento humano","description":"Fluxos preparados para catálogo, clientes, pedidos, integrações e relacionamento com visão de crescimento contínuo.","image":"https://images.unsplash.com/photo-1524805444758-089113d48a6d?auto=format&fit=crop&w=1920&q=88"}]', 'JSON', 'Slides principais da home', 'SiteHome', 1)
+        ON DUPLICATE KEY UPDATE
+            valor = VALUES(valor),
+            descricao = VALUES(descricao),
+            grupo = VALUES(grupo),
+            editavel = VALUES(editavel),
+            updated_at = CURRENT_TIMESTAMP;
+        """);
 }
 
 app.Run();
@@ -3924,6 +4164,60 @@ public sealed record IntegracaoCredencialDto(
     string Chave,
     string Uso,
     bool Obrigatoria);
+
+public sealed record SiteConfiguracaoItemDto(
+    int Id,
+    string Chave,
+    string? Valor,
+    string Tipo,
+    string? Descricao,
+    string? Grupo,
+    bool Editavel,
+    DateTime UpdatedAt);
+
+public sealed record SiteConfiguracaoUpdateItemDto(
+    string Chave,
+    string? Valor,
+    string? Tipo,
+    string? Descricao,
+    string? Grupo,
+    bool? Editavel);
+
+public sealed record SiteConfiguracaoUpdateRequest(List<SiteConfiguracaoUpdateItemDto> Itens);
+
+public sealed record HeroSlideSiteDto(
+    string Id,
+    string Badge,
+    string Title,
+    string Highlight,
+    string Description,
+    string Image);
+
+public sealed record PartnerCardSiteDto(
+    string Title,
+    string Text,
+    string Cta,
+    string Href,
+    string Icon);
+
+public sealed record SiteConfiguracaoPublicaDto(
+    string SiteNome,
+    string SiteUrl,
+    string ContactEmail,
+    string PrimaryPhone,
+    string SecondaryPhone,
+    string PrimaryWhatsapp,
+    string SecondaryWhatsapp,
+    string YaraEmail,
+    string SiteLogo,
+    List<HeroSlideSiteDto> HeroSlides,
+    string IntroTitle,
+    string IntroText1,
+    string IntroText2,
+    string IntroBadge,
+    List<string> QualityItems,
+    List<PartnerCardSiteDto> PartnerCards,
+    string FooterText);
 
 public sealed record FreteCotacaoRequest(
     [property: JsonPropertyName("cep_origem")]
