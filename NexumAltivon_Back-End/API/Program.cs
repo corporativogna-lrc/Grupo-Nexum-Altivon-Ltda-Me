@@ -1487,6 +1487,7 @@ app.MapPost("/api/pedidos", async (
     await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
     var produtoSlugs = itensSolicitados.Select(item => item.ProdutoId).ToList();
     var produtosMap = await db.Produtos
+        .Include(produto => produto.Fornecedor)
         .Where(produto => produto.Ativo && produtoSlugs.Contains(produto.Slug))
         .ToDictionaryAsync(produto => produto.Slug, ct);
 
@@ -1497,11 +1498,18 @@ app.MapPost("/api/pedidos", async (
 
     decimal subtotal = 0m;
     var itens = new List<PedidoItem>(itensSolicitados.Count);
+    var abastecimentoResumo = new List<string>(itensSolicitados.Count);
     foreach (var item in itensSolicitados)
     {
         if (!produtosMap.TryGetValue(item.ProdutoId, out var produto))
         {
             return Results.BadRequest(ApiResponse<string>.Erro("Produto invalido."));
+        }
+
+        if (produto.TipoProduto == NexumAltivon.API.Models.TipoProduto.Dropshipping && produto.FornecedorId is null)
+        {
+            return Results.BadRequest(ApiResponse<string>.Erro(
+                $"O produto {produto.Nome} está marcado como dropshipping, mas ainda não possui fornecedor vinculado."));
         }
 
         var estoqueDisponivel = produto.EstoqueAtual - produto.EstoqueReservado;
@@ -1528,6 +1536,8 @@ app.MapPost("/api/pedidos", async (
             PrecoTotal = precoTotal,
             CreatedAt = DateTime.UtcNow
         });
+
+        abastecimentoResumo.Add(BuildAbastecimentoResumo(produto, item.Quantidade));
     }
 
     decimal desconto = 0m;
@@ -1600,6 +1610,9 @@ app.MapPost("/api/pedidos", async (
         Origem = OrigemPedido.Site,
         IpCliente = http.Connection.RemoteIpAddress?.ToString(),
         UserAgent = http.Request.Headers.UserAgent.ToString(),
+        ObservacoesInternas = abastecimentoResumo.Count == 0
+            ? null
+            : $"Abastecimento automático: {string.Join(" | ", abastecimentoResumo)}",
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow,
         Itens = itens
@@ -3467,6 +3480,28 @@ static string BuildPedidoInstruction(StatusPagamento statusPagamento, string? me
         _ =>
             "Pedido reservado. Configure o gateway para cobrança real e confirmação automática."
     };
+}
+
+static string BuildAbastecimentoResumo(Produto produto, int quantidade)
+{
+    var origem = produto.TipoProduto switch
+    {
+        NexumAltivon.API.Models.TipoProduto.Dropshipping => "Dropshipping",
+        NexumAltivon.API.Models.TipoProduto.Marketplace => "Marketplace",
+        NexumAltivon.API.Models.TipoProduto.Afiliado => "Afiliado",
+        _ => "Estoque próprio"
+    };
+
+    var fornecedor = produto.Fornecedor is null
+        ? "sem fornecedor"
+        : string.IsNullOrWhiteSpace(produto.Fornecedor.NomeFantasia)
+            ? produto.Fornecedor.RazaoSocial
+            : produto.Fornecedor.NomeFantasia;
+
+    var prazo = produto.Fornecedor?.PrazoEntregaDias;
+    return prazo.HasValue && prazo.Value > 0
+        ? $"{produto.Sku} x{quantidade} via {origem} / {fornecedor} / prazo {prazo.Value}d"
+        : $"{produto.Sku} x{quantidade} via {origem} / {fornecedor}";
 }
 
 static bool TryParseStatusPedido(string? raw, out StatusPedido status)
