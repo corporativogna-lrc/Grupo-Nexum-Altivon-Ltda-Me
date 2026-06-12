@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   ArrowRight,
@@ -24,6 +24,7 @@ import {
   UserPlus,
   Watch,
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import { clienteAPI, siteAPI } from '../services/api';
 
 const heroSlides = [
@@ -177,6 +178,8 @@ const partnerIconMap = {
 const normalizeText = (value) => String(value || '').trim().toLowerCase();
 const normalizeDocument = (value) => String(value || '').replace(/\D/g, '');
 export default function Home() {
+  const navigate = useNavigate();
+  const { login } = useAuth();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [siteConfig, setSiteConfig] = useState(null);
   const [cadastroForm, setCadastroForm] = useState(emptyCadastro);
@@ -288,10 +291,23 @@ export default function Home() {
 
       await clienteAPI.create(payload);
 
+      setCadastroStatus({
+        tone: 'success',
+        message: 'Cadastro realizado com sucesso. Validando seu acesso para liberar a área do cliente.',
+      });
+
+      const loginResult = await login(payload.email, payload.senha);
+      if (loginResult?.success) {
+        setCadastroForm(emptyCadastro);
+        navigate(loginResult.destination || '/area-cliente');
+        return;
+      }
+
       setCadastroForm(emptyCadastro);
       setCadastroStatus({
         tone: 'success',
-        message: 'Cadastro realizado com sucesso. Seus dados já ficaram disponíveis para as próximas compras e atendimentos.',
+        message:
+          'Cadastro salvo com sucesso no banco de dados. O acesso automático não foi concluído agora; use o login para entrar na sua área do cliente.',
       });
     } catch (error) {
       const detail =
