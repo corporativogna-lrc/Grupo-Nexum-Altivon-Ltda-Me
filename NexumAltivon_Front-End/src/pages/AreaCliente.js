@@ -18,6 +18,9 @@ const formatDate = (value) =>
       }).format(new Date(value))
     : '-';
 
+const yaraMailTo =
+  'mailto:corporativo.gna@gmail.com?subject=Yara%20-%20Atendimento%20ao%20cliente&body=Ol%C3%A1%20Yara%2C%20preciso%20de%20ajuda%20com%20produtos%2C%20empresa%20ou%20d%C3%BAvidas%20do%20meu%20pedido.';
+
 export default function AreaCliente() {
   const { isAuthenticated, user, isAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -77,16 +80,18 @@ export default function AreaCliente() {
               <p className="text-sm font-black uppercase tracking-[0.22em] text-[#E8D5A3]">Área do cliente Nexum Altivon</p>
               <h1 className="mt-3 text-4xl font-black">Olá, {portal?.nome || user?.nome || 'cliente'}.</h1>
               <p className="mt-3 max-w-2xl text-zinc-300">
-                Aqui você acompanha pedidos, documentos, relacionamento e suporte. A Yara fica responsável pela recepção digital e pelo apoio inicial do seu atendimento.
+                Aqui você acompanha pedidos, documentos, relacionamento e suporte em um canal direto com a operação comercial.
               </p>
             </div>
             <div className="rounded-3xl border border-[#C9A227]/20 bg-black/30 p-5">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-zinc-500">Cadastro principal</p>
               <p className="mt-2 text-lg font-bold">{portal?.email || user?.email}</p>
               <p className="mt-1 text-sm text-zinc-400">{portal?.telefone || 'Telefone em atualização'}</p>
-              <p className="mt-4 text-xs font-black uppercase tracking-[0.18em] text-[#E8D5A3]">Atendimento Yara</p>
-              <a href="mailto:corporativo.gna@gmail.com" className="mt-2 inline-flex text-sm font-semibold text-white underline underline-offset-4">
-                corporativo.gna@gmail.com
+              <a
+                href={yaraMailTo}
+                className="mt-4 inline-flex items-center justify-center rounded-full border border-[#C9A227]/30 px-4 py-2 text-sm font-black text-[#E8D5A3] transition hover:border-[#E8D5A3] hover:text-white"
+              >
+                Falar com Yara
               </a>
             </div>
           </div>
@@ -181,13 +186,13 @@ export default function AreaCliente() {
                     <div className="rounded-3xl border border-white/5 bg-black/20 p-4">
                       <div className="inline-flex items-center gap-2 text-white">
                         <LifeBuoy size={18} />
-                        <span className="font-bold">Yara • recepção digital</span>
+                        <span className="font-bold">Yara • atendimento comercial</span>
                       </div>
-                      <p className="mt-2 text-sm leading-6 text-zinc-300">Triagem inicial, dúvidas comerciais e encaminhamento das mensagens do site para corporativo.gna@gmail.com.</p>
+                      <p className="mt-2 text-sm leading-6 text-zinc-300">Contato direto para dúvidas comerciais, apoio ao pedido e acompanhamento do relacionamento com o cliente.</p>
                     </div>
-                    <a href="mailto:corporativo.gna@gmail.com" className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#C9A227] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-black transition hover:bg-[#E8D5A3]">
+                    <a href={yaraMailTo} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#C9A227] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-black transition hover:bg-[#E8D5A3]">
                       <LifeBuoy size={18} />
-                      Abrir atendimento
+                      Conversar com Yara
                     </a>
                   </div>
                 </article>

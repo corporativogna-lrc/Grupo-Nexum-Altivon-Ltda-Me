@@ -85,10 +85,6 @@ export default function Login() {
           </div>
         </form>
 
-        <div className="rounded-2xl border border-[#C9A227]/20 bg-black/40 px-5 py-4 text-sm text-zinc-200">
-          <p className="font-black uppercase tracking-[0.18em] text-[#E8D5A3]">Atendimento inteligente</p>
-          <p className="mt-2 leading-6">Yara recepciona os clientes no portal de vendas e Sophia apoia a operação do GenesisGest.Net no fluxo administrativo.</p>
-        </div>
       </div>
     </div>
   );

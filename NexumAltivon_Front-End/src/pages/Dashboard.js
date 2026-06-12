@@ -84,6 +84,9 @@ const empresaGrupoHighlights = [
   'A base fica pronta para roteamento inteligente de NF-e entre empresas do grupo e parceiras.',
 ];
 
+const sophiaMailTo =
+  'mailto:corporativo.gna@gmail.com?subject=Sophia%20-%20Apoio%20ERP&body=Ol%C3%A1%20Sophia%2C%20preciso%20de%20apoio%20interno%20na%20opera%C3%A7%C3%A3o%20do%20GenesisGest.Net.';
+
 const plannedModules = [
   { label: 'Lojas', icon: Building2, section: 'Gestão' },
   { label: 'Cupons', icon: CreditCard, section: 'Marketing & CRM' },
@@ -133,12 +136,20 @@ const erpModules = [
     signal: 'Decisão',
   },
   {
-    title: 'RH e Compras',
+    title: 'RH / DP',
     tabId: 'erp-rh',
     status: 'Operação interna',
     icon: UserRound,
-    metrics: ['Cargos', 'Equipe', 'Fornecedores', 'Solicitações'],
+    metrics: ['Cargos', 'Equipe', 'Responsáveis', 'Folha'],
     signal: 'Mesa de gestão',
+  },
+  {
+    title: 'Compras',
+    tabId: 'erp-compras',
+    status: 'Suprimentos e reposição',
+    icon: ShoppingBag,
+    metrics: ['Fornecedores', 'Solicitações', 'Reposição', 'Custos'],
+    signal: 'Abastecimento',
   },
 ];
 
@@ -168,8 +179,8 @@ const integrationGuides = {
     nextTest: 'Executar uma cotação em sandbox e validar prazo e valor retornados.',
   },
   gateways: {
-    description: 'Cobrança por Pix, boleto e cartão, com retorno automático do pagamento.',
-    requirements: ['Credencial do gateway', 'Webhook público seguro', 'Conta comercial homologada'],
+    description: 'Cobrança por Pix, boleto e cartão, com retorno automático do pagamento e contingência entre provedores.',
+    requirements: ['Credencial do gateway principal', 'Credencial do gateway reserva', 'Webhook público seguro', 'Conta comercial homologada'],
     nextTest: 'Criar cobrança de baixo valor em sandbox e confirmar o webhook.',
   },
   mercadopago: {
@@ -929,8 +940,13 @@ export default function Dashboard() {
               <div className="rounded-full border border-[#2A2A2A] bg-[#111111] px-4 py-2 text-right">
                 <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-zinc-500">Operando como</p>
                 <p className="text-sm font-bold text-white">{user?.nome || user?.email || 'Equipe Nexum'}</p>
-                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[#E8D5A3]">Sophia assistente ERP</p>
               </div>
+              <a
+                href={sophiaMailTo}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#2A2A2A] bg-[#111111] px-5 text-sm font-black text-[#E8D5A3] transition hover:border-[#C9A227] hover:text-white"
+              >
+                Chamar Sophia
+              </a>
               <div className="relative">
                 <Search className="absolute left-3 top-3 text-zinc-500" size={18} />
                 <input
@@ -1598,6 +1614,15 @@ export default function Dashboard() {
                     title="Fluxo de caixa, contas e conciliação"
                     description="Tela dedicada para a retaguarda financeira com visão de entradas, saídas, recebimentos e base para DRE."
                   />
+                  <ModuleActionGrid
+                    title="Acessos do financeiro"
+                    actions={[
+                      { label: 'Pedidos para faturar', detail: 'Conferir pedidos aprovados e separar recebimento.', onClick: () => openMainTab('pedidos') },
+                      { label: 'Clientes e cobrança', detail: 'Abrir a base de clientes para relacionamento e cobrança.', onClick: () => openMainTab('cadastro-clientes') },
+                      { label: 'Notas e impostos', detail: 'Ir direto para o módulo fiscal da ERP.', onClick: () => openMainTab('erp-fiscal') },
+                      { label: 'Integrações de gateway', detail: 'Validar meios de pagamento e webhooks.', onClick: () => openMainTab('integracoes') },
+                    ]}
+                  />
                   <div className="grid gap-4 md:grid-cols-4">
                     <StatMiniCard label="Faturamento do mês" value={formatPrice(resumo.faturamento_mes || 0)} />
                     <StatMiniCard label="Ticket médio" value={formatPrice(resumo.ticket_medio || 0)} />
@@ -1634,6 +1659,15 @@ export default function Dashboard() {
                     title="Despacho, rastreamento e posição operacional"
                     description="Tela dedicada para separar estoque, despacho, rastreamento e estrutura de frete sem deixar a operação escondida."
                   />
+                  <ModuleActionGrid
+                    title="Acessos da logística"
+                    actions={[
+                      { label: 'Produtos e estoque', detail: 'Abrir o cadastro com peso, altura, largura e estoque.', onClick: () => openMainTab('cadastro-produtos') },
+                      { label: 'Pedidos em separação', detail: 'Ir para os pedidos e acompanhar expedição.', onClick: () => openMainTab('pedidos') },
+                      { label: 'Fornecedores e dropship', detail: 'Conferir parceiros logísticos e fornecedores.', onClick: () => openMainTab('cadastro-fornecedores') },
+                      { label: 'Integrações de frete', detail: 'Acessar conectores externos de logística.', onClick: () => openMainTab('integracoes') },
+                    ]}
+                  />
                   <div className="grid gap-4 md:grid-cols-4">
                     <StatMiniCard label="Pedidos na operação" value={pedidos.length} />
                     <StatMiniCard label="Produtos ativos" value={produtos.length} />
@@ -1662,6 +1696,14 @@ export default function Dashboard() {
                     title="Equipe, cargos e supervisão da rotina"
                     description="Tela separada para estruturar RH/DP, cargos, responsáveis e apoio operacional do GenesisGest.Net."
                   />
+                  <ModuleActionGrid
+                    title="Acessos do RH"
+                    actions={[
+                      { label: 'Empresas do grupo', detail: 'Ver empresas, centros de custo e emitentes.', onClick: () => openMainTab('erp-empresas') },
+                      { label: 'Compras e suprimentos', detail: 'Acessar o módulo separado de compras.', onClick: () => openMainTab('erp-compras') },
+                      { label: 'Relatórios gerenciais', detail: 'Abrir indicadores executivos da operação.', onClick: () => openMainTab('erp-relatorios') },
+                    ]}
+                  />
                   <div className="grid gap-6 xl:grid-cols-2">
                     <ErpChecklistCard
                       title="Estrutura prevista"
@@ -1673,9 +1715,9 @@ export default function Dashboard() {
                       ]}
                     />
                     <ErpChecklistCard
-                      title="Sophia no apoio"
+                      title="Ajuda operacional"
                       items={[
-                        'Assistente da ERP para orientar fluxos internos.',
+                        'Botão direto para suporte operacional quando necessário.',
                         'Leitura de indicadores e alertas de operação.',
                         'Apoio na navegação entre módulos críticos.',
                         'Preparação para rotinas executivas futuras.',
@@ -1691,6 +1733,15 @@ export default function Dashboard() {
                     eyebrow="Compras e suprimentos"
                     title="Fornecedores, reposição e estratégia de custo"
                     description="Tela dedicada para compras, reposição e tomada de decisão entre fornecedores, dropshipping e parceiros."
+                  />
+                  <ModuleActionGrid
+                    title="Acessos de compras"
+                    actions={[
+                      { label: 'Fornecedores', detail: 'Abrir a tela separada de fornecedores.', onClick: () => openMainTab('cadastro-fornecedores') },
+                      { label: 'Produtos e custo', detail: 'Ir para o cadastro de produtos e revisar margens.', onClick: () => openMainTab('cadastro-produtos') },
+                      { label: 'Empresas do grupo', detail: 'Relacionar emitente, estoque e centro de custo.', onClick: () => openMainTab('erp-empresas') },
+                      { label: 'Logística e estoque', detail: 'Conferir necessidade de reposição e despacho.', onClick: () => openMainTab('erp-logistica') },
+                    ]}
                   />
                   <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
                     <CompactList title="Fornecedores mapeados" items={fornecedores} fields={['nome', 'categoria', 'email', 'telefone']} />
@@ -1713,6 +1764,15 @@ export default function Dashboard() {
                     eyebrow="Relatórios executivos"
                     title="KPIs, gráficos e controle gerencial"
                     description="Tela dedicada para consolidar indicadores da operação e abrir caminho para relatórios profundos do grupo."
+                  />
+                  <ModuleActionGrid
+                    title="Acessos de análise"
+                    actions={[
+                      { label: 'Financeiro', detail: 'Cruzar receita, liquidação e caixa.', onClick: () => openMainTab('erp-financeiro') },
+                      { label: 'Fiscal', detail: 'Auditar emissão, impostos e roteamento.', onClick: () => openMainTab('erp-fiscal') },
+                      { label: 'CRM', detail: 'Analisar leads, clientes e relacionamento.', onClick: () => openMainTab('crm') },
+                      { label: 'Empresas do grupo', detail: 'Comparar resultado por empresa emitente.', onClick: () => openMainTab('erp-empresas') },
+                    ]}
                   />
                   <div className="grid gap-4 md:grid-cols-4">
                     <StatMiniCard label="Clientes" value={clientes.length} />
@@ -1879,6 +1939,37 @@ function ErpChecklistCard({ title, items }) {
             <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#C9A227]" />
             <span>{item}</span>
           </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ModuleActionGrid({ title, actions }) {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Operação direta</p>
+          <h3 className="mt-2 text-lg font-black text-slate-950">{title}</h3>
+        </div>
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-slate-600">Acesso rápido</span>
+      </div>
+      <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {actions.map((action) => (
+          <button
+            key={action.label}
+            type="button"
+            onClick={action.onClick}
+            className="group rounded-lg border border-slate-200 bg-slate-50 p-4 text-left transition hover:-translate-y-0.5 hover:border-[#C9A227] hover:bg-white"
+          >
+            <p className="text-sm font-black text-slate-950">{action.label}</p>
+            <p className="mt-2 text-sm text-slate-500">{action.detail}</p>
+            <span className="mt-4 inline-flex items-center gap-2 text-sm font-black text-[#C97A00]">
+              Abrir agora
+              <ChevronRight size={16} />
+            </span>
+          </button>
         ))}
       </div>
     </section>

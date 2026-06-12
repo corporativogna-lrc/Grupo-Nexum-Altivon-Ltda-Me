@@ -6,6 +6,7 @@ const RUNTIME_API_CONFIG_URL = '/api-runtime.json';
 const RUNTIME_CACHE_KEY = 'nexum_api_runtime_url';
 
 let runtimeApiUrlPromise = null;
+const apiHealthCache = new Map();
 
 const getDefaultApiUrl = () => {
   if (typeof window === 'undefined') return 'http://localhost:5000';
@@ -24,6 +25,33 @@ const normalizeApiUrl = (value) => {
   return /^https?:\/\//i.test(url) ? url : '';
 };
 
+const canUseApiUrl = async (baseUrl) => {
+  const normalized = normalizeApiUrl(baseUrl);
+  if (!normalized) return false;
+
+  if (apiHealthCache.has(normalized)) {
+    return apiHealthCache.get(normalized);
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 4000);
+    const response = await fetch(`${normalized}/health?t=${Date.now()}`, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: { Accept: 'text/plain, application/json' },
+      signal: controller.signal,
+    });
+    window.clearTimeout(timeout);
+    const healthy = response.ok;
+    apiHealthCache.set(normalized, healthy);
+    return healthy;
+  } catch {
+    apiHealthCache.set(normalized, false);
+    return false;
+  }
+};
+
 const isLocalApi = () => {
   if (typeof window === 'undefined') return true;
   const { hostname } = window.location;
@@ -36,6 +64,7 @@ export const getRuntimeApiBaseUrl = async () => {
 
   runtimeApiUrlPromise = (async () => {
     const cached = normalizeApiUrl(localStorage.getItem(RUNTIME_CACHE_KEY));
+    const candidates = [];
 
     try {
       const response = await fetch(`${RUNTIME_API_CONFIG_URL}?t=${Date.now()}`, {
@@ -47,12 +76,21 @@ export const getRuntimeApiBaseUrl = async () => {
         const config = await response.json();
         const runtimeUrl = normalizeApiUrl(config.apiUrl || config.api_url || config.url);
         if (runtimeUrl) {
-          localStorage.setItem(RUNTIME_CACHE_KEY, runtimeUrl);
-          return runtimeUrl;
+          candidates.push(runtimeUrl);
         }
       }
     } catch {
       // Mantém a última ponte funcional em cache quando a configuração pública oscila.
+    }
+
+    if (cached) candidates.push(cached);
+    candidates.push(API_BASE_URL);
+
+    for (const candidate of [...new Set(candidates.filter(Boolean))]) {
+      if (await canUseApiUrl(candidate)) {
+        localStorage.setItem(RUNTIME_CACHE_KEY, candidate);
+        return candidate;
+      }
     }
 
     return cached || API_BASE_URL;

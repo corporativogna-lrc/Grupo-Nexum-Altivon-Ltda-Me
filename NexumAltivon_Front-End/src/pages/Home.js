@@ -13,6 +13,7 @@ import {
   Headphones,
   LoaderCircle,
   Mail,
+  MessageCircleMore,
   Phone,
   Plane,
   ShieldCheck,
@@ -93,7 +94,7 @@ const emptyCadastro = {
 
 const lojas = [
   {
-    nome: 'Grann-Tur',
+    nome: 'Gran Tur',
     segmento: 'Viagens & Turismo',
     descricao: 'Mochilas, malas, acessórios de viagem e tudo o que você precisa para explorar o mundo com estilo e conforto.',
     imagem: 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=900&q=85',
@@ -128,7 +129,7 @@ const lojas = [
     icon: Hammer,
   },
   {
-    nome: 'Gran-fest-festas',
+    nome: 'Gran Festas',
     segmento: 'Festas & Eventos',
     descricao: 'Decorações, utensílios e tudo para tornar sua festa inesquecível, dos pequenos encontros aos grandes eventos.',
     imagem: 'https://images.unsplash.com/photo-1530103862676-de3c9a59aa38?auto=format&fit=crop&w=900&q=85',
@@ -169,6 +170,8 @@ const parceiros = [
 
 const normalizeText = (value) => String(value || '').trim().toLowerCase();
 const normalizeDocument = (value) => String(value || '').replace(/\D/g, '');
+const yaraMailTo =
+  'mailto:corporativo.gna@gmail.com?subject=Yara%20-%20Atendimento%20de%20vendas&body=Ol%C3%A1%20Yara%2C%20preciso%20de%20ajuda%20com%20assuntos%20da%20empresa%2C%20produtos%20ou%20d%C3%BAvidas%20sobre%20a%20compra.';
 
 export default function Home() {
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -364,9 +367,13 @@ export default function Home() {
             <p className="mt-6 max-w-2xl leading-8 text-zinc-300">
               Agora o próprio cliente já consegue se registrar por aqui. Antes de salvar, o sistema verifica e-mail e CPF/CNPJ para evitar cadastro duplicado.
             </p>
-            <div className="mt-6 inline-flex rounded-full border border-[#C9A227]/30 bg-[#C9A227]/10 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-[#E8D5A3]">
-              Yara será a recepção digital deste relacionamento
-            </div>
+            <a
+              href={yaraMailTo}
+              className="mt-6 inline-flex items-center gap-2 rounded-full border border-[#C9A227]/30 bg-[#C9A227]/10 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-[#E8D5A3] transition hover:border-[#E8D5A3] hover:text-white"
+            >
+              <MessageCircleMore size={16} />
+              Falar com Yara agora
+            </a>
 
             <div className="mt-8 grid gap-4">
               {[
@@ -634,6 +641,19 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      <a
+        href={yaraMailTo}
+        className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-3 rounded-full border border-[#C9A227]/40 bg-[#111111]/95 px-5 py-3 text-sm font-black text-[#E8D5A3] shadow-2xl shadow-black/40 backdrop-blur transition hover:border-[#E8D5A3] hover:text-white"
+      >
+        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#C9A227] text-black">
+          <MessageCircleMore size={20} />
+        </span>
+        <span className="flex flex-col text-left leading-tight">
+          <span>Yara online</span>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-400">Ajuda de vendas</span>
+        </span>
+      </a>
     </main>
   );
 }
