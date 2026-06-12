@@ -1156,6 +1156,7 @@ app.MapGet("/api/clientes/portal/me", [Authorize] async (ClaimsPrincipal princip
     }
 
     var pedidos = await db.Pedidos
+        .Include(item => item.Pagamentos)
         .AsNoTracking()
         .Where(item => item.ClienteId == cliente.Id)
         .OrderByDescending(item => item.CreatedAt)
@@ -1290,25 +1291,15 @@ app.MapGet("/api/pedidos", [Authorize(Policy = "Gerente")] async (NexumDbContext
         .Include(pedido => pedido.Pagamentos)
         .OrderByDescending(pedido => pedido.CreatedAt)
         .Take(500)
-        .Select(pedido => new
-        {
-            pedido.Id,
-            pedido.NumeroPedido,
-            pedido.Total,
-            pedido.Status,
-            pedido.StatusPagamento,
-            pedido.MeioPagamento,
-            pedido.GatewayPagamento,
-            pedido.GatewayTransacaoId,
-            pedido.FreteValor,
-            pedido.FreteMetodo,
-            pedido.FreteTransportadora,
-            pedido.FretePrazoDias,
-            pedido.CreatedAt
-        })
         .ToListAsync(ct);
 
-    var dtos = pedidos.Select(pedido => new PedidoLojaDto(
+    var dtos = pedidos.Select(pedido =>
+    {
+        var pagamentoAtual = pedido.Pagamentos?
+            .OrderByDescending(item => item.CreatedAt)
+            .FirstOrDefault();
+
+        return new PedidoLojaDto(
         pedido.Id,
         pedido.NumeroPedido,
         pedido.Total,
@@ -1322,7 +1313,11 @@ app.MapGet("/api/pedidos", [Authorize(Policy = "Gerente")] async (NexumDbContext
         pedido.FreteMetodo,
         pedido.FreteTransportadora,
         pedido.FretePrazoDias,
-        BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId))).ToList();
+        BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId),
+        pagamentoAtual?.Parcelas ?? 1,
+        pagamentoAtual?.PixQrcode,
+        pagamentoAtual?.BoletoUrl);
+    }).ToList();
 
     return Results.Ok(ApiResponse<List<PedidoLojaDto>>.Ok(dtos));
 })
@@ -1428,6 +1423,10 @@ app.MapPut("/api/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
     await db.SaveChangesAsync(ct);
     await transaction.CommitAsync(ct);
 
+    var pagamentoAtual = pedido.Pagamentos?
+        .OrderByDescending(item => item.CreatedAt)
+        .FirstOrDefault();
+
     var dto = new PedidoLojaDto(
         pedido.Id,
         pedido.NumeroPedido,
@@ -1442,7 +1441,10 @@ app.MapPut("/api/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
         pedido.FreteMetodo,
         pedido.FreteTransportadora,
         pedido.FretePrazoDias,
-        BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId));
+        BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId),
+        pagamentoAtual?.Parcelas ?? 1,
+        pagamentoAtual?.PixQrcode,
+        pagamentoAtual?.BoletoUrl);
     return Results.Ok(ApiResponse<PedidoLojaDto>.Ok(dto, "Status do pedido atualizado."));
 })
 .WithName("AtualizarStatusPedido")
@@ -1626,7 +1628,7 @@ app.MapPost("/api/pedidos", async (
             Metodo = ParseMetodoPagamento(pedido.MeioPagamento),
             Status = StatusPagamentoDetalhado.Pendente,
             Valor = pedido.Total,
-            Parcelas = 1,
+            Parcelas = Math.Clamp(request.Parcelas ?? 1, 1, 24),
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         }
@@ -1660,6 +1662,10 @@ app.MapPost("/api/pedidos", async (
         await db.SaveChangesAsync(ct);
     }
 
+    var pagamentoFinal = pedido.Pagamentos?
+        .OrderByDescending(item => item.CreatedAt)
+        .FirstOrDefault();
+
     var dto = new PedidoLojaDto(
         pedido.Id,
         pedido.NumeroPedido,
@@ -1674,7 +1680,10 @@ app.MapPost("/api/pedidos", async (
         pedido.FreteMetodo,
         pedido.FreteTransportadora,
         pedido.FretePrazoDias,
-        BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId));
+        BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId),
+        pagamentoFinal?.Parcelas ?? 1,
+        pagamentoFinal?.PixQrcode,
+        pagamentoFinal?.BoletoUrl);
     return Results.Ok(ApiResponse<PedidoLojaDto>.Ok(dto, "Pedido criado com sucesso."));
 })
 .AllowAnonymous()
@@ -4355,6 +4364,7 @@ public sealed record PedidoRequest(
     [property: JsonPropertyName("cupom_codigo")] string? CupomCodigo,
     [property: JsonPropertyName("endereco_entrega")] object? EnderecoEntrega,
     [property: JsonPropertyName("metodo_pagamento")] string? MetodoPagamento,
+    [property: JsonPropertyName("parcelas")] int? Parcelas,
     [property: JsonPropertyName("gateway_pagamento")] string? GatewayPagamento,
     [property: JsonPropertyName("frete_valor")] decimal? FreteValor,
     [property: JsonPropertyName("frete_metodo")] string? FreteMetodo,
@@ -4384,7 +4394,10 @@ public sealed record PedidoLojaDto(
     string? FreteMetodo,
     string? FreteTransportadora,
     int FretePrazoDias,
-    string InstrucaoPagamento);
+    string InstrucaoPagamento,
+    int Parcelas,
+    string? PixQrcode,
+    string? PaymentUrl);
 
 public sealed record IntegracaoStatusDto(
     string Nome,
@@ -4828,9 +4841,9 @@ public static class StoreData
 
     public static readonly List<PedidoLojaDto> Pedidos =
     [
-        new(1029, "NA-1029", 6490, "Processando", DateTime.UtcNow.AddHours(-2), "Aguardando pagamento", "pix", "ConfiguracaoPendente", null, 0, "Retirada / combinar entrega", "Nexum Altivon", 0, "Pedido reservado. Configure o gateway para cobrança real e confirmação automática."),
-        new(1028, "NA-1028", 4290, "Enviado", DateTime.UtcNow.AddHours(-5), "Pagamento aprovado", "cartao", "MercadoPago", "demo-1028", 29.9m, "Entrega padrão", "Correios / Melhor Envio", 7, "Pagamento confirmado. Pedido pronto para separação e logística."),
-        new(1027, "NA-1027", 7580, "Entregue", DateTime.UtcNow.AddDays(-1), "Pagamento aprovado", "boleto", "MercadoPago", "demo-1027", 49.9m, "Entrega expressa", "Transportadora parceira", 3, "Pagamento confirmado. Pedido pronto para separação e logística.")
+        new(1029, "NA-1029", 6490, "Processando", DateTime.UtcNow.AddHours(-2), "Aguardando pagamento", "pix", "ConfiguracaoPendente", null, 0, "Retirada / combinar entrega", "Nexum Altivon", 0, "Pedido reservado. Configure o gateway para cobrança real e confirmação automática.", 1, "QR-CODE-PIX-DEMO", null),
+        new(1028, "NA-1028", 4290, "Enviado", DateTime.UtcNow.AddHours(-5), "Pagamento aprovado", "cartao", "MercadoPago", "demo-1028", 29.9m, "Entrega padrão", "Correios / Melhor Envio", 7, "Pagamento confirmado. Pedido pronto para separação e logística.", 6, null, "https://pagamento.nexumaltivon.com/demo-1028"),
+        new(1027, "NA-1027", 7580, "Entregue", DateTime.UtcNow.AddDays(-1), "Pagamento aprovado", "boleto", "MercadoPago", "demo-1027", 49.9m, "Entrega expressa", "Transportadora parceira", 3, "Pagamento confirmado. Pedido pronto para separação e logística.", 1, null, "https://pagamento.nexumaltivon.com/demo-1027")
     ];
 
     public static readonly List<LeadLojaDto> Leads =

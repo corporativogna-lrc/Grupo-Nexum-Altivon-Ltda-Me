@@ -114,6 +114,8 @@ export function StepPagamento({
   setLojaId,
   metodoPagamento,
   setMetodoPagamento,
+  parcelas,
+  setParcelas,
   freteOptions = [],
   freteSelecionado,
   setFreteSelecionado,
@@ -121,7 +123,7 @@ export function StepPagamento({
   onConfirm,
   loading,
 }) {
-  const metodos = ['cartao', 'pix', 'boleto'];
+  const metodos = ['cartao', 'pix', 'boleto', 'debito', 'deposito'];
   const formatPrice = (price) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
 
@@ -178,11 +180,31 @@ export function StepPagamento({
             />
             <span className="font-bold capitalize text-white">{getPagamentoLabel(metodo)}</span>
             <span className="ml-auto rounded-full border border-[#2A2A2A] px-3 py-1 text-xs font-bold text-[#A0A0A0]">
-              Registrado no pedido
+              {metodo === 'pix' ? 'Confirmação automática' : metodo === 'boleto' ? 'Baixa por compensação' : 'Registrado no pedido'}
             </span>
           </label>
         ))}
       </div>
+
+      {metodoPagamento === 'cartao' && (
+        <div className="mb-6">
+          <label className="mb-2 block font-bold text-[#D8D8D8]">Parcelamento no cartão</label>
+          <select
+            value={parcelas}
+            onChange={(e) => setParcelas(Number(e.target.value))}
+            className="w-full rounded-xl border border-[#2A2A2A] bg-[#080808] px-4 py-3 text-white"
+          >
+            {Array.from({ length: 24 }, (_, index) => index + 1).map((item) => (
+              <option key={item} value={item}>
+                {item}x {item === 1 ? 'à vista' : 'no cartão'}
+              </option>
+            ))}
+          </select>
+          <p className="mt-2 text-xs font-semibold text-[#A0A0A0]">
+            O pedido já grava as parcelas para o financeiro e para a integração real do gateway.
+          </p>
+        </div>
+      )}
 
       <div className="flex gap-3">
         <button onClick={onBack} className="rounded-full border border-[#2A2A2A] bg-[#080808] px-6 py-3 font-bold text-[#D8D8D8] hover:border-[#C9A227]">
@@ -276,7 +298,10 @@ export function CheckoutSuccess({ pedido, onContinue }) {
             <div>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-[#777]">Pagamento</p>
               <p className="mt-1 font-bold text-white">{pedido.status_pagamento || 'Aguardando pagamento'}</p>
-              <p className="text-[#A0A0A0]">{getPagamentoLabel(pedido.meio_pagamento || '')}</p>
+              <p className="text-[#A0A0A0]">
+                {getPagamentoLabel(pedido.meio_pagamento || '')}
+                {pedido.parcelas > 1 ? ` · ${pedido.parcelas}x` : ''}
+              </p>
             </div>
             <div>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-[#777]">Entrega</p>
@@ -288,6 +313,29 @@ export function CheckoutSuccess({ pedido, onContinue }) {
             <p className="mt-4 rounded-xl border border-[#C9A227]/30 bg-[#C9A227]/10 p-3 text-sm font-semibold text-[#F7E7A6]">
               {pedido.instrucao_pagamento}
             </p>
+          )}
+          {pedido.pix_qrcode && (
+            <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-left text-sm text-emerald-100">
+              <p className="font-black uppercase tracking-[0.14em]">PIX Copia e Cola</p>
+              <textarea
+                readOnly
+                value={pedido.pix_qrcode}
+                className="mt-3 min-h-[120px] w-full rounded-xl border border-emerald-500/20 bg-black/30 p-3 font-mono text-xs text-emerald-50"
+              />
+            </div>
+          )}
+          {pedido.payment_url && (
+            <div className="mt-4 rounded-xl border border-sky-500/30 bg-sky-500/10 p-4 text-left text-sm text-sky-100">
+              <p className="font-black uppercase tracking-[0.14em]">Link de pagamento</p>
+              <a
+                href={pedido.payment_url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-flex rounded-full bg-sky-400 px-4 py-2 font-black text-slate-950 transition hover:bg-sky-300"
+              >
+                Abrir cobrança
+              </a>
+            </div>
           )}
         </div>
 
