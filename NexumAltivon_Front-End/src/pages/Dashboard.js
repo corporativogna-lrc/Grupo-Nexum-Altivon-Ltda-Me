@@ -157,6 +157,8 @@ const erpModules = [
 const fallbackIntegracoes = [
   { nome: 'E-commerce e API', slug: 'ecommerce', status: 'Operacional', detalhe: 'Catálogo, clientes, pedidos, estoque e painel usam a API operacional.', configurada: true, ambiente: 'Produção' },
   { nome: 'Dropshipping', slug: 'dropshipping', status: 'Aguardando cadastros', detalhe: 'Roteamento depende dos fornecedores e produtos vinculados.', configurada: false, ambiente: 'Produção assistida' },
+  { nome: 'Shopify', slug: 'shopify', status: 'Aguardando conexão', detalhe: 'Canal preparado para receber domínio da loja, token Admin API e webhooks.', configurada: false, ambiente: 'Staging privado' },
+  { nome: 'CJ Dropshipping', slug: 'cjdropshipping', status: 'Aguardando conexão', detalhe: 'Canal preparado para receber endpoint, token e vínculo de catálogo.', configurada: false, ambiente: 'Staging privado' },
   { nome: 'Logística e Fretes', slug: 'logistica', status: 'Aguardando credenciais', detalhe: 'Frete está registrado no checkout; cotação e etiqueta dependem da transportadora.', configurada: false, ambiente: 'Sandbox' },
   { nome: 'Gateways de pagamento', slug: 'gateways', status: 'Aguardando credenciais', detalhe: 'Pedido registra método; cobrança real depende do token e webhook.', configurada: false, ambiente: 'Não configurado' },
   { nome: 'Marketplaces', slug: 'marketplaces', status: 'Aguardando credenciais', detalhe: 'Sincronização de catálogo e pedidos depende da autorização externa.', configurada: false, ambiente: 'Integração externa' },
@@ -173,6 +175,16 @@ const integrationGuides = {
     description: 'Roteamento de produtos e pedidos para fornecedores parceiros.',
     requirements: ['Fornecedor ativo', 'Produto vinculado ao fornecedor', 'Regra de custo, prazo e comissão'],
     nextTest: 'Vincular um produto real a um fornecedor e simular o envio do pedido.',
+  },
+  shopify: {
+    description: 'Canal privado para sincronizar catálogo, estoque e pedidos da Shopify com a operação Nexum.',
+    requirements: ['Domínio da loja Shopify', 'Admin API Access Token', 'ApiVersion válida', 'Webhook de pedido/produto/estoque'],
+    nextTest: 'Preencher StoreDomain e AdminApiAccessToken, depois validar o retorno de shop.json.',
+  },
+  cjdropshipping: {
+    description: 'Canal privado para importar catálogo, roteamento de sourcing e pedidos com o CJ Dropshipping.',
+    requirements: ['Endpoint contratado do CJ', 'AccessToken ou API key', 'Produtos vinculados ao canal', 'Regra de preço e prazo'],
+    nextTest: 'Inserir endpoint/token reais e marcar os primeiros produtos aptos ao canal CJ.',
   },
   logistica: {
     description: 'Cotação de frete, seleção de serviço, etiqueta e rastreamento.',
@@ -220,6 +232,8 @@ const integrationCredentialCategoryMap = {
   logistica: ['logistica'],
   melhorenvio: ['logistica'],
   dropshipping: ['dropshipping'],
+  shopify: ['dropshipping'],
+  cjdropshipping: ['dropshipping'],
   marketplaces: ['marketplace'],
   mercadolivre: ['marketplace'],
   bancaria: ['bancaria'],
@@ -2189,6 +2203,8 @@ function IntegrationCard({ integracao, onOpen }) {
   const iconMap = {
     ecommerce: ShoppingBag,
     dropshipping: Handshake,
+    shopify: Handshake,
+    cjdropshipping: Handshake,
     logistica: Truck,
     melhorenvio: Truck,
     gateways: WalletCards,

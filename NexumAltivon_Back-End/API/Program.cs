@@ -1649,12 +1649,27 @@ app.MapGet("/api/integracoes/status", [Authorize(Policy = "Gerente")] async (
         ("MercadoLivre:AppId", "Integracoes:MercadoLivre:AppId"),
         ("MercadoLivre:ClientSecret", "Integracoes:MercadoLivre:ClientSecret"),
         ("MercadoLivre:RedirectUri", "Integracoes:MercadoLivre:RedirectUri"));
+    var shopifyConfigurado = HasAllIntegrationValues(
+        configuration,
+        ("Shopify:StoreDomain", "Integracoes:Shopify:StoreDomain"),
+        ("Shopify:AdminApiAccessToken", "Integracoes:Shopify:AdminApiAccessToken"),
+        ("Shopify:ApiVersion", "Integracoes:Shopify:ApiVersion"));
+    var cjDropshippingConfigurado = HasAllIntegrationValues(
+        configuration,
+        ("CJDropshipping:ApiEndpoint", "Integracoes:CJDropshipping:ApiEndpoint"),
+        ("CJDropshipping:AccessToken", "Integracoes:CJDropshipping:AccessToken"));
     var fornecedoresAtivos = await db.Fornecedores
         .AsNoTracking()
         .CountAsync(fornecedor => fornecedor.Status == StatusFornecedor.Ativo, ct);
     var dropshippingAtivos = await db.DropshippingConfigs
         .AsNoTracking()
         .CountAsync(config => config.Ativo, ct);
+    var shopifyCanalAtivo = await db.DropshippingConfigs
+        .AsNoTracking()
+        .AnyAsync(config => config.Ativo && config.Slug == "shopify", ct);
+    var cjCanalAtivo = await db.DropshippingConfigs
+        .AsNoTracking()
+        .AnyAsync(config => config.Ativo && config.Slug == "cjdropshipping", ct);
 
     var modules = new List<IntegracaoStatusDto>
     {
@@ -1674,6 +1689,28 @@ app.MapGet("/api/integracoes/status", [Authorize(Policy = "Gerente")] async (
                 : "Cadastre fornecedores/canais e vincule produtos antes de liberar o roteamento.",
             fornecedoresAtivos + dropshippingAtivos > 0,
             "Producao assistida"),
+        new(
+            "Shopify",
+            "shopify",
+            shopifyConfigurado ? "Credenciais prontas" : shopifyCanalAtivo ? "Canal publicado" : "Aguardando conexão",
+            shopifyConfigurado
+                ? "Loja Shopify preparada para autenticar catálogo, pedidos e estoque assim que os tokens reais forem inseridos."
+                : shopifyCanalAtivo
+                    ? "Canal Shopify já está publicado no sistema e aguardando domínio/tokens oficiais."
+                    : "Estrutura Shopify será habilitada após cadastrar domínio da loja e token Admin API.",
+            shopifyConfigurado || shopifyCanalAtivo,
+            shopifyConfigurado ? "Staging pronto" : "Aguardando credenciais"),
+        new(
+            "CJ Dropshipping",
+            "cjdropshipping",
+            cjDropshippingConfigurado ? "Credenciais prontas" : cjCanalAtivo ? "Canal publicado" : "Aguardando conexão",
+            cjDropshippingConfigurado
+                ? "Canal CJ preparado para catálogo, sourcing e roteamento de pedidos conforme as credenciais do fornecedor."
+                : cjCanalAtivo
+                    ? "Canal CJ Dropshipping já está publicado no sistema e aguardando token real da operação."
+                    : "Estrutura CJ Dropshipping será habilitada após cadastrar endpoint e token da conta contratada.",
+            cjDropshippingConfigurado || cjCanalAtivo,
+            cjDropshippingConfigurado ? "Staging pronto" : "Aguardando credenciais"),
         new(
             "Logistica e Fretes",
             "logistica",
@@ -1723,7 +1760,7 @@ app.MapGet("/api/integracoes/diagnostico", [Authorize(Policy = "Gerente")] async
     IHttpClientFactory httpClientFactory,
     CancellationToken ct) =>
 {
-    var slugs = new[] { "ecommerce", "mercadopago", "melhorenvio", "mercadolivre", "dropshipping", "bancaria" };
+    var slugs = new[] { "ecommerce", "dropshipping", "shopify", "cjdropshipping", "mercadopago", "melhorenvio", "mercadolivre", "bancaria" };
     var resultados = new List<IntegracaoDiagnosticoDto>();
 
     foreach (var slug in slugs)
@@ -1751,6 +1788,14 @@ app.MapGet("/api/integracoes/credenciais-modelo", [Authorize(Policy = "Gerente")
         new("Logística secundária", "logistica", "LogisticaSecundaria__Provider / LogisticaSecundaria__ApiEndpoint / LogisticaSecundaria__Token / LogisticaSecundaria__ClientId / LogisticaSecundaria__ClientSecret", "Estrutura de contingência para uma segunda transportadora ou hub logístico.", false),
         new("Dropshipping principal", "dropshipping", "DropshippingPrincipal__Provider / DropshippingPrincipal__ApiEndpoint / DropshippingPrincipal__ApiKey / DropshippingPrincipal__ApiSecret", "Canal principal de dropshipping preparado para receber as credenciais reais.", false),
         new("Dropshipping secundário", "dropshipping", "DropshippingSecundario__Provider / DropshippingSecundario__ApiEndpoint / DropshippingSecundario__ApiKey / DropshippingSecundario__ApiSecret", "Canal secundário para contingência ou operação paralela de dropshipping.", false),
+        new("Shopify", "dropshipping", "Shopify__StoreDomain", "Domínio da loja Shopify que será sincronizada com catálogo, estoque e pedidos.", true),
+        new("Shopify", "dropshipping", "Shopify__ApiVersion", "Versão da Admin API usada pelo conector privado do servidor.", true),
+        new("Shopify", "dropshipping", "Shopify__AdminApiAccessToken", "Token privado Admin API da loja Shopify.", true),
+        new("Shopify", "dropshipping", "Shopify__WebhookSecret", "Segredo para validar webhooks de pedido, produto e estoque da Shopify.", false),
+        new("CJ Dropshipping", "dropshipping", "CJDropshipping__ApiEndpoint", "Endpoint base da API privada do CJ Dropshipping.", true),
+        new("CJ Dropshipping", "dropshipping", "CJDropshipping__AccessToken", "Token principal para sincronizar produtos e pedidos com o CJ Dropshipping.", true),
+        new("CJ Dropshipping", "dropshipping", "CJDropshipping__ApiKey", "Chave complementar da conta CJ quando o contrato exigir autenticação dupla.", false),
+        new("CJ Dropshipping", "dropshipping", "CJDropshipping__WebhookSecret", "Segredo para validar notificações recebidas do CJ Dropshipping.", false),
         new("Mercado Livre", "marketplace", "MercadoLivre__AppId", "ID do aplicativo Mercado Livre.", true),
         new("Mercado Livre", "marketplace", "MercadoLivre__ClientSecret", "Segredo do aplicativo Mercado Livre.", true),
         new("Mercado Livre", "marketplace", "MercadoLivre__RedirectUri", "URL de retorno cadastrada exatamente no Mercado Livre.", true),
@@ -2763,6 +2808,8 @@ static async Task<IntegracaoDiagnosticoDto> BuildIntegracaoDiagnosticoAsync(
         "melhorenvio" or "logistica" or "frete" => await TestMelhorEnvioAsync(configuration, httpClientFactory, ct),
         "mercadolivre" or "marketplaces" or "marketplace" => await TestMercadoLivreAsync(configuration, httpClientFactory, ct),
         "dropshipping" or "dropship" => await TestDropshippingAsync(db, ct),
+        "shopify" => await TestShopifyAsync(configuration, db, httpClientFactory, ct),
+        "cjdropshipping" or "cjdropship" or "cj" => await TestCjDropshippingAsync(configuration, db, ct),
         "bancaria" or "bancos" or "financeiro" => TestBancaria(configuration),
         _ => new IntegracaoDiagnosticoDto(
             slug,
@@ -2771,7 +2818,7 @@ static async Task<IntegracaoDiagnosticoDto> BuildIntegracaoDiagnosticoAsync(
             false,
             false,
             "Integração não mapeada no Nexum Altivon.",
-            ["Use: ecommerce, mercadopago, melhorenvio, mercadolivre, dropshipping ou bancaria."],
+            ["Use: ecommerce, dropshipping, shopify, cjdropshipping, mercadopago, melhorenvio, mercadolivre ou bancaria."],
             DateTime.UtcNow,
             null)
     };
@@ -2955,6 +3002,99 @@ static async Task<IntegracaoDiagnosticoDto> TestDropshippingAsync(NexumDbContext
         operacional ? [] : ["Cadastrar fornecedor ativo.", "Vincular produtos ao fornecedor.", "Ativar canal de dropshipping com chave/API quando existir."],
         DateTime.UtcNow,
         "Roteamento interno");
+}
+
+static async Task<IntegracaoDiagnosticoDto> TestShopifyAsync(
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct)
+{
+    var storeDomain = GetIntegrationValue(configuration, "Shopify:StoreDomain", "Integracoes:Shopify:StoreDomain");
+    var apiVersion = GetIntegrationValue(configuration, "Shopify:ApiVersion", "Integracoes:Shopify:ApiVersion");
+    var accessToken = GetIntegrationValue(configuration, "Shopify:AdminApiAccessToken", "Integracoes:Shopify:AdminApiAccessToken");
+    var configCompleta = IsConfiguredSecret(storeDomain) && IsConfiguredSecret(apiVersion) && IsConfiguredSecret(accessToken);
+    var canalPublicado = await db.DropshippingConfigs.AsNoTracking().AnyAsync(config => config.Slug == "shopify", ct);
+
+    if (!configCompleta)
+    {
+        return new IntegracaoDiagnosticoDto(
+            "Shopify",
+            "shopify",
+            canalPublicado ? "Canal publicado" : "Aguardando conexão",
+            canalPublicado,
+            false,
+            canalPublicado
+                ? "Canal Shopify cadastrado internamente; faltam domínio da loja e token Admin API para ativação."
+                : "Conector Shopify ainda não recebeu StoreDomain, ApiVersion e AdminApiAccessToken.",
+            ["Shopify__StoreDomain", "Shopify__ApiVersion", "Shopify__AdminApiAccessToken"],
+            DateTime.UtcNow,
+            canalPublicado ? "Canal interno publicado" : null);
+    }
+
+    try
+    {
+        var client = httpClientFactory.CreateClient();
+        client.BaseAddress = new Uri($"https://{storeDomain}/admin/api/{apiVersion.Trim('/')}/");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "shop.json");
+        request.Headers.TryAddWithoutValidation("X-Shopify-Access-Token", accessToken);
+        using var response = await client.SendAsync(request, ct);
+
+        return new IntegracaoDiagnosticoDto(
+            "Shopify",
+            "shopify",
+            response.IsSuccessStatusCode ? "Conectado" : "Credencial recusada",
+            true,
+            response.IsSuccessStatusCode,
+            response.IsSuccessStatusCode
+                ? "Shopify respondeu com sucesso. Catálogo, pedidos e estoque podem seguir para a fase de ligação real."
+                : "Shopify recebeu a requisição, mas recusou a credencial ou o domínio informado.",
+            response.IsSuccessStatusCode ? [] : ["Conferir domínio da loja.", "Validar Shopify__AdminApiAccessToken."],
+            DateTime.UtcNow,
+            storeDomain);
+    }
+    catch (Exception ex)
+    {
+        return new IntegracaoDiagnosticoDto(
+            "Shopify",
+            "shopify",
+            "Erro de comunicação",
+            true,
+            false,
+            $"Falha ao consultar a Shopify: {ex.Message}",
+            ["Conferir acesso externo do servidor.", "Validar domínio da loja Shopify.", "Repetir teste após inserir o token real."],
+            DateTime.UtcNow,
+            storeDomain);
+    }
+}
+
+static async Task<IntegracaoDiagnosticoDto> TestCjDropshippingAsync(
+    IConfiguration configuration,
+    NexumDbContext db,
+    CancellationToken ct)
+{
+    var endpoint = GetIntegrationValue(configuration, "CJDropshipping:ApiEndpoint", "Integracoes:CJDropshipping:ApiEndpoint");
+    var accessToken = GetIntegrationValue(configuration, "CJDropshipping:AccessToken", "Integracoes:CJDropshipping:AccessToken");
+    var apiKey = GetIntegrationValue(configuration, "CJDropshipping:ApiKey", "Integracoes:CJDropshipping:ApiKey");
+    var configCompleta = IsConfiguredSecret(endpoint) && (IsConfiguredSecret(accessToken) || IsConfiguredSecret(apiKey));
+    var canalPublicado = await db.DropshippingConfigs.AsNoTracking().AnyAsync(config => config.Slug == "cjdropshipping", ct);
+
+    return new IntegracaoDiagnosticoDto(
+        "CJ Dropshipping",
+        "cjdropshipping",
+        configCompleta ? "Credenciais prontas" : canalPublicado ? "Canal publicado" : "Aguardando conexão",
+        configCompleta || canalPublicado,
+        false,
+        configCompleta
+            ? "Estrutura CJ Dropshipping está pronta no servidor e aguardando apenas o vínculo operacional dos produtos."
+            : canalPublicado
+                ? "Canal CJ já está publicado no sistema; falta inserir AccessToken/API key reais para ativação."
+                : "Conector CJ ainda não recebeu endpoint e token/credenciais reais.",
+        configCompleta
+            ? ["Vincular produtos do catálogo ao canal CJ.", "Executar primeira sincronização real após inserir os tokens finais."]
+            : ["CJDropshipping__ApiEndpoint", "CJDropshipping__AccessToken ou CJDropshipping__ApiKey"],
+        DateTime.UtcNow,
+        IsConfiguredSecret(endpoint) ? endpoint : null);
 }
 
 static IntegracaoDiagnosticoDto TestBancaria(IConfiguration configuration)
@@ -3826,6 +3966,37 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS status_automacao VARCHAR(40) NULL;");
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS resumo_roteamento TEXT NULL;");
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS payload_operacao LONGTEXT NULL;");
+
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        CREATE TABLE IF NOT EXISTS dropshipping_config (
+            id INT NOT NULL AUTO_INCREMENT,
+            nome VARCHAR(100) NOT NULL,
+            slug VARCHAR(50) NOT NULL,
+            tipo INT NOT NULL,
+            api_endpoint VARCHAR(255) NULL,
+            api_key VARCHAR(255) NULL,
+            api_secret VARCHAR(255) NULL,
+            ativo TINYINT(1) NOT NULL DEFAULT 0,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY ux_dropshipping_config_slug (slug)
+        );
+        """);
+
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        INSERT INTO dropshipping_config (nome, slug, tipo, api_endpoint, ativo)
+        VALUES
+            ('Shopify', 'shopify', 5, 'https://{store}.myshopify.com/admin/api', 0),
+            ('CJ Dropshipping', 'cjdropshipping', 1, 'https://developers.cjdropshipping.com/api2.0/v1', 0)
+        ON DUPLICATE KEY UPDATE
+            nome = VALUES(nome),
+            tipo = VALUES(tipo),
+            api_endpoint = VALUES(api_endpoint),
+            updated_at = CURRENT_TIMESTAMP;
+        """);
 
     await db.Database.ExecuteSqlRawAsync(
         """
