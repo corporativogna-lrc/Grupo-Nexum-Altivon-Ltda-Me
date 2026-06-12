@@ -273,6 +273,7 @@ const emptyProduto = {
   ativo: true,
   sku: '',
   categoriaId: 'classicos',
+  subcategoriaId: '',
   tipoProduto: 'Proprio',
   fornecedorId: '',
   marca: '',
@@ -280,6 +281,14 @@ const emptyProduto = {
   seoTitulo: '',
   seoDescricao: '',
   seoKeywords: '',
+};
+
+const emptyCategoria = {
+  id: '',
+  nome: '',
+  descricao: '',
+  categoriaPaiId: '',
+  ordem: '0',
 };
 
 const emptyCliente = { nome: '', email: '', telefone: '', cpf: '' };
@@ -610,6 +619,7 @@ export default function Dashboard() {
   const [activeIntegration, setActiveIntegration] = useState(routeState.activeIntegration);
   const [query, setQuery] = useState('');
   const [produtoForm, setProdutoForm] = useState(emptyProduto);
+  const [categoriaForm, setCategoriaForm] = useState(emptyCategoria);
   const [clienteForm, setClienteForm] = useState(emptyCliente);
   const [fornecedorForm, setFornecedorForm] = useState(emptyFornecedor);
   const [leadForm, setLeadForm] = useState(emptyLead);
@@ -673,6 +683,51 @@ export default function Dashboard() {
     setFormStatus('');
   }, [routeState.activeCadastroTab, routeState.activeIntegration, routeState.activeTab]);
 
+  const categoriasRaiz = useMemo(
+    () => categorias.filter((categoria) => !(categoria.categoria_pai_id || categoria.categoriaPaiId)),
+    [categorias],
+  );
+
+  const subcategoriasDisponiveis = useMemo(() => {
+    if (!produtoForm.categoriaId) return [];
+    return categorias.filter((categoria) => (categoria.categoria_pai_id || categoria.categoriaPaiId) === produtoForm.categoriaId);
+  }, [categorias, produtoForm.categoriaId]);
+
+  const categoriasHierarquicas = useMemo(() => (
+    categorias.map((categoria) => ({
+      ...categoria,
+      label: (categoria.caminho || categoria.Caminho || categoria.nome || categoria.Nome || '').trim() || 'Sem nome',
+    }))
+  ), [categorias]);
+
+  const submitCategoria = async (event) => {
+    event.preventDefault();
+    setFormStatus('');
+
+    const slugExistente = categorias.some((categoria) => String(categoria.id).toLowerCase() === String(categoriaForm.id).trim().toLowerCase());
+    if (categoriaForm.id && slugExistente) {
+      setFormStatus('Já existe uma categoria com este slug.');
+      return;
+    }
+
+    const nomeExistente = categorias.some((categoria) => String(categoria.nome).trim().toLowerCase() === String(categoriaForm.nome).trim().toLowerCase());
+    if (nomeExistente) {
+      setFormStatus('Já existe uma categoria com este nome.');
+      return;
+    }
+
+    const payload = {
+      ...categoriaForm,
+      ordem: categoriaForm.ordem ? Number(categoriaForm.ordem) : 0,
+      categoriaPaiId: categoriaForm.categoriaPaiId || null,
+    };
+
+    const response = await categoriaAPI.create(payload);
+    setCategorias((current) => [...current, response.data]);
+    setCategoriaForm(emptyCategoria);
+    setFormStatus('Categoria/subcategoria cadastrada e pronta para uso no catálogo.');
+  };
+
   const submitProduto = async (event) => {
     event.preventDefault();
     setFormStatus('');
@@ -695,6 +750,7 @@ export default function Dashboard() {
       estoqueMinimo: produtoForm.estoqueMinimo ? Number(produtoForm.estoqueMinimo) : null,
       estoqueReservado: produtoForm.estoqueReservado ? Number(produtoForm.estoqueReservado) : null,
       categoriaId: produtoForm.categoriaId,
+      subcategoriaId: produtoForm.subcategoriaId || null,
       fornecedorId: produtoForm.fornecedorId ? Number(produtoForm.fornecedorId) : null,
     };
 
@@ -1283,10 +1339,23 @@ export default function Dashboard() {
                             Categoria
                             <select
                               value={produtoForm.categoriaId}
-                              onChange={(event) => setProdutoForm((form) => ({ ...form, categoriaId: event.target.value }))}
+                              onChange={(event) => setProdutoForm((form) => ({ ...form, categoriaId: event.target.value, subcategoriaId: '' }))}
                               className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
                             >
-                              {categorias.map((categoria) => (
+                              {categoriasRaiz.map((categoria) => (
+                                <option key={categoria.id} value={categoria.id}>{categoria.nome}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="block text-sm font-bold text-slate-700">
+                            Subcategoria
+                            <select
+                              value={produtoForm.subcategoriaId}
+                              onChange={(event) => setProdutoForm((form) => ({ ...form, subcategoriaId: event.target.value }))}
+                              className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+                            >
+                              <option value="">Usar apenas a categoria principal</option>
+                              {subcategoriasDisponiveis.map((categoria) => (
                                 <option key={categoria.id} value={categoria.id}>{categoria.nome}</option>
                               ))}
                             </select>
@@ -1360,6 +1429,34 @@ export default function Dashboard() {
                       </form>
                       <div className="space-y-6">
                         <ProductPreview produto={produtoForm} categorias={categorias} />
+                        <form onSubmit={submitCategoria} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                          <h4 className="text-base font-black text-slate-950">Categorias e subcategorias</h4>
+                          <p className="mt-1 text-sm font-semibold text-slate-500">Monte a hierarquia do catálogo antes de liberar o cadastro em massa.</p>
+                          <div className="mt-4 grid gap-3">
+                            <Field label="Slug / código" value={categoriaForm.id} onChange={(value) => setCategoriaForm((form) => ({ ...form, id: value }))} />
+                            <Field label="Nome da categoria" value={categoriaForm.nome} onChange={(value) => setCategoriaForm((form) => ({ ...form, nome: value }))} required />
+                            <Field label="Descrição" value={categoriaForm.descricao} onChange={(value) => setCategoriaForm((form) => ({ ...form, descricao: value }))} />
+                            <label className="block text-sm font-bold text-slate-700">
+                              Categoria pai
+                              <select
+                                value={categoriaForm.categoriaPaiId}
+                                onChange={(event) => setCategoriaForm((form) => ({ ...form, categoriaPaiId: event.target.value }))}
+                                className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+                              >
+                                <option value="">Categoria principal</option>
+                                {categoriasRaiz.map((categoria) => (
+                                  <option key={categoria.id} value={categoria.id}>{categoria.nome}</option>
+                                ))}
+                              </select>
+                            </label>
+                            <Field label="Ordem" type="number" value={categoriaForm.ordem} onChange={(value) => setCategoriaForm((form) => ({ ...form, ordem: value }))} />
+                          </div>
+                          <button className="mt-4 inline-flex h-11 items-center gap-2 rounded-lg bg-[#C9A227] px-5 text-sm font-black text-slate-950">
+                            <Save size={17} />
+                            Salvar categoria
+                          </button>
+                        </form>
+                        <CompactList title="Hierarquia do catálogo" items={categoriasHierarquicas} fields={['label', 'descricao']} />
                         <CompactList title="Produtos cadastrados" items={produtos} fields={['nome', 'sku', 'estoque']} />
                       </div>
                     </div>
@@ -2142,7 +2239,11 @@ function ModuleActionGrid({ title, actions }) {
 }
 
 function ProductPreview({ produto, categorias }) {
-  const categoria = categorias.find((item) => item.id === produto.categoriaId)?.nome || 'Sem categoria';
+  const categoriaSelecionada = produto.subcategoriaId || produto.categoriaId;
+  const categoria = categorias.find((item) => item.id === categoriaSelecionada)?.caminho
+    || categorias.find((item) => item.id === categoriaSelecionada)?.nome
+    || categorias.find((item) => item.id === produto.categoriaId)?.nome
+    || 'Sem categoria';
   const image = produto.imagemUrl || 'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85';
   const price = Number(produto.preco || 0);
   const promotional = Number(produto.precoPromocional || 0);

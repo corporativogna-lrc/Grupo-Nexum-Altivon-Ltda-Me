@@ -436,7 +436,12 @@ app.MapGet("/api/categorias", async (NexumDbContext db, CancellationToken ct) =>
         .Select(categoria => new CategoriaDto(
             categoria.Slug,
             categoria.Nome,
-            categoria.Descricao ?? string.Empty))
+            categoria.Descricao ?? string.Empty,
+            categoria.CategoriaPai != null ? categoria.CategoriaPai.Slug : null,
+            categoria.CategoriaPaiId.HasValue ? 2 : 1,
+            categoria.CategoriaPai != null ? $"{categoria.CategoriaPai.Nome} / {categoria.Nome}" : categoria.Nome,
+            categoria.Ordem,
+            categoria.Ativa))
         .ToListAsync(ct);
 
     if (categorias.Count == 0)
@@ -484,12 +489,25 @@ app.MapPost("/api/categorias", [Authorize(Policy = "Gerente")] async (
         return Results.Problem("Nenhuma loja ativa cadastrada.", statusCode: StatusCodes.Status500InternalServerError);
     }
 
+    int? categoriaPaiId = null;
+    if (!string.IsNullOrWhiteSpace(request.CategoriaPaiId))
+    {
+        var categoriaPaiSlug = request.CategoriaPaiId.Trim();
+        categoriaPaiId = await db.Categorias
+            .AsNoTracking()
+            .Where(categoria => categoria.Slug == categoriaPaiSlug && categoria.Ativa)
+            .Select(categoria => (int?)categoria.Id)
+            .FirstOrDefaultAsync(ct);
+    }
+
     var categoria = new Categoria
     {
         LojaId = lojaId,
         Nome = request.Nome,
         Slug = slug,
         Descricao = request.Descricao,
+        CategoriaPaiId = categoriaPaiId,
+        Ordem = request.Ordem ?? 0,
         Ativa = true,
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow
@@ -498,7 +516,15 @@ app.MapPost("/api/categorias", [Authorize(Policy = "Gerente")] async (
     db.Categorias.Add(categoria);
     await db.SaveChangesAsync(ct);
 
-    return Results.Created($"/api/categorias/{categoria.Slug}", ApiResponse<CategoriaDto>.Ok(new CategoriaDto(categoria.Slug, categoria.Nome, categoria.Descricao ?? string.Empty), "Categoria cadastrada."));
+    return Results.Created($"/api/categorias/{categoria.Slug}", ApiResponse<CategoriaDto>.Ok(new CategoriaDto(
+        categoria.Slug,
+        categoria.Nome,
+        categoria.Descricao ?? string.Empty,
+        request.CategoriaPaiId,
+        categoria.CategoriaPaiId.HasValue ? 2 : 1,
+        categoria.CategoriaPaiId.HasValue ? $"{request.CategoriaPaiId} / {categoria.Nome}" : categoria.Nome,
+        categoria.Ordem,
+        categoria.Ativa), "Categoria cadastrada."));
 })
 .WithName("CriarCategoria")
 ;
@@ -779,11 +805,14 @@ app.MapPost("/api/produtos", [Authorize(Policy = "Gerente")] async (
     }
 
     int? categoriaId = null;
-    if (!string.IsNullOrWhiteSpace(request.CategoriaId))
+    var categoriaSlug = !string.IsNullOrWhiteSpace(request.SubcategoriaId)
+        ? request.SubcategoriaId
+        : request.CategoriaId;
+    if (!string.IsNullOrWhiteSpace(categoriaSlug))
     {
         categoriaId = await db.Categorias
             .AsNoTracking()
-            .Where(categoria => categoria.Slug == request.CategoriaId)
+            .Where(categoria => categoria.Slug == categoriaSlug)
             .Select(categoria => (int?)categoria.Id)
             .FirstOrDefaultAsync(ct);
     }
@@ -839,7 +868,7 @@ app.MapPost("/api/produtos", [Authorize(Policy = "Gerente")] async (
         produto.EstoqueReservado,
         produto.Destaque,
         produto.Sku,
-        request.CategoriaId ?? "classicos",
+        categoriaSlug ?? "classicos",
         4.8m,
         produto.Custo,
         produto.Peso,
@@ -909,11 +938,14 @@ app.MapPut("/api/produtos/{id}", [Authorize(Policy = "Gerente")] async (
     produto.Destaque = request.Destaque;
     produto.UpdatedAt = DateTime.UtcNow;
 
-    if (!string.IsNullOrWhiteSpace(request.CategoriaId))
+    var categoriaAtualizacaoSlug = !string.IsNullOrWhiteSpace(request.SubcategoriaId)
+        ? request.SubcategoriaId
+        : request.CategoriaId;
+    if (!string.IsNullOrWhiteSpace(categoriaAtualizacaoSlug))
     {
         var categoriaId = await db.Categorias
             .AsNoTracking()
-            .Where(categoria => categoria.Slug == request.CategoriaId)
+            .Where(categoria => categoria.Slug == categoriaAtualizacaoSlug)
             .Select(categoria => (int?)categoria.Id)
             .FirstOrDefaultAsync(ct);
 
@@ -936,7 +968,7 @@ app.MapPut("/api/produtos/{id}", [Authorize(Policy = "Gerente")] async (
         produto.EstoqueReservado,
         produto.Destaque,
         produto.Sku,
-        request.CategoriaId ?? "classicos",
+        categoriaAtualizacaoSlug ?? "classicos",
         4.8m,
         produto.Custo,
         produto.Peso,
@@ -4108,7 +4140,15 @@ public sealed record PedidosRecentesDto(int Id, string NumeroPedido, string Clie
 
 public sealed record LeadsRecentesDto(int Id, string Nome, string Tipo, string Status, string Prioridade, string? Email, string? Whatsapp, DateTime DataCriacao);
 
-public sealed record CategoriaDto(string Id, string Nome, string Descricao);
+public sealed record CategoriaDto(
+    string Id,
+    string Nome,
+    string Descricao,
+    string? CategoriaPaiId = null,
+    int Nivel = 1,
+    string? Caminho = null,
+    int? Ordem = null,
+    bool Ativa = true);
 
 public sealed record ProdutoLojaDto(
     string Id,
@@ -4153,6 +4193,7 @@ public sealed record ProdutoRequest(
     bool Destaque,
     string? Sku,
     string? CategoriaId,
+    string? SubcategoriaId,
     decimal? Avaliacao,
     decimal? Custo,
     decimal? Peso,
@@ -4704,10 +4745,18 @@ public static class StoreData
 {
     public static readonly List<CategoriaDto> Categorias =
     [
-        new("automaticos", "Automaticos", "Movimento mecanico com presenca executiva"),
-        new("cronografos", "Cronografos", "Performance, precisao e leitura esportiva"),
-        new("classicos", "Classicos", "Pecas discretas para rotina premium"),
-        new("smart-luxo", "Smart Luxo", "Tecnologia conectada com acabamento refinado")
+        new("automaticos", "Automaticos", "Movimento mecanico com presenca executiva", null, 1, "Automaticos", 1, true),
+        new("dress-watch", "Dress Watch", "Subcategoria para modelos executivos e sociais.", "automaticos", 2, "Automaticos / Dress Watch", 1, true),
+        new("skeleton", "Skeleton", "Subcategoria para mostradores abertos e mecânica aparente.", "automaticos", 2, "Automaticos / Skeleton", 2, true),
+        new("cronografos", "Cronografos", "Performance, precisao e leitura esportiva", null, 1, "Cronografos", 2, true),
+        new("corrida", "Corrida", "Subcategoria para cronógrafos de perfil esportivo.", "cronografos", 2, "Cronografos / Corrida", 1, true),
+        new("aventura", "Aventura", "Subcategoria para peças robustas e outdoor.", "cronografos", 2, "Cronografos / Aventura", 2, true),
+        new("classicos", "Classicos", "Pecas discretas para rotina premium", null, 1, "Classicos", 3, true),
+        new("social", "Social", "Subcategoria para linha formal e corporativa.", "classicos", 2, "Classicos / Social", 1, true),
+        new("minimalista", "Minimalista", "Subcategoria para peças leves e design limpo.", "classicos", 2, "Classicos / Minimalista", 2, true),
+        new("smart-luxo", "Smart Luxo", "Tecnologia conectada com acabamento refinado", null, 1, "Smart Luxo", 4, true),
+        new("fitness-premium", "Fitness Premium", "Subcategoria para wearables esportivos premium.", "smart-luxo", 2, "Smart Luxo / Fitness Premium", 1, true),
+        new("executivo-connect", "Executivo Connect", "Subcategoria para smartwatches de perfil executivo.", "smart-luxo", 2, "Smart Luxo / Executivo Connect", 2, true)
     ];
 
     public static readonly List<ProdutoLojaDto> Produtos =
