@@ -3875,7 +3875,10 @@ static List<T> ParseJsonList<T>(string? json, List<T> fallback)
 
     try
     {
-        var parsed = JsonSerializer.Deserialize<List<T>>(json);
+        var parsed = JsonSerializer.Deserialize<List<T>>(json, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        });
         return parsed is { Count: > 0 } ? parsed : fallback;
     }
     catch
@@ -4065,7 +4068,7 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
         """
         INSERT INTO dropshipping_config (nome, slug, tipo, api_endpoint, ativo)
         VALUES
-            ('Shopify', 'shopify', 5, 'https://{store}.myshopify.com/admin/api', 0),
+            ('Shopify', 'shopify', 5, 'https://{{store}}.myshopify.com/admin/api', 0),
             ('CJ Dropshipping', 'cjdropshipping', 1, 'https://developers.cjdropshipping.com/api2.0/v1', 0)
         ON DUPLICATE KEY UPDATE
             nome = VALUES(nome),
@@ -4113,7 +4116,7 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
             grupo = VALUES(grupo),
             editavel = VALUES(editavel),
             updated_at = CURRENT_TIMESTAMP;
-        """);
+        """.Replace("{", "{{").Replace("}", "}}"));
 }
 
 app.Run();

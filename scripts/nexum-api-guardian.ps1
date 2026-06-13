@@ -17,6 +17,7 @@ $ApiErrLog = Join-Path $LogDir "api-guardian-api.err.log"
 $GuardianLog = Join-Path $LogDir "api-guardian.log"
 $ProjectPath = Join-Path $RootDir "NexumAltivon_Back-End\NexumAltivon.API.csproj"
 $PublishedApiDll = Join-Path $RunDir "api-local\NexumAltivon.API.dll"
+$PublishedApiRuntimeConfig = Join-Path $RunDir "api-local\NexumAltivon.API.runtimeconfig.json"
 
 New-Item -ItemType Directory -Force -Path $RunDir, $LogDir | Out-Null
 
@@ -84,7 +85,7 @@ function Start-ApiProcess {
   }
 
   Write-GuardianLog "Iniciando API em $Url"
-  if (Test-Path $PublishedApiDll) {
+  if ((Test-Path $PublishedApiDll) -and (Test-Path $PublishedApiRuntimeConfig)) {
     $dotnetCommand = 'dotnet "' + $PublishedApiDll + '"'
   } else {
     $dotnetCommand = 'dotnet run --project "' + $ProjectPath + '" --configuration Release --no-build --no-restore'

@@ -25,11 +25,11 @@ const normalizeApiUrl = (value) => {
   return /^https?:\/\//i.test(url) ? url : '';
 };
 
-const canUseApiUrl = async (baseUrl) => {
+const canUseApiUrl = async (baseUrl, force = false) => {
   const normalized = normalizeApiUrl(baseUrl);
   if (!normalized) return false;
 
-  if (apiHealthCache.has(normalized)) {
+  if (!force && apiHealthCache.has(normalized)) {
     return apiHealthCache.get(normalized);
   }
 
@@ -58,8 +58,12 @@ const isLocalApi = () => {
   return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
 };
 
-export const getRuntimeApiBaseUrl = async () => {
+export const getRuntimeApiBaseUrl = async ({ force = false } = {}) => {
   if (process.env.REACT_APP_BACKEND_URL || isLocalApi()) return API_BASE_URL;
+  if (force) {
+    runtimeApiUrlPromise = null;
+    apiHealthCache.clear();
+  }
   if (runtimeApiUrlPromise) return runtimeApiUrlPromise;
 
   runtimeApiUrlPromise = (async () => {
@@ -87,7 +91,7 @@ export const getRuntimeApiBaseUrl = async () => {
     candidates.push(API_BASE_URL);
 
     for (const candidate of [...new Set(candidates.filter(Boolean))]) {
-      if (await canUseApiUrl(candidate)) {
+      if (await canUseApiUrl(candidate, force)) {
         localStorage.setItem(RUNTIME_CACHE_KEY, candidate);
         return candidate;
       }
@@ -185,6 +189,13 @@ api.interceptors.response.use(
   }),
   async (error) => {
     const originalRequest = error.config;
+
+    if (!error.response && originalRequest && !originalRequest._runtimeRetry) {
+      originalRequest._runtimeRetry = true;
+      const runtimeApiBaseUrl = await getRuntimeApiBaseUrl({ force: true });
+      originalRequest.baseURL = `${runtimeApiBaseUrl}/api`;
+      return api(originalRequest);
+    }
 
     if (error.response?.status === HTTP_UNAUTHORIZED && !originalRequest._retry) {
       originalRequest._retry = true;

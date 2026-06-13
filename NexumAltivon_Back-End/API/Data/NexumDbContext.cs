@@ -165,6 +165,10 @@ public class NexumDbContext : DbContext
             .Property(config => config.Tipo)
             .HasConversion<string>();
 
+        modelBuilder.Entity<ConfiguracaoSistema>()
+            .Property(config => config.Tipo)
+            .HasConversion<string>();
+
         // Configuração de precisão para decimais
         modelBuilder.Entity<Produto>()
             .Property(p => p.Preco)

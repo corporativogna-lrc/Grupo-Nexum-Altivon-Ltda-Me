@@ -2,7 +2,7 @@ param(
   [string]$LocalUrl = "http://127.0.0.1:5011",
   [int]$CheckSeconds = 45,
   [string]$Branch = "main",
-  [string]$PushUrl = "https://corporativogna-lrc@github.com/corporativogna-lrc/Grupo-Nexum-Altivon-Ltda-Me.git"
+  [string]$PushUrl = "https://github.com/corporativogna-lrc/Grupo-Nexum-Altivon-Ltda-Me.git"
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,14 +14,14 @@ $LogDir = Join-Path $RootDir "runtime-logs"
 $PidPath = Join-Path $RunDir "guardian.pid"
 $TunnelPidPath = Join-Path $RunDir "cloudflared.pid"
 $TunnelUrlPath = Join-Path $RunDir "api-url.txt"
+$LastPublishedUrlPath = Join-Path $RunDir "last-published-url.txt"
+$PublisherDir = Join-Path $RunDir "publisher"
 $TunnelOutLog = Join-Path $RunDir "cloudflared.out.log"
 $TunnelErrLog = Join-Path $RunDir "cloudflared.err.log"
 $GuardianLog = Join-Path $LogDir "public-api-guardian.log"
-$RootRuntimeConfig = Join-Path $RootDir "api-runtime.json"
-$PublicRuntimeConfig = Join-Path $RootDir "NexumAltivon_Front-End\public\api-runtime.json"
 $CloudflaredPath = "C:\Program Files (x86)\cloudflared\cloudflared.exe"
 
-New-Item -ItemType Directory -Force -Path $RunDir, $LogDir, (Split-Path -Parent $PublicRuntimeConfig) | Out-Null
+New-Item -ItemType Directory -Force -Path $RunDir, $LogDir | Out-Null
 
 function Write-GuardianLog {
   param([string]$Message)
@@ -29,11 +29,7 @@ function Write-GuardianLog {
 }
 
 function Set-Utf8NoBomText {
-  param(
-    [string]$Path,
-    [string]$Value
-  )
-
+  param([string]$Path, [string]$Value)
   $encoding = New-Object System.Text.UTF8Encoding($false)
   [System.IO.File]::WriteAllText($Path, $Value, $encoding)
 }
@@ -41,7 +37,7 @@ function Set-Utf8NoBomText {
 function Test-HttpHealth {
   param([string]$Url)
   try {
-    $response = Invoke-WebRequest -UseBasicParsing -Uri "$Url/health" -TimeoutSec 12
+    $response = Invoke-WebRequest -UseBasicParsing -Uri "$Url/health?t=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())" -TimeoutSec 12
     return ($response.StatusCode -eq 200)
   } catch {
     return $false
@@ -49,12 +45,15 @@ function Test-HttpHealth {
 }
 
 function Stop-ManagedTunnel {
-  if (Test-Path $TunnelPidPath) {
-    $oldPid = Get-Content $TunnelPidPath -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($oldPid) {
+  if (-not (Test-Path $TunnelPidPath)) { return }
+  $oldPid = Get-Content $TunnelPidPath -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($oldPid) {
+    $process = Get-CimInstance Win32_Process -Filter "ProcessId = $oldPid" -ErrorAction SilentlyContinue
+    if ($process -and ([string]$process.Name -eq "cloudflared.exe")) {
       Stop-Process -Id ([int]$oldPid) -Force -ErrorAction SilentlyContinue
     }
   }
+  Remove-Item $TunnelPidPath -Force -ErrorAction SilentlyContinue
 }
 
 function Start-QuickTunnel {
@@ -64,8 +63,8 @@ function Start-QuickTunnel {
 
   Stop-ManagedTunnel
   Remove-Item $TunnelOutLog, $TunnelErrLog -Force -ErrorAction SilentlyContinue
-
   Write-GuardianLog "Abrindo nova ponte publica para $LocalUrl"
+
   $process = Start-Process `
     -FilePath $CloudflaredPath `
     -ArgumentList @("tunnel", "--protocol", "http2", "--url", $LocalUrl, "--no-autoupdate") `
@@ -75,8 +74,7 @@ function Start-QuickTunnel {
     -PassThru
 
   Set-Content -Path $TunnelPidPath -Value $process.Id
-
-  $deadline = (Get-Date).AddSeconds(55)
+  $deadline = (Get-Date).AddSeconds(60)
   $url = $null
   do {
     Start-Sleep -Seconds 2
@@ -95,62 +93,57 @@ function Start-QuickTunnel {
   return $url
 }
 
-function Get-CurrentRuntimeUrl {
-  if (-not (Test-Path $PublicRuntimeConfig)) {
-    return ""
+function Initialize-Publisher {
+  if (-not (Test-Path (Join-Path $PublisherDir ".git"))) {
+    if (Test-Path $PublisherDir) {
+      Remove-Item $PublisherDir -Recurse -Force
+    }
+    git clone --quiet --branch $Branch --single-branch $PushUrl $PublisherDir
+    if ($LASTEXITCODE -ne 0) { throw "Falha ao criar clone isolado para publicar a URL." }
   }
 
-  try {
-    $rawConfig = Get-Content $PublicRuntimeConfig -Raw
-    $config = $rawConfig.TrimStart([char]0xFEFF) | ConvertFrom-Json
-    return [string]$config.apiUrl
-  } catch {
-    return ""
-  }
+  git -C $PublisherDir fetch --quiet origin $Branch
+  if ($LASTEXITCODE -ne 0) { throw "Falha ao atualizar clone isolado." }
+  git -C $PublisherDir checkout --quiet -B runtime-url-publisher "origin/$Branch"
+  if ($LASTEXITCODE -ne 0) { throw "Falha ao preparar branch isolada." }
 }
 
 function Publish-RuntimeUrl {
   param([string]$Url)
 
-  $current = Get-CurrentRuntimeUrl
-  if ($current -eq $Url) {
-    return
-  }
+  $lastPublished = Get-Content $LastPublishedUrlPath -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($lastPublished -eq $Url) { return }
 
+  Initialize-Publisher
   $payload = [ordered]@{
     apiUrl = $Url
     updatedAt = (Get-Date).ToUniversalTime().ToString("o")
     source = "nexum-public-api-guardian"
   } | ConvertTo-Json
 
-  Set-Utf8NoBomText -Path $RootRuntimeConfig -Value $payload
-  Set-Utf8NoBomText -Path $PublicRuntimeConfig -Value $payload
+  $rootRuntime = Join-Path $PublisherDir "api-runtime.json"
+  $publicRuntime = Join-Path $PublisherDir "NexumAltivon_Front-End\public\api-runtime.json"
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $publicRuntime) | Out-Null
+  Set-Utf8NoBomText -Path $rootRuntime -Value $payload
+  Set-Utf8NoBomText -Path $publicRuntime -Value $payload
 
-  Push-Location $RootDir
-  try {
-    git add api-runtime.json NexumAltivon_Front-End/public/api-runtime.json
-    git diff --cached --quiet
-    if ($LASTEXITCODE -eq 0) {
-      return
-    }
-
-    git commit -m "atualiza ponte publica da api"
-    if ($LASTEXITCODE -ne 0) {
-      Write-GuardianLog "Falha ao criar commit da ponte publica."
-      return
-    }
-
-    $env:GCM_INTERACTIVE = "never"
-    $env:GIT_TERMINAL_PROMPT = "0"
-    git push $PushUrl "HEAD:$Branch"
-    if ($LASTEXITCODE -eq 0) {
-      Write-GuardianLog "api-runtime.json publicado no GitHub."
-    } else {
-      Write-GuardianLog "Falha ao publicar api-runtime.json no GitHub."
-    }
-  } finally {
-    Pop-Location
+  git -C $PublisherDir add api-runtime.json NexumAltivon_Front-End/public/api-runtime.json
+  git -C $PublisherDir diff --cached --quiet
+  if ($LASTEXITCODE -eq 0) {
+    Set-Content -Path $LastPublishedUrlPath -Value $Url
+    return
   }
+
+  git -C $PublisherDir commit --quiet -m "atualiza ponte publica da api"
+  if ($LASTEXITCODE -ne 0) { throw "Falha ao criar commit isolado da URL." }
+
+  $env:GCM_INTERACTIVE = "never"
+  $env:GIT_TERMINAL_PROMPT = "0"
+  git -C $PublisherDir push --quiet origin "HEAD:$Branch"
+  if ($LASTEXITCODE -ne 0) { throw "Falha ao publicar api-runtime.json no GitHub." }
+
+  Set-Content -Path $LastPublishedUrlPath -Value $Url
+  Write-GuardianLog "api-runtime.json publicado no GitHub: $Url"
 }
 
 if (Test-Path $PidPath) {
@@ -164,12 +157,12 @@ if (Test-Path $PidPath) {
 }
 
 Set-Content -Path $PidPath -Value $PID
-Write-GuardianLog "Guardiao publico iniciado."
+Write-GuardianLog "Guardiao publico iniciado para $LocalUrl."
 
 while ($true) {
   try {
     if (-not (Test-HttpHealth -Url $LocalUrl)) {
-      Write-GuardianLog "API local indisponivel em $LocalUrl. Aguardando guardiao da API local."
+      Write-GuardianLog "API local indisponivel em $LocalUrl."
       Start-Sleep -Seconds $CheckSeconds
       continue
     }
