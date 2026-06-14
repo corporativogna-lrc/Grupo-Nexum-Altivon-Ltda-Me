@@ -131,9 +131,25 @@ code {
 
 .nexum-admin-shell {
     background:
-        radial-gradient(circle at top right, rgba(201, 162, 39, 0.12), transparent 32rem),
-        linear-gradient(135deg, var(--nexum-darker) 0%, #101114 100%) !important;
+        radial-gradient(circle at top right, rgba(201, 162, 39, 0.16), transparent 28rem),
+        radial-gradient(circle at bottom left, rgba(255, 255, 255, 0.03), transparent 22rem),
+        linear-gradient(135deg, #050505 0%, #0b0c10 45%, #111318 100%) !important;
     color: var(--nexum-text);
+    position: relative;
+    overflow: hidden;
+}
+
+.nexum-admin-shell::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+        linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(circle at center, black, transparent 82%);
+    opacity: 0.35;
 }
 
 .nexum-admin-shell .bg-white,
@@ -182,8 +198,11 @@ code {
 .nexum-admin-shell section,
 .nexum-admin-shell form,
 .nexum-admin-shell [data-testid^="dashboard-stat"] {
-    border-radius: 12px !important;
-    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.22) !important;
+    border-radius: 16px !important;
+    box-shadow:
+        0 20px 45px rgba(0, 0, 0, 0.26),
+        inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 
 .nexum-admin-shell [data-testid^="dashboard-stat"] {
@@ -197,6 +216,74 @@ code {
     inset: 0 auto 0 0;
     width: 4px;
     background: var(--nexum-gold);
+}
+
+.nexum-admin-shell aside {
+    background:
+        linear-gradient(180deg, rgba(12, 12, 12, 0.98), rgba(6, 6, 6, 0.98)),
+        radial-gradient(circle at top, rgba(201, 162, 39, 0.08), transparent 32rem) !important;
+    box-shadow: 18px 0 40px rgba(0, 0, 0, 0.35) !important;
+}
+
+.nexum-admin-shell header {
+    background:
+        linear-gradient(180deg, rgba(13, 13, 13, 0.96), rgba(8, 8, 8, 0.92)) !important;
+    border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.nexum-admin-shell button,
+.nexum-admin-shell a {
+    transition:
+        transform 0.18s ease,
+        box-shadow 0.18s ease,
+        border-color 0.18s ease,
+        background-color 0.18s ease,
+        color 0.18s ease !important;
+}
+
+.nexum-admin-shell button:hover,
+.nexum-admin-shell a:hover {
+    transform: translateY(-1px);
+}
+
+.nexum-admin-shell [data-testid^="tab-"] {
+    border-radius: 12px !important;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid transparent !important;
+    box-shadow: none !important;
+}
+
+.nexum-admin-shell [data-testid^="tab-"]:hover {
+    background: rgba(201, 162, 39, 0.08);
+    border-color: rgba(201, 162, 39, 0.15) !important;
+}
+
+.nexum-admin-shell [data-testid^="tab-"][class*="text-[#C9A227]"] {
+    background: linear-gradient(90deg, rgba(201, 162, 39, 0.16), rgba(201, 162, 39, 0.04));
+    box-shadow: inset 0 0 0 1px rgba(201, 162, 39, 0.16);
+}
+
+.nexum-admin-shell table {
+    border-collapse: separate !important;
+    border-spacing: 0 10px;
+}
+
+.nexum-admin-shell table thead th {
+    background: rgba(255, 255, 255, 0.03) !important;
+    letter-spacing: 0.14em;
+}
+
+.nexum-admin-shell table tbody tr {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.nexum-admin-shell table tbody tr:hover {
+    background: rgba(201, 162, 39, 0.08) !important;
+}
+
+.nexum-admin-shell table td,
+.nexum-admin-shell table th {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .nexum-admin-shell table thead,

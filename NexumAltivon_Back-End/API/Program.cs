@@ -5482,62 +5482,14 @@ public sealed record DashboardCompletoDto(
 
     public static DashboardCompletoDto CreateSample()
     {
-        var hoje = DateTime.Today;
-
         return new DashboardCompletoDto(
-            new DashboardKpiDto(2847.50m, 45230.80m, 387450.00m, 12, 186, 23, 45, 892, 34, 1247, 3856, 243.50m, 3.2m, 1245, 18, 5, 12, 8, 15),
-            [
-                new("17/05", 1850.00m, 8),
-                new("18/05", 2340.50m, 10),
-                new("19/05", 1560.00m, 6),
-                new("20/05", 3120.80m, 13),
-                new("21/05", 2780.00m, 11),
-                new("22/05", 1950.00m, 8),
-                new("23/05", 2847.50m, 12)
-            ],
-            [
-                new("jun/25", 32450.00m, 142),
-                new("jul/25", 38920.50m, 168),
-                new("ago/25", 35670.00m, 154),
-                new("set/25", 42180.80m, 182),
-                new("out/25", 39850.00m, 172),
-                new("nov/25", 44560.00m, 195),
-                new("dez/25", 52340.00m, 228),
-                new("jan/26", 28950.00m, 126),
-                new("fev/26", 31240.00m, 138),
-                new("mar/26", 36780.00m, 162),
-                new("abr/26", 41250.00m, 178),
-                new("mai/26", 45230.80m, 186)
-            ],
-            [
-                new("Geracao Top+", "geracao-top", 98560.00m, 412, 239.22m, 25.4m),
-                new("Moda Mim", "moda-mim", 72340.00m, 298, 242.75m, 18.7m),
-                new("Chronos", "chronos", 67890.00m, 245, 277.10m, 17.5m),
-                new("Grann-Tur", "grann-tur", 54230.00m, 198, 273.89m, 14.0m),
-                new("Estruturaline", "estruturaline", 45670.00m, 156, 292.76m, 11.8m),
-                new("Gran-fest-festas", "gran-fest", 48760.00m, 187, 260.75m, 12.6m)
-            ],
-            [
-                new(1, "Smartphone Galaxy S24", null, "Geracao Top+", 142, 213400.00m),
-                new(2, "Relogio Chronos Elite", null, "Chronos", 98, 78400.00m),
-                new(3, "Mala de Viagem Premium", null, "Grann-Tur", 87, 43500.00m),
-                new(4, "Vestido Floral Verao", null, "Moda Mim", 76, 22800.00m),
-                new(5, "Kit Festa Premium", null, "Gran-fest-festas", 65, 19500.00m)
-            ],
-            [
-                new(1, "Ana Carolina Silva", "ana.silva@email.com", "(14) 99876-5432", hoje.AddDays(-1), 3, 1250.00m),
-                new(2, "Bruno Oliveira", "bruno.oliveira@email.com", "(14) 99765-4321", hoje.AddDays(-1), 1, 450.00m),
-                new(3, "Carla Mendes", "carla.mendes@email.com", "(14) 99654-3210", hoje.AddDays(-2), 5, 2340.00m)
-            ],
-            [
-                new(1, "NX2605230001", "Ana Carolina Silva", 450.00m, "Pago", "Aprovado", "Geracao Top+", hoje.AddHours(-2)),
-                new(2, "NX2605230002", "Bruno Oliveira", 890.00m, "EmSeparacao", "Aprovado", "Moda Mim", hoje.AddHours(-4)),
-                new(3, "NX2605230003", "Carla Mendes", 1250.00m, "Pendente", "Aguardando", "Chronos", hoje.AddHours(-6))
-            ],
-            [
-                new(1, "Fernando Lopes", "Fornecedor", "Novo", "Alta", "fernando@fornecedor.com", "(11) 98765-4321", hoje.AddHours(-3)),
-                new(2, "Gabriela Rocha", "Dropshipping", "EmAtendimento", "Media", "gabriela@dropship.com", "(21) 97654-3210", hoje.AddHours(-8)),
-                new(3, "Henrique Almeida", "Parceiro", "Qualificado", "Alta", "henrique@parceiro.com", "(31) 96543-2109", hoje.AddDays(-1))
-            ]);
+            new DashboardKpiDto(0m, 0m, 0m, 0, 0, 0, 0, 0, 0, 0, 0, 0m, 0m, 0, 0, 0, 0, 0, 0),
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            []);
     }
 }

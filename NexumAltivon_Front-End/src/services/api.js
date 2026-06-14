@@ -12,9 +12,13 @@ const getDefaultApiUrl = () => {
   if (typeof window === 'undefined') return 'http://localhost:5000';
 
   const { hostname } = window.location;
-  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
+  const isLocalhost =
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname === '';
 
-  return isLocalhost ? 'http://localhost:5011' : PUBLIC_API_URL;
+  return isLocalhost ? 'http://127.0.0.1:5011' : PUBLIC_API_URL;
 };
 
 export const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || getDefaultApiUrl();
@@ -55,7 +59,7 @@ const canUseApiUrl = async (baseUrl) => {
 const isLocalApi = () => {
   if (typeof window === 'undefined') return true;
   const { hostname } = window.location;
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '';
 };
 
 export const getRuntimeApiBaseUrl = async () => {

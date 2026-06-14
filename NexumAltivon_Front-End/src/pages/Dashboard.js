@@ -409,7 +409,7 @@ const siteConfigFieldMeta = [
 ];
 const pedidoStatusOptions = ['Pendente', 'Processando', 'Enviado', 'Entregue', 'Cancelado'];
 const leadStatusOptions = ['Novo', 'Contato', 'Qualificado', 'Negociacao', 'Ganho', 'Perdido'];
-const allowDemoData = process.env.NODE_ENV !== 'production';
+const allowDemoData = false;
 const emptyResumo = {
   pedidos_hoje: 0,
   total_clientes: 0,
