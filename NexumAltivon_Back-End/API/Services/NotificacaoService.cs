@@ -13,6 +13,7 @@ namespace NexumAltivon.API.Services
     {
         Task EnviarConfirmacaoPedidoAsync(Cliente cliente, Pedido pedido);
         Task EnviarConfirmacaoPagamentoAsync(Cliente cliente, Pedido pedido);
+        Task EnviarNotaFiscalEmitidaAsync(Cliente cliente, Pedido pedido, Fiscal fiscal);
         Task EnviarNotificacaoWhatsAppAsync(string? telefone, string mensagem);
         Task EnviarEmailAsync(string? destinatario, string assunto, string corpoHtml);
         Task EnviarAlertaEstoqueBaixoAsync(Produto produto);
@@ -98,6 +99,40 @@ h1 {{ color: #C9A227; }}
 <p><strong>Valor pago:</strong> R$ {pedido.Total:N2}</p>
 <p>Seu pedido agora estÃ¡ em <strong>separaÃ§Ã£o</strong> e em breve serÃ¡ enviado.</p>
 <p>Acompanhe o status pelo site: <a href='https://www.nexumaltivon.com/pedidos/{pedido.NumeroPedido}' style='color:#C9A227'>Meus Pedidos</a></p>
+</div>
+</body>
+</html>";
+
+            await EnviarEmailAsync(cliente.Email, assunto, corpo);
+        }
+
+        public async Task EnviarNotaFiscalEmitidaAsync(Cliente cliente, Pedido pedido, Fiscal fiscal)
+        {
+            var assunto = $"Nota Fiscal emitida - Pedido {pedido.NumeroPedido}";
+            var arquivoXml = string.IsNullOrWhiteSpace(fiscal.XmlUrl) ? "Indisponivel" : fiscal.XmlUrl;
+            var arquivoDanfe = string.IsNullOrWhiteSpace(fiscal.DanfeUrl) ? "Indisponivel" : fiscal.DanfeUrl;
+            var chaveAcesso = string.IsNullOrWhiteSpace(fiscal.ChaveAcesso) ? "Nao informada" : fiscal.ChaveAcesso;
+            var numeroNfe = string.IsNullOrWhiteSpace(fiscal.NumeroNfe) ? "Nao informado" : fiscal.NumeroNfe;
+            var statusFiscal = fiscal.StatusNfe.ToString();
+
+            var corpo = $@"
+<!DOCTYPE html>
+<html>
+<body style='font-family:Arial,sans-serif;background:#f6f3ea;color:#1f1f1f;padding:0;margin:0;'>
+<div style='max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #d7c38a;padding:28px;'>
+<h1 style='margin-top:0;color:#8a6d1f;'>Nota Fiscal emitida</h1>
+<p>Ola <strong>{cliente.Nome}</strong>,</p>
+<p>A nota fiscal do seu pedido <strong>{pedido.NumeroPedido}</strong> foi emitida no sistema.</p>
+<div style='background:#faf7ef;border:1px solid #e4d8b7;padding:18px;margin:20px 0;'>
+<p><strong>Status:</strong> {statusFiscal}</p>
+<p><strong>NFe:</strong> {numeroNfe}</p>
+<p><strong>Chave de acesso:</strong> {chaveAcesso}</p>
+<p><strong>Total:</strong> R$ {pedido.Total:N2}</p>
+<p><strong>XML:</strong> {arquivoXml}</p>
+<p><strong>DANFE:</strong> {arquivoDanfe}</p>
+</div>
+<p>Voce pode acompanhar o pedido pela area do cliente no site.</p>
+<p>Se quiser, responda este e-mail ou fale com nosso atendimento.</p>
 </div>
 </body>
 </html>";

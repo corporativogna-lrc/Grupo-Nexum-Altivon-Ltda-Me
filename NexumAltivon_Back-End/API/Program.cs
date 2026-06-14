@@ -1328,12 +1328,14 @@ app.MapPut("/api/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
     int id,
     StatusUpdateRequest request,
     NexumDbContext db,
+    INotificacaoService notificacaoService,
     CancellationToken ct) =>
 {
     await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
     var pedido = await db.Pedidos
         .Include(item => item.Itens)
         .Include(item => item.Pagamentos)
+        .Include(item => item.Cliente)
         .FirstOrDefaultAsync(item => item.Id == id, ct);
     if (pedido is null)
     {
@@ -1346,6 +1348,7 @@ app.MapPut("/api/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
     }
 
     var statusAnterior = pedido.Status;
+    var statusPagamentoAnterior = pedido.StatusPagamento;
     var statusAnteriorConfirmaEstoque = statusAnterior is StatusPedido.Pago or StatusPedido.EmSeparacao or StatusPedido.Enviado or StatusPedido.Entregue;
     var novoStatusConfirmaEstoque = status is StatusPedido.Pago or StatusPedido.EmSeparacao or StatusPedido.Enviado or StatusPedido.Entregue;
     var novoStatusCancelaEstoque = status is StatusPedido.Cancelado or StatusPedido.Devolvido or StatusPedido.Reembolsado;
@@ -1423,6 +1426,20 @@ app.MapPut("/api/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
     await db.SaveChangesAsync(ct);
     await transaction.CommitAsync(ct);
 
+    if (pedido.Cliente is not null && statusAnterior != pedido.Status)
+    {
+        if (statusPagamentoAnterior != pedido.StatusPagamento && pedido.StatusPagamento == StatusPagamento.Aprovado)
+        {
+            await notificacaoService.EnviarConfirmacaoPagamentoAsync(pedido.Cliente, pedido);
+        }
+
+        if (status is StatusPedido.EmSeparacao or StatusPedido.Enviado or StatusPedido.Entregue or StatusPedido.Cancelado or StatusPedido.Devolvido or StatusPedido.Reembolsado)
+        {
+            var mensagem = BuildMensagemAtualizacaoPedido(pedido);
+            await notificacaoService.EnviarStatusPedidoAsync(pedido.Cliente, pedido, mensagem);
+        }
+    }
+
     var pagamentoAtual = pedido.Pagamentos?
         .OrderByDescending(item => item.CreatedAt)
         .FirstOrDefault();
@@ -1455,6 +1472,7 @@ app.MapPost("/api/pedidos", async (
     NexumDbContext db,
     IConfiguration configuration,
     IFiscalRoutingEngine fiscalRoutingEngine,
+    INotificacaoService notificacaoService,
     IHttpClientFactory httpClientFactory,
     HttpContext http,
     CancellationToken ct) =>
@@ -1640,6 +1658,8 @@ app.MapPost("/api/pedidos", async (
     await EnsurePedidoFiscalAutomationAsync(pedido, cliente, request, db, fiscalRoutingEngine, ct);
     await db.SaveChangesAsync(ct);
     await transaction.CommitAsync(ct);
+
+    await notificacaoService.EnviarConfirmacaoPedidoAsync(cliente, pedido);
 
     var gatewayResult = await TryStartGatewayPaymentAsync(pedido, cliente, configuration, httpClientFactory, http, ct);
     if (gatewayResult.Started)
@@ -1894,6 +1914,7 @@ app.MapPost("/api/webhooks/mercadopago", async (
     HttpContext http,
     IConfiguration configuration,
     NexumDbContext db,
+    INotificacaoService notificacaoService,
     IHttpClientFactory httpClientFactory,
     CancellationToken ct) =>
 {
@@ -1935,6 +1956,7 @@ app.MapPost("/api/webhooks/mercadopago", async (
 
     var pagamento = await db.Pagamentos
         .Include(item => item.Pedido)
+        .ThenInclude(pedido => pedido.Cliente)
         .FirstOrDefaultAsync(item => item.GatewayTransacaoId == paymentId, ct);
 
     if (pagamento is null)
@@ -1942,6 +1964,7 @@ app.MapPost("/api/webhooks/mercadopago", async (
         return Results.Ok(new { received = true, updated = false, reason = "pagamento_nao_encontrado" });
     }
 
+    var statusPagamentoAnterior = pagamento.Pedido?.StatusPagamento;
     pagamento.WebhookPayload = rawPaymentPayload ?? payload;
     pagamento.DataProcessamento = DateTime.UtcNow;
     pagamento.UpdatedAt = DateTime.UtcNow;
@@ -1952,6 +1975,12 @@ app.MapPost("/api/webhooks/mercadopago", async (
     }
 
     await db.SaveChangesAsync(ct);
+
+    if (pagamento.Pedido?.Cliente is not null && statusPagamentoAnterior != pagamento.Pedido.StatusPagamento && pagamento.Pedido.StatusPagamento == StatusPagamento.Aprovado)
+    {
+        await notificacaoService.EnviarConfirmacaoPagamentoAsync(pagamento.Pedido.Cliente, pagamento.Pedido);
+    }
+
     return Results.Ok(new { received = true, updated = true, paymentId, status });
 })
 .AllowAnonymous()
@@ -2459,6 +2488,65 @@ app.MapGet("/api/fiscal/pedidos", [Authorize(Policy = "Gerente")] async (NexumDb
     return Results.Ok(ApiResponse<List<FiscalPedidoDto>>.Ok(registros));
 })
 .WithName("FiscalPedidos")
+;
+
+app.MapPut("/api/fiscal/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
+    int id,
+    StatusUpdateRequest request,
+    NexumDbContext db,
+    INotificacaoService notificacaoService,
+    CancellationToken ct) =>
+{
+    var fiscal = await db.Fiscais
+        .Include(item => item.Pedido)
+        .ThenInclude(pedido => pedido.Cliente)
+        .FirstOrDefaultAsync(item => item.Id == id, ct);
+
+    if (fiscal is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Registro fiscal nao encontrado."));
+    }
+
+    if (!TryParseStatusNfe(request.NovoStatus, out var novoStatus))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Status fiscal invalido."));
+    }
+
+    var statusAnterior = fiscal.StatusNfe;
+    fiscal.StatusNfe = novoStatus;
+    fiscal.UpdatedAt = DateTime.UtcNow;
+
+    if (novoStatus == StatusNfe.Emitida)
+    {
+        fiscal.DataEmissao ??= DateTime.UtcNow;
+        fiscal.StatusAutomacao = "NFe emitida.";
+    }
+    else if (novoStatus == StatusNfe.Autorizada)
+    {
+        fiscal.DataEmissao ??= DateTime.UtcNow;
+        fiscal.DataAutorizacao ??= DateTime.UtcNow;
+        fiscal.StatusAutomacao = "NFe autorizada.";
+    }
+    else if (novoStatus is StatusNfe.Cancelada or StatusNfe.Denegada or StatusNfe.Inutilizada)
+    {
+        fiscal.StatusAutomacao = $"NFe {novoStatus.ToString().ToLowerInvariant()}.";
+    }
+
+    await db.SaveChangesAsync(ct);
+
+    if (fiscal.Pedido?.Cliente is not null &&
+        statusAnterior != novoStatus &&
+        novoStatus is StatusNfe.Emitida or StatusNfe.Autorizada &&
+        fiscal.EmailClienteNotificadoEm is null)
+    {
+        await notificacaoService.EnviarNotaFiscalEmitidaAsync(fiscal.Pedido.Cliente, fiscal.Pedido, fiscal);
+        fiscal.EmailClienteNotificadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+    }
+
+    return Results.Ok(ApiResponse<string>.Ok("Status fiscal atualizado com sucesso."));
+})
+.WithName("AtualizarStatusFiscal")
 ;
 
 app.MapPost("/api/fiscal/simular-roteamento", [Authorize(Policy = "Gerente")] async (
@@ -3561,6 +3649,35 @@ static bool TryParseStatusPedido(string? raw, out StatusPedido status)
     return Enum.TryParse(raw.Trim(), ignoreCase: true, out status);
 }
 
+static bool TryParseStatusNfe(string? raw, out StatusNfe status)
+{
+    status = StatusNfe.Pendente;
+
+    if (string.IsNullOrWhiteSpace(raw))
+    {
+        return false;
+    }
+
+    return Enum.TryParse(raw.Trim(), ignoreCase: true, out status);
+}
+
+static string BuildMensagemAtualizacaoPedido(Pedido pedido)
+{
+    return pedido.Status switch
+    {
+        StatusPedido.Pago => $"Pagamento confirmado para o pedido {pedido.NumeroPedido}. Estamos preparando o envio.",
+        StatusPedido.EmSeparacao => $"Seu pedido {pedido.NumeroPedido} entrou em separacao. Em breve seguira para expedicao.",
+        StatusPedido.Enviado => string.IsNullOrWhiteSpace(pedido.FreteCodigoRastreio)
+            ? $"Seu pedido {pedido.NumeroPedido} foi enviado e esta em transporte."
+            : $"Seu pedido {pedido.NumeroPedido} foi enviado. Codigo de rastreio: {pedido.FreteCodigoRastreio}.",
+        StatusPedido.Entregue => $"Seu pedido {pedido.NumeroPedido} foi entregue. Obrigado por comprar conosco.",
+        StatusPedido.Cancelado => $"O pedido {pedido.NumeroPedido} foi cancelado. Se precisar, fale com nosso atendimento.",
+        StatusPedido.Devolvido => $"O pedido {pedido.NumeroPedido} foi devolvido e voltou para analise interna.",
+        StatusPedido.Reembolsado => $"O pedido {pedido.NumeroPedido} foi reembolsado com sucesso.",
+        _ => $"Seu pedido {pedido.NumeroPedido} foi atualizado para o status {pedido.Status}."
+    };
+}
+
 static string FormatStatusLead(StatusLead status) =>
     status switch
     {
@@ -4042,6 +4159,7 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS status_automacao VARCHAR(40) NULL;");
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS resumo_roteamento TEXT NULL;");
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS payload_operacao LONGTEXT NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS email_cliente_notificado_em DATETIME NULL;");
 
     await db.Database.ExecuteSqlRawAsync(
         """
