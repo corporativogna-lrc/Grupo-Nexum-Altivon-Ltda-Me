@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { categoriaAPI, produtoAPI } from '../services/api';
 import ProductCard from '../components/ProductCard';
-import { fallbackCategories, fallbackProducts } from '../data/mockStore';
+import { fallbackCategories } from '../data/mockStore';
 import { ArrowDownUp, Filter, Search, SlidersHorizontal, X } from 'lucide-react';
 
 const sortOptions = {
@@ -14,7 +14,7 @@ const sortOptions = {
 
 export default function Produtos() {
   const [params, setParams] = useSearchParams();
-  const [produtos, setProdutos] = useState(fallbackProducts);
+  const [produtos, setProdutos] = useState([]);
   const [categorias, setCategorias] = useState(fallbackCategories);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -29,7 +29,7 @@ export default function Produtos() {
         produtoAPI.getAll(selectedCategory ? { categoria_id: selectedCategory } : {}),
         categoriaAPI.getAll(),
       ]);
-      if (Array.isArray(produtosRes.data) && produtosRes.data.length > 0) setProdutos(produtosRes.data);
+      setProdutos(Array.isArray(produtosRes.data) ? produtosRes.data : []);
       if (Array.isArray(categoriasRes.data) && categoriasRes.data.length > 0) setCategorias(categoriasRes.data);
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {

@@ -6,7 +6,9 @@ const RUNTIME_API_CONFIG_URL = '/api-runtime.json';
 const RUNTIME_CACHE_KEY = 'nexum_api_runtime_url';
 
 let runtimeApiUrlPromise = null;
+let runtimeApiUrlResolvedAt = 0;
 const apiHealthCache = new Map();
+const RUNTIME_URL_TTL_MS = 30 * 1000;
 
 const getDefaultApiUrl = () => {
   if (typeof window === 'undefined') return 'http://localhost:5000';
@@ -62,9 +64,14 @@ export const getRuntimeApiBaseUrl = async ({ force = false } = {}) => {
   if (process.env.REACT_APP_BACKEND_URL || isLocalApi()) return API_BASE_URL;
   if (force) {
     runtimeApiUrlPromise = null;
+    runtimeApiUrlResolvedAt = 0;
     apiHealthCache.clear();
   }
-  if (runtimeApiUrlPromise) return runtimeApiUrlPromise;
+  if (runtimeApiUrlPromise && Date.now() - runtimeApiUrlResolvedAt < RUNTIME_URL_TTL_MS) {
+    return runtimeApiUrlPromise;
+  }
+
+  runtimeApiUrlPromise = null;
 
   runtimeApiUrlPromise = (async () => {
     const cached = normalizeApiUrl(localStorage.getItem(RUNTIME_CACHE_KEY));
@@ -97,8 +104,11 @@ export const getRuntimeApiBaseUrl = async ({ force = false } = {}) => {
       }
     }
 
-    return cached || API_BASE_URL;
+    localStorage.removeItem(RUNTIME_CACHE_KEY);
+    return API_BASE_URL;
   })();
+
+  runtimeApiUrlResolvedAt = Date.now();
 
   return runtimeApiUrlPromise;
 };
