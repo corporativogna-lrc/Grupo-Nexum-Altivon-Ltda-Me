@@ -16,7 +16,7 @@ try {
     $ErrorActionPreference = "Stop"
 
     if ([string]::IsNullOrWhiteSpace($Url)) {
-        $Url = "http://localhost:3000/dashboard/erp"
+        $Url = "http://127.0.0.1:3002"
     }
 
     $profileDir = Join-Path $env:LOCALAPPDATA "NexumAltivon\ERPDesktop"
@@ -42,11 +42,8 @@ try {
     }
 
     if ($browser) {
-        Start-Process -FilePath $browser -ArgumentList @(
-            "--app=$Url",
-            "--new-window",
-            "--user-data-dir=$profileDir"
-        )
+        $argumentList = "--app=`"$Url`" --new-window --user-data-dir=`"$profileDir`""
+        Start-Process -FilePath $browser -ArgumentList $argumentList
     }
     else {
         Start-Process -FilePath $Url
