@@ -1054,17 +1054,25 @@ export default function Dashboard() {
 
   return (
     <main className="nexum-admin-shell min-h-screen bg-[#050505]">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 border-r border-[#2A2A2A] bg-[#0A0A0A] text-white lg:block">
-        <div className="flex h-full flex-col p-6">
-          <Link to="/" className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#C9A227] text-sm font-black text-black">NA</div>
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-80 border-r border-[#2A2A2A] bg-[#0A0A0A] text-white lg:block">
+        <div className="flex h-full flex-col p-5">
+          <Link to="/" className="flex items-center gap-3 rounded-2xl border border-white/5 bg-white/5 px-4 py-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#C9A227] text-sm font-black text-black shadow-[0_12px_35px_rgba(201,162,39,0.25)]">NA</div>
             <div>
-              <p className="font-serif text-lg font-black tracking-widest text-[#C9A227]">GENESISGEST.NET</p>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">Painel administrativo Nexum Altivon</p>
+              <p className="font-black tracking-[0.18em] text-[#C9A227]">GENESISGEST.NET</p>
+              <p className="text-[0.66rem] font-bold uppercase tracking-[0.22em] text-zinc-500">Workstation administrativa local</p>
             </div>
           </Link>
 
-          <nav className="mt-8 space-y-5 overflow-y-auto pb-6">
+          <div className="mt-5 rounded-2xl border border-white/6 bg-black/30 px-4 py-3 text-xs font-semibold text-zinc-400">
+            <div className="flex items-center justify-between">
+              <span className="uppercase tracking-[0.18em] text-zinc-500">Console</span>
+              <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[0.62rem] font-black uppercase text-emerald-300">local</span>
+            </div>
+            <p className="mt-2 text-zinc-300">API 127.0.0.1:5011 · BD 3309 · modo operacional</p>
+          </div>
+
+          <nav className="mt-5 space-y-4 overflow-y-auto pb-6 pr-1">
             {navSections.map((section) => {
               const activeItems = tabs.filter((tab) => tab.section === section);
               const futureItems = plannedModules.filter((module) => module.section === section);
@@ -1072,7 +1080,7 @@ export default function Dashboard() {
 
               return (
                 <div key={section}>
-                  <p className="px-3 pb-2 text-[0.65rem] font-black uppercase tracking-[0.22em] text-zinc-600">{section}</p>
+                  <p className="px-3 pb-2 text-[0.62rem] font-black uppercase tracking-[0.26em] text-zinc-600">{section}</p>
                   <div className="space-y-1">
                     {activeItems.map((tab) => {
                       const Icon = tab.icon;
@@ -1081,14 +1089,14 @@ export default function Dashboard() {
                         <button
                           key={tab.id}
                           onClick={() => openMainTab(tab.id)}
-                          className={`flex w-full items-center gap-3 border-l-4 px-3 py-3 text-left text-sm font-bold transition ${
-                            active ? 'border-[#C9A227] bg-[#C9A227]/10 text-[#C9A227]' : 'border-transparent text-zinc-400 hover:border-[#C9A227]/60 hover:bg-white/5 hover:text-[#E8D5A3]'
+                          className={`flex w-full items-center gap-3 border-l-4 px-3 py-3 text-left text-[0.88rem] font-bold transition ${
+                            active ? 'border-[#C9A227] bg-[#C9A227]/12 text-[#C9A227] shadow-[inset_0_0_0_1px_rgba(201,162,39,0.12)]' : 'border-transparent text-zinc-400 hover:border-[#C9A227]/60 hover:bg-white/5 hover:text-[#E8D5A3]'
                           }`}
                           data-testid={`tab-${tab.id}`}
                         >
-                          <Icon size={18} />
+                          <Icon size={17} />
                           <span>{tab.label}</span>
-                          {tab.badge && <span className="ml-auto rounded-full bg-emerald-600 px-2 py-0.5 text-[0.62rem] uppercase text-white">{tab.badge}</span>}
+                          {tab.badge && <span className="ml-auto rounded-full bg-emerald-600/15 px-2 py-0.5 text-[0.6rem] uppercase text-emerald-300 ring-1 ring-emerald-500/20">{tab.badge}</span>}
                         </button>
                       );
                     })}
@@ -1098,12 +1106,12 @@ export default function Dashboard() {
                         <button
                           key={item.label}
                           type="button"
-                          className="flex w-full cursor-not-allowed items-center gap-3 border-l-4 border-transparent px-3 py-3 text-left text-sm font-semibold text-zinc-700"
+                          className="flex w-full cursor-not-allowed items-center gap-3 border-l-4 border-transparent px-3 py-3 text-left text-[0.88rem] font-semibold text-zinc-700"
                           title="Módulo em estruturação"
                         >
-                          <Icon size={18} />
+                          <Icon size={17} />
                           <span>{item.label}</span>
-                          <span className="ml-auto rounded-full border border-zinc-700 px-2 py-0.5 text-[0.62rem] uppercase text-zinc-600">{item.track || 'breve'}</span>
+                          <span className="ml-auto rounded-full border border-zinc-700 px-2 py-0.5 text-[0.6rem] uppercase text-zinc-600">{item.track || 'breve'}</span>
                         </button>
                       );
                     })}
@@ -1113,35 +1121,35 @@ export default function Dashboard() {
             })}
           </nav>
 
-          <div className="mt-auto rounded-lg border border-white/10 bg-white/5 p-4">
+          <div className="mt-auto rounded-2xl border border-white/10 bg-white/[0.04] p-4">
             <div className="flex items-center gap-2 text-[#E8D5A3]">
               <Sparkles size={16} />
               <p className="text-xs font-black uppercase tracking-[0.18em]">Operação real</p>
             </div>
-            <p className="mt-3 text-2xl font-black">{formatPrice(resumo.faturamento_mes)}</p>
+            <p className="mt-3 text-[1.8rem] font-black tracking-tight">{formatPrice(resumo.faturamento_mes)}</p>
             <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-              <div className="h-full w-[72%] rounded-full bg-[#C9A227]" />
+              <div className="h-full w-[72%] rounded-full bg-gradient-to-r from-[#B88E1B] to-[#FFD95A]" />
             </div>
             <p className="mt-3 text-xs font-semibold text-zinc-400">Base operacional conectada à API e ao banco real.</p>
           </div>
         </div>
       </aside>
 
-      <section className="lg:pl-72">
-        <header className="sticky top-0 z-30 border-b border-[#2A2A2A] bg-[#0A0A0A]/95 text-white backdrop-blur-xl">
-          <div className="flex min-h-[76px] flex-col gap-4 px-4 py-4 sm:px-6 xl:flex-row xl:items-center xl:justify-between xl:px-8">
+      <section className="lg:pl-80">
+        <header className="sticky top-0 z-30 border-b border-[#2A2A2A] bg-[#0A0A0A]/96 text-white backdrop-blur-xl">
+          <div className="flex min-h-[84px] flex-col gap-4 px-4 py-4 sm:px-6 xl:flex-row xl:items-center xl:justify-between xl:px-8">
             <div>
-              <p className="text-sm font-bold text-zinc-500"><span className="text-[#C9A227]">{tabs.find((tab) => tab.id === activeTab)?.label || 'Dashboard'}</span> / Gestão</p>
-              <h1 className="text-2xl font-black text-white" data-testid="dashboard-title">GenesisGest.Net</h1>
+              <p className="text-[0.72rem] font-black uppercase tracking-[0.24em] text-zinc-500"><span className="text-[#C9A227]">{tabs.find((tab) => tab.id === activeTab)?.label || 'Dashboard'}</span> / Operação local</p>
+              <h1 className="mt-1 text-[2rem] font-black tracking-tight text-white" data-testid="dashboard-title">GenesisGest.Net</h1>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="rounded-full border border-[#2A2A2A] bg-[#111111] px-4 py-2 text-right">
+              <div className="rounded-2xl border border-[#2A2A2A] bg-[#111111] px-4 py-2 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                 <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-zinc-500">Operando como</p>
                 <p className="text-sm font-bold text-white">{user?.nome || user?.email || 'Equipe Nexum'}</p>
               </div>
               <a
                 href={sophiaMailTo}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#2A2A2A] bg-[#111111] px-5 text-sm font-black text-[#E8D5A3] transition hover:border-[#C9A227] hover:text-white"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#2A2A2A] bg-[#111111] px-5 text-sm font-black text-[#E8D5A3] hover:border-[#C9A227] hover:text-white"
               >
                 Chamar Sophia
               </a>
@@ -1151,15 +1159,15 @@ export default function Dashboard() {
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Buscar pedidos, clientes, produtos ou leads"
-                  className="h-11 w-full rounded-full border border-[#2A2A2A] bg-[#050505] pl-10 pr-4 text-sm font-semibold text-white outline-none transition focus:border-[#C9A227] focus:ring-4 focus:ring-[#C9A227]/10 sm:w-80"
+                  className="h-11 w-full rounded-full border border-[#2A2A2A] bg-[#050505] pl-10 pr-4 text-sm font-semibold text-white outline-none focus:border-[#C9A227] focus:ring-4 focus:ring-[#C9A227]/10 sm:w-80"
                 />
               </div>
-              <button className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#2A2A2A] bg-[#1A1A1A] text-zinc-300" aria-label="Notificações" title="Notificações">
+              <button className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#2A2A2A] bg-[#1A1A1A] text-zinc-300 hover:border-[#C9A227] hover:text-white" aria-label="Notificações" title="Notificações">
                 <Bell size={19} />
               </button>
               <button
                 onClick={logout}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#C9A227] px-5 text-sm font-black text-black"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#C9A227] px-5 text-sm font-black text-black shadow-[0_16px_35px_rgba(201,162,39,0.18)] hover:bg-[#FFD95A]"
               >
                 <LogOut size={17} />
                 Sair
@@ -1191,7 +1199,7 @@ export default function Dashboard() {
           {loading ? (
             <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
               {[1, 2, 3, 4].map((item) => (
-                <div key={item} className="h-40 animate-pulse rounded-lg bg-white" />
+                <div key={item} className="h-40 animate-pulse rounded-2xl bg-white/5" />
               ))}
             </div>
           ) : (
@@ -1205,7 +1213,7 @@ export default function Dashboard() {
                     <StatCard title="Leads novos" value={resumo.leads_novos} detail="em qualificação" trend={-3} icon={UserRound} tone="indigo" />
                   </div>
 
-                  <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                  <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <h2 className="text-xl font-black text-slate-950">Arquitetura operacional integrada</h2>
@@ -1213,8 +1221,8 @@ export default function Dashboard() {
                           E-commerce, dropshipping, logística, gateways de pagamento e módulos empresariais conectados pelo canal de API.
                         </p>
                       </div>
-                      <span className="rounded-full bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-800">API em produção temporária</span>
-                    </div>
+                        <span className="rounded-full bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-800">Operação local validada</span>
+                      </div>
                     <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                       {[
                         { label: 'E-commerce', status: 'Operante', icon: ShoppingBag },
