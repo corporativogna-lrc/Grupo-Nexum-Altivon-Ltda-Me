@@ -88,6 +88,8 @@ const empresaGrupoHighlights = [
 const sophiaMailTo =
   'mailto:corporativo.gna@gmail.com?subject=Sophia%20-%20Apoio%20ERP&body=Ol%C3%A1%20Sophia%2C%20preciso%20de%20apoio%20interno%20na%20opera%C3%A7%C3%A3o%20do%20GenesisGest.Net.';
 
+const erpDesktopLauncher = 'file:///C:/Users/Rodrigo%20Costa/Documents/Codex/2026-05-28/files-mentioned-by-the-user-nexumaltivon/NexumAltivon.com/ABRIR-ERP-DESKTOP.cmd';
+
 const plannedModules = [
   { label: 'Lojas', icon: Building2, section: 'Gestão' },
   { label: 'Cupons', icon: CreditCard, section: 'Marketing & CRM' },
@@ -161,6 +163,7 @@ const fallbackIntegracoes = [
   { nome: 'CJ Dropshipping', slug: 'cjdropshipping', status: 'Aguardando conexão', detalhe: 'Canal preparado para receber endpoint, token e vínculo de catálogo.', configurada: false, ambiente: 'Staging privado' },
   { nome: 'Logística e Fretes', slug: 'logistica', status: 'Aguardando credenciais', detalhe: 'Frete está registrado no checkout; cotação e etiqueta dependem da transportadora.', configurada: false, ambiente: 'Sandbox' },
   { nome: 'Gateways de pagamento', slug: 'gateways', status: 'Aguardando credenciais', detalhe: 'Pedido registra método; cobrança real depende do token e webhook.', configurada: false, ambiente: 'Não configurado' },
+  { nome: 'Certificado NF-e', slug: 'certificado', status: 'Aguardando configuração', detalhe: 'O emissor fiscal está pronto para A1 ou A3, mas depende do certificado da empresa.', configurada: false, ambiente: 'Servidor local' },
   { nome: 'Marketplaces', slug: 'marketplaces', status: 'Aguardando credenciais', detalhe: 'Sincronização de catálogo e pedidos depende da autorização externa.', configurada: false, ambiente: 'Integração externa' },
   { nome: 'Bancos e conciliação', slug: 'bancaria', status: 'Planejado', detalhe: 'Conciliação depende da definição do banco e convênio.', configurada: false, ambiente: 'Não configurado' },
 ];
@@ -190,6 +193,11 @@ const integrationGuides = {
     description: 'Cotação de frete, seleção de serviço, etiqueta e rastreamento.',
     requirements: ['Token da transportadora', 'Endereço de origem', 'Peso e dimensões dos produtos'],
     nextTest: 'Executar uma cotação em sandbox e validar prazo e valor retornados.',
+  },
+  certificado: {
+    description: 'Validação do certificado digital usado para emissão de NF-e em produção.',
+    requirements: ['Certificado A1 com PFX e senha ou A3 com thumbprint', 'CNPJ da empresa emissora', 'Arquivo ou token acessível no servidor'],
+    nextTest: 'Preencher os dados do certificado e validar o diagnóstico de prontidão.',
   },
   gateways: {
     description: 'Cobrança por Pix, boleto e cartão, com retorno automático do pagamento e contingência entre provedores.',
@@ -1545,6 +1553,28 @@ export default function Dashboard() {
                       </div>
                       <span className="rounded-full bg-slate-950 px-4 py-2 text-sm font-black text-[#C9A227]">Painel + Desktop</span>
                     </div>
+                  </div>
+
+                  <div className="rounded-lg border border-[#C9A227]/30 bg-[#C9A227]/10 p-6 shadow-sm">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#8B6B12]">Acesso direto</p>
+                        <h3 className="mt-2 text-xl font-black text-slate-950">ERP Desktop para operação local</h3>
+                        <p className="mt-1 max-w-3xl text-sm text-slate-600">
+                          Baixe ou execute o atalho do Windows para abrir o painel desktop do GenesisGest.Net com o portal e a API já apontados para o ambiente local.
+                        </p>
+                      </div>
+                      <a
+                        href={erpDesktopLauncher}
+                        download="ABRIR-ERP-DESKTOP.cmd"
+                        className="inline-flex items-center justify-center rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800"
+                      >
+                        Abrir ERP Desktop
+                      </a>
+                    </div>
+                    <p className="mt-4 text-xs font-semibold text-slate-500">
+                      Se o navegador baixar o arquivo, execute <span className="font-black text-slate-700">ABRIR-ERP-DESKTOP.cmd</span> no Windows.
+                    </p>
                   </div>
 
                   <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">

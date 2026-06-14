@@ -264,10 +264,15 @@ app.MapPost("/api/auth/login", async (
     }
 
     var cliente = await db.Clientes
-        .FirstOrDefaultAsync(item => item.Email == normalizedEmail && item.Status == StatusCliente.Ativo, ct);
+        .FirstOrDefaultAsync(item => item.Email == normalizedEmail, ct);
 
     if (cliente is not null && !string.IsNullOrWhiteSpace(cliente.SenhaHash) && BCrypt.Net.BCrypt.Verify(request.Senha, cliente.SenhaHash))
     {
+        if (cliente.Status != StatusCliente.Ativo)
+        {
+            return Results.BadRequest(ApiResponse<LoginResponse>.Erro("Seu cadastro ainda não foi confirmado. Verifique seu e-mail antes de entrar."));
+        }
+
         cliente.UltimoAcesso = DateTime.UtcNow;
         cliente.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
@@ -1075,7 +1080,7 @@ app.MapGet("/api/clientes/verificar", async (string? email, string? cpf, NexumDb
 .WithName("VerificarCadastroCliente")
 ;
 
-app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, CancellationToken ct) =>
+app.MapPost("/api/clientes", async (ClienteRequest request, IConfiguration configuration, INotificacaoService notificacaoService, NexumDbContext db, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Nome))
     {
@@ -1108,10 +1113,22 @@ app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, C
 
         clienteExistente.Newsletter = request.Newsletter ?? clienteExistente.Newsletter;
         clienteExistente.UpdatedAt = DateTime.UtcNow;
+
+        if (clienteExistente.Status != StatusCliente.Ativo)
+        {
+            clienteExistente.TokenConfirmacaoEmail ??= Guid.NewGuid().ToString("N");
+            clienteExistente.Status = StatusCliente.Pendente;
+            var baseUrlExistente = configuration["PublicSite:BaseUrl"]?.TrimEnd('/') ?? "https://www.nexumaltivon.com";
+            var linkExistente = $"{baseUrlExistente}/confirmar-cadastro.html?token={Uri.EscapeDataString(clienteExistente.TokenConfirmacaoEmail)}";
+            await notificacaoService.EnviarConfirmacaoCadastroAsync(clienteExistente, linkExistente);
+        }
+
         await db.SaveChangesAsync(ct);
 
         var existenteDto = new ClienteLojaDto(clienteExistente.Id, clienteExistente.Nome, clienteExistente.Email, clienteExistente.Telefone, clienteExistente.CpfCnpj);
-        return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(existenteDto, "Cliente ja cadastrado. Registro existente reutilizado."));
+        return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(existenteDto, clienteExistente.Status == StatusCliente.Ativo
+            ? "Cliente ja cadastrado. Registro existente reutilizado."
+            : "Cliente já cadastrado. Reenviamos o link de confirmação para liberar o acesso."));
     }
 
     var cliente = new Cliente
@@ -1123,7 +1140,8 @@ app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, C
         CpfCnpj = cpfCnpj,
         SenhaHash = !string.IsNullOrWhiteSpace(request.Senha) ? BCrypt.Net.BCrypt.HashPassword(request.Senha.Trim(), 12) : null,
         Newsletter = request.Newsletter ?? true,
-        Status = StatusCliente.Ativo,
+        Status = StatusCliente.Pendente,
+        TokenConfirmacaoEmail = Guid.NewGuid().ToString("N"),
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow
     };
@@ -1131,11 +1149,42 @@ app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, C
     db.Clientes.Add(cliente);
     await db.SaveChangesAsync(ct);
 
+    var baseUrl = configuration["PublicSite:BaseUrl"]?.TrimEnd('/') ?? "https://www.nexumaltivon.com";
+    var linkConfirmacao = $"{baseUrl}/confirmar-cadastro.html?token={Uri.EscapeDataString(cliente.TokenConfirmacaoEmail ?? string.Empty)}";
+    await notificacaoService.EnviarConfirmacaoCadastroAsync(cliente, linkConfirmacao);
+
     var dto = new ClienteLojaDto(cliente.Id, cliente.Nome, cliente.Email, cliente.Telefone, cliente.CpfCnpj);
-    return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(dto, "Cliente registrado."));
+    return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(dto, "Cliente registrado. Enviamos um link de confirmação por e-mail."));
 })
 .AllowAnonymous()
 .WithName("CriarCliente")
+;
+
+app.MapGet("/api/clientes/confirmar", async (string token, NexumDbContext db, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(token))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Token de confirmação inválido."));
+    }
+
+    var cliente = await db.Clientes.FirstOrDefaultAsync(item => item.TokenConfirmacaoEmail == token, ct);
+    if (cliente is null)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Token de confirmação não encontrado ou expirado."));
+    }
+
+    cliente.Status = StatusCliente.Ativo;
+    cliente.ConfirmadoEm = DateTime.UtcNow;
+    cliente.TokenConfirmacaoEmail = null;
+    cliente.UpdatedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync(ct);
+
+    return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(
+        new ClienteLojaDto(cliente.Id, cliente.Nome, cliente.Email, cliente.Telefone, cliente.CpfCnpj),
+        "Cadastro confirmado com sucesso. Agora você já pode entrar na área do cliente."));
+})
+.AllowAnonymous()
+.WithName("ConfirmarCadastroCliente")
 ;
 
 app.MapGet("/api/clientes/portal/me", [Authorize] async (ClaimsPrincipal principal, NexumDbContext db, CancellationToken ct) =>
@@ -1199,6 +1248,8 @@ app.MapGet("/api/clientes/portal/me", [Authorize] async (ClaimsPrincipal princip
         cliente.Email,
         cliente.Telefone,
         cliente.CpfCnpj,
+        cliente.Status.ToString(),
+        cliente.ConfirmadoEm,
         cliente.PontosFidelidade,
         score,
         cliente.Vip,
@@ -1637,6 +1688,7 @@ app.MapPost("/api/pedidos", async (
         UpdatedAt = DateTime.UtcNow,
         Itens = itens
     };
+    pedido.Cliente = cliente;
 
     pedido.Pagamentos = new List<Pagamento>
     {
@@ -1660,13 +1712,20 @@ app.MapPost("/api/pedidos", async (
     await transaction.CommitAsync(ct);
 
     await notificacaoService.EnviarConfirmacaoPedidoAsync(cliente, pedido);
-
-    var gatewayResult = await TryStartGatewayPaymentAsync(pedido, cliente, configuration, httpClientFactory, http, ct);
+    var metodoPagamento = (request.MetodoPagamento ?? string.Empty).Trim().ToLowerInvariant();
+    var gatewayResult = metodoPagamento switch
+    {
+        "cartao" or "cartão" or "cartao_credito" or "cartãocredito" or "cartaocredito" =>
+            await TryStartMercadoPagoPaymentAsync(pedido, cliente, request.DadosCartao, request.Parcelas ?? 1, configuration, httpClientFactory, http, ct),
+        "boleto" =>
+            await TryStartMercadoPagoPaymentAsync(pedido, cliente, null, request.Parcelas ?? 1, configuration, httpClientFactory, http, ct),
+        _ =>
+            await TryStartGatewayPaymentAsync(pedido, cliente, configuration, httpClientFactory, http, ct)
+    };
     if (gatewayResult.Started)
     {
         pedido.GatewayPagamento = gatewayResult.Gateway;
         pedido.GatewayTransacaoId = gatewayResult.TransactionId;
-        pedido.StatusPagamento = StatusPagamento.Aguardando;
         var pagamento = pedido.Pagamentos?.FirstOrDefault();
         if (pagamento is not null)
         {
@@ -2592,6 +2651,7 @@ app.MapPost("/api/fiscal/simular-roteamento", [Authorize(Policy = "Gerente")] as
             item.Empresa.SubcategoriaFiscal,
             item.CustoTributarioEstimado,
             item.CustoOperacionalEstimado,
+            item.CustoTotalEstimado,
             item.LucroEstimado,
             item.MargemEstimadaPercentual,
             item.Score,
@@ -2600,6 +2660,142 @@ app.MapPost("/api/fiscal/simular-roteamento", [Authorize(Policy = "Gerente")] as
     return Results.Ok(ApiResponse<FiscalRoutingSimulationDto>.Ok(resultado));
 })
 .WithName("FiscalSimularRoteamento")
+;
+
+app.MapPost("/api/fiscal/preparar-emissao-manual", [Authorize(Policy = "Gerente")] async (
+    FiscalManualEmissaoRequest request,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IFiscalRoutingEngine fiscalRoutingEngine,
+    CancellationToken ct) =>
+{
+    var certificado = TestCertificadoNFe(configuration);
+    var empresas = await db.EmpresasGrupo
+        .AsNoTracking()
+        .Where(item => item.Ativa)
+        .ToListAsync(ct);
+
+    var routingRequest = new FiscalRoutingRequest(
+        request.TipoOperacao,
+        request.Subtotal,
+        request.Frete,
+        request.EstadoOrigem,
+        request.EstadoDestino,
+        request.CategoriaFiscal,
+        request.SubcategoriaFiscal,
+        request.NaturezaOperacao,
+        request.ExigeMarketplace,
+        request.ExigeDropshipping,
+        request.RequerSaidaNfe,
+        request.RequerEntradaNfe);
+
+    var decision = fiscalRoutingEngine.Evaluate(routingRequest, empresas.Select(fiscalRoutingEngine.ToSnapshot).ToList());
+    var pendencias = new List<string>();
+
+    if (!certificado.Operacional)
+    {
+        pendencias.AddRange(certificado.Pendencias);
+    }
+
+    if (decision.EmpresaSelecionada is null)
+    {
+        pendencias.Add("Nenhuma empresa ativa atende os critérios fiscais informados.");
+    }
+
+    if (request.Subtotal <= 0)
+    {
+        pendencias.Add("Subtotal precisa ser maior que zero.");
+    }
+
+    if (request.MargemMinima > 0 && request.ImpostosEstimados > 0)
+    {
+        var receitaLiquidaEstim = request.Subtotal + request.Frete - request.ImpostosEstimados;
+        var margemPercentual = request.Subtotal <= 0 ? 0 : receitaLiquidaEstim / request.Subtotal * 100m;
+        if (margemPercentual < request.MargemMinima)
+        {
+            pendencias.Add("Margem estimada abaixo do mínimo informado.");
+        }
+    }
+
+    var resumo = new FiscalManualEmissaoResponseDto(
+        certificado.Operacional,
+        certificado.Status,
+        certificado.Referencia,
+        decision.Resumo,
+        decision.EmpresaSelecionada?.CodigoEmpresa,
+        decision.EmpresaSelecionada?.RazaoSocial,
+        decision.EmpresaSelecionada?.Cnpj,
+        decision.EmpresaSelecionada?.Estado,
+        pendencias.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+        DateTime.UtcNow);
+
+    return Results.Ok(ApiResponse<FiscalManualEmissaoResponseDto>.Ok(resumo));
+})
+.WithName("FiscalPrepararEmissaoManual")
+;
+
+app.MapPost("/api/fiscal/rascunho-manual", [Authorize(Policy = "Gerente")] async (
+    FiscalManualEmissaoRequest request,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var key = "fiscal.manual.rascunho";
+    var payload = JsonSerializer.Serialize(request, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+    var entity = await db.ConfiguracoesSistema.FirstOrDefaultAsync(item => item.Chave == key, ct);
+
+    if (entity is null)
+    {
+        entity = new ConfiguracaoSistema
+        {
+            Chave = key,
+            Tipo = TipoConfiguracao.JSON,
+            Grupo = "Fiscal",
+            Descricao = "Rascunho manual de emissão de NF-e",
+            Editavel = true,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        db.ConfiguracoesSistema.Add(entity);
+    }
+
+    entity.Valor = payload;
+    entity.Tipo = TipoConfiguracao.JSON;
+    entity.UpdatedAt = DateTime.UtcNow;
+
+    await db.SaveChangesAsync(ct);
+
+    var resposta = new
+    {
+        Salvo = true,
+        Chave = key,
+        SalvoEm = entity.UpdatedAt
+    };
+
+    return Results.Ok(ApiResponse<object>.Ok(resposta, "Rascunho fiscal salvo com sucesso."));
+})
+.WithName("FiscalSalvarRascunhoManual")
+;
+
+app.MapGet("/api/fiscal/rascunho-manual", [Authorize(Policy = "Gerente")] async (
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var key = "fiscal.manual.rascunho";
+    var entity = await db.ConfiguracoesSistema.AsNoTracking().FirstOrDefaultAsync(item => item.Chave == key, ct);
+
+    if (entity is null || string.IsNullOrWhiteSpace(entity.Valor))
+    {
+        return Results.Ok(ApiResponse<object>.Ok(new { Existe = false }, "Nenhum rascunho encontrado."));
+    }
+
+    return Results.Ok(ApiResponse<object>.Ok(new
+    {
+        Existe = true,
+        entity.Valor,
+        entity.UpdatedAt
+    }, "Rascunho manual localizado."));
+})
+.WithName("FiscalObterRascunhoManual")
 ;
 
 static string? Slugify(string? value)
@@ -2777,6 +2973,7 @@ static async Task EnsurePedidoFiscalAutomationAsync(
                 item.Score,
                 item.CustoTributarioEstimado,
                 item.CustoOperacionalEstimado,
+                item.CustoTotalEstimado,
                 item.MargemEstimadaPercentual,
                 item.Justificativas
             }).ToList()
@@ -2947,6 +3144,7 @@ static async Task<IntegracaoDiagnosticoDto> BuildIntegracaoDiagnosticoAsync(
     {
         "ecommerce" => await TestEcommerceAsync(db, ct),
         "mercadopago" or "gateways" or "gateway" => await TestMercadoPagoAsync(configuration, httpClientFactory, ct),
+        "certificadonfe" or "certificadonf" or "nfe" or "certificado" => TestCertificadoNFe(configuration),
         "melhorenvio" or "logistica" or "frete" => await TestMelhorEnvioAsync(configuration, httpClientFactory, ct),
         "mercadolivre" or "marketplaces" or "marketplace" => await TestMercadoLivreAsync(configuration, httpClientFactory, ct),
         "dropshipping" or "dropship" => await TestDropshippingAsync(db, ct),
@@ -2960,10 +3158,75 @@ static async Task<IntegracaoDiagnosticoDto> BuildIntegracaoDiagnosticoAsync(
             false,
             false,
             "Integração não mapeada no Nexum Altivon.",
-            ["Use: ecommerce, dropshipping, shopify, cjdropshipping, mercadopago, melhorenvio, mercadolivre ou bancaria."],
+            ["Use: ecommerce, dropshipping, shopify, cjdropshipping, mercadopago, melhorenvio, mercadolivre, certificado ou bancaria."],
             DateTime.UtcNow,
             null)
     };
+}
+
+static IntegracaoDiagnosticoDto TestCertificadoNFe(IConfiguration configuration)
+{
+    var tipo = GetIntegrationValue(configuration, "CertificadoNFe:Tipo", "Integracoes:CertificadoNFe:Tipo");
+    var arquivoPfx = GetIntegrationValue(configuration, "CertificadoNFe:ArquivoPfx", "Integracoes:CertificadoNFe:ArquivoPfx");
+    var senha = GetIntegrationValue(configuration, "CertificadoNFe:Senha", "Integracoes:CertificadoNFe:Senha");
+    var thumbprint = GetIntegrationValue(configuration, "CertificadoNFe:Thumbprint", "Integracoes:CertificadoNFe:Thumbprint");
+    var cnpj = GetIntegrationValue(configuration, "CertificadoNFe:Cnpj", "Integracoes:CertificadoNFe:Cnpj");
+    var validoAte = GetIntegrationValue(configuration, "CertificadoNFe:ValidoAte", "Integracoes:CertificadoNFe:ValidoAte");
+    var modelo = string.IsNullOrWhiteSpace(tipo) ? "Nao configurado" : tipo.ToUpperInvariant();
+
+    if (string.Equals(tipo, "A1", StringComparison.OrdinalIgnoreCase))
+    {
+        var arquivoExiste = !string.IsNullOrWhiteSpace(arquivoPfx) && File.Exists(arquivoPfx);
+        var configurada = arquivoExiste && IsConfiguredSecret(senha);
+        var operacional = configurada && !string.IsNullOrWhiteSpace(cnpj);
+
+        return new IntegracaoDiagnosticoDto(
+            "Certificado NF-e",
+            "certificado",
+            operacional ? "Pronto" : "Aguardando arquivo",
+            configurada,
+            operacional,
+            operacional
+                ? "Certificado A1 localizado e apto para uso no emissor."
+                : "Certificado A1 ainda depende do arquivo PFX e da senha no servidor.",
+            operacional
+                ? []
+                : ["CertificadoNFe__ArquivoPfx", "CertificadoNFe__Senha", "CertificadoNFe__Cnpj"],
+            DateTime.UtcNow,
+            $"Tipo: A1 | CNPJ: {cnpj ?? "nao informado"} | Validade: {validoAte ?? "nao informada"}");
+    }
+
+    if (string.Equals(tipo, "A3", StringComparison.OrdinalIgnoreCase))
+    {
+        var configurada = IsConfiguredSecret(thumbprint);
+        var operacional = configurada && !string.IsNullOrWhiteSpace(cnpj);
+
+        return new IntegracaoDiagnosticoDto(
+            "Certificado NF-e",
+            "certificado",
+            operacional ? "Pronto" : "Aguardando token/identificador",
+            configurada,
+            operacional,
+            operacional
+                ? "Certificado A3 identificado e apto para emissão."
+                : "Certificado A3 precisa do thumbprint/serial válido no servidor.",
+            operacional
+                ? []
+                : ["CertificadoNFe__Thumbprint", "CertificadoNFe__Cnpj"],
+            DateTime.UtcNow,
+            $"Tipo: A3 | CNPJ: {cnpj ?? "nao informado"} | Validade: {validoAte ?? "nao informada"}");
+    }
+
+    return new IntegracaoDiagnosticoDto(
+        "Certificado NF-e",
+        "certificado",
+        "Aguardando configuração",
+        false,
+        false,
+        "Informe se o certificado será A1 ou A3. O sistema está pronto para validar o emissor assim que a empresa cadastrar os dados.",
+        ["CertificadoNFe__Tipo", "CertificadoNFe__Cnpj"],
+        DateTime.UtcNow,
+        modelo);
 }
 
 static async Task<IntegracaoDiagnosticoDto> TestEcommerceAsync(NexumDbContext db, CancellationToken ct)
@@ -3499,6 +3762,175 @@ static async Task<GatewayPaymentStartResult> TryStartGatewayPaymentAsync(
         }
 
         return GatewayPaymentStartResult.Success("MercadoPago", transactionId, qrCode, paymentUrl, body);
+    }
+    catch (Exception ex)
+    {
+        return GatewayPaymentStartResult.NotStarted(ex.Message);
+    }
+}
+
+static async Task<GatewayPaymentStartResult> TryStartMercadoPagoPaymentAsync(
+    Pedido pedido,
+    Cliente cliente,
+    object? dadosCartao,
+    int parcelas,
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    HttpContext http,
+    CancellationToken ct)
+{
+    var token = GetIntegrationValue(configuration, "MercadoPago:AccessToken", "Integracoes:MercadoPago:AccessToken");
+    if (!IsConfiguredSecret(token))
+    {
+        return GatewayPaymentStartResult.NotStarted();
+    }
+
+    try
+    {
+        var client = httpClientFactory.CreateClient("mercado-pago");
+        var metodo = (pedido.MeioPagamento ?? string.Empty).Trim().ToLowerInvariant();
+
+        if (metodo == "boleto")
+        {
+            using var boletoRequest = new HttpRequestMessage(HttpMethod.Post, "v1/payments");
+            boletoRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            boletoRequest.Headers.Add("X-Idempotency-Key", $"nexum-{pedido.NumeroPedido}-boleto");
+            boletoRequest.Content = JsonContent.Create(new
+            {
+                transaction_amount = pedido.Total,
+                description = $"Pedido {pedido.NumeroPedido} - Nexum Altivon",
+                payment_method_id = "bolbradesco",
+                notification_url = BuildPublicUrl(http, "/api/webhooks/mercadopago"),
+                external_reference = pedido.NumeroPedido,
+                payer = new
+                {
+                    email = cliente.Email,
+                    first_name = cliente.Nome.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? cliente.Nome,
+                    identification = new
+                    {
+                        type = string.IsNullOrWhiteSpace(cliente.CpfCnpj) || cliente.CpfCnpj.Length > 14 ? "CNPJ" : "CPF",
+                        number = new string((cliente.CpfCnpj ?? string.Empty).Where(char.IsDigit).ToArray())
+                    }
+                }
+            });
+
+            using var boletoResponse = await client.SendAsync(boletoRequest, ct);
+            var boletoBody = await boletoResponse.Content.ReadAsStringAsync(ct);
+            if (!boletoResponse.IsSuccessStatusCode)
+            {
+                return GatewayPaymentStartResult.NotStarted(boletoBody);
+            }
+
+            using var boletoDocument = JsonDocument.Parse(boletoBody);
+            var boletoRoot = boletoDocument.RootElement;
+            var boletoId = boletoRoot.TryGetProperty("id", out var boletoIdProp) ? boletoIdProp.ToString() : null;
+            string? boletoPaymentUrl = null;
+            string? linhaDigitavel = null;
+            if (boletoRoot.TryGetProperty("transaction_details", out var boletoDetails))
+            {
+                boletoPaymentUrl = boletoDetails.TryGetProperty("external_resource_url", out var boletoUrlProp) ? boletoUrlProp.ToString() : null;
+                linhaDigitavel = boletoDetails.TryGetProperty("payment_method_reference_id", out var linhaProp) ? linhaProp.ToString() : null;
+            }
+
+            return GatewayPaymentStartResult.Success("MercadoPago", boletoId, linhaDigitavel, boletoPaymentUrl, boletoBody);
+        }
+
+        if (dadosCartao is null)
+        {
+            return GatewayPaymentStartResult.NotStarted("dados_cartao_ausentes");
+        }
+
+        var cartaoJson = JsonSerializer.Serialize(dadosCartao);
+        var cartao = JsonSerializer.Deserialize<DadosCartaoPedidoRequest>(cartaoJson, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        });
+        if (cartao is null || string.IsNullOrWhiteSpace(cartao.Numero) || string.IsNullOrWhiteSpace(cartao.NomeTitular) || string.IsNullOrWhiteSpace(cartao.Validade))
+        {
+            return GatewayPaymentStartResult.NotStarted("dados_cartao_invalidos");
+        }
+
+        var partes = cartao.Validade.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (partes.Length != 2 || !int.TryParse(partes[0], out var mesValidade) || !int.TryParse(partes[1], out var anoCurto))
+        {
+            return GatewayPaymentStartResult.NotStarted("validade_cartao_invalida");
+        }
+
+        var tokenRequest = new
+        {
+            card_number = cartao.Numero.Replace(" ", string.Empty),
+            expiration_month = mesValidade,
+            expiration_year = int.Parse($"20{anoCurto:D2}"),
+            security_code = cartao.Cvv,
+            cardholder = new
+            {
+                name = cartao.NomeTitular,
+                identification = new
+                {
+                    type = string.IsNullOrWhiteSpace(cartao.CpfTitular) || cartao.CpfTitular.Length > 14 ? "CNPJ" : "CPF",
+                    number = new string((cartao.CpfTitular ?? string.Empty).Where(char.IsDigit).ToArray())
+                }
+            }
+        };
+
+        using var tokenRequestMessage = new HttpRequestMessage(HttpMethod.Post, "v1/card_tokens");
+        tokenRequestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        tokenRequestMessage.Content = JsonContent.Create(tokenRequest);
+
+        using var tokenResponse = await client.SendAsync(tokenRequestMessage, ct);
+        var tokenBody = await tokenResponse.Content.ReadAsStringAsync(ct);
+        if (!tokenResponse.IsSuccessStatusCode)
+        {
+            return GatewayPaymentStartResult.NotStarted(tokenBody);
+        }
+
+        using var tokenDocument = JsonDocument.Parse(tokenBody);
+        var cardToken = tokenDocument.RootElement.TryGetProperty("id", out var tokenIdProp) ? tokenIdProp.ToString() : null;
+        if (string.IsNullOrWhiteSpace(cardToken))
+        {
+            return GatewayPaymentStartResult.NotStarted(tokenBody);
+        }
+
+        using var paymentRequest = new HttpRequestMessage(HttpMethod.Post, "v1/payments");
+        paymentRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        paymentRequest.Headers.Add("X-Idempotency-Key", $"nexum-{pedido.NumeroPedido}-cartao");
+        paymentRequest.Content = JsonContent.Create(new
+        {
+            transaction_amount = pedido.Total,
+            token = cardToken,
+            description = $"Pedido {pedido.NumeroPedido} - Nexum Altivon",
+            installments = Math.Clamp(parcelas, 1, 24),
+            payment_method_id = "master",
+            payer = new
+            {
+                email = cliente.Email,
+                identification = new
+                {
+                    type = string.IsNullOrWhiteSpace(cliente.CpfCnpj) || cliente.CpfCnpj.Length > 14 ? "CNPJ" : "CPF",
+                    number = new string((cliente.CpfCnpj ?? string.Empty).Where(char.IsDigit).ToArray())
+                }
+            },
+            external_reference = pedido.NumeroPedido,
+            notification_url = BuildPublicUrl(http, "/api/webhooks/mercadopago")
+        });
+
+        using var paymentResponse = await client.SendAsync(paymentRequest, ct);
+        var paymentBody = await paymentResponse.Content.ReadAsStringAsync(ct);
+        if (!paymentResponse.IsSuccessStatusCode)
+        {
+            return GatewayPaymentStartResult.NotStarted(paymentBody);
+        }
+
+        using var paymentDocument = JsonDocument.Parse(paymentBody);
+        var paymentRoot = paymentDocument.RootElement;
+        var paymentId = paymentRoot.TryGetProperty("id", out var paymentIdProp) ? paymentIdProp.ToString() : null;
+        string? paymentUrl = null;
+        if (paymentRoot.TryGetProperty("transaction_details", out var transactionDetails))
+        {
+            paymentUrl = transactionDetails.TryGetProperty("external_resource_url", out var urlProp) ? urlProp.ToString() : null;
+        }
+
+        return GatewayPaymentStartResult.Success("MercadoPago", paymentId, null, paymentUrl, paymentBody);
     }
     catch (Exception ex)
     {
@@ -4161,6 +4593,10 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS payload_operacao LONGTEXT NULL;");
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS email_cliente_notificado_em DATETIME NULL;");
 
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS token_confirmacao_email VARCHAR(255) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS confirmado_em DATETIME NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS status INT NOT NULL DEFAULT 3;");
+
     await db.Database.ExecuteSqlRawAsync(
         """
         CREATE TABLE IF NOT EXISTS dropshipping_config (
@@ -4183,7 +4619,7 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
         """
         INSERT INTO dropshipping_config (nome, slug, tipo, api_endpoint, ativo)
         VALUES
-            ('Shopify', 'shopify', 5, 'https://{store}.myshopify.com/admin/api', 0),
+            ('Shopify', 'shopify', 5, 'https://{{store}}.myshopify.com/admin/api', 0),
             ('CJ Dropshipping', 'cjdropshipping', 1, 'https://developers.cjdropshipping.com/api2.0/v1', 0)
         ON DUPLICATE KEY UPDATE
             nome = VALUES(nome),
@@ -4223,8 +4659,8 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
             ('home_intro_badge', 'www.nexumaltivon.com', 'Texto', 'Texto do selo institucional da home', 'SiteHome', 1),
             ('home_footer_texto', 'Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas.', 'Texto', 'Texto do rodapé público da home', 'SiteHome', 1),
             ('home_quality_items', '["Curadoria rigorosa de fornecedores","Atendimento humano e especializado","Política de devolução simplificada","Preços justos e acessíveis"]', 'JSON', 'Itens do bloco de qualidade da home', 'SiteHome', 1),
-            ('home_partner_cards', '[{"title":"Parceiros de Vendas","text":"Lojas físicas ou online podem ampliar seus horizontes de venda com nossa infraestrutura comercial e operação integrada.","cta":"Quero Vender","href":"https://wa.me/5514996731879?text=Olá! Tenho interesse em ser parceiro de vendas do Grupo Nexum Altivon.","icon":"Store"},{"title":"Fornecedores & Distribuidores","text":"Distribuidores e fabricantes encontram um canal de venda em crescimento, com visão de volume, relacionamento e longo prazo.","cta":"Quero Fornecer","href":"https://wa.me/5514996348409?text=Olá! Sou fornecedor/distribuidor e tenho interesse em parceria com o Grupo Nexum Altivon.","icon":"Truck"},{"title":"Dropshipping","text":"Integre seu catálogo às nossas lojas ou utilize nossa infraestrutura para conectar produtos, logística e novos canais.","cta":"Quero Fazer Dropship","href":"https://wa.me/5514996731879?text=Olá! Tenho interesse em parceria de dropshipping com o Grupo Nexum Altivon.","icon":"Building2"}]', 'JSON', 'Cards de parceria da home', 'SiteHome', 1),
-            ('home_hero_slides', '[{"id":"ecommerce","badge":"Grupo Nexum Altivon","title":"O Futuro do","highlight":"E-Commerce","description":"Seis lojas, uma operação conectada e uma proposta premium para transformar a experiência de compra online.","image":"https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1920&q=88"},{"id":"marcas","badge":"6 marcas em expansão","title":"Uma operação,","highlight":"múltiplos mercados","description":"Turismo, relógios, moda, tecnologia, construção e festas com a mesma curadoria comercial do Grupo Nexum Altivon.","image":"https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=1920&q=88"},{"id":"tecnologia","badge":"Experiência tecnológica","title":"Compra segura com","highlight":"atendimento humano","description":"Fluxos preparados para catálogo, clientes, pedidos, integrações e relacionamento com visão de crescimento contínuo.","image":"https://images.unsplash.com/photo-1524805444758-089113d48a6d?auto=format&fit=crop&w=1920&q=88"}]', 'JSON', 'Slides principais da home', 'SiteHome', 1)
+            ('home_partner_cards', '[{{"title":"Parceiros de Vendas","text":"Lojas físicas ou online podem ampliar seus horizontes de venda com nossa infraestrutura comercial e operação integrada.","cta":"Quero Vender","href":"https://wa.me/5514996731879?text=Olá! Tenho interesse em ser parceiro de vendas do Grupo Nexum Altivon.","icon":"Store"}},{{"title":"Fornecedores & Distribuidores","text":"Distribuidores e fabricantes encontram um canal de venda em crescimento, com visão de volume, relacionamento e longo prazo.","cta":"Quero Fornecer","href":"https://wa.me/5514996348409?text=Olá! Sou fornecedor/distribuidor e tenho interesse em parceria com o Grupo Nexum Altivon.","icon":"Truck"}},{{"title":"Dropshipping","text":"Integre seu catálogo às nossas lojas ou utilize nossa infraestrutura para conectar produtos, logística e novos canais.","cta":"Quero Fazer Dropship","href":"https://wa.me/5514996731879?text=Olá! Tenho interesse em parceria de dropshipping com o Grupo Nexum Altivon.","icon":"Building2"}}]', 'JSON', 'Cards de parceria da home', 'SiteHome', 1),
+            ('home_hero_slides', '[{{"id":"ecommerce","badge":"Grupo Nexum Altivon","title":"O Futuro do","highlight":"E-Commerce","description":"Seis lojas, uma operação conectada e uma proposta premium para transformar a experiência de compra online.","image":"https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1920&q=88"}},{{"id":"marcas","badge":"6 marcas em expansão","title":"Uma operação,","highlight":"múltiplos mercados","description":"Turismo, relógios, moda, tecnologia, construção e festas com a mesma curadoria comercial do Grupo Nexum Altivon.","image":"https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=1920&q=88"}},{{"id":"tecnologia","badge":"Experiência tecnológica","title":"Compra segura com","highlight":"atendimento humano","description":"Fluxos preparados para catálogo, clientes, pedidos, integrações e relacionamento com visão de crescimento contínuo.","image":"https://images.unsplash.com/photo-1524805444758-089113d48a6d?auto=format&fit=crop&w=1920&q=88"}}]', 'JSON', 'Slides principais da home', 'SiteHome', 1)
         ON DUPLICATE KEY UPDATE
             valor = VALUES(valor),
             descricao = VALUES(descricao),
@@ -4457,6 +4893,8 @@ public sealed record ClientePortalDto(
     string Email,
     string? Telefone,
     string? Documento,
+    string StatusCadastro,
+    DateTime? ConfirmadoEm,
     int PontosFidelidade,
     string ScoreRelacionamento,
     bool Vip,
@@ -4484,10 +4922,18 @@ public sealed record PedidoRequest(
     [property: JsonPropertyName("metodo_pagamento")] string? MetodoPagamento,
     [property: JsonPropertyName("parcelas")] int? Parcelas,
     [property: JsonPropertyName("gateway_pagamento")] string? GatewayPagamento,
+    [property: JsonPropertyName("dados_cartao")] object? DadosCartao,
     [property: JsonPropertyName("frete_valor")] decimal? FreteValor,
     [property: JsonPropertyName("frete_metodo")] string? FreteMetodo,
     [property: JsonPropertyName("frete_transportadora")] string? FreteTransportadora,
     [property: JsonPropertyName("frete_prazo_dias")] int? FretePrazoDias);
+
+public sealed record DadosCartaoPedidoRequest(
+    [property: JsonPropertyName("numero")] string Numero,
+    [property: JsonPropertyName("nomeTitular")] string NomeTitular,
+    [property: JsonPropertyName("validade")] string Validade,
+    [property: JsonPropertyName("cvv")] string Cvv,
+    [property: JsonPropertyName("cpfTitular")] string? CpfTitular);
 
 public sealed record EnderecoEntregaRequest(
     string? Cep,
@@ -4902,10 +5348,45 @@ public sealed record FiscalRoutingRankingDto(
     string? SubcategoriaFiscal,
     decimal CustoTributarioEstimado,
     decimal CustoOperacionalEstimado,
+    decimal CustoTotalEstimado,
     decimal LucroEstimado,
     decimal MargemEstimadaPercentual,
     decimal Score,
     List<string> Justificativas);
+
+public sealed record FiscalManualEmissaoRequest(
+    string EmpresaEmissora,
+    string CnpjEmissor,
+    string ClienteDestinatario,
+    string DocumentoDestinatario,
+    string NaturezaOperacao,
+    string Cfop,
+    decimal Subtotal,
+    decimal Frete,
+    decimal ImpostosEstimados,
+    decimal MargemMinima,
+    string? Observacoes,
+    TipoOperacaoFiscal TipoOperacao,
+    string EstadoOrigem,
+    string EstadoDestino,
+    string? CategoriaFiscal,
+    string? SubcategoriaFiscal,
+    bool ExigeMarketplace,
+    bool ExigeDropshipping,
+    bool RequerSaidaNfe,
+    bool RequerEntradaNfe);
+
+public sealed record FiscalManualEmissaoResponseDto(
+    bool CertificadoOperacional,
+    string CertificadoStatus,
+    string? CertificadoReferencia,
+    string RoteamentoResumo,
+    string? CodigoEmpresaSelecionada,
+    string? RazaoSocialSelecionada,
+    string? CnpjSelecionado,
+    string? EstadoSelecionado,
+    List<string> Pendencias,
+    DateTime GeradoEm);
 
 public static class StoreData
 {

@@ -74,7 +74,7 @@ public class Cliente
     public int PontosFidelidade { get; set; } = 0;
 
     [Column("status")]
-    public StatusCliente Status { get; set; } = StatusCliente.Ativo;
+    public StatusCliente Status { get; set; } = StatusCliente.Pendente;
 
     [Column("ultimo_acesso")]
     public DateTime? UltimoAcesso { get; set; }
@@ -82,6 +82,13 @@ public class Cliente
     [Column("token_reset_senha")]
     [MaxLength(255)]
     public string? TokenResetSenha { get; set; }
+
+    [Column("token_confirmacao_email")]
+    [MaxLength(255)]
+    public string? TokenConfirmacaoEmail { get; set; }
+
+    [Column("confirmado_em")]
+    public DateTime? ConfirmadoEm { get; set; }
 
     [Column("token_expira_em")]
     public DateTime? TokenExpiraEm { get; set; }

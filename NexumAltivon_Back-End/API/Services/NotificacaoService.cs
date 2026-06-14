@@ -14,6 +14,7 @@ namespace NexumAltivon.API.Services
         Task EnviarConfirmacaoPedidoAsync(Cliente cliente, Pedido pedido);
         Task EnviarConfirmacaoPagamentoAsync(Cliente cliente, Pedido pedido);
         Task EnviarNotaFiscalEmitidaAsync(Cliente cliente, Pedido pedido, Fiscal fiscal);
+        Task EnviarConfirmacaoCadastroAsync(Cliente cliente, string linkConfirmacao);
         Task EnviarNotificacaoWhatsAppAsync(string? telefone, string mensagem);
         Task EnviarEmailAsync(string? destinatario, string assunto, string corpoHtml);
         Task EnviarAlertaEstoqueBaixoAsync(Produto produto);
@@ -99,6 +100,29 @@ h1 {{ color: #C9A227; }}
 <p><strong>Valor pago:</strong> R$ {pedido.Total:N2}</p>
 <p>Seu pedido agora estÃ¡ em <strong>separaÃ§Ã£o</strong> e em breve serÃ¡ enviado.</p>
 <p>Acompanhe o status pelo site: <a href='https://www.nexumaltivon.com/pedidos/{pedido.NumeroPedido}' style='color:#C9A227'>Meus Pedidos</a></p>
+</div>
+</body>
+</html>";
+
+            await EnviarEmailAsync(cliente.Email, assunto, corpo);
+        }
+
+        public async Task EnviarConfirmacaoCadastroAsync(Cliente cliente, string linkConfirmacao)
+        {
+            var assunto = $"Confirme seu cadastro - Nexum Altivon";
+            var corpo = $@"
+<!DOCTYPE html>
+<html>
+<body style='font-family:Arial,sans-serif;background:#f6f3ea;color:#1f1f1f;padding:0;margin:0;'>
+<div style='max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #d7c38a;padding:28px;'>
+<h1 style='margin-top:0;color:#8a6d1f;'>Confirme seu cadastro</h1>
+<p>Olá <strong>{cliente.Nome}</strong>,</p>
+<p>Recebemos seu cadastro na Nexum Altivon e ele está pronto para ativação.</p>
+<p>Para liberar o acesso da sua área do cliente, clique no botão abaixo:</p>
+<p><a href='{linkConfirmacao}' style='display:inline-block;background:#c9a227;color:#000;padding:14px 22px;border-radius:8px;text-decoration:none;font-weight:bold;'>Confirmar cadastro</a></p>
+<p>Se o botão não abrir, copie e cole este endereço no navegador:</p>
+<p style='word-break:break-all;'><a href='{linkConfirmacao}'>{linkConfirmacao}</a></p>
+<p>Depois da confirmação, você poderá entrar normalmente com seu e-mail e senha.</p>
 </div>
 </body>
 </html>";

@@ -12,6 +12,7 @@ public class ClienteDto
     public bool Vip { get; set; }
     public int PontosFidelidade { get; set; }
     public string Status { get; set; } = "Ativo";
+    public DateTime? ConfirmadoEm { get; set; }
     public DateTime CreatedAt { get; set; }
     public List<EnderecoDto>? Enderecos { get; set; }
 }

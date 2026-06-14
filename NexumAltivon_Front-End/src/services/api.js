@@ -249,6 +249,7 @@ export const clienteAPI = {
   getAll: () => api.get('/clientes'),
   verificarCadastro: (params) => api.get('/clientes/verificar', { params }),
   create: (data) => api.post('/clientes', data),
+  confirmarCadastro: (token) => api.get('/clientes/confirmar', { params: { token } }),
   getPortal: () => api.get('/clientes/portal/me'),
 };
 

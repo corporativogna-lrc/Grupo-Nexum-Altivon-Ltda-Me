@@ -116,6 +116,8 @@ export function StepPagamento({
   setMetodoPagamento,
   parcelas,
   setParcelas,
+  dadosCartao,
+  setDadosCartao,
   freteOptions = [],
   freteSelecionado,
   setFreteSelecionado,
@@ -126,6 +128,15 @@ export function StepPagamento({
   const metodos = ['cartao', 'pix', 'boleto', 'debito', 'deposito'];
   const formatPrice = (price) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
+  const cartaoValido =
+    metodoPagamento !== 'cartao' ||
+    Boolean(
+      dadosCartao?.numero &&
+        dadosCartao?.nomeTitular &&
+        dadosCartao?.validade &&
+        dadosCartao?.cvv &&
+        dadosCartao?.cpfTitular,
+    );
 
   return (
     <div>
@@ -203,6 +214,49 @@ export function StepPagamento({
           <p className="mt-2 text-xs font-semibold text-[#A0A0A0]">
             O pedido já grava as parcelas para o financeiro e para a integração real do gateway.
           </p>
+
+          <div className="mt-4 space-y-3 rounded-2xl border border-[#2A2A2A] bg-[#080808] p-4">
+            <p className="text-sm font-black uppercase tracking-[0.14em] text-[#C9A227]">Dados do cartão</p>
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="Número do cartão"
+              value={dadosCartao.numero}
+              onChange={(e) => setDadosCartao({ ...dadosCartao, numero: e.target.value })}
+              className="w-full rounded-xl border border-[#2A2A2A] bg-[#111111] px-4 py-3 text-white outline-none placeholder:text-[#777] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20"
+            />
+            <input
+              type="text"
+              placeholder="Nome do titular"
+              value={dadosCartao.nomeTitular}
+              onChange={(e) => setDadosCartao({ ...dadosCartao, nomeTitular: e.target.value })}
+              className="w-full rounded-xl border border-[#2A2A2A] bg-[#111111] px-4 py-3 text-white outline-none placeholder:text-[#777] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20"
+            />
+            <div className="grid gap-3 md:grid-cols-2">
+              <input
+                type="text"
+                placeholder="Validade MM/AA"
+                value={dadosCartao.validade}
+                onChange={(e) => setDadosCartao({ ...dadosCartao, validade: e.target.value })}
+                className="w-full rounded-xl border border-[#2A2A2A] bg-[#111111] px-4 py-3 text-white outline-none placeholder:text-[#777] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20"
+              />
+              <input
+                type="password"
+                inputMode="numeric"
+                placeholder="CVV"
+                value={dadosCartao.cvv}
+                onChange={(e) => setDadosCartao({ ...dadosCartao, cvv: e.target.value })}
+                className="w-full rounded-xl border border-[#2A2A2A] bg-[#111111] px-4 py-3 text-white outline-none placeholder:text-[#777] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20"
+              />
+            </div>
+            <input
+              type="text"
+              placeholder="CPF do titular"
+              value={dadosCartao.cpfTitular}
+              onChange={(e) => setDadosCartao({ ...dadosCartao, cpfTitular: e.target.value })}
+              className="w-full rounded-xl border border-[#2A2A2A] bg-[#111111] px-4 py-3 text-white outline-none placeholder:text-[#777] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20"
+            />
+          </div>
         </div>
       )}
 
@@ -210,7 +264,7 @@ export function StepPagamento({
         <button onClick={onBack} className="rounded-full border border-[#2A2A2A] bg-[#080808] px-6 py-3 font-bold text-[#D8D8D8] hover:border-[#C9A227]">
           ← Voltar
         </button>
-        <button onClick={onConfirm} disabled={loading}
+        <button onClick={onConfirm} disabled={loading || !cartaoValido}
           className="flex-1 rounded-full bg-[#C9A227] px-6 py-3 font-black text-black transition hover:bg-[#FFD95A] disabled:opacity-50"
           data-testid="finalizar-pedido-btn">
           {loading ? 'Processando...' : 'Confirmar Pedido'}

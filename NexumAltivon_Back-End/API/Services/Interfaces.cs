@@ -1,4 +1,5 @@
 using NexumAltivon.API.DTOs;
+using NexumAltivon.API.Models;
 
 namespace NexumAltivon.API.Services;
 
@@ -27,6 +28,7 @@ public interface IClienteService
     Task<ApiResponse<ClienteDto>> ObterPorEmailAsync(string email);
     Task<ApiResponse<List<ClienteDto>>> ListarAsync(PaginacaoDto paginacao);
     Task<ApiResponse<ClienteDto>> CriarAsync(CriarClienteDto dto);
+    Task<ApiResponse<ClienteDto>> ConfirmarEmailAsync(string token);
     Task<ApiResponse<ClienteDto>> AtualizarAsync(int id, AtualizarClienteDto dto);
     Task<ApiResponse<bool>> ExcluirAsync(int id);
     Task<ApiResponse<EnderecoDto>> AdicionarEnderecoAsync(int clienteId, CriarEnderecoDto dto);
@@ -98,6 +100,7 @@ public interface ILogAuditoriaService
 public interface INotificacaoService
 {
     Task CriarNotificacaoAsync(string tipo, string titulo, string mensagem, string destinatarioTipo, int? destinatarioId = null, string? linkAcao = null);
+    Task EnviarConfirmacaoCadastroAsync(Cliente cliente, string linkConfirmacao);
 }
 
 public interface IConfiguracaoService

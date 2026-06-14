@@ -11,12 +11,14 @@ public class ClienteService : IClienteService
     private readonly NexumDbContext _context;
     private readonly IMapper _mapper;
     private readonly ILogAuditoriaService _auditoria;
+    private readonly INotificacaoService _notificacao;
 
-    public ClienteService(NexumDbContext context, IMapper mapper, ILogAuditoriaService auditoria)
+    public ClienteService(NexumDbContext context, IMapper mapper, ILogAuditoriaService auditoria, INotificacaoService notificacao)
     {
         _context = context;
         _mapper = mapper;
         _auditoria = auditoria;
+        _notificacao = notificacao;
     }
 
     public async Task<ApiResponse<ClienteDto>> ObterPorIdAsync(int id)
@@ -64,23 +66,86 @@ public class ClienteService : IClienteService
 
     public async Task<ApiResponse<ClienteDto>> CriarAsync(CriarClienteDto dto)
     {
-        if (await _context.Clientes.AnyAsync(c => c.Email == dto.Email))
-            return ApiResponse<ClienteDto>.Erro("E-mail já cadastrado.");
+        var clienteExistente = await _context.Clientes.FirstOrDefaultAsync(c =>
+            c.Email == dto.Email ||
+            (!string.IsNullOrWhiteSpace(dto.CpfCnpj) && c.CpfCnpj == dto.CpfCnpj));
 
-        if (!string.IsNullOrEmpty(dto.CpfCnpj) && await _context.Clientes.AnyAsync(c => c.CpfCnpj == dto.CpfCnpj))
-            return ApiResponse<ClienteDto>.Erro("CPF/CNPJ já cadastrado.");
+        if (clienteExistente is not null)
+        {
+            if (string.IsNullOrWhiteSpace(clienteExistente.SenhaHash) && !string.IsNullOrWhiteSpace(dto.Senha))
+            {
+                clienteExistente.SenhaHash = BCrypt.Net.BCrypt.HashPassword(dto.Senha, 12);
+            }
+
+            if (string.IsNullOrWhiteSpace(clienteExistente.Telefone) && !string.IsNullOrWhiteSpace(dto.Telefone))
+            {
+                clienteExistente.Telefone = dto.Telefone;
+            }
+
+            clienteExistente.Newsletter = dto.Newsletter;
+            clienteExistente.UpdatedAt = DateTime.UtcNow;
+
+            if (clienteExistente.Status != StatusCliente.Ativo)
+            {
+                clienteExistente.Status = StatusCliente.Pendente;
+                clienteExistente.TokenConfirmacaoEmail ??= Guid.NewGuid().ToString("N");
+                var baseUrlExistente = Environment.GetEnvironmentVariable("NEXUM_PUBLIC_APP_URL")?.Trim().TrimEnd('/') ?? "https://www.nexumaltivon.com";
+                var linkExistente = $"{baseUrlExistente}/confirmar-cadastro.html?token={Uri.EscapeDataString(clienteExistente.TokenConfirmacaoEmail)}";
+                await _notificacao.EnviarConfirmacaoCadastroAsync(clienteExistente, linkExistente);
+            }
+
+            await _context.SaveChangesAsync();
+
+            var dtoExistente = _mapper.Map<ClienteDto>(clienteExistente);
+            return ApiResponse<ClienteDto>.Ok(
+                dtoExistente,
+                clienteExistente.Status == StatusCliente.Ativo
+                    ? "Cliente já cadastrado. Registro existente reutilizado."
+                    : "Cliente já cadastrado. Reenviamos o link de confirmação para liberar o acesso.");
+        }
 
         var cliente = _mapper.Map<Cliente>(dto);
         if (!string.IsNullOrEmpty(dto.Senha))
             cliente.SenhaHash = BCrypt.Net.BCrypt.HashPassword(dto.Senha, 12);
+        cliente.Status = StatusCliente.Pendente;
+        cliente.TokenConfirmacaoEmail = Guid.NewGuid().ToString("N");
+        cliente.ConfirmadoEm = null;
+        cliente.UltimoAcesso = null;
 
         _context.Clientes.Add(cliente);
         await _context.SaveChangesAsync();
 
+        var baseUrl = Environment.GetEnvironmentVariable("NEXUM_PUBLIC_APP_URL")?.Trim().TrimEnd('/') ?? "https://www.nexumaltivon.com";
+        var linkConfirmacao = $"{baseUrl}/confirmar-cadastro.html?token={Uri.EscapeDataString(cliente.TokenConfirmacaoEmail)}";
+        await _notificacao.EnviarConfirmacaoCadastroAsync(cliente, linkConfirmacao);
+
         await _auditoria.RegistrarAsync("clientes", cliente.Id, "INSERT", null, "Sistema",
             null, null, null, $"{{\"nome\":\"{dto.Nome}\",\"email\":\"{dto.Email}\"}}", "/api/clientes");
 
-        return ApiResponse<ClienteDto>.Ok(_mapper.Map<ClienteDto>(cliente), "Cliente criado com sucesso.");
+        return ApiResponse<ClienteDto>.Ok(_mapper.Map<ClienteDto>(cliente), "Cadastro criado. Verifique seu e-mail para confirmar o acesso.");
+    }
+
+    public async Task<ApiResponse<ClienteDto>> ConfirmarEmailAsync(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+            return ApiResponse<ClienteDto>.Erro("Token de confirmação inválido.");
+
+        var cliente = await _context.Clientes
+            .FirstOrDefaultAsync(c => c.TokenConfirmacaoEmail == token);
+
+        if (cliente == null)
+            return ApiResponse<ClienteDto>.Erro("Token de confirmação não encontrado.");
+
+        cliente.Status = StatusCliente.Ativo;
+        cliente.ConfirmadoEm = DateTime.UtcNow;
+        cliente.TokenConfirmacaoEmail = null;
+        cliente.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        await _auditoria.RegistrarAsync("clientes", cliente.Id, "CONFIRMAR_EMAIL", null, "Sistema",
+            null, null, null, $"{{\"email\":\"{cliente.Email}\"}}", "/api/clientes/confirmar");
+
+        return ApiResponse<ClienteDto>.Ok(_mapper.Map<ClienteDto>(cliente), "Cadastro confirmado com sucesso. Agora você já pode acessar a área do cliente.");
     }
 
     public async Task<ApiResponse<ClienteDto>> AtualizarAsync(int id, AtualizarClienteDto dto)

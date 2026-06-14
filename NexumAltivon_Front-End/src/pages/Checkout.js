@@ -65,6 +65,13 @@ export default function Checkout() {
   const [lojaId, setLojaId] = useState('');
   const [metodoPagamento, setMetodoPagamento] = useState('cartao');
   const [parcelas, setParcelas] = useState(1);
+  const [dadosCartao, setDadosCartao] = useState({
+    numero: '',
+    nomeTitular: '',
+    validade: '',
+    cvv: '',
+    cpfTitular: '',
+  });
   const [freteSelecionado, setFreteSelecionado] = useState('padrao');
   const [freteOptions, setFreteOptions] = useState([
     { id: 'retirada', nome: 'Retirada / combinar entrega', transportadora: 'Nexum Altivon', prazo: 0, valor: 0 },
@@ -240,6 +247,7 @@ export default function Checkout() {
         metodo_pagamento: metodoPagamento,
         parcelas: metodoPagamento === 'cartao' ? parcelas : 1,
         gateway_pagamento: mapGatewayLabel(metodoPagamento),
+        dados_cartao: metodoPagamento === 'cartao' ? dadosCartao : undefined,
         frete_valor: frete.valor,
         frete_metodo: frete.nome,
         frete_transportadora: frete.transportadora,
@@ -319,6 +327,8 @@ export default function Checkout() {
                 setMetodoPagamento={setMetodoPagamento}
                 parcelas={parcelas}
                 setParcelas={setParcelas}
+                dadosCartao={dadosCartao}
+                setDadosCartao={setDadosCartao}
                 freteOptions={freteOptions}
                 freteSelecionado={freteSelecionado}
                 setFreteSelecionado={setFreteSelecionado}
