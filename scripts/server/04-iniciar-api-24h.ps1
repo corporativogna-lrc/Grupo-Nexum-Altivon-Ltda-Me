@@ -15,6 +15,7 @@ $ApiLog = Join-Path $LogDirectory "api.log"
 $ApiErrorLog = Join-Path $LogDirectory "api.err.log"
 $GuardianLog = Join-Path $LogDirectory "api-guardian.log"
 $ApiDll = Join-Path $ApiDirectory "NexumAltivon.API.dll"
+$ApiExe = Join-Path $ApiDirectory "NexumAltivon.API.exe"
 
 New-Item -ItemType Directory -Force -Path $RuntimeDirectory, $LogDirectory | Out-Null
 
@@ -57,24 +58,40 @@ function Stop-NexumApi {
 }
 
 function Start-NexumApi {
-  Import-NexumConfig
+  try {
+    Import-NexumConfig
 
-  if (-not (Test-Path $ApiDll)) {
-    throw "Publicação da API não encontrada: $ApiDll"
+    if (Test-Path $ApiExe) {
+      $executable = $ApiExe
+      $arguments = @()
+    } elseif (Test-Path $ApiDll) {
+      $executable = "dotnet"
+      $arguments = @($ApiDll)
+    } else {
+      throw "Publicação da API não encontrada em: $ApiDirectory"
+    }
+
+    Write-NexumLog "Iniciando API 24h em $Url"
+
+    $startParameters = @{
+      FilePath = $executable
+      WorkingDirectory = $ApiDirectory
+      WindowStyle = "Hidden"
+      RedirectStandardOutput = $ApiLog
+      RedirectStandardError = $ApiErrorLog
+      PassThru = $true
+    }
+    if ($arguments.Count -gt 0) {
+      $startParameters.ArgumentList = $arguments
+    }
+
+    $process = Start-Process @startParameters
+
+    Set-Content -Path $PidPath -Value $process.Id
+  } catch {
+    Write-NexumLog "Falha ao iniciar API: $($_.Exception.Message)"
+    throw
   }
-
-  Write-NexumLog "Iniciando API 24h em $Url"
-
-  $process = Start-Process `
-    -FilePath "dotnet" `
-    -ArgumentList "`"$ApiDll`"" `
-    -WorkingDirectory $ApiDirectory `
-    -WindowStyle Hidden `
-    -RedirectStandardOutput $ApiLog `
-    -RedirectStandardError $ApiErrorLog `
-    -PassThru
-
-  Set-Content -Path $PidPath -Value $process.Id
 }
 
 Write-NexumLog "Guardião 24h iniciado."

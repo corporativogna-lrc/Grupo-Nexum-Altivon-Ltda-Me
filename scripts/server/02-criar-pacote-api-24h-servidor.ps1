@@ -26,7 +26,7 @@ New-Item -ItemType Directory -Force -Path $ApiPackageDirectory, $ScriptPackageDi
 
 $BuildBase = Join-Path $env:TEMP ("nexum-api-publish-" + [guid]::NewGuid().ToString("N"))
 try {
-  dotnet publish $ProjectPath --configuration Release --output $ApiPackageDirectory -p:UseAppHost=false -p:BaseOutputPath="$BuildBase\bin\" -p:BaseIntermediateOutputPath="$BuildBase\obj\"
+  dotnet publish $ProjectPath --configuration Release --runtime win-x64 --self-contained true --output $ApiPackageDirectory -p:UseAppHost=true -p:BaseOutputPath="$BuildBase\bin\" -p:BaseIntermediateOutputPath="$BuildBase\obj\"
   if ($LASTEXITCODE -ne 0) {
     throw "Falha ao publicar a API para o pacote: $ApiPackageDirectory"
   }

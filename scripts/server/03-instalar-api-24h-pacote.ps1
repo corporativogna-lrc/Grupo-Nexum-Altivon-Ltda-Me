@@ -15,6 +15,11 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
   throw "Abra o PowerShell como Administrador e execute novamente."
 }
 
+# Servidor operacional: nunca suspender, hibernar ou desligar discos na tomada.
+powercfg.exe /change standby-timeout-ac 0 | Out-Null
+powercfg.exe /change hibernate-timeout-ac 0 | Out-Null
+powercfg.exe /change disk-timeout-ac 0 | Out-Null
+
 $ScriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $PackageApiDirectory) {
   $PackageApiDirectory = Join-Path (Split-Path -Parent $ScriptDirectory) "api"
@@ -42,7 +47,11 @@ if (-not (Test-Path (Join-Path $PackageApiDirectory "NexumAltivon.API.dll"))) {
 
 New-Item -ItemType Directory -Force -Path $ApiDirectory, $ConfigDirectory, (Join-Path $BaseDirectory "logs"), (Join-Path $BaseDirectory "runtime") | Out-Null
 
-Copy-Item (Join-Path $PackageApiDirectory "*") $ApiDirectory -Recurse -Force
+$PackageApiDirectory = [System.IO.Path]::GetFullPath($PackageApiDirectory.TrimEnd('\', '/'))
+$ApiDirectory = [System.IO.Path]::GetFullPath($ApiDirectory.TrimEnd('\', '/'))
+if (-not [string]::Equals($PackageApiDirectory, $ApiDirectory, [StringComparison]::OrdinalIgnoreCase)) {
+  Copy-Item (Join-Path $PackageApiDirectory "*") $ApiDirectory -Recurse -Force
+}
 Copy-Item $RunnerSource $RunnerTarget -Force
 
 if (-not (Test-Path $ConfigTarget)) {
