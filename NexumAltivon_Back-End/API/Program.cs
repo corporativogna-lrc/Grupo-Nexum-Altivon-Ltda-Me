@@ -52,25 +52,24 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("NexumCorsPolicy", policy =>
     {
+        if (builder.Environment.IsDevelopment() || builder.Environment.IsStaging())
+        {
+            policy
+                .AllowAnyOrigin()
+                .AllowAnyMethod()
+                .AllowAnyHeader();
+            return;
+        }
+
         var origins = apiSettings.GetSection("CorsOrigins").Get<string[]>()
             ?? new[]
             {
-                "http://localhost:5000",
-                "http://localhost:5001",
-                "http://localhost",
-                "http://localhost:3000",
-                "http://localhost:3001",
-                "http://localhost:3002",
-                "http://127.0.0.1",
-                "http://127.0.0.1:3000",
-                "http://127.0.0.1:3001",
-                "http://127.0.0.1:3002",
-                "http://[::1]",
                 "https://www.nexumaltivon.com",
                 "https://admin.nexumaltivon.com"
             };
 
-        policy.WithOrigins(origins)
+        policy
+            .WithOrigins(origins)
             .AllowAnyMethod()
             .AllowAnyHeader()
             .WithExposedHeaders("Token-Expired", "X-Total-Count", "X-Page-Count");
