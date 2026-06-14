@@ -1,0 +1,131 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>NexumAltivon.API</name>
+    </assembly>
+    <members>
+        <member name="T:NexumAltivon.API.Data.Migrations.Nexum.InitialNexumOperational">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.Data.Migrations.Nexum.InitialNexumOperational.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.Data.Migrations.Nexum.InitialNexumOperational.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.Data.Migrations.Nexum.InitialNexumOperational.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.Data.Migrations.Nexum.AddSiteMediaLibrary.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="T:NexumAltivon.API.Data.Migrations.Nexum.HardenPlatformSso">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.Data.Migrations.Nexum.HardenPlatformSso.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.Data.Migrations.Nexum.HardenPlatformSso.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.Data.Migrations.Nexum.HardenPlatformSso.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="T:NexumAltivon.API.Data.Migrations.Nexum.AddLogisticsTrackingAudit">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.Data.Migrations.Nexum.AddLogisticsTrackingAudit.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.Data.Migrations.Nexum.AddLogisticsTrackingAudit.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.Data.Migrations.Nexum.AddLogisticsTrackingAudit.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="T:NexumAltivon.API.API.Data.Migrations.Nexum.ScopeConfigurationKeysByTenant">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.API.Data.Migrations.Nexum.ScopeConfigurationKeysByTenant.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.API.Data.Migrations.Nexum.ScopeConfigurationKeysByTenant.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.API.Data.Migrations.Nexum.ScopeConfigurationKeysByTenant.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="T:NexumAltivon.API.API.Data.Migrations.Nexum.HardenProcurementTenancy">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.API.Data.Migrations.Nexum.HardenProcurementTenancy.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.API.Data.Migrations.Nexum.HardenProcurementTenancy.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.API.Data.Migrations.Nexum.HardenProcurementTenancy.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="T:NexumAltivon.API.API.Data.Migrations.Nexum.AddSitePublicProfiles">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.API.Data.Migrations.Nexum.AddSitePublicProfiles.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.API.Data.Migrations.Nexum.AddSitePublicProfiles.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.API.Data.Migrations.Nexum.AddSitePublicProfiles.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="T:NexumAltivon.API.API.Data.Migrations.Nexum.AddSitePublicProfileCatalog">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.API.Data.Migrations.Nexum.AddSitePublicProfileCatalog.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.API.Data.Migrations.Nexum.AddSitePublicProfileCatalog.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.API.Data.Migrations.Nexum.AddSitePublicProfileCatalog.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="T:NexumAltivon.API.API.Data.Migrations.Nexum.RepairPublicSiteMediaReferences">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.API.Data.Migrations.Nexum.RepairPublicSiteMediaReferences.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.API.Data.Migrations.Nexum.RepairPublicSiteMediaReferences.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.API.Data.Migrations.Nexum.RepairPublicSiteMediaReferences.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="T:NexumAltivon.API.ERP.SharedData.Migrations.InitialGenesis">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.ERP.SharedData.Migrations.InitialGenesis.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.ERP.SharedData.Migrations.InitialGenesis.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.ERP.SharedData.Migrations.InitialGenesis.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="T:NexumAltivon.API.ERP.SharedData.Migrations.HardenGenesisFinanceTenancy">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.ERP.SharedData.Migrations.HardenGenesisFinanceTenancy.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.ERP.SharedData.Migrations.HardenGenesisFinanceTenancy.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:NexumAltivon.API.ERP.SharedData.Migrations.HardenGenesisFinanceTenancy.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
+    </members>
+</doc>
