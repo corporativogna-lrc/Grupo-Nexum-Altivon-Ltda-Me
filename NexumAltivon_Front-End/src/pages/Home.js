@@ -191,6 +191,7 @@ export default function Home() {
   const introText2 =
     siteConfig?.introText2 || 'Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso.';
   const introBadge = siteConfig?.introBadge || 'www.nexumaltivon.com';
+  const siteLogo = siteConfig?.siteLogo || '/assets/logo-2.jpg';
   const primaryPhone = siteConfig?.primaryPhone || '+55 (14) 99673-1879';
   const secondaryPhone = siteConfig?.secondaryPhone || '+55 (14) 99634-8409';
   const publicContactEmail = siteConfig?.contactEmail || 'corporativo.gna@gmail.com';
@@ -306,6 +307,15 @@ export default function Home() {
 
         <div className="relative mx-auto flex min-h-[84vh] max-w-7xl items-center px-4 py-20 sm:px-6 lg:px-8">
           <div className="max-w-3xl">
+            <div className="mb-6 inline-flex items-center gap-4 rounded-3xl border border-white/15 bg-black/35 px-4 py-3 backdrop-blur">
+              <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-white/95 p-2">
+                <img src={siteLogo} alt={siteConfig?.siteNome || 'Grupo Nexum Altivon'} className="h-full w-full object-contain" />
+              </div>
+              <div className="text-left">
+                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-[#E8D5A3]">Identidade pública</p>
+                <p className="mt-1 text-sm font-semibold text-white">{siteConfig?.siteNome || 'Grupo Nexum Altivon'}</p>
+              </div>
+            </div>
             <p className="mb-5 inline-flex items-center rounded-full border border-[#C9A227]/40 bg-black/40 px-4 py-2 text-xs font-bold uppercase tracking-[0.25em] text-[#E8D5A3]">
               {activeSlide.badge}
             </p>
@@ -643,7 +653,12 @@ export default function Home() {
       <section className="border-t border-white/5 bg-[#050505] px-4 py-12">
         <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-4 sm:px-6 md:flex-row md:items-center lg:px-8">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.25em] text-[#E8D5A3]">Grupo Nexum Altivon</p>
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl bg-white p-1">
+                <img src={siteLogo} alt={siteConfig?.siteNome || 'Grupo Nexum Altivon'} className="h-full w-full object-contain" />
+              </div>
+              <p className="text-xs font-black uppercase tracking-[0.25em] text-[#E8D5A3]">{siteConfig?.siteNome || 'Grupo Nexum Altivon'}</p>
+            </div>
             <p className="mt-3 text-sm leading-7 text-zinc-400">{siteConfig?.footerText || 'Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas.'}</p>
             <p className="mt-2 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
               Rodrigo: {primaryPhone} · Vinicios: {secondaryPhone} · {publicContactEmail}

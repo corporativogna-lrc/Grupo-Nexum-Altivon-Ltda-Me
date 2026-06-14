@@ -31,9 +31,9 @@ public sealed class FiscalRoutingEngine : IFiscalRoutingEngine
 
         var ranking = elegiveis
             .Select(empresa => AvaliarEmpresa(request, empresa))
-            .OrderByDescending(item => item.Score)
-            .ThenBy(item => item.CustoTributarioEstimado)
-            .ThenBy(item => item.CustoOperacionalEstimado)
+            .OrderBy(item => item.CustoTotalEstimado)
+            .ThenByDescending(item => item.MargemEstimadaPercentual)
+            .ThenByDescending(item => item.Score)
             .ToList();
 
         var selecionada = ranking.First();
@@ -42,7 +42,7 @@ public sealed class FiscalRoutingEngine : IFiscalRoutingEngine
             selecionada.Empresa,
             ranking,
             true,
-            $"Emitente sugerida: {selecionada.Empresa.RazaoSocial} ({selecionada.Empresa.CodigoEmpresa}) com score {selecionada.Score:F2}, margem estimada de {selecionada.MargemEstimadaPercentual:F2}% e custo tributário estimado de R$ {selecionada.CustoTributarioEstimado:F2}.");
+            $"Emitente sugerida: {selecionada.Empresa.RazaoSocial} ({selecionada.Empresa.CodigoEmpresa}) com custo total estimado de R$ {selecionada.CustoTotalEstimado:F2}, margem estimada de {selecionada.MargemEstimadaPercentual:F2}% e score {selecionada.Score:F2}.");
     }
 
     public FiscalCompanySnapshot ToSnapshot(EmpresaGrupo empresa) =>
@@ -90,7 +90,8 @@ public sealed class FiscalRoutingEngine : IFiscalRoutingEngine
 
         var custoTributario = receitaBruta * (tributosPercentuais / 100m);
         var custoOperacional = receitaBruta * (empresa.CustoOperacionalPercentual / 100m);
-        var lucroEstimado = receitaBruta - custoTributario - custoOperacional;
+        var custoTotal = custoTributario + custoOperacional;
+        var lucroEstimado = receitaBruta - custoTotal;
         var margem = receitaBruta == 0 ? 0 : lucroEstimado / receitaBruta * 100m;
 
         var score = 1000m;
@@ -148,6 +149,7 @@ public sealed class FiscalRoutingEngine : IFiscalRoutingEngine
             decimal.Round(receitaBruta, 2),
             decimal.Round(custoTributario, 2),
             decimal.Round(custoOperacional, 2),
+            decimal.Round(custoTotal, 2),
             decimal.Round(lucroEstimado, 2),
             decimal.Round(margem, 2),
             decimal.Round(score, 2),

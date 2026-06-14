@@ -1,4 +1,5 @@
 using NexumAltivon.API.DTOs;
+using NexumAltivon.API.Models;
 
 namespace NexumAltivon.API.Services;
 

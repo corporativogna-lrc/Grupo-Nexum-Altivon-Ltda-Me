@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { categoriaAPI, produtoAPI } from '../services/api';
 import ProductCard from '../components/ProductCard';
-import { fallbackCategories } from '../data/mockStore';
 import { ArrowDownUp, Filter, Search, SlidersHorizontal, X } from 'lucide-react';
 
 const sortOptions = {
@@ -15,7 +14,7 @@ const sortOptions = {
 export default function Produtos() {
   const [params, setParams] = useSearchParams();
   const [produtos, setProdutos] = useState([]);
-  const [categorias, setCategorias] = useState(fallbackCategories);
+  const [categorias, setCategorias] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(params.get('categoria') || '');

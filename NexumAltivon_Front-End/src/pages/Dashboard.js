@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { categoriaAPI, clienteAPI, dashboardAPI, empresaGrupoAPI, fiscalAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI, siteAPI } from '../services/api';
-import { fallbackCategories, fallbackLeads, fallbackPedidos, fallbackResumo } from '../data/mockStore';
 import { formatDate, formatPrice, getLeadStatusClass, getPagamentoLabel, getPedidoStatusClass } from '../utils/formatters';
 import {
   Activity,
@@ -161,6 +160,7 @@ const fallbackIntegracoes = [
   { nome: 'CJ Dropshipping', slug: 'cjdropshipping', status: 'Aguardando conexão', detalhe: 'Canal preparado para receber endpoint, token e vínculo de catálogo.', configurada: false, ambiente: 'Staging privado' },
   { nome: 'Logística e Fretes', slug: 'logistica', status: 'Aguardando credenciais', detalhe: 'Frete está registrado no checkout; cotação e etiqueta dependem da transportadora.', configurada: false, ambiente: 'Sandbox' },
   { nome: 'Gateways de pagamento', slug: 'gateways', status: 'Aguardando credenciais', detalhe: 'Pedido registra método; cobrança real depende do token e webhook.', configurada: false, ambiente: 'Não configurado' },
+  { nome: 'Certificado NF-e', slug: 'certificado', status: 'Aguardando configuração', detalhe: 'O emissor fiscal está pronto para A1 ou A3, mas depende do certificado da empresa.', configurada: false, ambiente: 'Servidor local' },
   { nome: 'Marketplaces', slug: 'marketplaces', status: 'Aguardando credenciais', detalhe: 'Sincronização de catálogo e pedidos depende da autorização externa.', configurada: false, ambiente: 'Integração externa' },
   { nome: 'Bancos e conciliação', slug: 'bancaria', status: 'Planejado', detalhe: 'Conciliação depende da definição do banco e convênio.', configurada: false, ambiente: 'Não configurado' },
 ];
@@ -190,6 +190,11 @@ const integrationGuides = {
     description: 'Cotação de frete, seleção de serviço, etiqueta e rastreamento.',
     requirements: ['Token da transportadora', 'Endereço de origem', 'Peso e dimensões dos produtos'],
     nextTest: 'Executar uma cotação em sandbox e validar prazo e valor retornados.',
+  },
+  certificado: {
+    description: 'Validação do certificado digital usado para emissão de NF-e em produção.',
+    requirements: ['Certificado A1 com PFX e senha ou A3 com thumbprint', 'CNPJ da empresa emissora', 'Arquivo ou token acessível no servidor'],
+    nextTest: 'Preencher os dados do certificado e validar o diagnóstico de prontidão.',
   },
   gateways: {
     description: 'Cobrança por Pix, boleto e cartão, com retorno automático do pagamento e contingência entre provedores.',
@@ -363,8 +368,32 @@ const emptyEmpresaGrupo = {
   contratoResumo: '',
   observacoes: '',
 };
+const emptyFiscalManualForm = {
+  empresaEmissora: '',
+  cnpjEmissor: '',
+  clienteDestinatario: '',
+  documentoDestinatario: '',
+  naturezaOperacao: 'Venda de mercadoria',
+  cfop: '5102',
+  subtotal: '0',
+  frete: '0',
+  impostosEstimados: '0',
+  margemMinima: '10',
+  observacoes: '',
+  tipoOperacao: 'VendaInterna',
+  estadoOrigem: 'SP',
+  estadoDestino: 'SP',
+  categoriaFiscal: '',
+  subcategoriaFiscal: '',
+  exigeMarketplace: false,
+  exigeDropshipping: false,
+  requerSaidaNfe: true,
+  requerEntradaNfe: false,
+};
 const emptySiteConfigForm = {
   site_nome: 'Grupo Nexum Altivon',
+  site_url: 'https://www.nexumaltivon.com',
+  site_logo: '/assets/logo-2.jpg',
   site_email_contato: 'corporativo.gna@gmail.com',
   site_telefone: '(14) 99673-1879',
   site_telefone_secundario: '(14) 99634-8409',
@@ -380,8 +409,11 @@ const emptySiteConfigForm = {
   home_partner_cards: '[{"title":"Parceiros de Vendas","text":"Lojas físicas ou online podem ampliar seus horizontes de venda com nossa infraestrutura comercial e operação integrada.","cta":"Quero Vender","href":"https://wa.me/5514996731879?text=Olá! Tenho interesse em ser parceiro de vendas do Grupo Nexum Altivon.","icon":"Store"}]',
   home_hero_slides: '[{"id":"ecommerce","badge":"Grupo Nexum Altivon","title":"O Futuro do","highlight":"E-Commerce","description":"Seis lojas, uma operação conectada e uma proposta premium para transformar a experiência de compra online.","image":"https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1920&q=88"}]',
 };
+const siteConfigJsonFields = new Set(['home_quality_items', 'home_partner_cards', 'home_hero_slides']);
 const siteConfigFieldMeta = [
   { key: 'site_nome', label: 'Nome do site', type: 'text', group: 'Geral', description: 'Nome público principal da operação.' },
+  { key: 'site_url', label: 'URL pública', type: 'text', group: 'Geral', description: 'Endereço principal exibido nos links institucionais.' },
+  { key: 'site_logo', label: 'Logo do site', type: 'text', group: 'Geral', description: 'URL ou caminho do logo exibido na home e no rodapé.' },
   { key: 'site_email_contato', label: 'E-mail público', type: 'text', group: 'Geral', description: 'Destino principal das mensagens do site.' },
   { key: 'site_telefone', label: 'Telefone Rodrigo', type: 'text', group: 'Geral', description: 'Contato principal exibido na home.' },
   { key: 'site_telefone_secundario', label: 'Telefone Vinicios', type: 'text', group: 'Geral', description: 'Contato secundário exibido na home.' },
@@ -397,9 +429,30 @@ const siteConfigFieldMeta = [
   { key: 'home_partner_cards', label: 'Cards de parceria (JSON)', type: 'textarea', group: 'SiteHome', description: 'Array JSON com title, text, cta, href e icon.' },
   { key: 'home_hero_slides', label: 'Slides do banner (JSON)', type: 'textarea', group: 'SiteHome', description: 'Array JSON com id, badge, title, highlight, description e image.' },
 ];
+const siteConfigFieldByKey = Object.fromEntries(siteConfigFieldMeta.map((field) => [field.key, field]));
+const siteConfigSections = [
+  {
+    id: 'identidade',
+    title: 'Identidade e contatos',
+    description: 'Marca principal, endereço público, logo e canais de atendimento que aparecem na operação.',
+    fields: ['site_nome', 'site_url', 'site_logo', 'site_email_contato', 'site_telefone', 'site_telefone_secundario', 'site_whatsapp', 'site_whatsapp_secundario', 'site_yara_email'],
+  },
+  {
+    id: 'home',
+    title: 'Textos institucionais da home',
+    description: 'Textos do banner institucional, do bloco de apresentação e do rodapé público.',
+    fields: ['home_intro_titulo', 'home_intro_badge', 'home_intro_texto_1', 'home_intro_texto_2', 'home_footer_texto'],
+  },
+  {
+    id: 'home-json',
+    title: 'Banners e blocos visuais',
+    description: 'Conteúdo em JSON que alimenta a home sem precisar mexer no código.',
+    fields: ['home_quality_items', 'home_partner_cards', 'home_hero_slides'],
+  },
+];
 const pedidoStatusOptions = ['Pendente', 'Processando', 'Enviado', 'Entregue', 'Cancelado'];
 const leadStatusOptions = ['Novo', 'Contato', 'Qualificado', 'Negociacao', 'Ganho', 'Perdido'];
-const allowDemoData = process.env.NODE_ENV !== 'production';
+const allowDemoData = process.env.REACT_APP_ALLOW_DEMO_DATA === 'true';
 const emptyResumo = {
   pedidos_hoje: 0,
   total_clientes: 0,
@@ -422,6 +475,46 @@ const chart = [
 
 const normalizeText = (value) => String(value ?? '').trim().toLowerCase();
 const normalizeDocument = (value) => String(value ?? '').replace(/\D/g, '');
+const safeJsonParse = (value, fallback) => {
+  try {
+    return JSON.parse(String(value ?? ''));
+  } catch {
+    return fallback;
+  }
+};
+const formatSiteConfigJsonForForm = (value, fallback) => {
+  if (typeof value !== 'string' || !value.trim()) {
+    return fallback;
+  }
+
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2);
+  } catch {
+    return value;
+  }
+};
+const getJsonArrayCount = (value) => {
+  try {
+    const parsed = JSON.parse(String(value ?? '[]'));
+    return Array.isArray(parsed) ? parsed.length : 0;
+  } catch {
+    return 0;
+  }
+};
+const normalizeSiteConfigValue = (key, value) => {
+  const rawValue = String(value ?? '').trim();
+
+  if (!siteConfigJsonFields.has(key)) {
+    return value;
+  }
+
+  if (!rawValue) {
+    return '[]';
+  }
+
+  const parsed = JSON.parse(rawValue);
+  return JSON.stringify(parsed);
+};
 const galleryToArray = (value) =>
   String(value ?? '')
     .split(/\r?\n/)
@@ -599,19 +692,22 @@ export default function Dashboard() {
   const params = useParams();
   const { user, isAuthenticated, loading: authLoading, logout } = useAuth();
   const routeState = useMemo(() => getDashboardRouteState(params['*']), [params]);
-  const [resumo, setResumo] = useState(allowDemoData ? fallbackResumo : emptyResumo);
-  const [pedidos, setPedidos] = useState(allowDemoData ? fallbackPedidos : []);
-  const [leads, setLeads] = useState(allowDemoData ? fallbackLeads : []);
+  const [resumo, setResumo] = useState(emptyResumo);
+  const [pedidos, setPedidos] = useState([]);
+  const [leads, setLeads] = useState([]);
   const [produtos, setProdutos] = useState([]);
-  const [categorias, setCategorias] = useState(allowDemoData ? fallbackCategories : []);
-  const [clientes, setClientes] = useState(allowDemoData ? fallbackClientes : []);
-  const [fornecedores, setFornecedores] = useState(allowDemoData ? fallbackFornecedores : []);
-  const [empresasGrupo, setEmpresasGrupo] = useState(allowDemoData ? fallbackEmpresasGrupo : []);
+  const [categorias, setCategorias] = useState([]);
+  const [clientes, setClientes] = useState([]);
+  const [fornecedores, setFornecedores] = useState([]);
+  const [empresasGrupo, setEmpresasGrupo] = useState([]);
   const [fiscalPedidos, setFiscalPedidos] = useState([]);
   const [integracoes, setIntegracoes] = useState(fallbackIntegracoes);
   const [credenciaisModelo, setCredenciaisModelo] = useState([]);
   const [siteConfigItems, setSiteConfigItems] = useState([]);
   const [siteConfigForm, setSiteConfigForm] = useState(emptySiteConfigForm);
+  const [fiscalManualForm, setFiscalManualForm] = useState(emptyFiscalManualForm);
+  const [fiscalManualResumo, setFiscalManualResumo] = useState(null);
+  const [fiscalManualRascunho, setFiscalManualRascunho] = useState('');
   const [loading, setLoading] = useState(true);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [activeTab, setActiveTab] = useState(routeState.activeTab);
@@ -628,7 +724,7 @@ export default function Dashboard() {
 
   const loadData = useCallback(async () => {
     try {
-      const [resumoRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, empresasGrupoRes, fiscalPedidosRes, integracoesRes, credenciaisRes, siteConfigRes] = await Promise.all([
+      const [resumoRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, empresasGrupoRes, fiscalPedidosRes, integracoesRes, credenciaisRes, siteConfigRes, fiscalDraftRes] = await Promise.all([
         dashboardAPI.getResumo(),
         pedidoAPI.getAll(),
         leadAPI.getAll(),
@@ -643,11 +739,12 @@ export default function Dashboard() {
           .catch(() => ({ data: fallbackIntegracoes })),
         integracoesAPI.getCredenciaisModelo().catch(() => ({ data: [] })),
         siteAPI.getAll().catch(() => ({ data: [] })),
+        fiscalAPI.obterRascunhoManual().catch(() => ({ data: {} })),
       ]);
-      if (resumoRes.data) setResumo({ ...fallbackResumo, ...resumoRes.data });
+      if (resumoRes.data) setResumo(resumoRes.data);
       if (Array.isArray(pedidosRes.data) && pedidosRes.data.length > 0) setPedidos(pedidosRes.data);
       if (Array.isArray(leadsRes.data) && leadsRes.data.length > 0) setLeads(leadsRes.data);
-      setProdutos(Array.isArray(produtosRes.data) ? produtosRes.data : []);
+      if (Array.isArray(produtosRes.data) && produtosRes.data.length > 0) setProdutos(produtosRes.data);
       if (Array.isArray(categoriasRes.data) && categoriasRes.data.length > 0) setCategorias(categoriasRes.data);
       if (Array.isArray(clientesRes.data) && clientesRes.data.length > 0) setClientes(clientesRes.data);
       if (Array.isArray(fornecedoresRes.data) && fornecedoresRes.data.length > 0) setFornecedores(fornecedoresRes.data);
@@ -658,8 +755,44 @@ export default function Dashboard() {
       if (Array.isArray(siteConfigRes.data) && siteConfigRes.data.length > 0) {
         setSiteConfigItems(siteConfigRes.data);
         setSiteConfigForm((current) =>
-          siteConfigRes.data.reduce((acc, item) => ({ ...acc, [item.chave]: item.valor ?? '' }), { ...current }),
+          siteConfigRes.data.reduce(
+            (acc, item) => ({
+              ...acc,
+              [item.chave]: siteConfigJsonFields.has(item.chave)
+                ? formatSiteConfigJsonForForm(item.valor, emptySiteConfigForm[item.chave] || '[]')
+                : item.valor ?? '',
+            }),
+            { ...current },
+          ),
         );
+      }
+      const fiscalDraft = fiscalDraftRes?.data ?? {};
+      const fiscalDraftPayload = safeJsonParse(fiscalDraft.valor || fiscalDraft.Valor || fiscalDraft.Valor || fiscalDraft.payload, null);
+      if (fiscalDraftPayload && typeof fiscalDraftPayload === 'object' && !Array.isArray(fiscalDraftPayload)) {
+        setFiscalManualRascunho(fiscalDraft.updatedAt || fiscalDraft.UpdatedAt || fiscalDraft.salvoEm || '');
+        setFiscalManualForm((current) => ({
+          ...current,
+          empresaEmissora: fiscalDraftPayload.empresaEmissora ?? fiscalDraftPayload.EmpresaEmissora ?? current.empresaEmissora,
+          cnpjEmissor: fiscalDraftPayload.cnpjEmissor ?? fiscalDraftPayload.CnpjEmissor ?? current.cnpjEmissor,
+          clienteDestinatario: fiscalDraftPayload.clienteDestinatario ?? fiscalDraftPayload.ClienteDestinatario ?? current.clienteDestinatario,
+          documentoDestinatario: fiscalDraftPayload.documentoDestinatario ?? fiscalDraftPayload.DocumentoDestinatario ?? current.documentoDestinatario,
+          naturezaOperacao: fiscalDraftPayload.naturezaOperacao ?? fiscalDraftPayload.NaturezaOperacao ?? current.naturezaOperacao,
+          cfop: fiscalDraftPayload.cfop ?? fiscalDraftPayload.Cfop ?? current.cfop,
+          subtotal: String(fiscalDraftPayload.subtotal ?? fiscalDraftPayload.Subtotal ?? current.subtotal),
+          frete: String(fiscalDraftPayload.frete ?? fiscalDraftPayload.Frete ?? current.frete),
+          impostosEstimados: String(fiscalDraftPayload.impostosEstimados ?? fiscalDraftPayload.ImpostosEstimados ?? current.impostosEstimados),
+          margemMinima: String(fiscalDraftPayload.margemMinima ?? fiscalDraftPayload.MargemMinima ?? current.margemMinima),
+          observacoes: fiscalDraftPayload.observacoes ?? fiscalDraftPayload.Observacoes ?? current.observacoes,
+          tipoOperacao: fiscalDraftPayload.tipoOperacao ?? fiscalDraftPayload.TipoOperacao ?? current.tipoOperacao,
+          estadoOrigem: fiscalDraftPayload.estadoOrigem ?? fiscalDraftPayload.EstadoOrigem ?? current.estadoOrigem,
+          estadoDestino: fiscalDraftPayload.estadoDestino ?? fiscalDraftPayload.EstadoDestino ?? current.estadoDestino,
+          categoriaFiscal: fiscalDraftPayload.categoriaFiscal ?? fiscalDraftPayload.CategoriaFiscal ?? current.categoriaFiscal,
+          subcategoriaFiscal: fiscalDraftPayload.subcategoriaFiscal ?? fiscalDraftPayload.SubcategoriaFiscal ?? current.subcategoriaFiscal,
+          exigeMarketplace: Boolean(fiscalDraftPayload.exigeMarketplace ?? fiscalDraftPayload.ExigeMarketplace ?? current.exigeMarketplace),
+          exigeDropshipping: Boolean(fiscalDraftPayload.exigeDropshipping ?? fiscalDraftPayload.ExigeDropshipping ?? current.exigeDropshipping),
+          requerSaidaNfe: Boolean(fiscalDraftPayload.requerSaidaNfe ?? fiscalDraftPayload.RequerSaidaNfe ?? current.requerSaidaNfe),
+          requerEntradaNfe: Boolean(fiscalDraftPayload.requerEntradaNfe ?? fiscalDraftPayload.RequerEntradaNfe ?? current.requerEntradaNfe),
+        }));
       }
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
@@ -731,22 +864,6 @@ export default function Dashboard() {
   const submitProduto = async (event) => {
     event.preventDefault();
     setFormStatus('');
-    const requiredProductFields = [
-      produtoForm.nome,
-      produtoForm.descricao,
-      produtoForm.imagemUrl,
-      produtoForm.peso,
-      produtoForm.altura,
-      produtoForm.largura,
-      produtoForm.comprimento,
-    ];
-    if (requiredProductFields.some((value) => !String(value ?? '').trim())
-        || [produtoForm.peso, produtoForm.altura, produtoForm.largura, produtoForm.comprimento]
-          .some((value) => Number(value) <= 0)) {
-      setFormStatus('Preencha nome, descrição, imagem, peso, altura, largura e comprimento com valores válidos.');
-      return;
-    }
-
     const duplicateMessage = getProdutoDuplicateMessage(produtoForm, produtos);
     if (duplicateMessage) {
       setFormStatus(duplicateMessage);
@@ -903,18 +1020,25 @@ export default function Dashboard() {
     event.preventDefault();
     setFormStatus('');
 
-    const payload = siteConfigFieldMeta.map((field) => {
-      const existing = siteConfigItems.find((item) => item.chave === field.key);
-      const value = siteConfigForm[field.key] ?? '';
-      return {
-        chave: field.key,
-        valor: value,
-        tipo: field.type === 'textarea' && String(value).trim().startsWith('[') ? 'JSON' : existing?.tipo || 'Texto',
-        descricao: existing?.descricao || field.description,
-        grupo: existing?.grupo || field.group,
-        editavel: existing?.editavel ?? true,
-      };
-    });
+    let payload;
+
+    try {
+      payload = siteConfigFieldMeta.map((field) => {
+        const existing = siteConfigItems.find((item) => item.chave === field.key);
+        const value = normalizeSiteConfigValue(field.key, siteConfigForm[field.key] ?? '');
+        return {
+          chave: field.key,
+          valor: value,
+          tipo: siteConfigJsonFields.has(field.key) ? 'JSON' : existing?.tipo || 'Texto',
+          descricao: existing?.descricao || field.description,
+          grupo: existing?.grupo || field.group,
+          editavel: existing?.editavel ?? true,
+        };
+      });
+    } catch (error) {
+      setFormStatus('Os campos em JSON precisam estar válidos antes de salvar.');
+      return;
+    }
 
     await siteAPI.update(payload);
 
@@ -960,6 +1084,69 @@ export default function Dashboard() {
     setEmpresasGrupo((current) => [response.data, ...current]);
     setEmpresaGrupoForm(emptyEmpresaGrupo);
     setFormStatus('Empresa fiscal cadastrada no ERP.');
+  };
+
+  const submitFiscalManualRascunho = async () => {
+    setFormStatus('');
+    const payload = {
+      empresaEmissora: fiscalManualForm.empresaEmissora.trim(),
+      cnpjEmissor: fiscalManualForm.cnpjEmissor.trim(),
+      clienteDestinatario: fiscalManualForm.clienteDestinatario.trim(),
+      documentoDestinatario: fiscalManualForm.documentoDestinatario.trim(),
+      naturezaOperacao: fiscalManualForm.naturezaOperacao.trim(),
+      cfop: fiscalManualForm.cfop.trim(),
+      subtotal: Number(fiscalManualForm.subtotal || 0),
+      frete: Number(fiscalManualForm.frete || 0),
+      impostosEstimados: Number(fiscalManualForm.impostosEstimados || 0),
+      margemMinima: Number(fiscalManualForm.margemMinima || 0),
+      observacoes: fiscalManualForm.observacoes.trim(),
+      tipoOperacao: fiscalManualForm.tipoOperacao,
+      estadoOrigem: fiscalManualForm.estadoOrigem.trim().toUpperCase(),
+      estadoDestino: fiscalManualForm.estadoDestino.trim().toUpperCase(),
+      categoriaFiscal: fiscalManualForm.categoriaFiscal.trim() || null,
+      subcategoriaFiscal: fiscalManualForm.subcategoriaFiscal.trim() || null,
+      exigeMarketplace: Boolean(fiscalManualForm.exigeMarketplace),
+      exigeDropshipping: Boolean(fiscalManualForm.exigeDropshipping),
+      requerSaidaNfe: Boolean(fiscalManualForm.requerSaidaNfe),
+      requerEntradaNfe: Boolean(fiscalManualForm.requerEntradaNfe),
+    };
+
+    await fiscalAPI.salvarRascunhoManual(payload);
+    setFiscalManualRascunho(new Date().toISOString());
+    setFormStatus('Rascunho fiscal manual salvo no banco.');
+  };
+
+  const prepararFiscalManual = async () => {
+    setFormStatus('');
+    setFiscalManualResumo(null);
+
+    const payload = {
+      empresaEmissora: fiscalManualForm.empresaEmissora.trim(),
+      cnpjEmissor: fiscalManualForm.cnpjEmissor.trim(),
+      clienteDestinatario: fiscalManualForm.clienteDestinatario.trim(),
+      documentoDestinatario: fiscalManualForm.documentoDestinatario.trim(),
+      naturezaOperacao: fiscalManualForm.naturezaOperacao.trim(),
+      cfop: fiscalManualForm.cfop.trim(),
+      subtotal: Number(fiscalManualForm.subtotal || 0),
+      frete: Number(fiscalManualForm.frete || 0),
+      impostosEstimados: Number(fiscalManualForm.impostosEstimados || 0),
+      margemMinima: Number(fiscalManualForm.margemMinima || 0),
+      observacoes: fiscalManualForm.observacoes.trim(),
+      tipoOperacao: fiscalManualForm.tipoOperacao,
+      estadoOrigem: fiscalManualForm.estadoOrigem.trim().toUpperCase(),
+      estadoDestino: fiscalManualForm.estadoDestino.trim().toUpperCase(),
+      categoriaFiscal: fiscalManualForm.categoriaFiscal.trim() || null,
+      subcategoriaFiscal: fiscalManualForm.subcategoriaFiscal.trim() || null,
+      exigeMarketplace: Boolean(fiscalManualForm.exigeMarketplace),
+      exigeDropshipping: Boolean(fiscalManualForm.exigeDropshipping),
+      requerSaidaNfe: Boolean(fiscalManualForm.requerSaidaNfe),
+      requerEntradaNfe: Boolean(fiscalManualForm.requerEntradaNfe),
+    };
+
+    const response = await fiscalAPI.prepararEmissaoManual(payload);
+    const resumo = response.data?.dados ?? response.data?.Dados ?? response.data?.data ?? response.data;
+    setFiscalManualResumo(resumo);
+    setFormStatus('Pré-análise fiscal concluída. Revise as pendências antes de emitir.');
   };
 
   const updateLeadStatus = async (id, status) => {
@@ -1765,6 +1952,123 @@ export default function Dashboard() {
                     </p>
                   </div>
 
+                  <section className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(320px,0.92fr)]">
+                    <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C9A227]">Emissão manual</p>
+                          <h3 className="mt-2 text-lg font-black text-slate-950">Rascunho e pré-análise antes da NF-e</h3>
+                          <p className="mt-1 text-sm text-slate-500">
+                            Preencha os dados abaixo, salve o rascunho no banco e rode a checagem fiscal para validar empresa, certificado e margem.
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={submitFiscalManualRascunho}
+                            className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-800 transition hover:border-slate-950 hover:bg-white"
+                          >
+                            <Save size={16} />
+                            Salvar rascunho
+                          </button>
+                          <button
+                            type="button"
+                            onClick={prepararFiscalManual}
+                            className="inline-flex h-11 items-center gap-2 rounded-lg bg-slate-950 px-4 text-sm font-black text-white transition hover:bg-[#C9A227] hover:text-slate-950"
+                          >
+                            <FileText size={16} />
+                            Preparar emissão
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="mt-6 grid gap-4 md:grid-cols-2">
+                        <Field label="Empresa emissora" value={fiscalManualForm.empresaEmissora} onChange={(value) => setFiscalManualForm((form) => ({ ...form, empresaEmissora: value }))} />
+                        <Field label="CNPJ do emissor" value={fiscalManualForm.cnpjEmissor} onChange={(value) => setFiscalManualForm((form) => ({ ...form, cnpjEmissor: value }))} />
+                        <Field label="Cliente destinatário" value={fiscalManualForm.clienteDestinatario} onChange={(value) => setFiscalManualForm((form) => ({ ...form, clienteDestinatario: value }))} />
+                        <Field label="Documento do destinatário" value={fiscalManualForm.documentoDestinatario} onChange={(value) => setFiscalManualForm((form) => ({ ...form, documentoDestinatario: value }))} />
+                        <Field label="Natureza da operação" value={fiscalManualForm.naturezaOperacao} onChange={(value) => setFiscalManualForm((form) => ({ ...form, naturezaOperacao: value }))} className="md:col-span-2" />
+                        <Field label="CFOP" value={fiscalManualForm.cfop} onChange={(value) => setFiscalManualForm((form) => ({ ...form, cfop: value }))} />
+                        <SelectField label="Tipo de operação" value={fiscalManualForm.tipoOperacao} onChange={(value) => setFiscalManualForm((form) => ({ ...form, tipoOperacao: value }))} options={['VendaInterna', 'VendaInterestadual']} />
+                        <Field label="Estado de origem" value={fiscalManualForm.estadoOrigem} onChange={(value) => setFiscalManualForm((form) => ({ ...form, estadoOrigem: value }))} />
+                        <Field label="Estado de destino" value={fiscalManualForm.estadoDestino} onChange={(value) => setFiscalManualForm((form) => ({ ...form, estadoDestino: value }))} />
+                        <Field label="Subtotal" type="number" value={fiscalManualForm.subtotal} onChange={(value) => setFiscalManualForm((form) => ({ ...form, subtotal: value }))} />
+                        <Field label="Frete" type="number" value={fiscalManualForm.frete} onChange={(value) => setFiscalManualForm((form) => ({ ...form, frete: value }))} />
+                        <Field label="Impostos estimados" type="number" value={fiscalManualForm.impostosEstimados} onChange={(value) => setFiscalManualForm((form) => ({ ...form, impostosEstimados: value }))} />
+                        <Field label="Margem mínima (%)" type="number" value={fiscalManualForm.margemMinima} onChange={(value) => setFiscalManualForm((form) => ({ ...form, margemMinima: value }))} />
+                        <Field label="Categoria fiscal" value={fiscalManualForm.categoriaFiscal} onChange={(value) => setFiscalManualForm((form) => ({ ...form, categoriaFiscal: value }))} />
+                        <Field label="Subcategoria fiscal" value={fiscalManualForm.subcategoriaFiscal} onChange={(value) => setFiscalManualForm((form) => ({ ...form, subcategoriaFiscal: value }))} />
+                        <TextAreaField label="Observações" value={fiscalManualForm.observacoes} onChange={(value) => setFiscalManualForm((form) => ({ ...form, observacoes: value }))} className="md:col-span-2" rows={3} />
+                        <ToggleField label="Exige marketplace" checked={fiscalManualForm.exigeMarketplace} onChange={(checked) => setFiscalManualForm((form) => ({ ...form, exigeMarketplace: checked }))} />
+                        <ToggleField label="Exige dropshipping" checked={fiscalManualForm.exigeDropshipping} onChange={(checked) => setFiscalManualForm((form) => ({ ...form, exigeDropshipping: checked }))} />
+                        <ToggleField label="Requer saída NF-e" checked={fiscalManualForm.requerSaidaNfe} onChange={(checked) => setFiscalManualForm((form) => ({ ...form, requerSaidaNfe: checked }))} />
+                        <ToggleField label="Requer entrada NF-e" checked={fiscalManualForm.requerEntradaNfe} onChange={(checked) => setFiscalManualForm((form) => ({ ...form, requerEntradaNfe: checked }))} />
+                      </div>
+
+                      {fiscalManualRascunho && (
+                        <p className="mt-4 text-xs font-semibold text-slate-500">
+                          Último rascunho salvo em {String(fiscalManualRascunho).replace('T', ' ').replace('Z', '')}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-6">
+                      <ErpChecklistCard
+                        title="Checklist fiscal antes da emissão"
+                        items={[
+                          'Certificado digital operacional e válido.',
+                          'Empresa emitente compatível com o estado e com a operação.',
+                          'Margem estimada acima do mínimo definido.',
+                          'CFOP e natureza de operação conferidos antes do envio.',
+                        ]}
+                      />
+
+                      {fiscalManualResumo ? (
+                        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C9A227]">Pré-análise fiscal</p>
+                          <h3 className="mt-2 text-lg font-black text-slate-950">Resultado da validação</h3>
+                          <div className="mt-4 space-y-3 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                            <p className="text-sm font-semibold text-slate-700"><strong>Status:</strong> {fiscalManualResumo.certificadoStatus || '-'}</p>
+                            <p className="text-sm font-semibold text-slate-700"><strong>Certificado:</strong> {fiscalManualResumo.certificadoOperacional ? 'Operacional' : 'Pendente'}</p>
+                            <p className="text-sm font-semibold text-slate-700"><strong>Emitente sugerido:</strong> {fiscalManualResumo.razaoSocialSelecionada || fiscalManualResumo.codigoEmpresaSelecionada || '-'}</p>
+                            <p className="text-sm font-semibold text-slate-700"><strong>Resumo do roteamento:</strong> {fiscalManualResumo.roteamentoResumo || '-'}</p>
+                          </div>
+                          <div className="mt-4">
+                            <h4 className="text-sm font-black uppercase tracking-[0.16em] text-slate-500">Pendências</h4>
+                            <div className="mt-3 space-y-2">
+                              {(fiscalManualResumo.pendencias || []).length === 0 ? (
+                                <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">
+                                  Nenhuma pendência crítica encontrada.
+                                </p>
+                              ) : (
+                                fiscalManualResumo.pendencias.map((pendencia) => (
+                                  <p key={pendencia} className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">
+                                    {pendencia}
+                                  </p>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                          {fiscalManualResumo.geradoEm && (
+                            <p className="mt-4 text-xs font-semibold text-slate-500">
+                              Gerado em {formatDate(fiscalManualResumo.geradoEm)}
+                            </p>
+                          )}
+                        </section>
+                      ) : (
+                        <ErpChecklistCard
+                          title="Como usar a emissão manual"
+                          items={[
+                            'Preencha os dados do destinatário e da operação.',
+                            'Salve o rascunho para não perder informação.',
+                            'Execute a preparação para ver empresa, certificado e margem.',
+                            'Só depois siga para a emissão definitiva.',
+                          ]}
+                        />
+                      )}
+                    </div>
+                  </section>
+
                   <div className="grid gap-4 md:grid-cols-4">
                     <StatMiniCard label="Pendências fiscais" value={fiscalPedidos.filter((item) => item.statusNfe === 'Pendente').length} />
                     <StatMiniCard label="Autorizadas" value={fiscalPedidos.filter((item) => item.statusNfe === 'Autorizada').length} />
@@ -2024,57 +2328,146 @@ export default function Dashboard() {
                   <ErpModuleHero
                     eyebrow="Portal de vendas"
                     title="Configurações públicas da home"
-                    description="Tudo o que aparece na vitrine principal deve sair do banco: banners, contatos, Yara, textos institucionais e cards de parceria."
+                    description="Tudo o que aparece na vitrine principal sai do banco: logo, banners, contatos, Yara, textos institucionais e cards de parceria."
                   />
-                  <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
+                  <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(340px,0.92fr)]">
                     <form onSubmit={submitSiteConfiguracoes} className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
                       <div className="flex items-start justify-between gap-4">
                         <div>
                           <h3 className="text-lg font-black text-slate-950">Editor da home comercial</h3>
-                          <p className="mt-1 text-sm text-slate-500">Salvar aqui atualiza o banco e prepara a home para banners, anúncios e contatos reais.</p>
+                          <p className="mt-1 text-sm text-slate-500">Salvar aqui atualiza a tabela <code className="rounded bg-slate-100 px-1.5 py-0.5">configuracoes_sistema</code> e prepara a home para uso real.</p>
                         </div>
                         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-slate-600">
                           {siteConfigItems.length || siteConfigFieldMeta.length} chaves
                         </span>
                       </div>
-                      <div className="mt-6 grid gap-4">
-                        {siteConfigFieldMeta.map((field) => (
-                          <label key={field.key} className="block text-sm font-bold text-slate-700">
-                            {field.label}
-                            {field.type === 'textarea' ? (
-                              <textarea
-                                value={siteConfigForm[field.key] ?? ''}
-                                onChange={(event) => setSiteConfigForm((current) => ({ ...current, [field.key]: event.target.value }))}
-                                className="mt-2 min-h-28 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
-                              />
-                            ) : (
-                              <input
-                                type="text"
-                                value={siteConfigForm[field.key] ?? ''}
-                                onChange={(event) => setSiteConfigForm((current) => ({ ...current, [field.key]: event.target.value }))}
-                                className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
-                              />
-                            )}
-                            <span className="mt-2 block text-xs font-semibold text-slate-400">{field.description}</span>
-                          </label>
+                      <div className="mt-6 space-y-6">
+                        {siteConfigSections.map((section) => (
+                          <section key={section.id} className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                              <div>
+                                <h4 className="text-sm font-black uppercase tracking-[0.16em] text-slate-900">{section.title}</h4>
+                                <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">{section.description}</p>
+                              </div>
+                              <span className="rounded-full bg-white px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+                                {section.fields.length} campos
+                              </span>
+                            </div>
+                            <div className="mt-4 grid gap-4 md:grid-cols-2">
+                              {section.fields.map((key) => {
+                                const field = siteConfigFieldByKey[key];
+                                const value = siteConfigForm[key] ?? '';
+                                const isJson = siteConfigJsonFields.has(key);
+                                const isWide = key === 'home_footer_texto' || key === 'home_intro_texto_1' || key === 'home_intro_texto_2' || isJson;
+
+                                return (
+                                  <label key={key} className={`block text-sm font-bold text-slate-700 ${isWide ? 'md:col-span-2' : ''}`}>
+                                    <div className="flex items-center justify-between gap-3">
+                                      <span>{field?.label || key}</span>
+                                      {isJson && (
+                                        <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-white">
+                                          JSON
+                                        </span>
+                                      )}
+                                    </div>
+                                    {key === 'site_logo' && (
+                                      <div className="mt-2 flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
+                                        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
+                                          <img
+                                            src={value || '/assets/logo-2.jpg'}
+                                            alt="Prévia do logo"
+                                            className="h-full w-full object-contain p-1"
+                                          />
+                                        </div>
+                                        <div className="min-w-0">
+                                          <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Prévia do logo</p>
+                                          <p className="mt-1 truncate text-xs font-semibold text-slate-400">{value || '/assets/logo-2.jpg'}</p>
+                                        </div>
+                                      </div>
+                                    )}
+                                    {isJson ? (
+                                      <textarea
+                                        value={value}
+                                        onChange={(event) => setSiteConfigForm((current) => ({ ...current, [key]: event.target.value }))}
+                                        className="mt-2 min-h-36 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 font-mono text-xs font-semibold leading-6 outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+                                      />
+                                    ) : (
+                                      <input
+                                        type="text"
+                                        value={value}
+                                        onChange={(event) => setSiteConfigForm((current) => ({ ...current, [key]: event.target.value }))}
+                                        className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+                                      />
+                                    )}
+                                    <span className="mt-2 block text-xs font-semibold text-slate-400">{field?.description}</span>
+                                    {isJson && (
+                                      <span className="mt-1 block text-[11px] font-medium text-slate-500">
+                                        Cada JSON fica salvo em uma chave própria na tabela `configuracoes_sistema`.
+                                      </span>
+                                    )}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </section>
                         ))}
                       </div>
-                      <button className="mt-5 inline-flex h-11 items-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-black text-white">
+                      <button className="mt-6 inline-flex h-11 items-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-black text-white">
                         <Save size={17} />
                         Salvar configuração pública
                       </button>
                     </form>
                     <div className="space-y-6">
+                      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                        <div className="border-b border-slate-100 px-6 py-5">
+                          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C9A227]">Prévia da home</p>
+                          <h3 className="mt-2 text-lg font-black text-slate-950">O que vai aparecer para o cliente</h3>
+                        </div>
+                        <div className="space-y-4 p-6">
+                          <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                              <img
+                                src={siteConfigForm.site_logo || '/assets/logo-2.jpg'}
+                                alt="Logo do site"
+                                className="h-full w-full object-contain p-2"
+                              />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{siteConfigForm.site_nome || 'Grupo Nexum Altivon'}</p>
+                              <p className="mt-1 truncate text-sm font-semibold text-slate-600">{siteConfigForm.site_url || 'https://www.nexumaltivon.com'}</p>
+                            </div>
+                          </div>
+                          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Banner</p>
+                            <p className="mt-2 text-sm font-semibold text-slate-700">{siteConfigForm.home_intro_titulo || 'Uma Nova Era Começa'}</p>
+                            <p className="mt-1 text-sm text-slate-500">{siteConfigForm.home_intro_badge || 'www.nexumaltivon.com'}</p>
+                          </div>
+                          <div className="grid gap-3 sm:grid-cols-3">
+                            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Slides</p>
+                              <p className="mt-2 text-3xl font-black text-slate-950">{getJsonArrayCount(siteConfigForm.home_hero_slides)}</p>
+                            </div>
+                            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Qualidade</p>
+                              <p className="mt-2 text-3xl font-black text-slate-950">{getJsonArrayCount(siteConfigForm.home_quality_items)}</p>
+                            </div>
+                            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Parceiros</p>
+                              <p className="mt-2 text-3xl font-black text-slate-950">{getJsonArrayCount(siteConfigForm.home_partner_cards)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </section>
                       <ErpChecklistCard
                         title="O que já vinha pronto no banco"
                         items={[
                           'A tabela configuracoes_sistema já existia mas não estava servindo a home.',
                           'Havia divergência de porta entre 3309 e 3306 na configuração da API.',
-                          'Banners, contatos e blocos institucionais estavam presos no front e não no banco.',
+                          'Banners, contatos, logo e blocos institucionais estavam presos no front e não no banco.',
                           'Agora a trilha comercial volta para o caminho certo: vitrine configurável sem mexer em código.',
                         ]}
                       />
-                      <CompactList title="Chaves carregadas do banco" items={siteConfigItems} fields={['chave', 'grupo', 'tipo']} />
+                      <CompactList title="Chaves carregadas do banco" items={siteConfigItems} fields={['chave', 'grupo', 'tipo', 'updatedAt']} />
                     </div>
                   </div>
                 </section>

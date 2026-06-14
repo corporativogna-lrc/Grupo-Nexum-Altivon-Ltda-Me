@@ -205,6 +205,19 @@ export default function Checkout() {
 
     try {
       let clienteId = clientePortal?.id;
+      let enderecoClienteId = null;
+      const enderecoPayload = {
+        tipo: 'Entrega',
+        apelido: 'Checkout',
+        cep: endereco.cep?.trim(),
+        logradouro: endereco.logradouro?.trim(),
+        numero: endereco.numero?.trim(),
+        complemento: endereco.complemento?.trim() || null,
+        bairro: endereco.bairro?.trim() || null,
+        cidade: endereco.cidade?.trim() || null,
+        estado: endereco.estado?.trim() || null,
+        padrao: true,
+      };
 
       if (clienteId) {
         setCheckoutInfo('Pedido vinculado diretamente ao cadastro do cliente logado.');
@@ -219,13 +232,32 @@ export default function Checkout() {
           setCheckoutInfo('Cliente já existente reaproveitado para não duplicar cadastro.');
         } else {
           const clienteRes = await clienteAPI.create(dadosCliente);
-          clienteId = clienteRes.data.id;
+          clienteId = clienteRes.data?.id ?? clienteRes.data?.dados?.id ?? clienteRes.data?.Dados?.id;
           setCheckoutInfo('Novo cliente registrado e vinculado ao pedido.');
         }
       }
 
       if (!clienteId) {
         throw new Error('Cliente nao confirmado pela API.');
+      }
+
+      if (
+        enderecoPayload.cep &&
+        enderecoPayload.logradouro &&
+        enderecoPayload.numero &&
+        enderecoPayload.bairro &&
+        enderecoPayload.cidade &&
+        enderecoPayload.estado
+      ) {
+        try {
+          const enderecoRes = await clienteAPI.adicionarEndereco(clienteId, enderecoPayload);
+          enderecoClienteId = enderecoRes.data?.id ?? enderecoRes.data?.dados?.id ?? enderecoRes.data?.Dados?.id ?? null;
+          if (enderecoClienteId) {
+            setCheckoutInfo((current) => `${current} Endereço salvo no cadastro do cliente.`);
+          }
+        } catch {
+          // Se falhar ao persistir o endereço, seguimos com o pedido para não travar a venda.
+        }
       }
 
       const pedidoData = {
@@ -243,11 +275,13 @@ export default function Checkout() {
         frete_valor: frete.valor,
         frete_metodo: frete.nome,
         frete_transportadora: frete.transportadora,
-        frete_prazo_dias: frete.prazo
+        frete_prazo_dias: frete.prazo,
+        endereco_entrega_id: enderecoClienteId,
       };
 
       const pedidoRes = await pedidoAPI.create(pedidoData);
-      setPedidoCriado(pedidoRes.data);
+      const pedidoCriadoApi = pedidoRes.data?.dados ?? pedidoRes.data?.Dados ?? pedidoRes.data?.data ?? pedidoRes.data;
+      setPedidoCriado(pedidoCriadoApi);
 
       clearCart();
       setStep(4);

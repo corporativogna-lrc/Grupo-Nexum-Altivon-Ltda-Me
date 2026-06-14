@@ -97,6 +97,9 @@ public class Fiscal
     [Column("data_autorizacao")]
     public DateTime? DataAutorizacao { get; set; }
 
+    [Column("email_cliente_notificado_em")]
+    public DateTime? EmailClienteNotificadoEm { get; set; }
+
     [Column("protocolo")]
     [MaxLength(50)]
     public string? Protocolo { get; set; }

@@ -270,6 +270,7 @@ export const clienteAPI = {
   getAll: () => api.get('/clientes'),
   verificarCadastro: (params) => api.get('/clientes/verificar', { params }),
   create: (data) => api.post('/clientes', data),
+  adicionarEndereco: (clienteId, data) => api.post(`/clientes/${clienteId}/enderecos`, data),
   confirmarEmail: (token) => api.get('/clientes/confirmar-email', { params: { token } }),
   reenviarConfirmacao: (email) => api.post('/clientes/reenviar-confirmacao', { email }),
   getPortal: () => api.get('/clientes/portal/me'),
@@ -289,6 +290,9 @@ export const fiscalAPI = {
   getPedidos: () => api.get('/fiscal/pedidos'),
   getPdvConfiguracoes: () => api.get('/fiscal/pdv/configuracoes'),
   simularRoteamento: (data) => api.post('/fiscal/simular-roteamento', data),
+  prepararEmissaoManual: (data) => api.post('/fiscal/preparar-emissao-manual', data),
+  salvarRascunhoManual: (data) => api.post('/fiscal/rascunho-manual', data),
+  obterRascunhoManual: () => api.get('/fiscal/rascunho-manual'),
 };
 
 export const leadAPI = {

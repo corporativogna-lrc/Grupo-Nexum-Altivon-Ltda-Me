@@ -12,8 +12,12 @@
     <Compile Remove="_arquivo_morto\**\*.cs" />
     <Compile Remove="bin\**\*.cs" />
     <Compile Remove="obj\**\*.cs" />
+    <Compile Remove="NexumAltivon.Desktop\**\*.cs" />
+    <Compile Remove="NexumAltivon.Desktop\obj\**\*.cs" />
+    <Compile Remove="NexumAltivon.Desktop\bin\**\*.cs" />
     <Compile Remove="NexumAltivon_Back-End\**\*.cs" />
     <Compile Remove="NexumAltivon_Front-End\**\*.cs" />
+    <None Remove="NexumAltivon.Desktop\**\*" />
     <Compile Remove="Data\ErpDbContext.cs" />
     <Compile Remove="Data\NexumDbContext_ERP.cs" />
     <Compile Remove="DTOs\ErpDtos.cs" />

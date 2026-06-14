@@ -1,7 +1,6 @@
-using System;
+﻿using System;
 using System.Net.Http;
 using System.Net.Http.Json;
-using System.Net.Mail;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
@@ -14,6 +13,7 @@ namespace NexumAltivon.API.Services
     {
         Task EnviarConfirmacaoPedidoAsync(Cliente cliente, Pedido pedido);
         Task EnviarConfirmacaoPagamentoAsync(Cliente cliente, Pedido pedido);
+        Task EnviarNotaFiscalEmitidaAsync(Cliente cliente, Pedido pedido, Fiscal fiscal);
         Task EnviarNotificacaoWhatsAppAsync(string? telefone, string mensagem);
         Task EnviarEmailAsync(string? destinatario, string assunto, string corpoHtml);
         Task EnviarAlertaEstoqueBaixoAsync(Produto produto);
@@ -28,13 +28,6 @@ namespace NexumAltivon.API.Services
         private readonly string? _sendGridKey;
         private readonly string _fromEmail;
         private readonly string _fromName;
-        private readonly string? _smtpServer;
-        private readonly int _smtpPort;
-        private readonly string? _smtpUsername;
-        private readonly string? _smtpPassword;
-        private readonly bool _smtpEnableSsl;
-        private readonly string _smtpFromEmail;
-        private readonly string _smtpFromName;
         private readonly bool _whatsappAtivo;
         private readonly string? _whatsappApiUrl;
         private readonly string? _whatsappApiKey;
@@ -47,13 +40,6 @@ namespace NexumAltivon.API.Services
             _sendGridKey = _config["Integracoes:SendGrid:ApiKey"];
             _fromEmail = _config["Integracoes:SendGrid:FromEmail"] ?? "corporativo.gna@gmail.com";
             _fromName = _config["Integracoes:SendGrid:FromName"] ?? "Grupo Nexum Altivon";
-            _smtpServer = _config["EmailSettings:SmtpServer"];
-            _smtpPort = int.TryParse(_config["EmailSettings:Port"], out var smtpPort) ? smtpPort : 587;
-            _smtpUsername = _config["EmailSettings:Username"];
-            _smtpPassword = _config["EmailSettings:Password"];
-            _smtpEnableSsl = bool.TryParse(_config["EmailSettings:EnableSsl"], out var smtpEnableSsl) && smtpEnableSsl;
-            _smtpFromEmail = _config["EmailSettings:FromEmail"] ?? _fromEmail;
-            _smtpFromName = _config["EmailSettings:FromName"] ?? _fromName;
             _whatsappAtivo = bool.Parse(_config["Integracoes:WhatsApp:Ativo"] ?? "false");
             _whatsappApiUrl = _config["Integracoes:WhatsApp:ApiUrl"];
             _whatsappApiKey = _config["Integracoes:WhatsApp:ApiKey"];
@@ -120,6 +106,40 @@ h1 {{ color: #C9A227; }}
             await EnviarEmailAsync(cliente.Email, assunto, corpo);
         }
 
+        public async Task EnviarNotaFiscalEmitidaAsync(Cliente cliente, Pedido pedido, Fiscal fiscal)
+        {
+            var assunto = $"Nota Fiscal emitida - Pedido {pedido.NumeroPedido}";
+            var arquivoXml = string.IsNullOrWhiteSpace(fiscal.XmlUrl) ? "Indisponivel" : fiscal.XmlUrl;
+            var arquivoDanfe = string.IsNullOrWhiteSpace(fiscal.DanfeUrl) ? "Indisponivel" : fiscal.DanfeUrl;
+            var chaveAcesso = string.IsNullOrWhiteSpace(fiscal.ChaveAcesso) ? "Nao informada" : fiscal.ChaveAcesso;
+            var numeroNfe = string.IsNullOrWhiteSpace(fiscal.NumeroNfe) ? "Nao informado" : fiscal.NumeroNfe;
+            var statusFiscal = fiscal.StatusNfe.ToString();
+
+            var corpo = $@"
+<!DOCTYPE html>
+<html>
+<body style='font-family:Arial,sans-serif;background:#f6f3ea;color:#1f1f1f;padding:0;margin:0;'>
+<div style='max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #d7c38a;padding:28px;'>
+<h1 style='margin-top:0;color:#8a6d1f;'>Nota Fiscal emitida</h1>
+<p>Ola <strong>{cliente.Nome}</strong>,</p>
+<p>A nota fiscal do seu pedido <strong>{pedido.NumeroPedido}</strong> foi emitida no sistema.</p>
+<div style='background:#faf7ef;border:1px solid #e4d8b7;padding:18px;margin:20px 0;'>
+<p><strong>Status:</strong> {statusFiscal}</p>
+<p><strong>NFe:</strong> {numeroNfe}</p>
+<p><strong>Chave de acesso:</strong> {chaveAcesso}</p>
+<p><strong>Total:</strong> R$ {pedido.Total:N2}</p>
+<p><strong>XML:</strong> {arquivoXml}</p>
+<p><strong>DANFE:</strong> {arquivoDanfe}</p>
+</div>
+<p>Voce pode acompanhar o pedido pela area do cliente no site.</p>
+<p>Se quiser, responda este e-mail ou fale com nosso atendimento.</p>
+</div>
+</body>
+</html>";
+
+            await EnviarEmailAsync(cliente.Email, assunto, corpo);
+        }
+
         public async Task EnviarNotificacaoWhatsAppAsync(string? telefone, string mensagem)
         {
             if (!_whatsappAtivo || string.IsNullOrEmpty(telefone)) return;
@@ -157,83 +177,43 @@ h1 {{ color: #C9A227; }}
                     return;
                 }
 
-                if (!string.IsNullOrEmpty(_sendGridKey))
+                if (string.IsNullOrEmpty(_sendGridKey))
                 {
-                    var sendGridRequest = new
-                    {
-                        personalizations = new[]
-                        {
-                            new { to = new[] { new { email = destinatario } } }
-                        },
-                        from = new { email = _fromEmail, name = _fromName },
-                        subject = assunto,
-                        content = new[]
-                        {
-                            new { type = "text/html", value = corpoHtml }
-                        }
-                    };
+                    _logger.LogWarning("SendGrid nÃ£o configurado. E-mail simulado para {Email}: {Assunto}", destinatario, assunto);
+                    return;
+                }
 
-                    var request = new HttpRequestMessage(HttpMethod.Post, "https://api.sendgrid.com/v3/mail/send")
+                var sendGridRequest = new
+                {
+                    personalizations = new[]
                     {
-                        Content = JsonContent.Create(sendGridRequest)
-                    };
-                    request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _sendGridKey);
-
-                    var response = await _httpClient.SendAsync(request);
-                    if (!response.IsSuccessStatusCode)
+                        new { to = new[] { new { email = destinatario } } }
+                    },
+                    from = new { email = _fromEmail, name = _fromName },
+                    subject = assunto,
+                    content = new[]
                     {
-                        var error = await response.Content.ReadAsStringAsync();
-                        _logger.LogError("SendGrid erro: {Error}", error);
+                        new { type = "text/html", value = corpoHtml }
                     }
+                };
 
-                    return;
-                }
-
-                if (!string.IsNullOrWhiteSpace(_smtpServer))
+                var request = new HttpRequestMessage(HttpMethod.Post, "https://api.sendgrid.com/v3/mail/send")
                 {
-                    await EnviarEmailViaSmtpAsync(destinatario, assunto, corpoHtml);
-                    return;
-                }
+                    Content = JsonContent.Create(sendGridRequest)
+                };
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _sendGridKey);
 
-                _logger.LogWarning("Nenhum provedor de e-mail configurado. E-mail simulado para {Email}: {Assunto}", destinatario, assunto);
+                var response = await _httpClient.SendAsync(request);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    _logger.LogError("SendGrid erro: {Error}", error);
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Erro ao enviar e-mail para {Destinatario}", destinatario);
             }
-        }
-
-        private async Task EnviarEmailViaSmtpAsync(string destinatario, string assunto, string corpoHtml)
-        {
-            if (string.IsNullOrWhiteSpace(_smtpServer))
-            {
-                _logger.LogWarning("SMTP não configurado. E-mail simulado para {Email}: {Assunto}", destinatario, assunto);
-                return;
-            }
-
-            using var message = new MailMessage
-            {
-                From = new MailAddress(_smtpFromEmail, _smtpFromName, Encoding.UTF8),
-                Subject = assunto,
-                Body = corpoHtml,
-                IsBodyHtml = true,
-                BodyEncoding = Encoding.UTF8,
-                SubjectEncoding = Encoding.UTF8
-            };
-            message.To.Add(destinatario);
-
-            using var smtp = new SmtpClient(_smtpServer, _smtpPort)
-            {
-                EnableSsl = _smtpEnableSsl
-            };
-
-            if (!string.IsNullOrWhiteSpace(_smtpUsername))
-            {
-                smtp.Credentials = new System.Net.NetworkCredential(_smtpUsername, _smtpPassword ?? string.Empty);
-            }
-
-            await smtp.SendMailAsync(message);
-            _logger.LogInformation("E-mail enviado por SMTP para {Email}: {Assunto}", destinatario, assunto);
         }
 
         public async Task EnviarAlertaEstoqueBaixoAsync(Produto produto)
@@ -269,3 +249,4 @@ h1 {{ color: #C9A227; }}
         }
     }
 }
+
