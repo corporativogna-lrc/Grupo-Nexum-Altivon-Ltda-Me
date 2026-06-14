@@ -531,9 +531,14 @@ app.MapPost("/api/categorias", [Authorize(Policy = "Gerente")] async (
 
 app.MapGet("/api/produtos", async (string? categoria_id, NexumDbContext db, CancellationToken ct) =>
 {
-    const string defaultImage = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85";
-
-    IQueryable<Produto> query = db.Produtos.AsNoTracking().Where(produto => produto.Ativo);
+    IQueryable<Produto> query = db.Produtos.AsNoTracking().Where(produto =>
+        produto.Ativo
+        && !string.IsNullOrWhiteSpace(produto.ImagemPrincipal)
+        && (!string.IsNullOrWhiteSpace(produto.DescricaoCurta) || !string.IsNullOrWhiteSpace(produto.DescricaoLonga))
+        && produto.Peso > 0
+        && produto.Altura > 0
+        && produto.Largura > 0
+        && produto.Comprimento > 0);
 
     if (!string.IsNullOrWhiteSpace(categoria_id))
     {
@@ -561,7 +566,7 @@ app.MapGet("/api/produtos", async (string? categoria_id, NexumDbContext db, Canc
             produto.DescricaoCurta,
             produto.Preco,
             produto.PrecoPromocional,
-            produto.ImagemPrincipal ?? defaultImage,
+            produto.ImagemPrincipal!,
             produto.EstoqueAtual,
             produto.EstoqueMinimo,
             produto.EstoqueReservado,
@@ -583,15 +588,6 @@ app.MapGet("/api/produtos", async (string? categoria_id, NexumDbContext db, Canc
             produto.SeoKeywords,
             produto.ImagensGaleria))
         .ToListAsync(ct);
-
-    if (produtos.Count == 0)
-    {
-        produtos = string.IsNullOrWhiteSpace(categoria_id)
-            ? StoreData.Produtos
-            : StoreData.Produtos
-                .Where(produto => string.Equals(produto.CategoriaId, categoria_id, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-    }
 
     return Results.Ok(ApiResponse<List<ProdutoLojaDto>>.Ok(produtos));
 })
@@ -601,11 +597,16 @@ app.MapGet("/api/produtos", async (string? categoria_id, NexumDbContext db, Canc
 
 app.MapGet("/api/produtos/destaques", async (NexumDbContext db, CancellationToken ct) =>
 {
-    const string defaultImage = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85";
-
     var produtos = await db.Produtos
         .AsNoTracking()
-        .Where(produto => produto.Ativo && produto.Destaque)
+        .Where(produto => produto.Ativo
+            && produto.Destaque
+            && !string.IsNullOrWhiteSpace(produto.ImagemPrincipal)
+            && (!string.IsNullOrWhiteSpace(produto.DescricaoCurta) || !string.IsNullOrWhiteSpace(produto.DescricaoLonga))
+            && produto.Peso > 0
+            && produto.Altura > 0
+            && produto.Largura > 0
+            && produto.Comprimento > 0)
         .OrderByDescending(produto => produto.UpdatedAt)
         .Take(24)
         .Select(produto => new ProdutoLojaDto(
@@ -615,7 +616,7 @@ app.MapGet("/api/produtos/destaques", async (NexumDbContext db, CancellationToke
             produto.DescricaoCurta,
             produto.Preco,
             produto.PrecoPromocional,
-            produto.ImagemPrincipal ?? defaultImage,
+            produto.ImagemPrincipal!,
             produto.EstoqueAtual,
             produto.EstoqueMinimo,
             produto.EstoqueReservado,
@@ -638,11 +639,6 @@ app.MapGet("/api/produtos/destaques", async (NexumDbContext db, CancellationToke
             produto.ImagensGaleria))
         .ToListAsync(ct);
 
-    if (produtos.Count == 0)
-    {
-        produtos = StoreData.Produtos.Where(produto => produto.Destaque).ToList();
-    }
-
     return Results.Ok(ApiResponse<List<ProdutoLojaDto>>.Ok(produtos));
 })
 .AllowAnonymous()
@@ -651,11 +647,16 @@ app.MapGet("/api/produtos/destaques", async (NexumDbContext db, CancellationToke
 
 app.MapGet("/api/produtos/{id}", async (string id, NexumDbContext db, CancellationToken ct) =>
 {
-    const string defaultImage = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85";
-
     var dto = await db.Produtos
         .AsNoTracking()
-        .Where(item => item.Slug == id)
+        .Where(item => item.Slug == id
+            && item.Ativo
+            && !string.IsNullOrWhiteSpace(item.ImagemPrincipal)
+            && (!string.IsNullOrWhiteSpace(item.DescricaoCurta) || !string.IsNullOrWhiteSpace(item.DescricaoLonga))
+            && item.Peso > 0
+            && item.Altura > 0
+            && item.Largura > 0
+            && item.Comprimento > 0)
         .Select(item => new ProdutoLojaDto(
             item.Slug,
             item.Nome,
@@ -663,7 +664,7 @@ app.MapGet("/api/produtos/{id}", async (string id, NexumDbContext db, Cancellati
             item.DescricaoCurta,
             item.Preco,
             item.PrecoPromocional,
-            item.ImagemPrincipal ?? defaultImage,
+            item.ImagemPrincipal!,
             item.EstoqueAtual,
             item.EstoqueMinimo,
             item.EstoqueReservado,
@@ -688,10 +689,7 @@ app.MapGet("/api/produtos/{id}", async (string id, NexumDbContext db, Cancellati
 
     if (dto is null)
     {
-        var fallback = StoreData.Produtos.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
-        return fallback is null
-            ? Results.NotFound(ApiResponse<string>.Erro("Produto nao encontrado."))
-            : Results.Ok(ApiResponse<ProdutoLojaDto>.Ok(fallback));
+        return Results.NotFound(ApiResponse<string>.Erro("Produto nao encontrado ou cadastro incompleto."));
     }
 
     return Results.Ok(ApiResponse<ProdutoLojaDto>.Ok(dto));
@@ -771,6 +769,18 @@ app.MapPost("/api/produtos", [Authorize(Policy = "Gerente")] async (
     NexumDbContext db,
     CancellationToken ct) =>
 {
+    if (string.IsNullOrWhiteSpace(request.Nome)
+        || string.IsNullOrWhiteSpace(request.Descricao)
+        || string.IsNullOrWhiteSpace(request.ImagemUrl)
+        || request.Peso is null or <= 0
+        || request.Altura is null or <= 0
+        || request.Largura is null or <= 0
+        || request.Comprimento is null or <= 0)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro(
+            "Nome, descricao, imagem, peso, altura, largura e comprimento sao obrigatorios."));
+    }
+
     var slug = Slugify(request.Id) ?? Slugify(request.Nome);
     if (string.IsNullOrWhiteSpace(slug))
     {
@@ -895,6 +905,18 @@ app.MapPut("/api/produtos/{id}", [Authorize(Policy = "Gerente")] async (
     NexumDbContext db,
     CancellationToken ct) =>
 {
+    if (string.IsNullOrWhiteSpace(request.Nome)
+        || string.IsNullOrWhiteSpace(request.Descricao)
+        || string.IsNullOrWhiteSpace(request.ImagemUrl)
+        || request.Peso is null or <= 0
+        || request.Altura is null or <= 0
+        || request.Largura is null or <= 0
+        || request.Comprimento is null or <= 0)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro(
+            "Nome, descricao, imagem, peso, altura, largura e comprimento sao obrigatorios."));
+    }
+
     var produto = await db.Produtos.FirstOrDefaultAsync(item => item.Slug == id, ct);
     if (produto is null)
     {
@@ -3875,7 +3897,10 @@ static List<T> ParseJsonList<T>(string? json, List<T> fallback)
 
     try
     {
-        var parsed = JsonSerializer.Deserialize<List<T>>(json);
+        var parsed = JsonSerializer.Deserialize<List<T>>(json, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        });
         return parsed is { Count: > 0 } ? parsed : fallback;
     }
     catch
@@ -4065,7 +4090,7 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
         """
         INSERT INTO dropshipping_config (nome, slug, tipo, api_endpoint, ativo)
         VALUES
-            ('Shopify', 'shopify', 5, 'https://{store}.myshopify.com/admin/api', 0),
+            ('Shopify', 'shopify', 5, 'https://{{store}}.myshopify.com/admin/api', 0),
             ('CJ Dropshipping', 'cjdropshipping', 1, 'https://developers.cjdropshipping.com/api2.0/v1', 0)
         ON DUPLICATE KEY UPDATE
             nome = VALUES(nome),
@@ -4113,7 +4138,7 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
             grupo = VALUES(grupo),
             editavel = VALUES(editavel),
             updated_at = CURRENT_TIMESTAMP;
-        """);
+        """.Replace("{", "{{").Replace("}", "}}"));
 }
 
 app.Run();

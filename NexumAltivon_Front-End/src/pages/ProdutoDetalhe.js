@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { produtoAPI } from '../services/api';
 import { useCart } from '../context/CartContext';
-import { fallbackProducts } from '../data/mockStore';
 import { formatPrice } from '../utils/formatters';
 import { ArrowLeft, Check, Minus, Plus, RefreshCw, Shield, ShoppingBag, Star, Truck } from 'lucide-react';
 
@@ -20,7 +19,7 @@ export default function ProdutoDetalhe() {
       setProduto(response.data);
     } catch (error) {
       if (process.env.NODE_ENV === 'development') console.error(error);
-      setProduto(fallbackProducts.find((item) => String(item.id) === String(id)) || null);
+      setProduto(null);
     } finally {
       setLoading(false);
     }
@@ -56,7 +55,7 @@ export default function ProdutoDetalhe() {
 
   const finalPrice = produto.preco_promocional || produto.preco;
   const hasDiscount = produto.preco_promocional && produto.preco_promocional < produto.preco;
-  const image = produto.imagem_url || produto.imagem || fallbackProducts[0].imagem_url;
+  const image = produto.imagem_url || produto.imagem;
 
   return (
     <div className="min-h-screen bg-[#050505] py-8 text-white">
