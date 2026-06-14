@@ -176,6 +176,41 @@ const partnerIconMap = {
 
 const normalizeText = (value) => String(value || '').trim().toLowerCase();
 const normalizeDocument = (value) => String(value || '').replace(/\D/g, '');
+
+const pickConfigValue = (config, keys, fallback = '') => {
+  for (const key of keys) {
+    const value = config?.[key];
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      return value;
+    }
+  }
+
+  return fallback;
+};
+
+const mapPublicSiteConfig = (config) => {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return null;
+
+  return {
+    siteName: pickConfigValue(config, ['siteNome', 'SiteNome', 'site_name', 'siteName'], 'Grupo Nexum Altivon'),
+    siteUrl: pickConfigValue(config, ['siteUrl', 'SiteUrl', 'site_url'], 'https://www.nexumaltivon.com'),
+    contactEmail: pickConfigValue(config, ['contactEmail', 'ContactEmail', 'site_email_contato', 'siteEmailContato'], 'corporativo.gna@gmail.com'),
+    primaryPhone: pickConfigValue(config, ['primaryPhone', 'PrimaryPhone', 'site_telefone', 'siteTelefone'], '(14) 99673-1879'),
+    secondaryPhone: pickConfigValue(config, ['secondaryPhone', 'SecondaryPhone', 'site_telefone_secundario', 'siteTelefoneSecundario'], '(14) 99634-8409'),
+    primaryWhatsapp: pickConfigValue(config, ['primaryWhatsapp', 'PrimaryWhatsapp', 'site_whatsapp', 'siteWhatsapp'], '5514996731879'),
+    secondaryWhatsapp: pickConfigValue(config, ['secondaryWhatsapp', 'SecondaryWhatsapp', 'site_whatsapp_secundario', 'siteWhatsappSecundario'], '5514996348409'),
+    yaraEmail: pickConfigValue(config, ['yaraEmail', 'YaraEmail', 'site_yara_email', 'siteYaraEmail'], 'corporativo.gna@gmail.com'),
+    siteLogo: pickConfigValue(config, ['siteLogo', 'SiteLogo', 'site_logo', 'siteLogoUrl'], '/assets/logo-2.jpg'),
+    heroSlides: pickConfigValue(config, ['heroSlides', 'HeroSlides'], []),
+    introTitle: pickConfigValue(config, ['introTitle', 'IntroTitle', 'home_intro_titulo', 'homeIntroTitulo'], 'Uma Nova Era Começa'),
+    introText1: pickConfigValue(config, ['introText1', 'IntroText1', 'home_intro_texto_1', 'homeIntroTexto1'], 'A Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro.'),
+    introText2: pickConfigValue(config, ['introText2', 'IntroText2', 'home_intro_texto_2', 'homeIntroTexto2'], 'Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso.'),
+    introBadge: pickConfigValue(config, ['introBadge', 'IntroBadge', 'home_intro_badge', 'homeIntroBadge'], 'www.nexumaltivon.com'),
+    qualityItems: pickConfigValue(config, ['qualityItems', 'QualityItems', 'home_quality_items', 'homeQualityItems'], []),
+    partnerCards: pickConfigValue(config, ['partnerCards', 'PartnerCards', 'home_partner_cards', 'homePartnerCards'], []),
+    footerText: pickConfigValue(config, ['footerText', 'FooterText', 'home_footer_texto', 'homeFooterTexto'], 'Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas.'),
+  };
+};
 export default function Home() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [siteConfig, setSiteConfig] = useState(null);
@@ -214,7 +249,7 @@ export default function Home() {
       .getPublicConfig()
       .then((response) => {
         if (active && response.data) {
-          setSiteConfig(response.data);
+          setSiteConfig(mapPublicSiteConfig(response.data));
         }
       })
       .catch(() => {});
@@ -325,6 +360,15 @@ export default function Home() {
 
         <div className="relative mx-auto flex min-h-[84vh] max-w-7xl items-center px-4 py-20 sm:px-6 lg:px-8">
           <div className="max-w-3xl">
+            {siteConfig?.siteLogo && (
+              <div className="mb-6 inline-flex items-center gap-3 rounded-full border border-white/15 bg-black/35 px-4 py-3 shadow-2xl shadow-black/25 backdrop-blur">
+                <img src={siteConfig.siteLogo} alt={siteConfig?.siteName || 'Logo Nexum Altivon'} className="h-8 w-8 rounded-full object-cover" />
+                <div className="text-left">
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-[#E8D5A3]">{siteConfig?.siteName || 'Grupo Nexum Altivon'}</p>
+                  <p className="text-xs font-semibold text-zinc-300">Home gerenciada pelo banco</p>
+                </div>
+              </div>
+            )}
             <p className="mb-5 inline-flex items-center rounded-full border border-[#C9A227]/40 bg-black/40 px-4 py-2 text-xs font-bold uppercase tracking-[0.25em] text-[#E8D5A3]">
               {activeSlide.badge}
             </p>
