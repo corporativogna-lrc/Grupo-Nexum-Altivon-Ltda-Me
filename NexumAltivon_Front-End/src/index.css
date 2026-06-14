@@ -114,6 +114,28 @@ code {
     }
 }
 
+@keyframes nexum-rise {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes nexum-pop {
+    from {
+        opacity: 0;
+        transform: scale(0.985);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
 /* Identidade original Nexum Altivon: preto profundo, dourado e painel empresarial */
 .nexum-admin-shell,
 .nexum-admin-login,
@@ -203,6 +225,7 @@ code {
         0 20px 45px rgba(0, 0, 0, 0.26),
         inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
     border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    animation: nexum-rise 0.42s ease-out both;
 }
 
 .nexum-admin-shell [data-testid^="dashboard-stat"] {
@@ -223,12 +246,14 @@ code {
         linear-gradient(180deg, rgba(12, 12, 12, 0.98), rgba(6, 6, 6, 0.98)),
         radial-gradient(circle at top, rgba(201, 162, 39, 0.08), transparent 32rem) !important;
     box-shadow: 18px 0 40px rgba(0, 0, 0, 0.35) !important;
+    animation: nexum-rise 0.5s ease-out both;
 }
 
 .nexum-admin-shell header {
     background:
         linear-gradient(180deg, rgba(13, 13, 13, 0.96), rgba(8, 8, 8, 0.92)) !important;
     border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+    animation: nexum-pop 0.45s ease-out both;
 }
 
 .nexum-admin-shell button,
@@ -289,6 +314,26 @@ code {
 .nexum-admin-shell table thead,
 .nexum-admin-shell table tr:hover {
     background: rgba(201, 162, 39, 0.06) !important;
+}
+
+.nexum-admin-shell button:active,
+.nexum-admin-shell a:active {
+    transform: translateY(0) scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .nexum-admin-shell section,
+    .nexum-admin-shell form,
+    .nexum-admin-shell [data-testid^="dashboard-stat"],
+    .nexum-admin-shell aside,
+    .nexum-admin-shell header {
+        animation: none !important;
+    }
+
+    .nexum-admin-shell button,
+    .nexum-admin-shell a {
+        transition: none !important;
+    }
 }
 
 .nexum-admin-shell .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {

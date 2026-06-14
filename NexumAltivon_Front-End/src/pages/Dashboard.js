@@ -646,6 +646,7 @@ export default function Dashboard() {
   const [leadForm, setLeadForm] = useState(emptyLead);
   const [empresaGrupoForm, setEmpresaGrupoForm] = useState(emptyEmpresaGrupo);
   const [formStatus, setFormStatus] = useState('');
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const sitePreviewLogo = String(siteConfigForm.site_logo || '').trim() || '/assets/logo-2.jpg';
   const previewSlides = parseJsonPreview(siteConfigForm.home_hero_slides, [{
     id: 'preview',
@@ -664,6 +665,25 @@ export default function Dashboard() {
   };
   const previewQualityItems = parseJsonPreview(siteConfigForm.home_quality_items, []);
   const previewPartnerCards = parseJsonPreview(siteConfigForm.home_partner_cards, []);
+
+  useEffect(() => {
+    const syncFullscreen = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    syncFullscreen();
+    document.addEventListener('fullscreenchange', syncFullscreen);
+    return () => document.removeEventListener('fullscreenchange', syncFullscreen);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch {
+      setFormStatus('Nao foi possivel alternar para tela cheia neste navegador.');
+    }
+  };
 
   const loadData = useCallback(async () => {
     try {
@@ -1153,6 +1173,14 @@ export default function Dashboard() {
               >
                 Chamar Sophia
               </a>
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#2A2A2A] bg-[#111111] px-5 text-sm font-black text-zinc-200 hover:border-[#C9A227] hover:text-white"
+                title={isFullscreen ? 'Sair da tela cheia' : 'Ativar tela cheia'}
+              >
+                {isFullscreen ? 'Janela' : 'Tela cheia'}
+              </button>
               <div className="relative">
                 <Search className="absolute left-3 top-3 text-zinc-500" size={18} />
                 <input
