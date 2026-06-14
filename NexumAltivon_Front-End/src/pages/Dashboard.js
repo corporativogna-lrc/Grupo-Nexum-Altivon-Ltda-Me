@@ -438,6 +438,17 @@ const galleryToArray = (value) =>
     .map((item) => item.trim())
     .filter(Boolean);
 const galleryToText = (items) => items.filter(Boolean).join('\n');
+const parseJsonPreview = (value, fallback) => {
+  if (!value) return fallback;
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+};
+const normalizePreviewImage = (value) => String(value || '').trim();
 
 const getDashboardRouteState = (path = '') => {
   const segments = String(path || '').split('/').filter(Boolean);
@@ -635,6 +646,24 @@ export default function Dashboard() {
   const [leadForm, setLeadForm] = useState(emptyLead);
   const [empresaGrupoForm, setEmpresaGrupoForm] = useState(emptyEmpresaGrupo);
   const [formStatus, setFormStatus] = useState('');
+  const sitePreviewLogo = String(siteConfigForm.site_logo || '').trim() || '/assets/logo-2.jpg';
+  const previewSlides = parseJsonPreview(siteConfigForm.home_hero_slides, [{
+    id: 'preview',
+    badge: siteConfigForm.home_intro_badge || 'Preview do banner',
+    title: siteConfigForm.home_intro_titulo || 'Título institucional',
+    highlight: 'Visual ao vivo',
+    description: siteConfigForm.home_intro_texto_1 || 'A prévia mostra como o banner ficará na home antes de salvar no banco.',
+    image: siteConfigForm.site_logo || '/assets/logo-2.jpg',
+  }]);
+  const previewSlide = previewSlides[0] || {
+    badge: siteConfigForm.home_intro_badge || 'Preview do banner',
+    title: siteConfigForm.home_intro_titulo || 'Título institucional',
+    highlight: 'Visual ao vivo',
+    description: siteConfigForm.home_intro_texto_1 || 'A prévia mostra como o banner ficará na home antes de salvar no banco.',
+    image: siteConfigForm.site_logo || '/assets/logo-2.jpg',
+  };
+  const previewQualityItems = parseJsonPreview(siteConfigForm.home_quality_items, []);
+  const previewPartnerCards = parseJsonPreview(siteConfigForm.home_partner_cards, []);
 
   const loadData = useCallback(async () => {
     try {
@@ -2081,6 +2110,63 @@ export default function Dashboard() {
                       </button>
                     </form>
                     <div className="space-y-6">
+                      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 text-white shadow-sm">
+                        <div className="border-b border-white/10 px-5 py-4">
+                          <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Preview da home</p>
+                          <p className="mt-1 text-sm text-slate-300">O que você salvar aqui será refletido na home pública.</p>
+                        </div>
+                        <div className="relative min-h-64 overflow-hidden">
+                          {previewSlide.image ? (
+                            <img
+                              src={normalizePreviewImage(previewSlide.image)}
+                              alt="Preview do banner"
+                              className="absolute inset-0 h-full w-full object-cover opacity-40"
+                            />
+                          ) : null}
+                          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(201,162,39,0.18),_transparent_40%),linear-gradient(135deg,#0b0b0b,#1a1a1a)]" />
+                          <div className="relative grid gap-4 p-5 md:grid-cols-[160px_minmax(0,1fr)] md:items-start">
+                            <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
+                              <div className="flex items-center gap-3">
+                                <img src={normalizePreviewImage(sitePreviewLogo)} alt="Preview do logo" className="h-14 w-14 rounded-2xl object-cover" />
+                                <div>
+                                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-[#E8D5A3]">
+                                    {siteConfigForm.site_nome || 'Grupo Nexum Altivon'}
+                                  </p>
+                                  <p className="text-xs text-slate-300">Logo salvo no banco</p>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-black/35 p-5 backdrop-blur">
+                              <p className="inline-flex rounded-full border border-[#C9A227]/30 bg-[#C9A227]/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-[#E8D5A3]">
+                                {previewSlide.badge}
+                              </p>
+                              <h4 className="mt-4 text-2xl font-black leading-tight text-white">
+                                {previewSlide.title} <span className="block text-[#C9A227]">{previewSlide.highlight}</span>
+                              </h4>
+                              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">{previewSlide.description}</p>
+                              <div className="mt-5 flex flex-wrap gap-2">
+                                {(previewQualityItems.length > 0 ? previewQualityItems : ['Qualidade premium']).slice(0, 4).map((item) => (
+                                  <span key={item} className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200">
+                                    {item}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="relative border-t border-white/10 bg-black/20 px-5 py-4">
+                            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Cards de parceria previstos</p>
+                            <div className="mt-3 grid gap-3 md:grid-cols-3">
+                              {(previewPartnerCards.length > 0 ? previewPartnerCards : [{ title: 'Parceiros de Vendas', text: 'Prévia carregada do banco.' }]).slice(0, 3).map((item) => (
+                                <div key={item.title} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                                  <p className="text-sm font-black text-white">{item.title}</p>
+                                  <p className="mt-1 text-xs text-slate-300 line-clamp-3">{item.text}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </section>
+
                       <ErpChecklistCard
                         title="O que já vinha pronto no banco"
                         items={[
