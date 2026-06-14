@@ -156,6 +156,17 @@ const erpModules = [
   },
 ];
 
+const erpWorkspaceNavItems = [
+  { id: 'erp', label: 'Painel', short: 'painel', signal: 'Visão geral' },
+  { id: 'erp-fiscal', label: 'Fiscal', short: 'nf-e', signal: 'Emissão' },
+  { id: 'erp-financeiro', label: 'Financeiro', short: 'caixa', signal: 'Fluxo de caixa' },
+  { id: 'erp-logistica', label: 'Logística', short: 'estoque', signal: 'Expedição' },
+  { id: 'erp-empresas', label: 'Empresas', short: 'grupo', signal: 'Matriz / filiais' },
+  { id: 'erp-compras', label: 'Compras', short: 'supr.', signal: 'Reposição' },
+  { id: 'erp-relatorios', label: 'Relatórios', short: 'kpi', signal: 'Gestão' },
+  { id: 'erp-rh', label: 'RH', short: 'equipe', signal: 'Equipe' },
+];
+
 const fallbackIntegracoes = [
   { nome: 'E-commerce e API', slug: 'ecommerce', status: 'Operacional', detalhe: 'Catálogo, clientes, pedidos, estoque e painel usam a API operacional.', configurada: true, ambiente: 'Produção' },
   { nome: 'Dropshipping', slug: 'dropshipping', status: 'Aguardando cadastros', detalhe: 'Roteamento depende dos fornecedores e produtos vinculados.', configurada: false, ambiente: 'Produção assistida' },
@@ -608,7 +619,7 @@ function StatCard({ title, value, detail, icon: Icon, trend, tone = 'slate' }) {
 
 function StatMiniCard({ label, value }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="erp-mini-card rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
       <p className="mt-3 text-3xl font-black text-slate-950">{value}</p>
     </div>
@@ -1610,6 +1621,7 @@ export default function Dashboard() {
 
               {activeTab === 'erp' && (
                 <section className="erp-desktop-surface space-y-6">
+                  <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
                   <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                       <div>
@@ -1703,6 +1715,7 @@ export default function Dashboard() {
 
               {activeTab === 'erp-empresas' && (
                 <section className="erp-desktop-surface space-y-6">
+                  <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
                   <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
                     <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Cadastro fiscal mestre</p>
                     <h2 className="mt-2 text-2xl font-black text-slate-950">Empresas do grupo e parceiras</h2>
@@ -1839,6 +1852,7 @@ export default function Dashboard() {
 
               {activeTab === 'erp-fiscal' && (
                 <section className="erp-desktop-surface space-y-6">
+                  <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
                   <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
                     <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Fiscal operacional</p>
                     <h2 className="mt-2 text-2xl font-black text-slate-950">Notas e automação fiscal</h2>
@@ -1907,6 +1921,7 @@ export default function Dashboard() {
 
               {activeTab === 'erp-financeiro' && (
                 <section className="erp-desktop-surface space-y-6">
+                  <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
                   <ErpModuleHero
                     eyebrow="Financeiro operacional"
                     title="Fluxo de caixa, contas e conciliação"
@@ -1952,6 +1967,7 @@ export default function Dashboard() {
 
               {activeTab === 'erp-logistica' && (
                 <section className="erp-desktop-surface space-y-6">
+                  <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
                   <ErpModuleHero
                     eyebrow="Logística e estoque"
                     title="Despacho, rastreamento e posição operacional"
@@ -1989,6 +2005,7 @@ export default function Dashboard() {
 
               {activeTab === 'erp-rh' && (
                 <section className="erp-desktop-surface space-y-6">
+                  <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
                   <ErpModuleHero
                     eyebrow="RH e diretoria operacional"
                     title="Equipe, cargos e supervisão da rotina"
@@ -2027,6 +2044,7 @@ export default function Dashboard() {
 
               {activeTab === 'erp-compras' && (
                 <section className="erp-desktop-surface space-y-6">
+                  <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
                   <ErpModuleHero
                     eyebrow="Compras e suprimentos"
                     title="Fornecedores, reposição e estratégia de custo"
@@ -2058,6 +2076,7 @@ export default function Dashboard() {
 
               {activeTab === 'erp-relatorios' && (
                 <section className="erp-desktop-surface space-y-6">
+                  <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
                   <ErpModuleHero
                     eyebrow="Relatórios executivos"
                     title="KPIs, gráficos e controle gerencial"
@@ -2377,7 +2396,7 @@ function CadastroInsightPanel({ title, checks }) {
 
 function ErpModuleHero({ eyebrow, title, description }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="erp-module-card rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">{eyebrow}</p>
       <h2 className="mt-2 text-2xl font-black text-slate-950">{title}</h2>
       <p className="mt-1 max-w-3xl text-sm text-slate-500">{description}</p>
@@ -2387,7 +2406,7 @@ function ErpModuleHero({ eyebrow, title, description }) {
 
 function ErpChecklistCard({ title, items }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="erp-module-card rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <h3 className="text-lg font-black text-slate-950">{title}</h3>
       <div className="mt-5 space-y-3">
         {items.map((item) => (
@@ -2403,7 +2422,7 @@ function ErpChecklistCard({ title, items }) {
 
 function ModuleActionGrid({ title, actions }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="erp-module-card rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <div className="flex items-center justify-between gap-4">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Operação direta</p>
@@ -2427,6 +2446,44 @@ function ModuleActionGrid({ title, actions }) {
             </span>
           </button>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function ErpWorkspaceNav({ activeTab, onNavigate }) {
+  return (
+    <section className="erp-module-card rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-[#C9A227]">Atalhos internos do ERP</p>
+          <p className="mt-1 text-sm font-semibold text-slate-500">Navegação rápida entre os blocos operacionais do desktop corporativo.</p>
+        </div>
+        <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black uppercase tracking-[0.16em] text-slate-500">
+          {erpWorkspaceNavItems.find((item) => item.id === activeTab)?.signal || 'Operação local'}
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {erpWorkspaceNavItems.map((item) => {
+          const active = activeTab === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onNavigate(item.id)}
+              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-black transition ${
+                active
+                  ? 'bg-slate-950 text-[#C9A227] shadow-[0_14px_30px_rgba(0,0,0,0.16)]'
+                  : 'border border-slate-200 bg-white text-slate-700 hover:border-[#C9A227] hover:text-slate-950'
+              }`}
+            >
+              <span className={`rounded-full px-2 py-1 text-[0.62rem] uppercase tracking-[0.18em] ${active ? 'bg-[#C9A227]/15 text-[#C9A227]' : 'bg-slate-100 text-slate-500'}`}>
+                {item.short}
+              </span>
+              {item.label}
+            </button>
+          );
+        })}
       </div>
     </section>
   );

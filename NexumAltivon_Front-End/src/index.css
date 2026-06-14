@@ -428,6 +428,24 @@ code {
     box-shadow: 0 16px 34px rgba(0, 0, 0, 0.2);
 }
 
+.erp-desktop-shell .erp-module-card {
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow:
+        0 18px 42px rgba(0, 0, 0, 0.26),
+        inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+}
+
+.erp-desktop-shell .erp-mini-card {
+    min-height: 120px;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.03)) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow:
+        0 16px 36px rgba(0, 0, 0, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+}
+
 .erp-desktop-shell .erp-desktop-surface input,
 .erp-desktop-shell .erp-desktop-surface select,
 .erp-desktop-shell .erp-desktop-surface textarea {
