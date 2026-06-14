@@ -33,6 +33,8 @@ public class CriarClienteDto
 public class AtualizarClienteDto
 {
     public string Nome { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string? CpfCnpj { get; set; }
     public string? Telefone { get; set; }
     public string? Whatsapp { get; set; }
     public bool Newsletter { get; set; }

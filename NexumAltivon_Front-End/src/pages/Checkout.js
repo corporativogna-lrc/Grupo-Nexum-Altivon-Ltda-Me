@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
-import { lojaAPI, clienteAPI, freteAPI, pedidoAPI } from '../services/api';
+import { lojaAPI, clienteAPI, freteAPI, pedidoAPI, unwrapApiData } from '../services/api';
 import { fallbackCategories } from '../data/mockStore';
 import {
   StepDadosPessoais,
@@ -82,9 +82,9 @@ export default function Checkout() {
   const loadLojas = useCallback(async () => {
     try {
       const response = await lojaAPI.getAll();
-      const lojasApi = Array.isArray(response.data) ? response.data : [];
+      const lojasApi = Array.isArray(unwrapApiData(response.data)) ? unwrapApiData(response.data) : [];
       setLojas(lojasApi);
-      if (lojasApi.length > 0) setLojaId(lojasApi[0].id);
+      if (lojasApi.length > 0) setLojaId(String(lojasApi[0].id));
     } catch (err) {
       if (process.env.NODE_ENV === 'development') console.error(err);
       const fallbackLojas = fallbackCategories.map((categoria, index) => ({
@@ -93,7 +93,7 @@ export default function Checkout() {
         slug: categoria.id,
       }));
       setLojas(fallbackLojas);
-      if (fallbackLojas.length > 0) setLojaId(fallbackLojas[0].id);
+      if (fallbackLojas.length > 0) setLojaId(String(fallbackLojas[0].id));
     }
   }, []);
 
@@ -176,7 +176,8 @@ export default function Checkout() {
           })),
         });
 
-        const cotacoes = Array.isArray(response.data) ? response.data : [];
+        const cotacoesData = unwrapApiData(response.data);
+        const cotacoes = Array.isArray(cotacoesData) ? cotacoesData : [];
         if (!cancelled && cotacoes.length > 0) {
           const mapped = [
             { id: 'retirada', nome: 'Retirada / combinar entrega', transportadora: 'Nexum Altivon', prazo: 0, valor: 0 },
@@ -216,17 +217,23 @@ export default function Checkout() {
       if (clienteId) {
         setCheckoutInfo('Pedido vinculado diretamente ao cadastro do cliente logado.');
       } else {
-        const clienteVerificacao = await clienteAPI.verificarCadastro({
-          email: dadosCliente.email,
-          cpf: dadosCliente.cpf,
-        });
+        try {
+          const clienteVerificacao = await clienteAPI.verificarCadastro({
+            email: dadosCliente.email,
+            cpf: dadosCliente.cpf,
+          });
 
-        clienteId = clienteVerificacao.data?.cliente?.id;
-        if (clienteId) {
-          setCheckoutInfo('Cliente já existente reaproveitado para não duplicar cadastro.');
-        } else {
+          clienteId = clienteVerificacao.data?.cliente?.id;
+          if (clienteId) {
+            setCheckoutInfo('Cliente já existente reaproveitado para não duplicar cadastro.');
+          }
+        } catch {
+          setCheckoutInfo('Verificação de cadastro indisponível. Seguindo direto para o cadastro do cliente.');
+        }
+
+        if (!clienteId) {
           const clienteRes = await clienteAPI.create(dadosCliente);
-          clienteId = clienteRes.data.id;
+          clienteId = clienteRes.data?.id ?? clienteRes.data?.dados?.id ?? clienteRes.data?.cliente?.id;
           setCheckoutInfo('Novo cliente registrado e vinculado ao pedido.');
         }
       }
@@ -239,7 +246,7 @@ export default function Checkout() {
         cliente_id: clienteId,
         loja_id: lojaId,
         itens: cart.map(item => ({
-          produto_id: item.id,
+          produtoId: String(item.slug || item.sku || item.id),
           quantidade: item.quantity
         })),
         cupom_codigo: cupomAplicado?.codigo,
@@ -254,7 +261,10 @@ export default function Checkout() {
         frete_prazo_dias: frete.prazo
       };
 
-      const pedidoRes = await pedidoAPI.create(pedidoData);
+      const pedidoRes = await pedidoAPI.create({
+        ...pedidoData,
+        loja_id: String(lojaId),
+      });
       setPedidoCriado(pedidoRes.data);
 
       clearCart();

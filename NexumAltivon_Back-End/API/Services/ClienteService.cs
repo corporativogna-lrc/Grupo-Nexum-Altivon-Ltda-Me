@@ -154,7 +154,30 @@ public class ClienteService : IClienteService
         if (cliente == null)
             return ApiResponse<ClienteDto>.Erro("Cliente não encontrado.");
 
-        _mapper.Map(dto, cliente);
+        var email = dto.Email?.Trim();
+        if (!string.IsNullOrWhiteSpace(email) && !string.Equals(cliente.Email, email, StringComparison.OrdinalIgnoreCase))
+        {
+            var emailJaExiste = await _context.Clientes.AnyAsync(c => c.Id != cliente.Id && c.Email == email);
+            if (emailJaExiste)
+                return ApiResponse<ClienteDto>.Erro("Já existe outro cliente com este e-mail.");
+            cliente.Email = email;
+        }
+
+        var cpfCnpj = string.IsNullOrWhiteSpace(dto.CpfCnpj) ? null : dto.CpfCnpj.Trim();
+        if (!string.IsNullOrWhiteSpace(cpfCnpj) && !string.Equals(cliente.CpfCnpj, cpfCnpj, StringComparison.OrdinalIgnoreCase))
+        {
+            var cpfJaExiste = await _context.Clientes.AnyAsync(c => c.Id != cliente.Id && c.CpfCnpj == cpfCnpj);
+            if (cpfJaExiste)
+                return ApiResponse<ClienteDto>.Erro("Já existe outro cliente com este CPF/CNPJ.");
+            cliente.CpfCnpj = cpfCnpj;
+        }
+
+        cliente.Nome = dto.Nome.Trim();
+        cliente.Telefone = dto.Telefone;
+        cliente.Whatsapp = dto.Whatsapp;
+        cliente.Newsletter = dto.Newsletter;
+        cliente.Vip = dto.Vip;
+        cliente.Status = Enum.TryParse<StatusCliente>(dto.Status, true, out var status) ? status : cliente.Status;
         cliente.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 

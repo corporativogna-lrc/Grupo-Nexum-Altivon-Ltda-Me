@@ -29,6 +29,7 @@ namespace NexumAltivon.API.Services
         private readonly string? _sendGridKey;
         private readonly string _fromEmail;
         private readonly string _fromName;
+        private readonly string _salesAdminEmail;
         private readonly bool _whatsappAtivo;
         private readonly string? _whatsappApiUrl;
         private readonly string? _whatsappApiKey;
@@ -41,6 +42,7 @@ namespace NexumAltivon.API.Services
             _sendGridKey = _config["Integracoes:SendGrid:ApiKey"];
             _fromEmail = _config["Integracoes:SendGrid:FromEmail"] ?? "corporativo.gna@gmail.com";
             _fromName = _config["Integracoes:SendGrid:FromName"] ?? "Grupo Nexum Altivon";
+            _salesAdminEmail = _config["Alertas:VendaEmailAdmin"] ?? "corporativo.gna@gmail.com";
             _whatsappAtivo = bool.Parse(_config["Integracoes:WhatsApp:Ativo"] ?? "false");
             _whatsappApiUrl = _config["Integracoes:WhatsApp:ApiUrl"];
             _whatsappApiKey = _config["Integracoes:WhatsApp:ApiKey"];
@@ -105,6 +107,7 @@ h1 {{ color: #C9A227; }}
 </html>";
 
             await EnviarEmailAsync(cliente.Email, assunto, corpo);
+            await EnviarEmailAsync(_salesAdminEmail, $"[COPIA] {assunto}", corpo);
         }
 
         public async Task EnviarConfirmacaoCadastroAsync(Cliente cliente, string linkConfirmacao)
@@ -128,6 +131,7 @@ h1 {{ color: #C9A227; }}
 </html>";
 
             await EnviarEmailAsync(cliente.Email, assunto, corpo);
+            await EnviarEmailAsync(_salesAdminEmail, $"[COPIA] {assunto}", corpo);
         }
 
         public async Task EnviarNotaFiscalEmitidaAsync(Cliente cliente, Pedido pedido, Fiscal fiscal)
@@ -157,11 +161,12 @@ h1 {{ color: #C9A227; }}
 </div>
 <p>Voce pode acompanhar o pedido pela area do cliente no site.</p>
 <p>Se quiser, responda este e-mail ou fale com nosso atendimento.</p>
-</div>
+            </div>
 </body>
 </html>";
 
             await EnviarEmailAsync(cliente.Email, assunto, corpo);
+            await EnviarEmailAsync(_salesAdminEmail, $"[COPIA] {assunto}", corpo);
         }
 
         public async Task EnviarNotificacaoWhatsAppAsync(string? telefone, string mensagem)

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { categoriaAPI, produtoAPI } from '../services/api';
+import { categoriaAPI, produtoAPI, unwrapApiData } from '../services/api';
 import ProductCard from '../components/ProductCard';
 import { ArrowDownUp, Filter, Search, SlidersHorizontal, X } from 'lucide-react';
 
@@ -10,6 +10,22 @@ const sortOptions = {
   maior_preco: 'Maior preço',
   nome: 'Nome',
 };
+
+const isProdutoPublicavel = (produto) =>
+  Boolean(
+    produto &&
+      produto.ativo !== false &&
+      produto.nome &&
+      produto.sku &&
+      (produto.slug || produto.id) &&
+      (produto.descricao_curta || produto.descricaoCurta || produto.descricao_longa || produto.descricaoLonga || produto.descricao) &&
+      (produto.imagem_url || produto.imagemUrl || produto.imagem || produto.imagemPrincipal || produto.imagem_principal) &&
+      Number(produto.preco) > 0 &&
+      Number(produto.peso) > 0 &&
+      Number(produto.altura) > 0 &&
+      Number(produto.largura) > 0 &&
+      Number(produto.comprimento) > 0,
+  );
 
 export default function Produtos() {
   const [params, setParams] = useSearchParams();
@@ -28,8 +44,10 @@ export default function Produtos() {
         produtoAPI.getAll(selectedCategory ? { categoria_id: selectedCategory } : {}),
         categoriaAPI.getAll(),
       ]);
-      setProdutos(Array.isArray(produtosRes.data) ? produtosRes.data : []);
-      setCategorias(Array.isArray(categoriasRes.data) ? categoriasRes.data : []);
+      const produtosData = unwrapApiData(produtosRes.data);
+      const categoriasData = unwrapApiData(categoriasRes.data);
+      setProdutos(Array.isArray(produtosData) ? produtosData.filter(isProdutoPublicavel) : []);
+      setCategorias(Array.isArray(categoriasData) ? categoriasData : []);
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
         console.error('Erro:', error);
@@ -56,6 +74,7 @@ export default function Produtos() {
   const filteredProdutos = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
     const filtered = produtos.filter((produto) => {
+      if (!isProdutoPublicavel(produto)) return false;
       const matchesSearch =
         !normalizedSearch ||
         produto.nome?.toLowerCase().includes(normalizedSearch) ||

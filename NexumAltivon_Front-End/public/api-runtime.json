@@ -1,5 +1,5 @@
 {
-    "apiUrl":  "https://conviction-commitment-korean-knives.trycloudflare.com",
-    "updatedAt":  "2026-06-12T15:29:08.6718556Z",
-    "source":  "nexum-public-api-guardian"
+    "apiUrl": "http://127.0.0.1:5012",
+    "updatedAt": "2026-06-14T00:00:00.0000000Z",
+    "source": "local-dev-default"
 }

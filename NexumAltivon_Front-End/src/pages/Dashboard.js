@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { categoriaAPI, clienteAPI, dashboardAPI, empresaGrupoAPI, fiscalAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI, siteAPI } from '../services/api';
+import { categoriaAPI, clienteAPI, dashboardAPI, empresaGrupoAPI, fiscalAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI, siteAPI, unwrapApiData } from '../services/api';
 import { fallbackCategories, fallbackLeads, fallbackPedidos, fallbackProducts, fallbackResumo } from '../data/mockStore';
 import { formatDate, formatPrice, getLeadStatusClass, getPagamentoLabel, getPedidoStatusClass } from '../utils/formatters';
 import {
   Activity,
   ArrowDownRight,
   ArrowUpRight,
-  Bell,
   Boxes,
   Building2,
   ChevronRight,
@@ -26,6 +25,7 @@ import {
   Trash2,
   Save,
   Search,
+  MessageCircleMore,
   ShoppingBag,
   Sparkles,
   Truck,
@@ -84,9 +84,6 @@ const empresaGrupoHighlights = [
   'O cadastro reúne fiscal, tributário, contato, emissão e prioridade estratégica.',
   'A base fica pronta para roteamento inteligente de NF-e entre empresas do grupo e parceiras.',
 ];
-
-const sophiaMailTo =
-  'mailto:corporativo.gna@gmail.com?subject=Sophia%20-%20Apoio%20ERP&body=Ol%C3%A1%20Sophia%2C%20preciso%20de%20apoio%20interno%20na%20opera%C3%A7%C3%A3o%20do%20GenesisGest.Net.';
 
 const erpDesktopLauncher = 'file:///C:/Users/Rodrigo%20Costa/Documents/Codex/2026-05-28/files-mentioned-by-the-user-nexumaltivon/NexumAltivon.com/ABRIR-ERP-DESKTOP.cmd';
 
@@ -165,6 +162,14 @@ const erpWorkspaceNavItems = [
   { id: 'erp-compras', label: 'Compras', short: 'supr.', signal: 'Reposição' },
   { id: 'erp-relatorios', label: 'Relatórios', short: 'kpi', signal: 'Gestão' },
   { id: 'erp-rh', label: 'RH', short: 'equipe', signal: 'Equipe' },
+];
+
+const erpCockpitActions = [
+  { id: 'erp-fiscal', label: 'Emissão fiscal', detail: 'Fila, emitente e automação NF-e' },
+  { id: 'erp-financeiro', label: 'Caixa / Financeiro', detail: 'Fluxo de caixa, liquidação e conciliação' },
+  { id: 'erp-logistica', label: 'Expedição / Estoque', detail: 'Separação, despacho e rastreio' },
+  { id: 'erp-empresas', label: 'Cadastro societário', detail: 'Grupo, filiais e regras tributárias' },
+  { id: 'erp-compras', label: 'Compras e custo', detail: 'Reposição, margem e fornecedores' },
 ];
 
 const fallbackIntegracoes = [
@@ -257,6 +262,22 @@ const integrationCredentialCategoryMap = {
   mercadolivre: ['marketplace'],
   bancaria: ['bancaria'],
 };
+
+const isProdutoPublicavel = (produto) =>
+  Boolean(
+    produto &&
+      produto.ativo !== false &&
+      produto.nome &&
+      produto.sku &&
+      (produto.slug || produto.id) &&
+      (produto.descricao_curta || produto.descricaoCurta || produto.descricao_longa || produto.descricaoLonga || produto.descricao) &&
+      (produto.imagem_url || produto.imagemUrl || produto.imagem || produto.imagemPrincipal || produto.imagem_principal) &&
+      Number(produto.preco) > 0 &&
+      Number(produto.peso) > 0 &&
+      Number(produto.altura) > 0 &&
+      Number(produto.largura) > 0 &&
+      Number(produto.comprimento) > 0,
+  );
 
 const fallbackClientes = [
   { id: 1, nome: 'Ana Carolina Silva', email: 'ana.silva@email.com', telefone: '(14) 99876-5432', cpf: '123.456.789-00' },
@@ -460,6 +481,10 @@ const parseJsonPreview = (value, fallback) => {
   }
 };
 const normalizePreviewImage = (value) => String(value || '').trim();
+const asArray = (data) => {
+  const normalized = unwrapApiData(data);
+  return Array.isArray(normalized) ? normalized : [];
+};
 
 const getDashboardRouteState = (path = '') => {
   const segments = String(path || '').split('/').filter(Boolean);
@@ -495,6 +520,27 @@ const getDashboardPath = (tabId, cadastroId = 'produtos') => {
   return `/dashboard/${tabId}`;
 };
 
+const getProdutoPrefixoInterno = (tipoProduto, fornecedorId) => {
+  const valorComparacao = `${tipoProduto ?? ''} ${fornecedorId ? 'fornecedor' : ''}`.toLowerCase();
+
+  if (valorComparacao.includes('drop')) return 'Ds';
+  if (valorComparacao.includes('marketplace')) return 'Ec';
+  if (fornecedorId) return 'Fo';
+  return 'Ec';
+};
+
+const normalizarSkuInterno = (form) => {
+  const prefixo = getProdutoPrefixoInterno(form.tipoProduto, form.fornecedorId);
+  const bruto = String(form.sku || form.id || form.nome || '').trim();
+  const semPrefixo = bruto.replace(/^(fo|ds|ec|cl|fu|lj|pr)[\s\-_]*/i, '');
+  const corpo = semPrefixo
+    .replace(/[^a-z0-9]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .toUpperCase();
+
+  return corpo ? `${prefixo.toUpperCase()}-${corpo}` : `${prefixo.toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+};
+
 const fileToDataUrl = (file) =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -503,63 +549,66 @@ const fileToDataUrl = (file) =>
     reader.readAsDataURL(file);
   });
 
-const getProdutoDuplicateMessage = (form, produtos) => {
+const getProdutoDuplicateMessage = (form, produtos, ignoreId = '') => {
   const sku = normalizeText(form.sku);
   const id = normalizeText(form.id);
   const nome = normalizeText(form.nome);
+  const ignoreKey = normalizeText(ignoreId);
 
   if (sku) {
-    const duplicate = produtos.find((produto) => normalizeText(produto.sku) === sku);
+    const duplicate = produtos.find((produto) => normalizeText(produto.sku) === sku && normalizeText(produto.id) !== ignoreKey);
     if (duplicate) return `SKU já usado em ${duplicate.nome || 'outro produto'}.`;
   }
 
   if (id) {
-    const duplicate = produtos.find((produto) => normalizeText(produto.id) === id);
+    const duplicate = produtos.find((produto) => normalizeText(produto.id) === id && normalizeText(produto.id) !== ignoreKey);
     if (duplicate) return `Identificador público já usado em ${duplicate.nome || 'outro produto'}.`;
   }
 
   if (nome) {
-    const duplicate = produtos.find((produto) => normalizeText(produto.nome) === nome);
+    const duplicate = produtos.find((produto) => normalizeText(produto.nome) === nome && normalizeText(produto.id) !== ignoreKey);
     if (duplicate) return 'Produto com este nome já existe no catálogo.';
   }
 
   return '';
 };
 
-const getClienteDuplicateMessage = (form, clientes) => {
+const getClienteDuplicateMessage = (form, clientes, ignoreId = '') => {
   const email = normalizeText(form.email);
   const documento = normalizeDocument(form.cpf);
+  const ignoreKey = normalizeText(ignoreId);
 
   if (email) {
-    const duplicate = clientes.find((cliente) => normalizeText(cliente.email) === email);
+    const duplicate = clientes.find((cliente) => normalizeText(cliente.email) === email && normalizeText(cliente.id) !== ignoreKey);
     if (duplicate) return `Cliente já cadastrado com este e-mail: ${duplicate.nome || duplicate.email}.`;
   }
 
   if (documento) {
-    const duplicate = clientes.find((cliente) => normalizeDocument(cliente.cpf) === documento || normalizeDocument(cliente.cpfCnpj) === documento);
+    const duplicate = clientes.find((cliente) => (normalizeDocument(cliente.cpf) === documento || normalizeDocument(cliente.cpfCnpj) === documento) && normalizeText(cliente.id) !== ignoreKey);
     if (duplicate) return `Cliente já cadastrado com este CPF/CNPJ: ${duplicate.nome || duplicate.email}.`;
   }
 
   return '';
 };
 
-const getFornecedorDuplicateMessage = (form, fornecedores) => {
+const getFornecedorDuplicateMessage = (form, fornecedores, ignoreId = '') => {
   const documento = normalizeDocument(form.documento);
   const email = normalizeText(form.email);
   const nome = normalizeText(form.nome);
+  const ignoreKey = normalizeText(ignoreId);
 
   if (documento) {
-    const duplicate = fornecedores.find((fornecedor) => normalizeDocument(fornecedor.documento) === documento || normalizeDocument(fornecedor.cnpj) === documento);
+    const duplicate = fornecedores.find((fornecedor) => (normalizeDocument(fornecedor.documento) === documento || normalizeDocument(fornecedor.cnpj) === documento) && normalizeText(fornecedor.id) !== ignoreKey);
     if (duplicate) return `Fornecedor já cadastrado com este documento: ${duplicate.nome || duplicate.email}.`;
   }
 
   if (email) {
-    const duplicate = fornecedores.find((fornecedor) => normalizeText(fornecedor.email) === email);
+    const duplicate = fornecedores.find((fornecedor) => normalizeText(fornecedor.email) === email && normalizeText(fornecedor.id) !== ignoreKey);
     if (duplicate) return `Fornecedor já cadastrado com este e-mail: ${duplicate.nome || duplicate.email}.`;
   }
 
   if (nome) {
-    const duplicate = fornecedores.find((fornecedor) => normalizeText(fornecedor.nome) === nome);
+    const duplicate = fornecedores.find((fornecedor) => normalizeText(fornecedor.nome) === nome && normalizeText(fornecedor.id) !== ignoreKey);
     if (duplicate) return 'Fornecedor com este nome já existe na base.';
   }
 
@@ -589,7 +638,7 @@ const getEmpresaGrupoDuplicateMessage = (form, empresas) => {
   return '';
 };
 
-function StatCard({ title, value, detail, icon: Icon, trend, tone = 'slate' }) {
+function StatCard({ title, value, detail, icon: Icon, trend, tone = 'slate', onClick }) {
   const toneClass = {
     slate: 'bg-slate-950 text-white',
     amber: 'bg-amber-400 text-slate-950',
@@ -598,14 +647,19 @@ function StatCard({ title, value, detail, icon: Icon, trend, tone = 'slate' }) {
   }[tone];
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm" data-testid={`dashboard-stat-${title}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-lg border border-slate-200 bg-white p-5 text-left shadow-sm transition ${onClick ? 'cursor-pointer hover:-translate-y-0.5 hover:border-[#C9A227] hover:shadow-md' : ''}`}
+      data-testid={`dashboard-stat-${title}`}
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{title}</p>
-          <p className="mt-3 text-3xl font-black text-slate-950">{value}</p>
+          <p className="mt-3 text-2xl font-black text-slate-950 sm:text-3xl">{value}</p>
         </div>
-        <div className={`flex h-11 w-11 items-center justify-center rounded-lg ${toneClass}`}>
-          <Icon size={22} />
+        <div className={`flex h-10 w-10 items-center justify-center rounded-lg sm:h-11 sm:w-11 ${toneClass}`}>
+          <Icon size={20} className="sm:h-[22px] sm:w-[22px]" />
         </div>
       </div>
       <div className="mt-5 flex items-center gap-2 text-sm font-bold text-slate-500">
@@ -613,16 +667,20 @@ function StatCard({ title, value, detail, icon: Icon, trend, tone = 'slate' }) {
         <span className={trend >= 0 ? 'text-emerald-700' : 'text-rose-700'}>{Math.abs(trend)}%</span>
         <span>{detail}</span>
       </div>
-    </div>
+    </button>
   );
 }
 
-function StatMiniCard({ label, value }) {
+function StatMiniCard({ label, value, onClick }) {
   return (
-    <div className="erp-mini-card rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+    <button
+      type="button"
+      onClick={onClick}
+      className={`erp-mini-card rounded-lg border border-slate-200 bg-white p-5 text-left shadow-sm transition ${onClick ? 'cursor-pointer hover:-translate-y-0.5 hover:border-[#C9A227] hover:shadow-md' : ''}`}
+    >
       <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
-      <p className="mt-3 text-3xl font-black text-slate-950">{value}</p>
-    </div>
+      <p className="mt-3 text-2xl font-black text-slate-950 sm:text-3xl">{value}</p>
+    </button>
   );
 }
 
@@ -631,6 +689,7 @@ export default function Dashboard() {
   const params = useParams();
   const { user, isAuthenticated, loading: authLoading, logout } = useAuth();
   const routeState = useMemo(() => getDashboardRouteState(params['*']), [params]);
+  const sophiaHref = 'mailto:corporativo.gna@gmail.com?subject=Sophia%20-%20Apoio%20ERP&body=Ol%C3%A1%20Sophia%2C%20preciso%20de%20apoio%20interno%20na%20opera%C3%A7%C3%A3o%20do%20GenesisGest.Net.';
   const [resumo, setResumo] = useState(allowDemoData ? fallbackResumo : emptyResumo);
   const [pedidos, setPedidos] = useState(allowDemoData ? fallbackPedidos : []);
   const [leads, setLeads] = useState(allowDemoData ? fallbackLeads : []);
@@ -639,6 +698,9 @@ export default function Dashboard() {
   const [clientes, setClientes] = useState(allowDemoData ? fallbackClientes : []);
   const [fornecedores, setFornecedores] = useState(allowDemoData ? fallbackFornecedores : []);
   const [empresasGrupo, setEmpresasGrupo] = useState(allowDemoData ? fallbackEmpresasGrupo : []);
+  const [produtoEditingId, setProdutoEditingId] = useState('');
+  const [clienteEditingId, setClienteEditingId] = useState('');
+  const [fornecedorEditingId, setFornecedorEditingId] = useState('');
   const [fiscalPedidos, setFiscalPedidos] = useState([]);
   const [integracoes, setIntegracoes] = useState(fallbackIntegracoes);
   const [credenciaisModelo, setCredenciaisModelo] = useState([]);
@@ -716,20 +778,31 @@ export default function Dashboard() {
         siteAPI.getAll().catch(() => ({ data: [] })),
       ]);
       if (resumoRes.data) setResumo({ ...fallbackResumo, ...resumoRes.data });
-      if (Array.isArray(pedidosRes.data) && pedidosRes.data.length > 0) setPedidos(pedidosRes.data);
-      if (Array.isArray(leadsRes.data) && leadsRes.data.length > 0) setLeads(leadsRes.data);
-      if (Array.isArray(produtosRes.data) && produtosRes.data.length > 0) setProdutos(produtosRes.data);
-      if (Array.isArray(categoriasRes.data) && categoriasRes.data.length > 0) setCategorias(categoriasRes.data);
-      if (Array.isArray(clientesRes.data) && clientesRes.data.length > 0) setClientes(clientesRes.data);
-      if (Array.isArray(fornecedoresRes.data) && fornecedoresRes.data.length > 0) setFornecedores(fornecedoresRes.data);
-      if (Array.isArray(empresasGrupoRes.data) && empresasGrupoRes.data.length > 0) setEmpresasGrupo(empresasGrupoRes.data);
-      if (Array.isArray(fiscalPedidosRes.data) && fiscalPedidosRes.data.length > 0) setFiscalPedidos(fiscalPedidosRes.data);
-      if (Array.isArray(integracoesRes.data) && integracoesRes.data.length > 0) setIntegracoes(integracoesRes.data);
-      if (Array.isArray(credenciaisRes.data) && credenciaisRes.data.length > 0) setCredenciaisModelo(credenciaisRes.data);
-      if (Array.isArray(siteConfigRes.data) && siteConfigRes.data.length > 0) {
-        setSiteConfigItems(siteConfigRes.data);
+      const pedidosData = asArray(pedidosRes.data);
+      const leadsData = asArray(leadsRes.data);
+      if (pedidosData.length > 0) setPedidos(pedidosData);
+      if (leadsData.length > 0) setLeads(leadsData);
+      const produtosData = asArray(produtosRes.data).filter(isProdutoPublicavel);
+      const categoriasData = asArray(categoriasRes.data);
+      const clientesData = asArray(clientesRes.data);
+      const fornecedoresData = asArray(fornecedoresRes.data);
+      const empresasGrupoData = asArray(empresasGrupoRes.data);
+      const fiscalPedidosData = asArray(fiscalPedidosRes.data);
+      if (produtosData.length > 0) setProdutos(produtosData);
+      if (categoriasData.length > 0) setCategorias(categoriasData);
+      if (clientesData.length > 0) setClientes(clientesData);
+      if (fornecedoresData.length > 0) setFornecedores(fornecedoresData);
+      if (empresasGrupoData.length > 0) setEmpresasGrupo(empresasGrupoData);
+      if (fiscalPedidosData.length > 0) setFiscalPedidos(fiscalPedidosData);
+      const integracoesData = asArray(integracoesRes.data);
+      const credenciaisData = asArray(credenciaisRes.data);
+      const siteConfigData = asArray(siteConfigRes.data);
+      if (integracoesData.length > 0) setIntegracoes(integracoesData);
+      if (credenciaisData.length > 0) setCredenciaisModelo(credenciaisData);
+      if (siteConfigData.length > 0) {
+        setSiteConfigItems(siteConfigData);
         setSiteConfigForm((current) =>
-          siteConfigRes.data.reduce((acc, item) => ({ ...acc, [item.chave]: item.valor ?? '' }), { ...current }),
+          siteConfigData.reduce((acc, item) => ({ ...acc, [item.chave]: item.valor ?? '' }), { ...current }),
         );
       }
     } catch (error) {
@@ -802,7 +875,7 @@ export default function Dashboard() {
   const submitProduto = async (event) => {
     event.preventDefault();
     setFormStatus('');
-    const duplicateMessage = getProdutoDuplicateMessage(produtoForm, produtos);
+    const duplicateMessage = getProdutoDuplicateMessage(produtoForm, produtos, produtoEditingId);
     if (duplicateMessage) {
       setFormStatus(duplicateMessage);
       return;
@@ -810,6 +883,7 @@ export default function Dashboard() {
 
     const payload = {
       ...produtoForm,
+      sku: normalizarSkuInterno(produtoForm),
       preco: Number(produtoForm.preco),
       precoPromocional: produtoForm.precoPromocional ? Number(produtoForm.precoPromocional) : null,
       custo: produtoForm.custo ? Number(produtoForm.custo) : null,
@@ -825,10 +899,19 @@ export default function Dashboard() {
       fornecedorId: produtoForm.fornecedorId ? Number(produtoForm.fornecedorId) : null,
     };
 
-    const response = await produtoAPI.create(payload);
-    setProdutos((current) => [response.data, ...current]);
+    const response = produtoEditingId
+      ? await produtoAPI.update(produtoEditingId, payload)
+      : await produtoAPI.create(payload);
+    setProdutos((current) => {
+      const respostaId = String(response.data.id ?? response.data.slug ?? response.data.Slug ?? produtoEditingId);
+      const semDuplicidade = current.filter((produto) => String(produto.id ?? produto.slug ?? produto.Slug ?? '') !== respostaId);
+      return isProdutoPublicavel(response.data) ? [response.data, ...semDuplicidade] : semDuplicidade;
+    });
     setProdutoForm(emptyProduto);
-    setFormStatus('Produto cadastrado e disponível no catálogo.');
+    setProdutoEditingId('');
+    setFormStatus(isProdutoPublicavel(response.data)
+      ? (produtoEditingId ? 'Produto atualizado e pronto para o catálogo.' : 'Produto cadastrado e disponível no catálogo.')
+      : 'Produto salvo, mas ainda não atende os requisitos para aparecer no catálogo.');
   };
 
   const uploadProdutoImagem = async (file) => {
@@ -915,34 +998,52 @@ export default function Dashboard() {
   const submitCliente = async (event) => {
     event.preventDefault();
     setFormStatus('');
-    const duplicateMessage = getClienteDuplicateMessage(clienteForm, clientes);
+    const duplicateMessage = getClienteDuplicateMessage(clienteForm, clientes, clienteEditingId);
     if (duplicateMessage) {
       setFormStatus(duplicateMessage);
       return;
     }
 
-    const response = await clienteAPI.create(clienteForm);
+    const response = clienteEditingId
+      ? await clienteAPI.update(clienteEditingId, {
+        nome: clienteForm.nome,
+        email: clienteForm.email,
+        cpfCnpj: clienteForm.cpf || null,
+        telefone: clienteForm.telefone || null,
+        whatsapp: clienteForm.telefone || null,
+        newsletter: true,
+        vip: false,
+        status: 'Ativo',
+      })
+      : await clienteAPI.create(clienteForm);
     setClientes((current) => {
-      const semDuplicidade = current.filter((cliente) => cliente.id !== response.data.id);
+      const semDuplicidade = current.filter((cliente) => String(cliente.id) !== String(response.data.id ?? clienteEditingId));
       return [response.data, ...semDuplicidade];
     });
     setClienteForm(emptyCliente);
-    setFormStatus('Cliente cadastrado no painel.');
+    setClienteEditingId('');
+    setFormStatus(clienteEditingId ? 'Cliente atualizado no painel.' : 'Cliente cadastrado no painel.');
   };
 
   const submitFornecedor = async (event) => {
     event.preventDefault();
     setFormStatus('');
-    const duplicateMessage = getFornecedorDuplicateMessage(fornecedorForm, fornecedores);
+    const duplicateMessage = getFornecedorDuplicateMessage(fornecedorForm, fornecedores, fornecedorEditingId);
     if (duplicateMessage) {
       setFormStatus(duplicateMessage);
       return;
     }
 
-    const response = await fornecedorAPI.create(fornecedorForm);
-    setFornecedores((current) => [response.data, ...current]);
+    const response = fornecedorEditingId
+      ? await fornecedorAPI.update(fornecedorEditingId, fornecedorForm)
+      : await fornecedorAPI.create(fornecedorForm);
+    setFornecedores((current) => {
+      const semDuplicidade = current.filter((fornecedor) => String(fornecedor.id) !== String(response.data.id ?? fornecedorEditingId));
+      return [response.data, ...semDuplicidade];
+    });
     setFornecedorForm(emptyFornecedor);
-    setFormStatus('Fornecedor cadastrado no painel.');
+    setFornecedorEditingId('');
+    setFormStatus(fornecedorEditingId ? 'Fornecedor atualizado no painel.' : 'Fornecedor cadastrado no painel.');
   };
 
   const submitLead = async (event) => {
@@ -1043,9 +1144,9 @@ export default function Dashboard() {
     );
   }, [leads, query]);
 
-  const produtoDuplicateMessage = useMemo(() => getProdutoDuplicateMessage(produtoForm, produtos), [produtoForm, produtos]);
-  const clienteDuplicateMessage = useMemo(() => getClienteDuplicateMessage(clienteForm, clientes), [clienteForm, clientes]);
-  const fornecedorDuplicateMessage = useMemo(() => getFornecedorDuplicateMessage(fornecedorForm, fornecedores), [fornecedorForm, fornecedores]);
+  const produtoDuplicateMessage = useMemo(() => getProdutoDuplicateMessage(produtoForm, produtos, produtoEditingId), [produtoForm, produtos, produtoEditingId]);
+  const clienteDuplicateMessage = useMemo(() => getClienteDuplicateMessage(clienteForm, clientes, clienteEditingId), [clienteForm, clientes, clienteEditingId]);
+  const fornecedorDuplicateMessage = useMemo(() => getFornecedorDuplicateMessage(fornecedorForm, fornecedores, fornecedorEditingId), [fornecedorForm, fornecedores, fornecedorEditingId]);
   const empresaGrupoDuplicateMessage = useMemo(() => getEmpresaGrupoDuplicateMessage(empresaGrupoForm, empresasGrupo), [empresaGrupoForm, empresasGrupo]);
   const selectedCadastro = cadastroTabs.find((item) => item.id === activeCadastroTab) || cadastroTabs[0];
   const cadastroCounts = {
@@ -1065,6 +1166,71 @@ export default function Dashboard() {
 
   const openIntegration = (slug) => {
     navigate(`/dashboard/integracoes/${slug}`);
+  };
+
+  const startEditProduto = (produto) => {
+    setProdutoEditingId(String(produto.id ?? produto.slug ?? produto.Slug ?? '').trim());
+    setProdutoForm({
+      ...emptyProduto,
+      id: produto.id ?? produto.slug ?? produto.Slug ?? '',
+      nome: produto.nome ?? produto.Nome ?? '',
+      descricaoCurta: produto.descricao_curta ?? produto.descricaoCurta ?? produto.DescricaoCurta ?? '',
+      descricao: produto.descricao_longa ?? produto.descricaoLonga ?? produto.descricao ?? produto.DescricaoLonga ?? '',
+      preco: String(produto.preco ?? produto.Preco ?? ''),
+      precoPromocional: String(produto.preco_promocional ?? produto.precoPromocional ?? produto.PrecoPromocional ?? ''),
+      custo: String(produto.custo ?? produto.Custo ?? ''),
+      peso: String(produto.peso ?? produto.Peso ?? ''),
+      altura: String(produto.altura ?? produto.Altura ?? ''),
+      largura: String(produto.largura ?? produto.Largura ?? ''),
+      comprimento: String(produto.comprimento ?? produto.Comprimento ?? ''),
+      imagemUrl: produto.imagemUrl ?? produto.imagem_url ?? produto.imagem_principal ?? produto.imagemPrincipal ?? produto.ImagemPrincipal ?? '',
+      imagensGaleria: produto.imagensGaleria ?? produto.imagens_galeria ?? produto.ImagensGaleria ?? '',
+      estoque: String(produto.estoque ?? produto.estoque_atual ?? produto.EstoqueAtual ?? ''),
+      estoqueMinimo: String(produto.estoqueMinimo ?? produto.estoque_minimo ?? produto.EstoqueMinimo ?? ''),
+      estoqueReservado: String(produto.estoqueReservado ?? produto.estoque_reservado ?? produto.EstoqueReservado ?? ''),
+      destaque: Boolean(produto.destaque ?? produto.Destaque),
+      ativo: Boolean(produto.ativo ?? produto.Ativo ?? true),
+      sku: produto.sku ?? produto.Sku ?? '',
+      categoriaId: String(produto.categoria_id ?? produto.categoriaId ?? produto.CategoriaId ?? 'classicos'),
+      subcategoriaId: String(produto.subcategoria_id ?? produto.subcategoriaId ?? produto.SubcategoriaId ?? ''),
+      tipoProduto: produto.tipo_produto ?? produto.tipoProduto ?? produto.TipoProduto ?? 'Proprio',
+      fornecedorId: String(produto.fornecedor_id ?? produto.fornecedorId ?? produto.FornecedorId ?? ''),
+      marca: produto.marca ?? produto.Marca ?? '',
+      tags: produto.tags ?? produto.Tags ?? '',
+      seoTitulo: produto.seo_titulo ?? produto.seoTitulo ?? produto.SeoTitulo ?? '',
+      seoDescricao: produto.seo_descricao ?? produto.seoDescricao ?? produto.SeoDescricao ?? '',
+      seoKeywords: produto.seo_keywords ?? produto.seoKeywords ?? produto.SeoKeywords ?? '',
+    });
+    setFormStatus(`Editando produto ${produto.nome ?? produto.Nome ?? ''}.`);
+    setActiveTab('cadastro-produtos');
+    setActiveCadastroTab('produtos');
+  };
+
+  const startEditCliente = (cliente) => {
+    setClienteEditingId(String(cliente.id ?? cliente.Id ?? '').trim());
+    setClienteForm({
+      nome: cliente.nome ?? cliente.Nome ?? '',
+      email: cliente.email ?? cliente.Email ?? '',
+      telefone: cliente.telefone ?? cliente.Telefone ?? '',
+      cpf: cliente.cpf ?? cliente.cpfCnpj ?? cliente.CpfCnpj ?? '',
+    });
+    setFormStatus(`Editando cliente ${cliente.nome ?? cliente.Nome ?? ''}.`);
+    setActiveTab('cadastro-clientes');
+    setActiveCadastroTab('clientes');
+  };
+
+  const startEditFornecedor = (fornecedor) => {
+    setFornecedorEditingId(String(fornecedor.id ?? fornecedor.Id ?? '').trim());
+    setFornecedorForm({
+      nome: fornecedor.nome ?? fornecedor.Nome ?? '',
+      documento: fornecedor.documento ?? fornecedor.cnpj ?? fornecedor.Cnpj ?? '',
+      email: fornecedor.email ?? fornecedor.Email ?? '',
+      telefone: fornecedor.telefone ?? fornecedor.Telefone ?? '',
+      categoria: fornecedor.categoria ?? fornecedor.segmento ?? fornecedor.Categoria ?? 'Geral',
+    });
+    setFormStatus(`Editando fornecedor ${fornecedor.nome ?? fornecedor.Nome ?? ''}.`);
+    setActiveTab('cadastro-fornecedores');
+    setActiveCadastroTab('fornecedores');
   };
 
   const statusCounts = useMemo(() => {
@@ -1101,7 +1267,7 @@ export default function Dashboard() {
               <span className="uppercase tracking-[0.18em] text-zinc-500">Console</span>
               <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[0.62rem] font-black uppercase text-emerald-300">local</span>
             </div>
-            <p className="mt-2 text-zinc-300">API 127.0.0.1:5011 · BD 3309 · modo operacional</p>
+            <p className="mt-2 text-zinc-300">API 127.0.0.1:5012 · BD 3309 · modo operacional</p>
           </div>
 
           <nav className="mt-5 space-y-4 overflow-y-auto pb-6 pr-1">
@@ -1176,14 +1342,15 @@ export default function Dashboard() {
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="rounded-2xl border border-[#2A2A2A] bg-[#111111] px-4 py-2 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-zinc-500">Operando como</p>
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-zinc-500">Usuário</p>
                 <p className="text-sm font-bold text-white">{user?.nome || user?.email || 'Equipe Nexum'}</p>
               </div>
               <a
-                href={sophiaMailTo}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#2A2A2A] bg-[#111111] px-5 text-sm font-black text-[#E8D5A3] hover:border-[#C9A227] hover:text-white"
+                href={sophiaHref}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#2A2A2A] bg-[#111111] text-[#E8D5A3] hover:border-[#C9A227] hover:text-white"
+                title="Chamar Sophia"
               >
-                Chamar Sophia
+                <MessageCircleMore size={18} />
               </a>
               <button
                 type="button"
@@ -1202,9 +1369,6 @@ export default function Dashboard() {
                   className="h-11 w-full rounded-full border border-[#2A2A2A] bg-[#050505] pl-10 pr-4 text-sm font-semibold text-white outline-none focus:border-[#C9A227] focus:ring-4 focus:ring-[#C9A227]/10 sm:w-80"
                 />
               </div>
-              <button className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#2A2A2A] bg-[#1A1A1A] text-zinc-300 hover:border-[#C9A227] hover:text-white" aria-label="Notificações" title="Notificações">
-                <Bell size={19} />
-              </button>
               <button
                 onClick={logout}
                 className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#C9A227] px-5 text-sm font-black text-black shadow-[0_16px_35px_rgba(201,162,39,0.18)] hover:bg-[#FFD95A]"
@@ -1247,10 +1411,10 @@ export default function Dashboard() {
               {activeTab === 'overview' && (
                 <div className="space-y-6">
                   <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-                    <StatCard title="Pedidos hoje" value={resumo.pedidos_hoje} detail="vs. ontem" trend={12} icon={ShoppingBag} tone="slate" />
-                    <StatCard title="Clientes" value={resumo.total_clientes} detail="base ativa" trend={8} icon={Users} tone="emerald" />
-                    <StatCard title="Faturamento" value={formatPrice(resumo.faturamento_mes)} detail="no mês" trend={18} icon={TrendingUp} tone="amber" />
-                    <StatCard title="Leads novos" value={resumo.leads_novos} detail="em qualificação" trend={-3} icon={UserRound} tone="indigo" />
+                    <StatCard title="Pedidos hoje" value={resumo.pedidos_hoje} detail="vs. ontem" trend={12} icon={ShoppingBag} tone="slate" onClick={() => openMainTab('pedidos')} />
+                    <StatCard title="Clientes" value={resumo.total_clientes} detail="base ativa" trend={8} icon={Users} tone="emerald" onClick={() => openMainTab('cadastro-clientes')} />
+                    <StatCard title="Faturamento" value={formatPrice(resumo.faturamento_mes)} detail="no mês" trend={18} icon={TrendingUp} tone="amber" onClick={() => openMainTab('erp-financeiro')} />
+                    <StatCard title="Leads novos" value={resumo.leads_novos} detail="em qualificação" trend={-3} icon={UserRound} tone="indigo" onClick={() => openMainTab('crm')} />
                   </div>
 
                   <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -1272,12 +1436,21 @@ export default function Dashboard() {
                         { label: 'Gateways/API', status: 'Paralelo', icon: Database },
                       ].map((item) => {
                         const Icon = item.icon;
+                        const targetTab = item.label === 'Cadastros reais'
+                          ? 'cadastro-produtos'
+                          : item.label === 'Dropshipping'
+                            ? 'integracoes'
+                            : item.label === 'Logística'
+                              ? 'erp-logistica'
+                              : item.label === 'Gateways/API'
+                                ? 'integracoes'
+                                : 'overview';
                         return (
-                          <div key={item.label} className="rounded-lg border border-slate-100 bg-slate-50 p-4">
+                          <button key={item.label} type="button" onClick={() => openMainTab(targetTab)} className="rounded-lg border border-slate-100 bg-slate-50 p-4 text-left transition hover:-translate-y-0.5 hover:border-[#C9A227] hover:shadow-md">
                             <Icon className="text-amber-600" size={22} />
                             <p className="mt-3 text-sm font-black text-slate-950">{item.label}</p>
                             <p className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-500">{item.status}</p>
-                          </div>
+                          </button>
                         );
                       })}
                     </div>
@@ -1408,7 +1581,7 @@ export default function Dashboard() {
                   {activeCadastroTab === 'produtos' && (
                     <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
                       <form onSubmit={submitProduto} className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-                        <h3 className="text-lg font-black text-slate-950">Cadastro detalhado de produto</h3>
+                        <h3 className="text-lg font-black text-slate-950">{produtoEditingId ? 'Editar produto cadastrado' : 'Cadastro detalhado de produto'}</h3>
                         <p className="mt-1 text-sm font-semibold text-slate-500">Informações principais para catálogo, estoque e vitrine pública.</p>
                         {produtoDuplicateMessage && <DuplicateAlert message={produtoDuplicateMessage} />}
                         <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -1509,10 +1682,25 @@ export default function Dashboard() {
                             Produto em destaque na vitrine
                           </label>
                         </div>
-                        <button disabled={Boolean(produtoDuplicateMessage)} className="mt-5 inline-flex h-11 items-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300">
-                          <Save size={17} />
-                          Salvar produto
-                        </button>
+                        <div className="mt-5 flex flex-wrap gap-3">
+                          <button disabled={Boolean(produtoDuplicateMessage)} className="inline-flex h-11 items-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300">
+                            <Save size={17} />
+                            {produtoEditingId ? 'Atualizar produto' : 'Salvar produto'}
+                          </button>
+                          {produtoEditingId && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setProdutoForm(emptyProduto);
+                                setProdutoEditingId('');
+                                setFormStatus('Edição de produto cancelada.');
+                              }}
+                              className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-5 text-sm font-black text-slate-700"
+                            >
+                              Cancelar edição
+                            </button>
+                          )}
+                        </div>
                       </form>
                       <div className="space-y-6">
                         <ProductPreview produto={produtoForm} categorias={categorias} />
@@ -1544,14 +1732,14 @@ export default function Dashboard() {
                           </button>
                         </form>
                         <CompactList title="Hierarquia do catálogo" items={categoriasHierarquicas} fields={['label', 'descricao']} />
-                        <CompactList title="Produtos cadastrados" items={produtos} fields={['nome', 'sku', 'estoque']} />
+                        <CompactList title="Produtos cadastrados" items={produtos} fields={['nome', 'sku', 'estoque']} onEdit={startEditProduto} />
                       </div>
                     </div>
                   )}
 
                   {activeCadastroTab === 'clientes' && (
                     <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-                      <SimpleForm title="Cadastro detalhado de cliente" subtitle="Evita duplicidade por e-mail/CPF e reaproveita registros existentes." onSubmit={submitCliente} buttonLabel="Salvar cliente" alertMessage={clienteDuplicateMessage} disabled={Boolean(clienteDuplicateMessage)}>
+                      <SimpleForm title={clienteEditingId ? 'Editar cliente cadastrado' : 'Cadastro detalhado de cliente'} subtitle="Evita duplicidade por e-mail/CPF e reaproveita registros existentes." onSubmit={submitCliente} buttonLabel={clienteEditingId ? 'Atualizar cliente' : 'Salvar cliente'} alertMessage={clienteDuplicateMessage} disabled={Boolean(clienteDuplicateMessage)}>
                         <Field label="Nome completo / Razão social" value={clienteForm.nome} onChange={(value) => setClienteForm((form) => ({ ...form, nome: value }))} required />
                         <Field label="Email principal" type="email" value={clienteForm.email} onChange={(value) => setClienteForm((form) => ({ ...form, email: value }))} required />
                         <Field label="Telefone / WhatsApp" value={clienteForm.telefone} onChange={(value) => setClienteForm((form) => ({ ...form, telefone: value }))} />
@@ -1559,14 +1747,14 @@ export default function Dashboard() {
                       </SimpleForm>
                       <div className="space-y-6">
                         <CadastroInsightPanel title="Controle de clientes" checks={cadastroHighlights.clientes} />
-                        <CompactList title="Clientes cadastrados" items={clientes} fields={['nome', 'email', 'telefone', 'cpf']} />
+                        <CompactList title="Clientes cadastrados" items={clientes} fields={['nome', 'email', 'telefone', 'cpf']} onEdit={startEditCliente} />
                       </div>
                     </div>
                   )}
 
                   {activeCadastroTab === 'fornecedores' && (
                     <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-                      <SimpleForm title="Cadastro detalhado de fornecedor" subtitle="Base para compras, dropshipping, logística e integrações futuras." onSubmit={submitFornecedor} buttonLabel="Salvar fornecedor" alertMessage={fornecedorDuplicateMessage} disabled={Boolean(fornecedorDuplicateMessage)}>
+                      <SimpleForm title={fornecedorEditingId ? 'Editar fornecedor cadastrado' : 'Cadastro detalhado de fornecedor'} subtitle="Base para compras, dropshipping, logística e integrações futuras." onSubmit={submitFornecedor} buttonLabel={fornecedorEditingId ? 'Atualizar fornecedor' : 'Salvar fornecedor'} alertMessage={fornecedorDuplicateMessage} disabled={Boolean(fornecedorDuplicateMessage)}>
                         <Field label="Nome / Razão social" value={fornecedorForm.nome} onChange={(value) => setFornecedorForm((form) => ({ ...form, nome: value }))} required />
                         <Field label="Documento CNPJ/CPF" value={fornecedorForm.documento} onChange={(value) => setFornecedorForm((form) => ({ ...form, documento: value }))} />
                         <Field label="Email comercial" type="email" value={fornecedorForm.email} onChange={(value) => setFornecedorForm((form) => ({ ...form, email: value }))} />
@@ -1575,7 +1763,7 @@ export default function Dashboard() {
                       </SimpleForm>
                       <div className="space-y-6">
                         <CadastroInsightPanel title="Controle de fornecedores" checks={cadastroHighlights.fornecedores} />
-                        <CompactList title="Fornecedores cadastrados" items={fornecedores} fields={['nome', 'documento', 'email', 'categoria']} />
+                        <CompactList title="Fornecedores cadastrados" items={fornecedores} fields={['nome', 'documento', 'email', 'categoria']} onEdit={startEditFornecedor} />
                       </div>
                     </div>
                   )}
@@ -1622,116 +1810,124 @@ export default function Dashboard() {
               {activeTab === 'erp' && (
                 <section className="erp-desktop-surface space-y-6">
                   <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
-                  <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                      <div>
-                        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Gestão absoluta</p>
-                        <h2 className="mt-2 text-2xl font-black text-slate-950">GenesisGest.Net</h2>
-                        <p className="mt-1 max-w-3xl text-sm text-slate-500">
-                          Central empresarial para financeiro, fiscal, logística, estoque, empresas do grupo e parceiros estratégicos.
-                        </p>
-                      </div>
-                      <span className="rounded-full bg-slate-950 px-4 py-2 text-sm font-black text-[#C9A227]">Painel + Desktop</span>
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border border-[#C9A227]/30 bg-[#C9A227]/10 p-6 shadow-sm">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                      <div>
-                        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#8B6B12]">Acesso direto</p>
-                        <h3 className="mt-2 text-xl font-black text-slate-950">ERP Desktop para operação local</h3>
-                        <p className="mt-1 max-w-3xl text-sm text-slate-600">
-                          Baixe ou execute o atalho do Windows para abrir o painel desktop do GenesisGest.Net com o portal e a API já apontados para o ambiente local.
-                        </p>
-                      </div>
-                      <a
-                        href={erpDesktopLauncher}
-                        download="ABRIR-ERP-DESKTOP.cmd"
-                        className="inline-flex items-center justify-center rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800"
-                      >
-                        Abrir ERP Desktop
-                      </a>
-                    </div>
-                    <p className="mt-4 text-xs font-semibold text-slate-500">
-                      Se o navegador baixar o arquivo, execute <span className="font-black text-slate-700">ABRIR-ERP-DESKTOP.cmd</span> no Windows.
-                    </p>
-                  </div>
-
-                  <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-                    {erpModules.map((module) => {
-                      const Icon = module.icon;
-                      return (
-                        <button
-                          type="button"
-                          key={module.title}
-                          onClick={() => openMainTab(module.tabId)}
-                          className="rounded-lg border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-[#C9A227] hover:shadow-md"
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-950 text-[#C9A227]">
-                              <Icon size={23} />
-                            </div>
-                            <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black uppercase tracking-wide text-amber-900">
-                              {module.signal}
-                            </span>
+                  <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+                    <ErpCockpitMenu activeTab={activeTab} onNavigate={openMainTab} />
+                    <div className="space-y-6">
+                      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                          <div>
+                            <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Gestão absoluta</p>
+                            <h2 className="mt-2 text-2xl font-black text-slate-950">GenesisGest.Net</h2>
+                            <p className="mt-1 max-w-3xl text-sm text-slate-500">
+                              Central empresarial para financeiro, fiscal, logística, estoque, empresas do grupo e parceiros estratégicos.
+                            </p>
                           </div>
-                          <h3 className="mt-5 text-xl font-black text-slate-950">{module.title}</h3>
-                          <p className="mt-2 text-sm font-bold text-slate-500">{module.status}</p>
-                          <div className="mt-5 grid gap-2">
-                            {module.metrics.map((metric) => (
-                              <div key={metric} className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                                <span className="h-2 w-2 rounded-full bg-[#C9A227]" />
-                                <span className="text-sm font-bold text-slate-700">{metric}</span>
+                          <span className="rounded-full bg-slate-950 px-4 py-2 text-sm font-black text-[#C9A227]">Painel + Desktop</span>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-[#C9A227]/30 bg-[#C9A227]/10 p-6 shadow-sm">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                          <div>
+                            <p className="text-xs font-black uppercase tracking-[0.2em] text-[#8B6B12]">Acesso direto</p>
+                            <h3 className="mt-2 text-xl font-black text-slate-950">ERP Desktop para operação local</h3>
+                            <p className="mt-1 max-w-3xl text-sm text-slate-600">
+                              Baixe ou execute o atalho do Windows para abrir o painel desktop do GenesisGest.Net com o portal e a API já apontados para o ambiente local.
+                            </p>
+                          </div>
+                          <a
+                            href={erpDesktopLauncher}
+                            download="ABRIR-ERP-DESKTOP.cmd"
+                            className="inline-flex items-center justify-center rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800"
+                          >
+                            Abrir ERP Desktop
+                          </a>
+                        </div>
+                        <p className="mt-4 text-xs font-semibold text-slate-500">
+                          Se o navegador baixar o arquivo, execute <span className="font-black text-slate-700">ABRIR-ERP-DESKTOP.cmd</span> no Windows.
+                        </p>
+                      </div>
+
+                      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+                        {erpModules.map((module) => {
+                          const Icon = module.icon;
+                          return (
+                            <button
+                              type="button"
+                              key={module.title}
+                              onClick={() => openMainTab(module.tabId)}
+                              className="rounded-lg border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-[#C9A227] hover:shadow-md"
+                            >
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-950 text-[#C9A227]">
+                                  <Icon size={23} />
+                                </div>
+                                <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black uppercase tracking-wide text-amber-900">
+                                  {module.signal}
+                                </span>
                               </div>
-                            ))}
-                          </div>
-                          <div className="mt-5 inline-flex items-center gap-2 text-sm font-black text-slate-950">
-                            Abrir módulo
-                            <ChevronRight size={16} />
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                              <h3 className="mt-5 text-xl font-black text-slate-950">{module.title}</h3>
+                              <p className="mt-2 text-sm font-bold text-slate-500">{module.status}</p>
+                              <div className="mt-5 grid gap-2">
+                                {module.metrics.map((metric) => (
+                                  <div key={metric} className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                                    <span className="h-2 w-2 rounded-full bg-[#C9A227]" />
+                                    <span className="text-sm font-bold text-slate-700">{metric}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="mt-5 inline-flex items-center gap-2 text-sm font-black text-slate-950">
+                                Abrir módulo
+                                <ChevronRight size={16} />
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
 
-                  <section className="rounded-lg border border-slate-200 bg-slate-950 p-6 text-white shadow-sm">
-                    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-center">
-                      <div>
-                        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Roteamento fiscal inteligente</p>
-                        <h3 className="mt-2 text-2xl font-black">Motor de decisão por empresa emitente</h3>
-                        <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-300">
-                          A análise compara empresa do grupo, regime tributário, CFOP, origem/destino, custo fiscal estimado e margem operacional para recomendar a emissão com menor ônus e maior lucratividade.
-                        </p>
-                      </div>
-                      <div className="rounded-lg border border-white/10 bg-white/5 p-5">
-                        <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Prontidão</p>
-                        <p className="mt-2 text-3xl font-black text-[#C9A227]">Staging</p>
-                        <p className="mt-2 text-sm font-bold text-slate-300">Estrutura pronta para credenciais, homologação fiscal e regras finais do contador.</p>
-                      </div>
+                      <section className="rounded-lg border border-slate-200 bg-slate-950 p-6 text-white shadow-sm">
+                        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-center">
+                          <div>
+                            <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Roteamento fiscal inteligente</p>
+                            <h3 className="mt-2 text-2xl font-black">Motor de decisão por empresa emitente</h3>
+                            <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-300">
+                              A análise compara empresa do grupo, regime tributário, CFOP, origem/destino, custo fiscal estimado e margem operacional para recomendar a emissão com menor ônus e maior lucratividade.
+                            </p>
+                          </div>
+                          <div className="rounded-lg border border-white/10 bg-white/5 p-5">
+                            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Prontidão</p>
+                            <p className="mt-2 text-3xl font-black text-[#C9A227]">Staging</p>
+                            <p className="mt-2 text-sm font-bold text-slate-300">Estrutura pronta para credenciais, homologação fiscal e regras finais do contador.</p>
+                          </div>
+                        </div>
+                      </section>
                     </div>
-                  </section>
+                  </div>
                 </section>
               )}
 
               {activeTab === 'erp-empresas' && (
                 <section className="erp-desktop-surface space-y-6">
                   <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
-                  <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-                    <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Cadastro fiscal mestre</p>
-                    <h2 className="mt-2 text-2xl font-black text-slate-950">Empresas do grupo e parceiras</h2>
-                    <p className="mt-1 max-w-3xl text-sm text-slate-500">
-                      Cadastre as empresas com o máximo de detalhes fiscais, tributários e operacionais para suportar a decisão automática de emissão.
-                    </p>
-                  </div>
+                  <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+                    <ErpCockpitMenu activeTab={activeTab} onNavigate={openMainTab} />
+                    <div className="space-y-6">
+                      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Cadastro fiscal mestre</p>
+                        <h2 className="mt-2 text-2xl font-black text-slate-950">Empresas do grupo e parceiras</h2>
+                        <p className="mt-1 max-w-3xl text-sm text-slate-500">
+                          Cadastre as empresas com o máximo de detalhes fiscais, tributários e operacionais para suportar a decisão automática de emissão.
+                        </p>
+                      </div>
 
-                  <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_380px]">
-                    <SimpleForm
-                      title="Nova empresa fiscal"
-                      subtitle="Este cadastro alimenta o motor tributário, relatórios e a futura automação de NF-e."
-                      onSubmit={submitEmpresaGrupo}
-                      buttonLabel="Salvar empresa fiscal"
-                      alertMessage={formStatus || empresaGrupoDuplicateMessage}
-                    >
+                      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_380px]">
+                        <SimpleForm
+                          title="Nova empresa fiscal"
+                          subtitle="Este cadastro alimenta o motor tributário, relatórios e a futura automação de NF-e."
+                          onSubmit={submitEmpresaGrupo}
+                          buttonLabel="Salvar empresa fiscal"
+                          alertMessage={formStatus || empresaGrupoDuplicateMessage}
+                        >
                       <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                         <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Base societária</p>
                         <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -1840,11 +2036,13 @@ export default function Dashboard() {
                       <TextAreaField label="Benefícios estratégicos" value={empresaGrupoForm.beneficiosEstrategicos} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, beneficiosEstrategicos: value }))} />
                       <TextAreaField label="Resumo contratual" value={empresaGrupoForm.contratoResumo} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, contratoResumo: value }))} />
                       <TextAreaField label="Observações fiscais e operacionais" value={empresaGrupoForm.observacoes} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, observacoes: value }))} />
-                    </SimpleForm>
+                        </SimpleForm>
 
-                    <div className="space-y-6">
-                      <CadastroInsightPanel title="Proteções do cadastro fiscal" checks={empresaGrupoHighlights} />
-                      <CompactList title="Empresas já mapeadas" items={empresasGrupo} fields={['razaoSocial', 'cnpj', 'regimeTributario', 'cidade']} />
+                        <div className="space-y-6">
+                          <CadastroInsightPanel title="Proteções do cadastro fiscal" checks={empresaGrupoHighlights} />
+                          <CompactList title="Empresas já mapeadas" items={empresasGrupo} fields={['razaoSocial', 'cnpj', 'regimeTributario', 'cidade']} />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </section>
@@ -1853,28 +2051,31 @@ export default function Dashboard() {
               {activeTab === 'erp-fiscal' && (
                 <section className="erp-desktop-surface space-y-6">
                   <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
-                  <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-                    <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Fiscal operacional</p>
-                    <h2 className="mt-2 text-2xl font-black text-slate-950">Notas e automação fiscal</h2>
-                    <p className="mt-1 max-w-3xl text-sm text-slate-500">
-                      A ERP agora expõe a fila fiscal dos pedidos, com empresa emitente sugerida, ambiente, CFOP e resumo da automação preparada no ato da compra.
-                    </p>
-                  </div>
+                  <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+                    <ErpCockpitMenu activeTab={activeTab} onNavigate={openMainTab} />
+                    <div className="space-y-6">
+                      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Fiscal operacional</p>
+                        <h2 className="mt-2 text-2xl font-black text-slate-950">Notas e automação fiscal</h2>
+                        <p className="mt-1 max-w-3xl text-sm text-slate-500">
+                          A ERP agora expõe a fila fiscal dos pedidos, com empresa emitente sugerida, ambiente, CFOP e resumo da automação preparada no ato da compra.
+                        </p>
+                      </div>
 
-                  <div className="grid gap-4 md:grid-cols-4">
-                    <StatMiniCard label="Pendências fiscais" value={fiscalPedidos.filter((item) => item.statusNfe === 'Pendente').length} />
-                    <StatMiniCard label="Autorizadas" value={fiscalPedidos.filter((item) => item.statusNfe === 'Autorizada').length} />
-                    <StatMiniCard label="Empresas emitentes" value={new Set(fiscalPedidos.map((item) => item.codigoEmpresaEmitente).filter(Boolean)).size} />
-                    <StatMiniCard label="Pedidos na fila" value={fiscalPedidos.length} />
-                  </div>
+                      <div className="grid gap-4 md:grid-cols-4">
+                        <StatMiniCard label="Pendências fiscais" value={fiscalPedidos.filter((item) => item.statusNfe === 'Pendente').length} />
+                        <StatMiniCard label="Autorizadas" value={fiscalPedidos.filter((item) => item.statusNfe === 'Autorizada').length} />
+                        <StatMiniCard label="Empresas emitentes" value={new Set(fiscalPedidos.map((item) => item.codigoEmpresaEmitente).filter(Boolean)).size} />
+                        <StatMiniCard label="Pedidos na fila" value={fiscalPedidos.length} />
+                      </div>
 
-                  <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-                    <div className="border-b border-slate-200 px-6 py-5">
-                      <h3 className="text-lg font-black text-slate-950">Fila fiscal dos pedidos</h3>
-                      <p className="mt-1 text-sm text-slate-500">Pré-emissão automática gerada a partir do checkout e do roteamento fiscal.</p>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[1100px]">
+                      <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                        <div className="border-b border-slate-200 px-6 py-5">
+                          <h3 className="text-lg font-black text-slate-950">Fila fiscal dos pedidos</h3>
+                          <p className="mt-1 text-sm text-slate-500">Pré-emissão automática gerada a partir do checkout e do roteamento fiscal.</p>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full min-w-[1100px]">
                         <thead className="bg-slate-50">
                           <tr>
                             <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Pedido</th>
@@ -1913,9 +2114,11 @@ export default function Dashboard() {
                             </tr>
                           ))}
                         </tbody>
-                      </table>
+                          </table>
+                        </div>
+                      </section>
                     </div>
-                  </section>
+                  </div>
                 </section>
               )}
 
@@ -2489,20 +2692,77 @@ function ErpWorkspaceNav({ activeTab, onNavigate }) {
   );
 }
 
+function ErpCockpitMenu({ activeTab, onNavigate }) {
+  return (
+    <aside className="erp-module-card rounded-lg border border-slate-200 bg-white p-4 shadow-sm xl:sticky xl:top-24">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-[#C9A227]">Cockpit técnico</p>
+          <p className="mt-1 text-sm font-semibold text-slate-500">Menu interno de operação do ERP/PDV.</p>
+        </div>
+        <span className="rounded-full bg-[#C9A227]/10 px-3 py-1 text-[0.62rem] font-black uppercase tracking-[0.18em] text-[#C9A227]">
+          online local
+        </span>
+      </div>
+
+      <div className="mt-4 space-y-2">
+        {erpCockpitActions.map((item) => {
+          const active = activeTab === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onNavigate(item.id)}
+              className={`w-full rounded-xl border px-4 py-3 text-left transition ${
+                active
+                  ? 'border-[#C9A227] bg-[#C9A227]/10 shadow-[0_12px_25px_rgba(201,162,39,0.10)]'
+                  : 'border-slate-200 bg-slate-50 hover:border-[#C9A227] hover:bg-white'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-black text-slate-950">{item.label}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">{item.detail}</p>
+                </div>
+                <span className={`rounded-full px-2 py-1 text-[0.62rem] font-black uppercase tracking-[0.18em] ${active ? 'bg-[#C9A227]/15 text-[#8B6B12]' : 'bg-slate-100 text-slate-500'}`}>
+                  abrir
+                </span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-950 p-4 text-white">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C9A227]">Status do motor</p>
+        <p className="mt-2 text-sm font-semibold text-slate-300">
+          API local apontada para o ambiente de operação, pronta para emissão, caixa e expedição.
+        </p>
+      </div>
+    </aside>
+  );
+}
+
 function ProductPreview({ produto, categorias }) {
   const categoriaSelecionada = produto.subcategoriaId || produto.categoriaId;
   const categoria = categorias.find((item) => item.id === categoriaSelecionada)?.caminho
     || categorias.find((item) => item.id === categoriaSelecionada)?.nome
     || categorias.find((item) => item.id === produto.categoriaId)?.nome
     || 'Sem categoria';
-  const image = produto.imagemUrl || 'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85';
+  const image = produto.imagemUrl || '';
   const price = Number(produto.preco || 0);
   const promotional = Number(produto.precoPromocional || 0);
 
   return (
     <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="aspect-[16/10] bg-slate-100">
-        <img src={image} alt={produto.nome || 'Prévia do produto'} className="h-full w-full object-cover" />
+        {image ? (
+          <img src={image} alt={produto.nome || 'Prévia do produto'} className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200">
+            <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-400">Imagem não cadastrada</p>
+          </div>
+        )}
       </div>
       <div className="p-5">
         <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Prévia da vitrine</p>
@@ -2773,18 +3033,31 @@ function SimpleForm({ title, subtitle, onSubmit, buttonLabel, children, alertMes
   );
 }
 
-function CompactList({ title, items, fields }) {
+function CompactList({ title, items, fields, onEdit }) {
   return (
     <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 px-5 py-4">
-        <h3 className="font-black text-slate-950">{title}</h3>
-        <p className="mt-1 text-sm text-slate-500">{items.length} registros</p>
+      <div className="border-b border-slate-200 px-4 py-4 sm:px-5">
+        <h3 className="text-base font-black text-slate-950 sm:text-lg">{title}</h3>
+        <p className="mt-1 text-xs text-slate-500 sm:text-sm">{items.length} registros</p>
       </div>
-      <div className="max-h-96 divide-y divide-slate-100 overflow-auto">
+      <div className="max-h-72 divide-y divide-slate-100 overflow-auto sm:max-h-96">
         {items.slice(0, 12).map((item) => (
-          <div key={item.id || item.sku || item.email} className="px-5 py-4">
-            <p className="font-black text-slate-950">{item[fields[0]] || '-'}</p>
-            <p className="mt-1 text-sm font-semibold text-slate-500">{fields.slice(1).map((field) => item[field] || '-').join(' · ')}</p>
+          <div key={item.id || item.sku || item.email} className="px-3 py-2 sm:px-5 sm:py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-black text-slate-950 sm:text-base">{item[fields[0]] || '-'}</p>
+                <p className="mt-1 text-[11px] font-semibold leading-4 text-slate-500 sm:text-sm">{fields.slice(1).map((field) => item[field] || '-').join(' · ')}</p>
+              </div>
+              {onEdit && (
+                <button
+                  type="button"
+                  onClick={() => onEdit(item)}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-700 hover:border-[#C9A227] hover:text-[#8E6A12]"
+                >
+                  Editar
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>

@@ -1,6 +1,29 @@
 import { User, MapPin, CreditCard } from 'lucide-react';
 import { getPagamentoLabel } from '../utils/formatters';
 
+function getLojaPrefix(loja) {
+  const valorComparacao = [
+    loja?.tipo,
+    loja?.origem,
+    loja?.segmento,
+    loja?.nome,
+    loja?.slug,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  if (valorComparacao.includes('parceiro')) return 'Pr';
+  if (valorComparacao.includes('dropship') || valorComparacao.includes('dropi') || valorComparacao.includes('cj')) return 'Ds';
+  return 'Lj';
+}
+
+function formatLojaLabel(loja) {
+  if (!loja) return '';
+  const prefixo = getLojaPrefix(loja);
+  return `${prefixo} ${loja.id} - ${loja.nome}`;
+}
+
 // Step 1: Dados Pessoais
 export function StepDadosPessoais({ dadosCliente, setDadosCliente, onNext }) {
   const isValid = dadosCliente.nome && dadosCliente.email;
@@ -149,7 +172,7 @@ export function StepPagamento({
         <select value={lojaId} onChange={(e) => setLojaId(e.target.value)}
           className="w-full rounded-xl border border-[#2A2A2A] bg-[#080808] px-4 py-3 text-white">
           {lojas.map((loja) => (
-            <option key={loja.id} value={loja.id}>{loja.nome}</option>
+            <option key={loja.id} value={loja.id}>{formatLojaLabel(loja)}</option>
           ))}
         </select>
       </div>

@@ -1,6 +1,9 @@
 param(
     [string]$Url = $env:NEXUM_ERP_URL,
     [string]$ShortcutName = "ERP Desktop Nexum Altivon",
+    [ValidateSet('Perguntar', 'Chrome', 'Edge', 'Sistema')]
+    [string]$BrowserChoice = 'Chrome',
+    [switch]$CreateBrowserShortcuts,
     [switch]$PublicDesktop,
     [switch]$StartMenu
 )
@@ -25,6 +28,34 @@ $arguments = @(
 
 if (-not [string]::IsNullOrWhiteSpace($Url)) {
     $arguments += "-Url `"$Url`""
+}
+
+$shortcutVariants = @(
+    @{
+        Name = $ShortcutName
+        BrowserChoice = $BrowserChoice
+        Description = "abre o ERP Desktop com escolha de navegador"
+    }
+)
+
+if ($CreateBrowserShortcuts) {
+    $shortcutVariants = @(
+        @{
+            Name = $ShortcutName
+            BrowserChoice = 'Chrome'
+            Description = "abre o ERP Desktop com escolha de navegador"
+        }
+        @{
+            Name = "$ShortcutName - Chrome"
+            BrowserChoice = 'Chrome'
+            Description = "abre o ERP Desktop diretamente no Chrome"
+        }
+        @{
+            Name = "$ShortcutName - Edge"
+            BrowserChoice = 'Edge'
+            Description = "abre o ERP Desktop diretamente no Edge"
+        }
+    )
 }
 
 $targets = New-Object System.Collections.Generic.List[string]
@@ -60,16 +91,23 @@ foreach ($targetFolder in $targets) {
             New-Item -ItemType Directory -Path $targetFolder -Force | Out-Null
         }
 
-        $shortcutPath = Join-Path $targetFolder "$ShortcutName.lnk"
-        $shortcut = $shell.CreateShortcut($shortcutPath)
-        $shortcut.TargetPath = $powershellExe
-        $shortcut.Arguments = $arguments -join " "
-        $shortcut.WorkingDirectory = (Split-Path -Parent $launcherScript)
-        $shortcut.IconLocation = "$powershellExe,0"
-        $shortcut.WindowStyle = 1
-        $shortcut.Save()
+        foreach ($variant in $shortcutVariants) {
+            $shortcutArguments = @($arguments)
+            if (-not [string]::IsNullOrWhiteSpace($variant.BrowserChoice)) {
+                $shortcutArguments += "-BrowserChoice `"$($variant.BrowserChoice)`""
+            }
 
-        $created += $shortcutPath
+            $shortcutPath = Join-Path $targetFolder "$($variant.Name).lnk"
+            $shortcut = $shell.CreateShortcut($shortcutPath)
+            $shortcut.TargetPath = $powershellExe
+            $shortcut.Arguments = $shortcutArguments -join " "
+            $shortcut.WorkingDirectory = (Split-Path -Parent $launcherScript)
+            $shortcut.IconLocation = "$powershellExe,0"
+            $shortcut.WindowStyle = 1
+            $shortcut.Save()
+
+            $created += $shortcutPath
+        }
     }
     catch {
         Write-Host "Pulando destino sem permissao: $targetFolder" -ForegroundColor Yellow

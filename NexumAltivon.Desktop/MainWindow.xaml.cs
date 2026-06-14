@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Net.Http;
 using System.Windows;
@@ -10,7 +12,7 @@ namespace NexumAltivon.Desktop;
 
 public partial class MainWindow : Window, INotifyPropertyChanged
 {
-    private const string PortalUrl = "http://127.0.0.1:3002";
+    private const string PortalUrl = "http://127.0.0.1:3000/dashboard";
     private const string ApiBaseUrl = "http://127.0.0.1:5011";
 
     private string _environmentStatus = "Aguardando conexao";
@@ -197,6 +199,29 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         try
         {
+            var chromePaths = new[]
+            {
+                Environment.GetEnvironmentVariable("ProgramFiles") is string programFiles
+                    ? Path.Combine(programFiles, "Google", "Chrome", "Application", "chrome.exe")
+                    : null,
+                Environment.GetEnvironmentVariable("ProgramFiles(x86)") is string programFilesX86
+                    ? Path.Combine(programFilesX86, "Google", "Chrome", "Application", "chrome.exe")
+                    : null
+            };
+
+            var chromePath = chromePaths.FirstOrDefault(File.Exists);
+
+            if (!string.IsNullOrWhiteSpace(chromePath))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = chromePath,
+                    Arguments = $"\"{PortalUrl}\"",
+                    UseShellExecute = false
+                });
+                return;
+            }
+
             Process.Start(new ProcessStartInfo
             {
                 FileName = PortalUrl,
@@ -206,7 +231,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         catch
         {
             EnvironmentStatus = "Portal indisponivel";
-            EnvironmentDetail = "Nao foi possivel abrir o portal no navegador padrao.";
+            EnvironmentDetail = "Nao foi possivel abrir o portal no Chrome nem no navegador padrao.";
         }
     }
 

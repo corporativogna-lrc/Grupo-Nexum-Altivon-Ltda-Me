@@ -543,9 +543,7 @@ app.MapPost("/api/categorias", [Authorize(Policy = "Gerente")] async (
 
 app.MapGet("/api/produtos", async (string? categoria_id, NexumDbContext db, CancellationToken ct) =>
 {
-    const string defaultImage = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85";
-
-    IQueryable<Produto> query = db.Produtos.AsNoTracking().Where(produto => produto.Ativo);
+    IQueryable<Produto> query = FiltrarProdutosPublicaveis(db.Produtos.AsNoTracking());
 
     if (!string.IsNullOrWhiteSpace(categoria_id))
     {
@@ -573,7 +571,7 @@ app.MapGet("/api/produtos", async (string? categoria_id, NexumDbContext db, Canc
             produto.DescricaoCurta,
             produto.Preco,
             produto.PrecoPromocional,
-            produto.ImagemPrincipal ?? defaultImage,
+            produto.ImagemPrincipal ?? string.Empty,
             produto.EstoqueAtual,
             produto.EstoqueMinimo,
             produto.EstoqueReservado,
@@ -595,15 +593,6 @@ app.MapGet("/api/produtos", async (string? categoria_id, NexumDbContext db, Canc
             produto.SeoKeywords,
             produto.ImagensGaleria))
         .ToListAsync(ct);
-
-    if (produtos.Count == 0)
-    {
-        produtos = string.IsNullOrWhiteSpace(categoria_id)
-            ? StoreData.Produtos
-            : StoreData.Produtos
-                .Where(produto => string.Equals(produto.CategoriaId, categoria_id, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-    }
 
     return Results.Ok(ApiResponse<List<ProdutoLojaDto>>.Ok(produtos));
 })
@@ -613,11 +602,8 @@ app.MapGet("/api/produtos", async (string? categoria_id, NexumDbContext db, Canc
 
 app.MapGet("/api/produtos/destaques", async (NexumDbContext db, CancellationToken ct) =>
 {
-    const string defaultImage = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85";
-
-    var produtos = await db.Produtos
-        .AsNoTracking()
-        .Where(produto => produto.Ativo && produto.Destaque)
+    var produtos = await FiltrarProdutosPublicaveis(db.Produtos.AsNoTracking())
+        .Where(produto => produto.Destaque)
         .OrderByDescending(produto => produto.UpdatedAt)
         .Take(24)
         .Select(produto => new ProdutoLojaDto(
@@ -627,7 +613,7 @@ app.MapGet("/api/produtos/destaques", async (NexumDbContext db, CancellationToke
             produto.DescricaoCurta,
             produto.Preco,
             produto.PrecoPromocional,
-            produto.ImagemPrincipal ?? defaultImage,
+            produto.ImagemPrincipal ?? string.Empty,
             produto.EstoqueAtual,
             produto.EstoqueMinimo,
             produto.EstoqueReservado,
@@ -650,11 +636,6 @@ app.MapGet("/api/produtos/destaques", async (NexumDbContext db, CancellationToke
             produto.ImagensGaleria))
         .ToListAsync(ct);
 
-    if (produtos.Count == 0)
-    {
-        produtos = StoreData.Produtos.Where(produto => produto.Destaque).ToList();
-    }
-
     return Results.Ok(ApiResponse<List<ProdutoLojaDto>>.Ok(produtos));
 })
 .AllowAnonymous()
@@ -663,10 +644,7 @@ app.MapGet("/api/produtos/destaques", async (NexumDbContext db, CancellationToke
 
 app.MapGet("/api/produtos/{id}", async (string id, NexumDbContext db, CancellationToken ct) =>
 {
-    const string defaultImage = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85";
-
-    var dto = await db.Produtos
-        .AsNoTracking()
+    var dto = await FiltrarProdutosPublicaveis(db.Produtos.AsNoTracking())
         .Where(item => item.Slug == id)
         .Select(item => new ProdutoLojaDto(
             item.Slug,
@@ -675,7 +653,7 @@ app.MapGet("/api/produtos/{id}", async (string id, NexumDbContext db, Cancellati
             item.DescricaoCurta,
             item.Preco,
             item.PrecoPromocional,
-            item.ImagemPrincipal ?? defaultImage,
+            item.ImagemPrincipal ?? string.Empty,
             item.EstoqueAtual,
             item.EstoqueMinimo,
             item.EstoqueReservado,
@@ -700,10 +678,7 @@ app.MapGet("/api/produtos/{id}", async (string id, NexumDbContext db, Cancellati
 
     if (dto is null)
     {
-        var fallback = StoreData.Produtos.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
-        return fallback is null
-            ? Results.NotFound(ApiResponse<string>.Erro("Produto nao encontrado."))
-            : Results.Ok(ApiResponse<ProdutoLojaDto>.Ok(fallback));
+        return Results.NotFound(ApiResponse<string>.Erro("Produto nao encontrado."));
     }
 
     return Results.Ok(ApiResponse<ProdutoLojaDto>.Ok(dto));
@@ -866,7 +841,6 @@ app.MapPost("/api/produtos", [Authorize(Policy = "Gerente")] async (
     db.Produtos.Add(produto);
     await db.SaveChangesAsync(ct);
 
-    const string defaultImage = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85";
     var dto = new ProdutoLojaDto(
         produto.Slug,
         produto.Nome,
@@ -874,7 +848,7 @@ app.MapPost("/api/produtos", [Authorize(Policy = "Gerente")] async (
         produto.DescricaoCurta,
         produto.Preco,
         produto.PrecoPromocional,
-        produto.ImagemPrincipal ?? defaultImage,
+        produto.ImagemPrincipal ?? string.Empty,
         produto.EstoqueAtual,
         produto.EstoqueMinimo,
         produto.EstoqueReservado,
@@ -966,7 +940,6 @@ app.MapPut("/api/produtos/{id}", [Authorize(Policy = "Gerente")] async (
 
     await db.SaveChangesAsync(ct);
 
-    const string defaultImage = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85";
     var dto = new ProdutoLojaDto(
         produto.Slug,
         produto.Nome,
@@ -974,7 +947,7 @@ app.MapPut("/api/produtos/{id}", [Authorize(Policy = "Gerente")] async (
         produto.DescricaoCurta,
         produto.Preco,
         produto.PrecoPromocional,
-        produto.ImagemPrincipal ?? defaultImage,
+        produto.ImagemPrincipal ?? string.Empty,
         produto.EstoqueAtual,
         produto.EstoqueMinimo,
         produto.EstoqueReservado,
@@ -1340,6 +1313,55 @@ app.MapPost("/api/fornecedores", [Authorize(Policy = "Gerente")] async (Forneced
     return Results.Ok(ApiResponse<FornecedorDto>.Ok(dto, "Fornecedor cadastrado."));
 })
 .WithName("CriarFornecedor")
+;
+
+app.MapPut("/api/fornecedores/{id:int}", [Authorize(Policy = "Gerente")] async (int id, FornecedorRequest request, NexumDbContext db, CancellationToken ct) =>
+{
+    var fornecedor = await db.Fornecedores.FirstOrDefaultAsync(item => item.Id == id, ct);
+    if (fornecedor is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Fornecedor nao encontrado."));
+    }
+
+    if (string.IsNullOrWhiteSpace(request.Nome))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Nome do fornecedor obrigatorio."));
+    }
+
+    var documento = string.IsNullOrWhiteSpace(request.Documento) ? null : request.Documento.Trim();
+    var email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim().ToLowerInvariant();
+    var fornecedorExistente = await db.Fornecedores.FirstOrDefaultAsync(item =>
+        item.Id != fornecedor.Id &&
+        ((!string.IsNullOrWhiteSpace(documento) && item.Cnpj == documento) ||
+         (!string.IsNullOrWhiteSpace(email) && item.Email != null && item.Email.ToLower() == email)), ct);
+
+    if (fornecedorExistente is not null)
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("Fornecedor ja cadastrado com este documento ou e-mail."));
+    }
+
+    fornecedor.RazaoSocial = request.Nome.Trim();
+    fornecedor.NomeFantasia = request.Nome.Trim();
+    fornecedor.Cnpj = documento;
+    fornecedor.Email = email;
+    fornecedor.Telefone = request.Telefone;
+    fornecedor.Segmento = request.Categoria;
+    fornecedor.UpdatedAt = DateTime.UtcNow;
+
+    await db.SaveChangesAsync(ct);
+
+    var dto = new FornecedorDto(
+        fornecedor.Id,
+        string.IsNullOrWhiteSpace(fornecedor.NomeFantasia) ? fornecedor.RazaoSocial : fornecedor.NomeFantasia,
+        fornecedor.Cnpj ?? string.Empty,
+        fornecedor.Email ?? string.Empty,
+        fornecedor.Telefone ?? string.Empty,
+        fornecedor.Segmento ?? "Geral",
+        fornecedor.CreatedAt);
+
+    return Results.Ok(ApiResponse<FornecedorDto>.Ok(dto, "Fornecedor atualizado."));
+})
+.WithName("AtualizarFornecedor")
 ;
 
 app.MapGet("/api/pedidos", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
@@ -1713,10 +1735,17 @@ app.MapPost("/api/pedidos", async (
 
     db.Pedidos.Add(pedido);
     await db.SaveChangesAsync(ct);
-
-    await EnsurePedidoFiscalAutomationAsync(pedido, cliente, request, db, fiscalRoutingEngine, ct);
-    await db.SaveChangesAsync(ct);
     await transaction.CommitAsync(ct);
+
+    try
+    {
+        await EnsurePedidoFiscalAutomationAsync(pedido, cliente, request, db, fiscalRoutingEngine, ct);
+        await db.SaveChangesAsync(ct);
+    }
+    catch
+    {
+        // A automacao fiscal nao pode derrubar a venda: o pedido ja foi gravado e commitado.
+    }
 
     await notificacaoService.EnviarConfirmacaoPedidoAsync(cliente, pedido);
     var metodoPagamento = (request.MetodoPagamento ?? string.Empty).Trim().ToLowerInvariant();
@@ -3082,6 +3111,22 @@ static string? NormalizePhone(string? value)
 
 static string? TrimOrNull(string? value) =>
     string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+static IQueryable<Produto> FiltrarProdutosPublicaveis(IQueryable<Produto> query) =>
+    query.Where(produto =>
+        produto.Ativo &&
+        produto.LojaId > 0 &&
+        produto.CategoriaId.HasValue &&
+        !string.IsNullOrEmpty(produto.Nome) &&
+        !string.IsNullOrEmpty(produto.Sku) &&
+        !string.IsNullOrEmpty(produto.Slug) &&
+        (!string.IsNullOrEmpty(produto.DescricaoCurta) || !string.IsNullOrEmpty(produto.DescricaoLonga)) &&
+        !string.IsNullOrEmpty(produto.ImagemPrincipal) &&
+        produto.Preco > 0 &&
+        produto.Peso > 0 &&
+        produto.Altura > 0 &&
+        produto.Largura > 0 &&
+        produto.Comprimento > 0);
 
 static string FormatStatusPedido(StatusPedido status) =>
     status switch
@@ -4836,7 +4881,7 @@ public sealed record ProdutoRequest(
             DescricaoCurta,
             Preco,
             PrecoPromocional,
-            ImagemUrl ?? "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85",
+            ImagemUrl ?? string.Empty,
             Estoque,
             EstoqueMinimo ?? 5,
             EstoqueReservado ?? 0,

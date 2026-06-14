@@ -18,7 +18,7 @@ const getDefaultApiUrl = () => {
     hostname === '::1' ||
     hostname === '';
 
-  return isLocalhost ? 'http://127.0.0.1:5011' : PUBLIC_API_URL;
+  return isLocalhost ? 'http://127.0.0.1:5012' : PUBLIC_API_URL;
 };
 
 export const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || getDefaultApiUrl();
@@ -253,6 +253,7 @@ export const clienteAPI = {
   getAll: () => api.get('/clientes'),
   verificarCadastro: (params) => api.get('/clientes/verificar', { params }),
   create: (data) => api.post('/clientes', data),
+  update: (id, data) => api.put(`/clientes/${id}`, data),
   confirmarCadastro: (token) => api.get('/clientes/confirmar', { params: { token } }),
   getPortal: () => api.get('/clientes/portal/me'),
 };
@@ -260,6 +261,7 @@ export const clienteAPI = {
 export const fornecedorAPI = {
   getAll: () => api.get('/fornecedores'),
   create: (data) => api.post('/fornecedores', data),
+  update: (id, data) => api.put(`/fornecedores/${id}`, data),
 };
 
 export const empresaGrupoAPI = {

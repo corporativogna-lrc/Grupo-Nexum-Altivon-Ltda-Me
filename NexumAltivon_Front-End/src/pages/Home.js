@@ -310,15 +310,22 @@ export default function Home() {
     try {
       const email = normalizeText(payload.email);
       const cpf = normalizeDocument(payload.cpf);
-      const verificacao = await clienteAPI.verificarCadastro({ email, cpf });
+      try {
+        const verificacao = await clienteAPI.verificarCadastro({ email, cpf });
 
-      if (verificacao.data?.existe) {
-        const nomeExistente = verificacao.data?.cliente?.nome || payload.nome;
+        if (verificacao.data?.existe) {
+          const nomeExistente = verificacao.data?.cliente?.nome || payload.nome;
+          setCadastroStatus({
+            tone: 'info',
+            message: `Já existe um cadastro para ${nomeExistente}. Não vamos duplicar seus dados; você pode seguir comprando com esse mesmo registro.`,
+          });
+          return;
+        }
+      } catch {
         setCadastroStatus({
-          tone: 'info',
-          message: `Já existe um cadastro para ${nomeExistente}. Não vamos duplicar seus dados; você pode seguir comprando com esse mesmo registro.`,
+          tone: 'warning',
+          message: 'Verificação de cadastro indisponível no momento. Vamos seguir com o registro para não travar seu acesso.',
         });
-        return;
       }
 
       const cadastroResponse = await clienteAPI.create(payload);
@@ -733,18 +740,6 @@ export default function Home() {
         </div>
       </section>
 
-      <a
-        href={yaraMailTo}
-        className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-3 rounded-full border border-[#C9A227]/40 bg-[#111111]/95 px-5 py-3 text-sm font-black text-[#E8D5A3] shadow-2xl shadow-black/40 backdrop-blur transition hover:border-[#E8D5A3] hover:text-white"
-      >
-        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#C9A227] text-black">
-          <MessageCircleMore size={20} />
-        </span>
-        <span className="flex flex-col text-left leading-tight">
-          <span>Yara online</span>
-          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-400">Ajuda de vendas</span>
-        </span>
-      </a>
     </main>
   );
 }
