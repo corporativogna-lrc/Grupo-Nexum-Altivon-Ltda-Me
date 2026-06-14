@@ -11,6 +11,20 @@ using Serilog;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+var genesisConnection = builder.Configuration.GetConnectionString("GenesisDb")
+    ?? throw new InvalidOperationException("ConnectionStrings:GenesisDb nao configurada.");
+
+// Cria primeiro as tabelas de negocio; logs e jobs nao podem ocupar um banco vazio antes do EF.
+var bootstrapOptions = new DbContextOptionsBuilder<NexumDbContext>()
+    .UseMySql(genesisConnection, ServerVersion.AutoDetect(genesisConnection))
+    .Options;
+await using (var bootstrapDb = new NexumDbContext(bootstrapOptions))
+{
+    if (!bootstrapDb.Database.GetMigrations().Any())
+    {
+        await bootstrapDb.Database.EnsureCreatedAsync();
+    }
+}
 
 // Serilog
 Log.Logger = new LoggerConfiguration()
@@ -18,7 +32,7 @@ Log.Logger = new LoggerConfiguration()
     .Enrich.FromLogContext()
     .WriteTo.Console()
     .WriteTo.MySQL(
-        connectionString: builder.Configuration.GetConnectionString("NexumDb"),
+        connectionString: genesisConnection,
         tableName: "erp_logs",
         storeTimestampInUtc: true)
     .CreateLogger();
@@ -28,8 +42,8 @@ builder.Host.UseSerilog();
 // DB Context
 builder.Services.AddDbContext<NexumDbContext>(options =>
     options.UseMySql(
-        builder.Configuration.GetConnectionString("NexumDb"),
-        ServerVersion.AutoDetect(builder.Configuration.GetConnectionString("NexumDb")),
+        genesisConnection,
+        ServerVersion.AutoDetect(genesisConnection),
         b => b.MigrationsAssembly("NexumAltivon.ERP")));
 
 // JWT
@@ -72,16 +86,17 @@ builder.Services.AddERPServices(builder.Configuration);
 // Hangfire
 builder.Services.AddHangfire(config =>
     config.UseStorage(new Hangfire.MySql.MySqlStorage(
-        builder.Configuration.GetConnectionString("NexumDb"),
+        genesisConnection,
         new Hangfire.MySql.MySqlStorageOptions())));
 builder.Services.AddHangfireServer();
 
 // Quartz
 builder.Services.AddQuartz(q =>
 {
+    q.SetProperty("quartz.serializer.type", "json");
     q.UsePersistentStore(store =>
     {
-        store.UseMySql(builder.Configuration.GetConnectionString("NexumDb"));
+        store.UseMySql(genesisConnection);
     });
 });
 builder.Services.AddQuartzHostedService(q => q.WaitForJobsToComplete = true);
@@ -150,17 +165,26 @@ app.UseHttpsRedirection();
 app.UseCors("ErpCors");
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapGet("/health", () => Results.Ok("Healthy")).AllowAnonymous();
+app.MapGet("/health/db", async (NexumDbContext db, CancellationToken ct) =>
+    await db.Database.CanConnectAsync(ct)
+        ? Results.Ok("Database connected")
+        : Results.Problem("Database unavailable", statusCode: StatusCodes.Status503ServiceUnavailable))
+    .AllowAnonymous();
 app.MapControllers();
 app.UseHangfireDashboard("/hangfire", new Hangfire.DashboardOptions
 {
     Authorization = new[] { new HangfireAuthorizationFilter() }
 });
 
-// Garante migrações na primeira execução
+// Aplica migrations futuras quando o projeto passar a possui-las.
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<NexumDbContext>();
-    db.Database.Migrate();
+    if (db.Database.GetMigrations().Any())
+    {
+        await db.Database.MigrateAsync();
+    }
 }
 
 app.Run();
