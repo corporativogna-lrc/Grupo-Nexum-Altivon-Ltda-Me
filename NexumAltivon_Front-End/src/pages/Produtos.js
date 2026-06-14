@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { categoriaAPI, produtoAPI } from '../services/api';
 import ProductCard from '../components/ProductCard';
-import { fallbackCategories, fallbackProducts } from '../data/mockStore';
 import { ArrowDownUp, Filter, Search, SlidersHorizontal, X } from 'lucide-react';
 
 const sortOptions = {
@@ -14,8 +13,8 @@ const sortOptions = {
 
 export default function Produtos() {
   const [params, setParams] = useSearchParams();
-  const [produtos, setProdutos] = useState(fallbackProducts);
-  const [categorias, setCategorias] = useState(fallbackCategories);
+  const [produtos, setProdutos] = useState([]);
+  const [categorias, setCategorias] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(params.get('categoria') || '');
@@ -29,12 +28,14 @@ export default function Produtos() {
         produtoAPI.getAll(selectedCategory ? { categoria_id: selectedCategory } : {}),
         categoriaAPI.getAll(),
       ]);
-      if (Array.isArray(produtosRes.data) && produtosRes.data.length > 0) setProdutos(produtosRes.data);
-      if (Array.isArray(categoriasRes.data) && categoriasRes.data.length > 0) setCategorias(categoriasRes.data);
+      setProdutos(Array.isArray(produtosRes.data) ? produtosRes.data : []);
+      setCategorias(Array.isArray(categoriasRes.data) ? categoriasRes.data : []);
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
         console.error('Erro:', error);
       }
+      setProdutos([]);
+      setCategorias([]);
     } finally {
       setLoading(false);
     }
@@ -199,8 +200,8 @@ export default function Produtos() {
 
           {!loading && filteredProdutos.length === 0 && (
             <div className="rounded-2xl border border-[#2A2A2A] bg-[#111111] px-6 py-16 text-center shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
-              <p className="text-xl font-black text-white">Nenhum produto encontrado</p>
-              <p className="mt-2 text-[#A0A0A0]">Ajuste os filtros para ver outras opções do catálogo.</p>
+              <p className="text-xl font-black text-white">Nenhum produto cadastrado</p>
+              <p className="mt-2 text-[#A0A0A0]">Quando o banco devolver itens reais, eles aparecem aqui. Se quiser, ajuste os filtros para buscar outra categoria.</p>
               <button onClick={clearFilters} className="mt-6 rounded-full bg-[#C9A227] px-5 py-3 text-sm font-black text-black">
                 Limpar filtros
               </button>

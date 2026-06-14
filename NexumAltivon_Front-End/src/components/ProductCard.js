@@ -8,7 +8,7 @@ export default function ProductCard({ product }) {
   const finalPrice = product.preco_promocional || product.preco;
   const hasDiscount = product.preco_promocional && product.preco_promocional < product.preco;
   const discount = hasDiscount ? Math.round(((product.preco - product.preco_promocional) / product.preco) * 100) : 0;
-  const image = product.imagem_url || product.imagem || 'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85';
+  const image = product.imagem_url || product.imagem || '';
   const isOut = Number(product.estoque) === 0;
 
   return (
@@ -18,12 +18,21 @@ export default function ProductCard({ product }) {
     >
       <div className="relative aspect-[4/5] overflow-hidden bg-[#080808]">
         <Link to={`/produto/${product.id}`} aria-label={product.nome}>
-          <img
-            src={image}
-            alt={product.nome}
-            className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-            loading="lazy"
-          />
+          {image ? (
+            <img
+              src={image}
+              alt={product.nome}
+              className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+              loading="lazy"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(201,162,39,0.18),_transparent_44%),linear-gradient(180deg,#111,#080808)] p-6 text-center">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-[#C9A227]">Foto pendente</p>
+                <p className="mt-3 text-sm font-semibold text-[#A0A0A0]">Produto real sem imagem vinculada no banco.</p>
+              </div>
+            </div>
+          )}
         </Link>
         <div className="absolute left-3 top-3 flex flex-wrap gap-2">
           {product.destaque && (

@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { produtoAPI } from '../services/api';
 import { useCart } from '../context/CartContext';
-import { fallbackProducts } from '../data/mockStore';
 import { formatPrice } from '../utils/formatters';
 import { ArrowLeft, Check, Minus, Plus, RefreshCw, Shield, ShoppingBag, Star, Truck } from 'lucide-react';
 
@@ -20,7 +19,7 @@ export default function ProdutoDetalhe() {
       setProduto(response.data);
     } catch (error) {
       if (process.env.NODE_ENV === 'development') console.error(error);
-      setProduto(fallbackProducts.find((item) => String(item.id) === String(id)) || null);
+      setProduto(null);
     } finally {
       setLoading(false);
     }
@@ -56,7 +55,7 @@ export default function ProdutoDetalhe() {
 
   const finalPrice = produto.preco_promocional || produto.preco;
   const hasDiscount = produto.preco_promocional && produto.preco_promocional < produto.preco;
-  const image = produto.imagem_url || produto.imagem || fallbackProducts[0].imagem_url;
+  const image = produto.imagem_url || produto.imagem || '';
 
   return (
     <div className="min-h-screen bg-[#050505] py-8 text-white">
@@ -68,7 +67,16 @@ export default function ProdutoDetalhe() {
         <div className="overflow-hidden rounded-3xl border border-[#2A2A2A] bg-[#111111] shadow-[0_28px_100px_rgba(0,0,0,0.42)]">
           <div className="grid lg:grid-cols-2">
             <div className="bg-[#080808]">
-              <img src={image} alt={produto.nome} className="h-full min-h-[520px] w-full object-cover" data-testid="produto-imagem" />
+              {image ? (
+                <img src={image} alt={produto.nome} className="h-full min-h-[520px] w-full object-cover" data-testid="produto-imagem" />
+              ) : (
+                <div className="flex min-h-[520px] items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(201,162,39,0.14),_transparent_52%),linear-gradient(180deg,#111,#080808)] text-center">
+                  <div>
+                    <p className="text-sm font-black uppercase tracking-[0.22em] text-[#C9A227]">Imagem não cadastrada</p>
+                    <p className="mt-3 text-sm text-[#A0A0A0]">Este produto está no banco, mas ainda não possui foto vinculada.</p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="p-6 sm:p-10">
