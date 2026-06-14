@@ -647,6 +647,7 @@ export default function Dashboard() {
   const [empresaGrupoForm, setEmpresaGrupoForm] = useState(emptyEmpresaGrupo);
   const [formStatus, setFormStatus] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const isErpWorkspace = activeTab === 'erp' || activeTab.startsWith('erp-');
   const sitePreviewLogo = String(siteConfigForm.site_logo || '').trim() || '/assets/logo-2.jpg';
   const previewSlides = parseJsonPreview(siteConfigForm.home_hero_slides, [{
     id: 'preview',
@@ -1073,7 +1074,7 @@ export default function Dashboard() {
   if (!isAuthenticated) return <Navigate to="/login" />;
 
   return (
-    <main className="nexum-admin-shell min-h-screen bg-[#050505]">
+    <main className={`nexum-admin-shell min-h-screen bg-[#050505] ${isErpWorkspace ? 'erp-desktop-shell' : ''}`}>
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-80 border-r border-[#2A2A2A] bg-[#0A0A0A] text-white lg:block">
         <div className="flex h-full flex-col p-5">
           <Link to="/" className="flex items-center gap-3 rounded-2xl border border-white/5 bg-white/5 px-4 py-3">
@@ -1608,7 +1609,7 @@ export default function Dashboard() {
               )}
 
               {activeTab === 'erp' && (
-                <section className="space-y-6">
+                <section className="erp-desktop-surface space-y-6">
                   <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                       <div>
@@ -1701,7 +1702,7 @@ export default function Dashboard() {
               )}
 
               {activeTab === 'erp-empresas' && (
-                <section className="space-y-6">
+                <section className="erp-desktop-surface space-y-6">
                   <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
                     <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Cadastro fiscal mestre</p>
                     <h2 className="mt-2 text-2xl font-black text-slate-950">Empresas do grupo e parceiras</h2>
@@ -1837,7 +1838,7 @@ export default function Dashboard() {
               )}
 
               {activeTab === 'erp-fiscal' && (
-                <section className="space-y-6">
+                <section className="erp-desktop-surface space-y-6">
                   <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
                     <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Fiscal operacional</p>
                     <h2 className="mt-2 text-2xl font-black text-slate-950">Notas e automação fiscal</h2>
@@ -1905,7 +1906,7 @@ export default function Dashboard() {
               )}
 
               {activeTab === 'erp-financeiro' && (
-                <section className="space-y-6">
+                <section className="erp-desktop-surface space-y-6">
                   <ErpModuleHero
                     eyebrow="Financeiro operacional"
                     title="Fluxo de caixa, contas e conciliação"
@@ -1950,7 +1951,7 @@ export default function Dashboard() {
               )}
 
               {activeTab === 'erp-logistica' && (
-                <section className="space-y-6">
+                <section className="erp-desktop-surface space-y-6">
                   <ErpModuleHero
                     eyebrow="Logística e estoque"
                     title="Despacho, rastreamento e posição operacional"
@@ -1987,7 +1988,7 @@ export default function Dashboard() {
               )}
 
               {activeTab === 'erp-rh' && (
-                <section className="space-y-6">
+                <section className="erp-desktop-surface space-y-6">
                   <ErpModuleHero
                     eyebrow="RH e diretoria operacional"
                     title="Equipe, cargos e supervisão da rotina"
@@ -2025,7 +2026,7 @@ export default function Dashboard() {
               )}
 
               {activeTab === 'erp-compras' && (
-                <section className="space-y-6">
+                <section className="erp-desktop-surface space-y-6">
                   <ErpModuleHero
                     eyebrow="Compras e suprimentos"
                     title="Fornecedores, reposição e estratégia de custo"
@@ -2056,7 +2057,7 @@ export default function Dashboard() {
               )}
 
               {activeTab === 'erp-relatorios' && (
-                <section className="space-y-6">
+                <section className="erp-desktop-surface space-y-6">
                   <ErpModuleHero
                     eyebrow="Relatórios executivos"
                     title="KPIs, gráficos e controle gerencial"

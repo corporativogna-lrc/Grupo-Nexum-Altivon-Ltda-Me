@@ -340,6 +340,100 @@ code {
     border-color: var(--nexum-gray-light) !important;
 }
 
+.erp-desktop-shell {
+    background:
+        radial-gradient(circle at top left, rgba(201, 162, 39, 0.18), transparent 24rem),
+        radial-gradient(circle at bottom right, rgba(76, 160, 255, 0.08), transparent 22rem),
+        linear-gradient(135deg, #050505 0%, #090a0d 45%, #111318 100%) !important;
+}
+
+.erp-desktop-shell .erp-desktop-surface {
+    position: relative;
+    border-radius: 20px !important;
+    background: linear-gradient(180deg, rgba(14, 16, 22, 0.98), rgba(9, 10, 14, 0.98)) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow:
+        0 26px 70px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+    padding: 1.25rem !important;
+}
+
+.erp-desktop-shell .erp-desktop-surface::before {
+    content: "ERP / PDV CORPORATIVO";
+    position: sticky;
+    top: 0;
+    display: inline-flex;
+    margin-bottom: 1rem;
+    padding: 0.45rem 0.8rem;
+    border-radius: 999px;
+    background: rgba(201, 162, 39, 0.12);
+    border: 1px solid rgba(201, 162, 39, 0.2);
+    color: #f2d27b;
+    font-size: 0.68rem;
+    font-weight: 900;
+    letter-spacing: 0.22em;
+}
+
+.erp-desktop-shell .erp-desktop-surface > section,
+.erp-desktop-shell .erp-desktop-surface > form,
+.erp-desktop-shell .erp-desktop-surface > div > section,
+.erp-desktop-shell .erp-desktop-surface > div > form,
+.erp-desktop-shell .erp-desktop-surface .rounded-lg,
+.erp-desktop-shell .erp-desktop-surface .rounded-2xl {
+    border-radius: 16px !important;
+}
+
+.erp-desktop-shell .erp-desktop-surface .bg-white,
+.erp-desktop-shell .erp-desktop-surface .bg-slate-50,
+.erp-desktop-shell .erp-desktop-surface .bg-slate-100,
+.erp-desktop-shell .erp-desktop-surface form {
+    background: rgba(255, 255, 255, 0.035) !important;
+    color: #f5f5f5 !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.erp-desktop-shell .erp-desktop-surface .text-slate-950,
+.erp-desktop-shell .erp-desktop-surface .text-slate-900 {
+    color: #f5f5f5 !important;
+}
+
+.erp-desktop-shell .erp-desktop-surface .text-slate-700,
+.erp-desktop-shell .erp-desktop-surface .text-slate-600,
+.erp-desktop-shell .erp-desktop-surface .text-slate-500 {
+    color: #a2a8b3 !important;
+}
+
+.erp-desktop-shell .erp-desktop-surface .border-slate-200,
+.erp-desktop-shell .erp-desktop-surface .border-slate-100 {
+    border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.erp-desktop-shell .erp-desktop-surface table thead th {
+    background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.erp-desktop-shell .erp-desktop-surface table tbody tr {
+    background: rgba(255, 255, 255, 0.02) !important;
+}
+
+.erp-desktop-shell .erp-desktop-surface table tbody tr:hover {
+    background: rgba(201, 162, 39, 0.08) !important;
+}
+
+.erp-desktop-shell .erp-desktop-surface button {
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.erp-desktop-shell .erp-desktop-surface button:hover {
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.2);
+}
+
+.erp-desktop-shell .erp-desktop-surface input,
+.erp-desktop-shell .erp-desktop-surface select,
+.erp-desktop-shell .erp-desktop-surface textarea {
+    background: rgba(0, 0, 0, 0.35) !important;
+}
+
 .nexum-admin-login {
     background:
         linear-gradient(rgba(5, 5, 5, 0.78), rgba(5, 5, 5, 0.92)),
