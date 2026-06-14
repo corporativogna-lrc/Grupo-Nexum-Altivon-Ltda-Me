@@ -86,6 +86,16 @@ public class Cliente
     [Column("token_expira_em")]
     public DateTime? TokenExpiraEm { get; set; }
 
+    [Column("email_verificado_em")]
+    public DateTime? EmailVerificadoEm { get; set; }
+
+    [Column("token_confirmacao_email")]
+    [MaxLength(255)]
+    public string? TokenConfirmacaoEmail { get; set; }
+
+    [Column("token_confirmacao_expira_em")]
+    public DateTime? TokenConfirmacaoExpiraEm { get; set; }
+
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

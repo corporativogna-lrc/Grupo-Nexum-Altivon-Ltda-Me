@@ -3,6 +3,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -264,9 +265,23 @@ app.MapPost("/api/auth/login", async (
     }
 
     var cliente = await db.Clientes
-        .FirstOrDefaultAsync(item => item.Email == normalizedEmail && item.Status == StatusCliente.Ativo, ct);
+        .FirstOrDefaultAsync(item => item.Email == normalizedEmail, ct);
 
-    if (cliente is not null && !string.IsNullOrWhiteSpace(cliente.SenhaHash) && BCrypt.Net.BCrypt.Verify(request.Senha, cliente.SenhaHash))
+    if (cliente is not null
+        && !string.IsNullOrWhiteSpace(cliente.SenhaHash)
+        && BCrypt.Net.BCrypt.Verify(request.Senha, cliente.SenhaHash)
+        && (cliente.Status == StatusCliente.Pendente || cliente.EmailVerificadoEm is null))
+    {
+        return Results.Problem(
+            "Confirme seu e-mail antes do primeiro acesso. Solicite um novo link se necessário.",
+            statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    if (cliente is not null
+        && cliente.Status == StatusCliente.Ativo
+        && cliente.EmailVerificadoEm is not null
+        && !string.IsNullOrWhiteSpace(cliente.SenhaHash)
+        && BCrypt.Net.BCrypt.Verify(request.Senha, cliente.SenhaHash))
     {
         cliente.UltimoAcesso = DateTime.UtcNow;
         cliente.UpdatedAt = DateTime.UtcNow;
@@ -1097,7 +1112,12 @@ app.MapGet("/api/clientes/verificar", async (string? email, string? cpf, NexumDb
 .WithName("VerificarCadastroCliente")
 ;
 
-app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, CancellationToken ct) =>
+app.MapPost("/api/clientes", async (
+    ClienteRequest request,
+    NexumDbContext db,
+    INotificacaoService notificacaoService,
+    IConfiguration configuration,
+    CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Nome))
     {
@@ -1115,11 +1135,27 @@ app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, C
              .Replace("/", string.Empty)
              .Replace(" ", string.Empty)) == cpfCnpj), ct);
 
+    var possuiSenha = !string.IsNullOrWhiteSpace(request.Senha);
+    if (possuiSenha && request.Senha!.Trim().Length < 8)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("A senha deve ter pelo menos 8 caracteres."));
+    }
+
     if (clienteExistente is not null)
     {
-        if (string.IsNullOrWhiteSpace(clienteExistente.SenhaHash) && !string.IsNullOrWhiteSpace(request.Senha))
+        if (possuiSenha && clienteExistente.EmailVerificadoEm is not null && !string.IsNullOrWhiteSpace(clienteExistente.SenhaHash))
+        {
+            return Results.Conflict(ApiResponse<string>.Erro("Este e-mail já possui acesso ativo. Use o login ou a recuperação de senha."));
+        }
+
+        string? confirmationToken = null;
+        if (possuiSenha)
         {
             clienteExistente.SenhaHash = BCrypt.Net.BCrypt.HashPassword(request.Senha.Trim(), 12);
+            confirmationToken = CreateSecureToken();
+            clienteExistente.TokenConfirmacaoEmail = HashToken(confirmationToken);
+            clienteExistente.TokenConfirmacaoExpiraEm = DateTime.UtcNow.AddHours(24);
+            clienteExistente.Status = StatusCliente.Pendente;
         }
 
         if (string.IsNullOrWhiteSpace(clienteExistente.Telefone) && !string.IsNullOrWhiteSpace(request.Telefone))
@@ -1132,8 +1168,25 @@ app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, C
         clienteExistente.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
-        var existenteDto = new ClienteLojaDto(clienteExistente.Id, clienteExistente.Nome, clienteExistente.Email, clienteExistente.Telefone, clienteExistente.CpfCnpj);
-        return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(existenteDto, "Cliente ja cadastrado. Registro existente reutilizado."));
+        clienteExistente.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+
+        if (confirmationToken is not null)
+        {
+            await SendCustomerConfirmationEmailAsync(clienteExistente, confirmationToken, notificacaoService, configuration);
+        }
+
+        var existenteDto = new ClienteCadastroResponse(
+            clienteExistente.Id,
+            clienteExistente.Nome,
+            clienteExistente.Email,
+            confirmationToken is not null,
+            clienteExistente.Status.ToString());
+        return Results.Ok(ApiResponse<ClienteCadastroResponse>.Ok(
+            existenteDto,
+            confirmationToken is null
+                ? "Cliente já cadastrado. Registro comercial reutilizado."
+                : "Cadastro localizado. Enviamos um link para confirmar o e-mail e ativar o acesso."));
     }
 
     var cliente = new Cliente
@@ -1145,19 +1198,94 @@ app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, C
         CpfCnpj = cpfCnpj,
         SenhaHash = !string.IsNullOrWhiteSpace(request.Senha) ? BCrypt.Net.BCrypt.HashPassword(request.Senha.Trim(), 12) : null,
         Newsletter = request.Newsletter ?? true,
-        Status = StatusCliente.Ativo,
+        Status = possuiSenha ? StatusCliente.Pendente : StatusCliente.Ativo,
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow
     };
 
+    string? token = null;
+    if (possuiSenha)
+    {
+        token = CreateSecureToken();
+        cliente.TokenConfirmacaoEmail = HashToken(token);
+        cliente.TokenConfirmacaoExpiraEm = DateTime.UtcNow.AddHours(24);
+    }
+
     db.Clientes.Add(cliente);
     await db.SaveChangesAsync(ct);
 
-    var dto = new ClienteLojaDto(cliente.Id, cliente.Nome, cliente.Email, cliente.Telefone, cliente.CpfCnpj);
-    return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(dto, "Cliente registrado."));
+    if (token is not null)
+    {
+        await SendCustomerConfirmationEmailAsync(cliente, token, notificacaoService, configuration);
+    }
+
+    var dto = new ClienteCadastroResponse(cliente.Id, cliente.Nome, cliente.Email, token is not null, cliente.Status.ToString());
+    return Results.Ok(ApiResponse<ClienteCadastroResponse>.Ok(
+        dto,
+        token is null
+            ? "Cliente comercial registrado."
+            : "Cadastro realizado. Confirme o e-mail para liberar sua área do cliente."));
 })
 .AllowAnonymous()
 .WithName("CriarCliente")
+;
+
+app.MapGet("/api/clientes/confirmar-email", async (string token, NexumDbContext db, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(token))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Token de confirmação não informado."));
+    }
+
+    var tokenHash = HashToken(token);
+    var cliente = await db.Clientes.FirstOrDefaultAsync(item => item.TokenConfirmacaoEmail == tokenHash, ct);
+    if (cliente is null || cliente.TokenConfirmacaoExpiraEm is null || cliente.TokenConfirmacaoExpiraEm < DateTime.UtcNow)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Link inválido ou expirado. Solicite um novo link."));
+    }
+
+    cliente.EmailVerificadoEm = DateTime.UtcNow;
+    cliente.TokenConfirmacaoEmail = null;
+    cliente.TokenConfirmacaoExpiraEm = null;
+    cliente.Status = StatusCliente.Ativo;
+    cliente.UpdatedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync(ct);
+
+    return Results.Ok(ApiResponse<string>.Ok("ok", "E-mail confirmado. Sua área do cliente está liberada."));
+})
+.AllowAnonymous()
+.WithName("ConfirmarEmailCliente")
+;
+
+app.MapPost("/api/clientes/reenviar-confirmacao", async (
+    ReenviarConfirmacaoEmailRequest request,
+    NexumDbContext db,
+    INotificacaoService notificacaoService,
+    IConfiguration configuration,
+    CancellationToken ct) =>
+{
+    var email = NormalizeEmail(request.Email);
+    var cliente = string.IsNullOrWhiteSpace(email)
+        ? null
+        : await db.Clientes.FirstOrDefaultAsync(item => item.Email == email, ct);
+
+    if (cliente is not null && cliente.EmailVerificadoEm is null && !string.IsNullOrWhiteSpace(cliente.SenhaHash))
+    {
+        var token = CreateSecureToken();
+        cliente.TokenConfirmacaoEmail = HashToken(token);
+        cliente.TokenConfirmacaoExpiraEm = DateTime.UtcNow.AddHours(24);
+        cliente.Status = StatusCliente.Pendente;
+        cliente.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        await SendCustomerConfirmationEmailAsync(cliente, token, notificacaoService, configuration);
+    }
+
+    return Results.Ok(ApiResponse<string>.Ok(
+        "ok",
+        "Se houver uma conta pendente para este e-mail, um novo link será enviado."));
+})
+.AllowAnonymous()
+.WithName("ReenviarConfirmacaoEmailCliente")
 ;
 
 app.MapGet("/api/clientes/portal/me", [Authorize] async (ClaimsPrincipal principal, NexumDbContext db, CancellationToken ct) =>
@@ -2580,6 +2708,33 @@ static string? NormalizeEmail(string? value) =>
         ? null
         : value.Trim().ToLowerInvariant();
 
+static string CreateSecureToken() =>
+    Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+
+static string HashToken(string token) =>
+    Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token))).ToLowerInvariant();
+
+static async Task SendCustomerConfirmationEmailAsync(
+    Cliente cliente,
+    string token,
+    INotificacaoService notificacaoService,
+    IConfiguration configuration)
+{
+    var siteBaseUrl = (configuration["PublicSite:BaseUrl"] ?? "https://www.nexumaltivon.com").TrimEnd('/');
+    var confirmationUrl = $"{siteBaseUrl}/confirmar-email?token={Uri.EscapeDataString(token)}";
+    var body = $"""
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;background:#111;color:#fff;padding:32px;border:1px solid #c9a227">
+          <h1 style="color:#c9a227">Confirme seu e-mail</h1>
+          <p>Olá, <strong>{System.Net.WebUtility.HtmlEncode(cliente.Nome)}</strong>.</p>
+          <p>Confirme seu endereço para liberar a área exclusiva do cliente Nexum Altivon.</p>
+          <p style="margin:28px 0"><a href="{confirmationUrl}" style="background:#c9a227;color:#000;padding:14px 22px;text-decoration:none;font-weight:bold">Confirmar meu e-mail</a></p>
+          <p>Este link expira em 24 horas. Se você não fez este cadastro, ignore esta mensagem.</p>
+        </div>
+        """;
+
+    await notificacaoService.EnviarEmailAsync(cliente.Email, "Confirme seu cadastro - Nexum Altivon", body);
+}
+
 static string? NormalizeDocument(string? value)
 {
     if (string.IsNullOrWhiteSpace(value))
@@ -3934,6 +4089,11 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
         return;
     }
 
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS email_verificado_em DATETIME NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS token_confirmacao_email VARCHAR(255) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS token_confirmacao_expira_em DATETIME NULL;");
+    await db.Database.ExecuteSqlRawAsync("CREATE INDEX IF NOT EXISTS ix_clientes_token_confirmacao_email ON clientes (token_confirmacao_email);");
+
     await db.Database.ExecuteSqlRawAsync(
         """
         CREATE TABLE IF NOT EXISTS erp_empresas_grupo (
@@ -4331,6 +4491,10 @@ public sealed record UploadImagemDto(string Url);
 public sealed record CupomDto(string Codigo, decimal? DescontoPercentual, decimal? DescontoValor, decimal? ValorMinimo);
 
 public sealed record ClienteRequest(string Nome, string Email, string? Cpf, string? Telefone, string? Senha = null, bool? Newsletter = null);
+
+public sealed record ReenviarConfirmacaoEmailRequest(string Email);
+
+public sealed record ClienteCadastroResponse(int Id, string Nome, string Email, bool RequerConfirmacaoEmail, string Status);
 
 public sealed record ClienteLojaDto(int Id, string Nome, string Email, string? Telefone, string? Cpf = null);
 

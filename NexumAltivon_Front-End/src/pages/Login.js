@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LogIn } from 'lucide-react';
+import { LogIn, Mail } from 'lucide-react';
+import { clienteAPI } from '../services/api';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -10,6 +11,7 @@ export default function Login() {
   const [senha, setSenha] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [reenviarStatus, setReenviarStatus] = useState({ loading: false, message: '', tone: '' });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -25,6 +27,29 @@ export default function Login() {
     }
 
     setLoading(false);
+  };
+
+  const handleReenviarConfirmacao = async () => {
+    if (!email.trim()) {
+      setReenviarStatus({ loading: false, message: 'Informe o e-mail para reenviar o link.', tone: 'error' });
+      return;
+    }
+
+    setReenviarStatus({ loading: true, message: '', tone: '' });
+    try {
+      await clienteAPI.reenviarConfirmacao(email.trim());
+      setReenviarStatus({
+        loading: false,
+        message: 'Se houver um cadastro pendente, um novo link foi enviado.',
+        tone: 'success',
+      });
+    } catch (requestError) {
+      setReenviarStatus({
+        loading: false,
+        message: requestError.response?.data?.mensagem || requestError.response?.data?.detail || 'Não foi possível reenviar agora.',
+        tone: 'error',
+      });
+    }
   };
 
   return (
@@ -84,6 +109,44 @@ export default function Login() {
             <Link to="/" className="text-amber-600 hover:underline">← Voltar para Home</Link>
           </div>
         </form>
+
+        <section className="rounded-2xl border border-white/10 bg-black/30 p-6 text-white">
+          <h3 className="text-lg font-bold">Não recebeu o e-mail de confirmação?</h3>
+          <p className="mt-2 text-sm text-gray-300">
+            Informe o mesmo e-mail do cadastro para solicitar um novo link e liberar sua área do cliente.
+          </p>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+            <label className="flex min-w-0 flex-1 items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-4 py-3">
+              <Mail className="text-amber-400" size={18} />
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                className="w-full bg-transparent text-white outline-none"
+                placeholder="seu@email.com"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={handleReenviarConfirmacao}
+              disabled={reenviarStatus.loading}
+              className="rounded-lg bg-amber-500 px-5 py-3 font-semibold text-black transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {reenviarStatus.loading ? 'Reenviando...' : 'Reenviar link'}
+            </button>
+          </div>
+          {reenviarStatus.message && (
+            <div
+              className={`mt-4 rounded-lg border px-4 py-3 text-sm ${
+                reenviarStatus.tone === 'success'
+                  ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
+                  : 'border-red-400/30 bg-red-500/10 text-red-200'
+              }`}
+            >
+              {reenviarStatus.message}
+            </div>
+          )}
+        </section>
 
       </div>
     </div>

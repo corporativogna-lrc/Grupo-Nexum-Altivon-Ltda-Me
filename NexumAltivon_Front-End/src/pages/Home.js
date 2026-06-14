@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   ArrowLeft,
   ArrowRight,
@@ -24,7 +24,6 @@ import {
   UserPlus,
   Watch,
 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
 import { clienteAPI, siteAPI } from '../services/api';
 
 const heroSlides = [
@@ -175,11 +174,7 @@ const partnerIconMap = {
   Building2,
 };
 
-const normalizeText = (value) => String(value || '').trim().toLowerCase();
-const normalizeDocument = (value) => String(value || '').replace(/\D/g, '');
 export default function Home() {
-  const navigate = useNavigate();
-  const { login } = useAuth();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [siteConfig, setSiteConfig] = useState(null);
   const [cadastroForm, setCadastroForm] = useState(emptyCadastro);
@@ -233,11 +228,6 @@ export default function Home() {
     }
   }, [currentSlide, displaySlides.length]);
 
-  const cadastroDuplicadoLocal = useMemo(() => {
-    if (!cadastroStatus.message || cadastroStatus.tone !== 'info') return false;
-    return true;
-  }, [cadastroStatus]);
-
   const changeSlide = (direction) => {
       setCurrentSlide((slide) => {
         if (direction === 'prev') {
@@ -276,38 +266,17 @@ export default function Home() {
     setCadastroStatus({ tone: '', message: '' });
 
     try {
-      const email = normalizeText(payload.email);
-      const cpf = normalizeDocument(payload.cpf);
-      const verificacao = await clienteAPI.verificarCadastro({ email, cpf });
-
-      if (verificacao.data?.existe) {
-        const nomeExistente = verificacao.data?.cliente?.nome || payload.nome;
-        setCadastroStatus({
-          tone: 'info',
-          message: `Já existe um cadastro para ${nomeExistente}. Não vamos duplicar seus dados; você pode seguir comprando com esse mesmo registro.`,
-        });
-        return;
-      }
-
-      await clienteAPI.create(payload);
-
-      setCadastroStatus({
-        tone: 'success',
-        message: 'Cadastro realizado com sucesso. Validando seu acesso para liberar a área do cliente.',
-      });
-
-      const loginResult = await login(payload.email, payload.senha);
-      if (loginResult?.success) {
-        setCadastroForm(emptyCadastro);
-        navigate(loginResult.destination || '/area-cliente');
-        return;
-      }
+      const response = await clienteAPI.create(payload);
+      const cadastro = response?.data?.dados ?? response?.data?.Dados ?? response?.data?.data ?? response?.data ?? {};
+      const requerConfirmacao = Boolean(cadastro.requerConfirmacaoEmail ?? cadastro.RequerConfirmacaoEmail);
+      const statusCadastro = String(cadastro.status ?? cadastro.Status ?? '').toLowerCase();
 
       setCadastroForm(emptyCadastro);
       setCadastroStatus({
         tone: 'success',
-        message:
-          'Cadastro salvo com sucesso no banco de dados. O acesso automático não foi concluído agora; use o login para entrar na sua área do cliente.',
+        message: requerConfirmacao || statusCadastro === 'pendente'
+          ? 'Cadastro salvo. Enviamos um link para confirmar seu e-mail e liberar a área do cliente.'
+          : 'Cadastro comercial salvo com sucesso. O acesso já pode ser usado no fluxo de vendas.',
       });
     } catch (error) {
       const detail =
@@ -557,9 +526,7 @@ export default function Home() {
               </button>
 
               <p className="text-xs leading-6 text-zinc-500">
-                {cadastroDuplicadoLocal
-                  ? 'O sistema encontrou um cadastro compatível e evitou a duplicidade antes de qualquer novo registro.'
-                  : 'Usamos seus dados apenas para relacionamento comercial, compras e atendimentos do Grupo Nexum Altivon.'}
+                Usamos seus dados apenas para relacionamento comercial, compras e atendimentos do Grupo Nexum Altivon.
               </p>
             </form>
           </div>
