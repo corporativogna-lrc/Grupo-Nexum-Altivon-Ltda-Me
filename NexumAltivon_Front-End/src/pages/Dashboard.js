@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { categoriaAPI, clienteAPI, dashboardAPI, empresaGrupoAPI, fiscalAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI, siteAPI } from '../services/api';
-import { fallbackCategories, fallbackLeads, fallbackPedidos, fallbackProducts, fallbackResumo } from '../data/mockStore';
+import { fallbackCategories, fallbackLeads, fallbackPedidos, fallbackResumo } from '../data/mockStore';
 import { formatDate, formatPrice, getLeadStatusClass, getPagamentoLabel, getPedidoStatusClass } from '../utils/formatters';
 import {
   Activity,
@@ -602,7 +602,7 @@ export default function Dashboard() {
   const [resumo, setResumo] = useState(allowDemoData ? fallbackResumo : emptyResumo);
   const [pedidos, setPedidos] = useState(allowDemoData ? fallbackPedidos : []);
   const [leads, setLeads] = useState(allowDemoData ? fallbackLeads : []);
-  const [produtos, setProdutos] = useState(allowDemoData ? fallbackProducts : []);
+  const [produtos, setProdutos] = useState([]);
   const [categorias, setCategorias] = useState(allowDemoData ? fallbackCategories : []);
   const [clientes, setClientes] = useState(allowDemoData ? fallbackClientes : []);
   const [fornecedores, setFornecedores] = useState(allowDemoData ? fallbackFornecedores : []);
@@ -647,7 +647,7 @@ export default function Dashboard() {
       if (resumoRes.data) setResumo({ ...fallbackResumo, ...resumoRes.data });
       if (Array.isArray(pedidosRes.data) && pedidosRes.data.length > 0) setPedidos(pedidosRes.data);
       if (Array.isArray(leadsRes.data) && leadsRes.data.length > 0) setLeads(leadsRes.data);
-      if (Array.isArray(produtosRes.data) && produtosRes.data.length > 0) setProdutos(produtosRes.data);
+      setProdutos(Array.isArray(produtosRes.data) ? produtosRes.data : []);
       if (Array.isArray(categoriasRes.data) && categoriasRes.data.length > 0) setCategorias(categoriasRes.data);
       if (Array.isArray(clientesRes.data) && clientesRes.data.length > 0) setClientes(clientesRes.data);
       if (Array.isArray(fornecedoresRes.data) && fornecedoresRes.data.length > 0) setFornecedores(fornecedoresRes.data);
@@ -731,6 +731,22 @@ export default function Dashboard() {
   const submitProduto = async (event) => {
     event.preventDefault();
     setFormStatus('');
+    const requiredProductFields = [
+      produtoForm.nome,
+      produtoForm.descricao,
+      produtoForm.imagemUrl,
+      produtoForm.peso,
+      produtoForm.altura,
+      produtoForm.largura,
+      produtoForm.comprimento,
+    ];
+    if (requiredProductFields.some((value) => !String(value ?? '').trim())
+        || [produtoForm.peso, produtoForm.altura, produtoForm.largura, produtoForm.comprimento]
+          .some((value) => Number(value) <= 0)) {
+      setFormStatus('Preencha nome, descrição, imagem, peso, altura, largura e comprimento com valores válidos.');
+      return;
+    }
+
     const duplicateMessage = getProdutoDuplicateMessage(produtoForm, produtos);
     if (duplicateMessage) {
       setFormStatus(duplicateMessage);
