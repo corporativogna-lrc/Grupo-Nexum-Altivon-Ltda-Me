@@ -679,7 +679,7 @@ app.MapGet("/api/produtos/{id}", async (string id, NexumDbContext db, Cancellati
 
     if (dto is null)
     {
-        return Results.NotFound(ApiResponse<string>.Erro("Produto nao encontrado."));
+        return Results.NotFound(ApiResponse<string>.Erro("Produto nao encontrado ou cadastro incompleto."));
     }
 
     return Results.Ok(ApiResponse<ProdutoLojaDto>.Ok(dto));
@@ -759,6 +759,18 @@ app.MapPost("/api/produtos", [Authorize(Policy = "Gerente")] async (
     NexumDbContext db,
     CancellationToken ct) =>
 {
+    if (string.IsNullOrWhiteSpace(request.Nome)
+        || string.IsNullOrWhiteSpace(request.Descricao)
+        || string.IsNullOrWhiteSpace(request.ImagemUrl)
+        || request.Peso is null or <= 0
+        || request.Altura is null or <= 0
+        || request.Largura is null or <= 0
+        || request.Comprimento is null or <= 0)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro(
+            "Nome, descricao, imagem, peso, altura, largura e comprimento sao obrigatorios."));
+    }
+
     var slug = Slugify(request.Id) ?? Slugify(request.Nome);
     if (string.IsNullOrWhiteSpace(slug))
     {
@@ -882,6 +894,18 @@ app.MapPut("/api/produtos/{id}", [Authorize(Policy = "Gerente")] async (
     NexumDbContext db,
     CancellationToken ct) =>
 {
+    if (string.IsNullOrWhiteSpace(request.Nome)
+        || string.IsNullOrWhiteSpace(request.Descricao)
+        || string.IsNullOrWhiteSpace(request.ImagemUrl)
+        || request.Peso is null or <= 0
+        || request.Altura is null or <= 0
+        || request.Largura is null or <= 0
+        || request.Comprimento is null or <= 0)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro(
+            "Nome, descricao, imagem, peso, altura, largura e comprimento sao obrigatorios."));
+    }
+
     var produto = await db.Produtos.FirstOrDefaultAsync(item => item.Slug == id, ct);
     if (produto is null)
     {
@@ -4586,7 +4610,10 @@ static List<T> ParseJsonList<T>(string? json, List<T> fallback)
 
     try
     {
-        var parsed = JsonSerializer.Deserialize<List<T>>(json);
+        var parsed = JsonSerializer.Deserialize<List<T>>(json, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        });
         return parsed is { Count: > 0 } ? parsed : fallback;
     }
     catch
@@ -4829,7 +4856,7 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
             grupo = VALUES(grupo),
             editavel = VALUES(editavel),
             updated_at = CURRENT_TIMESTAMP;
-        """);
+        """.Replace("{", "{{").Replace("}", "}}"));
 }
 
 app.Run();

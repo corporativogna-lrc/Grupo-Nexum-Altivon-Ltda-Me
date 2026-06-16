@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { categoriaAPI, produtoAPI, unwrapApiData } from '../services/api';
 import ProductCard from '../components/ProductCard';
+import { fallbackCategories } from '../data/mockStore';
 import { ArrowDownUp, Filter, Search, SlidersHorizontal, X } from 'lucide-react';
 
 const sortOptions = {
