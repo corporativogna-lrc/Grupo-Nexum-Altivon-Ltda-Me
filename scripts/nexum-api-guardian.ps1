@@ -1,5 +1,5 @@
 param(
-  [string]$Url = "http://localhost:5011",
+  [string]$Url = "http://192.168.1.72:5012",
   [int]$CheckSeconds = 20
 )
 

@@ -18,7 +18,7 @@ const getDefaultApiUrl = () => {
     hostname === '::1' ||
     hostname === '';
 
-  return isLocalhost ? 'http://127.0.0.1:5012' : PUBLIC_API_URL;
+  return isLocalhost ? 'http://192.168.1.72:5012' : PUBLIC_API_URL;
 };
 
 export const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || getDefaultApiUrl();

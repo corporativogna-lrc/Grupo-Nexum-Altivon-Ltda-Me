@@ -3,6 +3,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Data;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -1572,7 +1573,7 @@ app.MapPost("/api/pedidos", async (
         .Select(group => new PedidoItemRequest(group.Key, group.Sum(item => item.Quantidade)))
         .ToList();
 
-    var cliente = await db.Clientes.FirstOrDefaultAsync(item => item.Id == request.ClienteId, ct);
+    var cliente = await LoadClienteCheckoutAsync(db, request.ClienteId, ct);
     if (cliente is null)
     {
         return Results.BadRequest(ApiResponse<string>.Erro("Cliente invalido."));
@@ -1717,8 +1718,6 @@ app.MapPost("/api/pedidos", async (
         UpdatedAt = DateTime.UtcNow,
         Itens = itens
     };
-    pedido.Cliente = cliente;
-
     pedido.Pagamentos = new List<Pagamento>
     {
         new()
@@ -2887,6 +2886,117 @@ static string? NormalizeDocument(string? value)
 
     var digits = new string(value.Where(char.IsDigit).ToArray());
     return digits.Length == 0 ? null : digits;
+}
+
+static async Task<Cliente?> LoadClienteCheckoutAsync(
+    NexumDbContext db,
+    int clienteId,
+    CancellationToken ct)
+{
+    var connection = db.Database.GetDbConnection();
+    var shouldClose = connection.State != ConnectionState.Open;
+    if (shouldClose)
+    {
+        await connection.OpenAsync(ct);
+    }
+
+    try
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, nome, email, cpf_cnpj, telefone, whatsapp, newsletter, vip, pontos_fidelidade, status, tipo
+            FROM clientes
+            WHERE id = @id
+            LIMIT 1
+            """;
+
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = "@id";
+        parameter.Value = clienteId;
+        command.Parameters.Add(parameter);
+
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+        {
+            return null;
+        }
+
+        var statusRaw = ReadNullableString(reader, "status");
+        var tipoRaw = ReadNullableString(reader, "tipo");
+
+        return new Cliente
+        {
+            Id = reader.GetInt32(reader.GetOrdinal("id")),
+            Nome = ReadNullableString(reader, "nome") ?? string.Empty,
+            Email = ReadNullableString(reader, "email") ?? string.Empty,
+            CpfCnpj = ReadNullableString(reader, "cpf_cnpj"),
+            Telefone = ReadNullableString(reader, "telefone"),
+            Whatsapp = ReadNullableString(reader, "whatsapp"),
+            Newsletter = ReadNullableBoolean(reader, "newsletter") ?? true,
+            Vip = ReadNullableBoolean(reader, "vip") ?? false,
+            PontosFidelidade = ReadNullableInt32(reader, "pontos_fidelidade") ?? 0,
+            Status = Enum.TryParse<StatusCliente>(statusRaw, true, out var status) ? status : StatusCliente.Pendente,
+            Tipo = Enum.TryParse<TipoCliente>(tipoRaw, true, out var tipo) ? tipo : TipoCliente.PF
+        };
+    }
+    finally
+    {
+        if (shouldClose && connection.State == ConnectionState.Open)
+        {
+            await connection.CloseAsync();
+        }
+    }
+}
+
+static string? ReadNullableString(IDataRecord reader, string columnName)
+{
+    var ordinal = reader.GetOrdinal(columnName);
+    return reader.IsDBNull(ordinal) ? null : Convert.ToString(reader.GetValue(ordinal), CultureInfo.InvariantCulture);
+}
+
+static bool? ReadNullableBoolean(IDataRecord reader, string columnName)
+{
+    var ordinal = reader.GetOrdinal(columnName);
+    if (reader.IsDBNull(ordinal))
+    {
+        return null;
+    }
+
+    var value = reader.GetValue(ordinal);
+    return value switch
+    {
+        bool boolValue => boolValue,
+        sbyte signedByte => signedByte != 0,
+        byte unsignedByte => unsignedByte != 0,
+        short shortValue => shortValue != 0,
+        ushort ushortValue => ushortValue != 0,
+        int intValue => intValue != 0,
+        long longValue => longValue != 0,
+        string textValue when bool.TryParse(textValue, out var parsedBool) => parsedBool,
+        string textValue when int.TryParse(textValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedInt) => parsedInt != 0,
+        _ => Convert.ToBoolean(value, CultureInfo.InvariantCulture)
+    };
+}
+
+static int? ReadNullableInt32(IDataRecord reader, string columnName)
+{
+    var ordinal = reader.GetOrdinal(columnName);
+    if (reader.IsDBNull(ordinal))
+    {
+        return null;
+    }
+
+    var value = reader.GetValue(ordinal);
+    return value switch
+    {
+        int intValue => intValue,
+        long longValue => checked((int)longValue),
+        short shortValue => shortValue,
+        byte byteValue => byteValue,
+        sbyte signedByte => signedByte,
+        string textValue when int.TryParse(textValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedInt) => parsedInt,
+        _ => Convert.ToInt32(value, CultureInfo.InvariantCulture)
+    };
 }
 
 static async Task EnsurePedidoFiscalAutomationAsync(

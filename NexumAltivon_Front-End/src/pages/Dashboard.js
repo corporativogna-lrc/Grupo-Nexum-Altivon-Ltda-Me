@@ -1267,7 +1267,7 @@ export default function Dashboard() {
               <span className="uppercase tracking-[0.18em] text-zinc-500">Console</span>
               <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[0.62rem] font-black uppercase text-emerald-300">local</span>
             </div>
-            <p className="mt-2 text-zinc-300">API 127.0.0.1:5012 · BD 3309 · modo operacional</p>
+            <p className="mt-2 text-zinc-300">API 192.168.1.72:5012 · BD 3309 · modo operacional</p>
           </div>
 
           <nav className="mt-5 space-y-4 overflow-y-auto pb-6 pr-1">

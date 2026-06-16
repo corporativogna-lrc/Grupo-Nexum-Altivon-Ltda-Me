@@ -50,9 +50,21 @@ public class NexumDbContext : DbContext
             .HasIndex(c => c.CpfCnpj)
             .IsUnique();
 
+        modelBuilder.Entity<Cliente>()
+            .Property(cliente => cliente.Tipo)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Cliente>()
+            .Property(cliente => cliente.Status)
+            .HasConversion<string>();
+
         modelBuilder.Entity<Produto>()
             .HasIndex(p => p.Sku)
             .IsUnique();
+
+        modelBuilder.Entity<Produto>()
+            .Property(produto => produto.TipoProduto)
+            .HasConversion<string>();
 
         modelBuilder.Entity<Fornecedor>()
             .HasIndex(f => f.Cnpj)
@@ -143,6 +155,14 @@ public class NexumDbContext : DbContext
 
         modelBuilder.Entity<Pedido>()
             .Property(pedido => pedido.Origem)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<PedidoItem>()
+            .Property(item => item.TipoFulfillment)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<PedidoItem>()
+            .Property(item => item.StatusItem)
             .HasConversion<string>();
 
         modelBuilder.Entity<Pagamento>()
