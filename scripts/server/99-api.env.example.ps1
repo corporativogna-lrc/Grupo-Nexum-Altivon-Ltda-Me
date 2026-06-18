@@ -1,9 +1,9 @@
-# Modelo seguro de configuração local da API Nexum Altivon.
-# Copie este arquivo para Y:\NexumAltivon_API_24H\config\api.env.ps1 no servidor.
+# Modelo seguro de configuração local da Nexum Altivon API.
+# Copie este arquivo para C:\ProgramData\NexumAltivon_API_24H\config\api.env.ps1 no servidor.
 # Preencha os valores reais somente no servidor. Não envie este arquivo preenchido para o Git.
 
 $env:ASPNETCORE_ENVIRONMENT = "Production"
-$env:ASPNETCORE_URLS = "http://127.0.0.1:5010"
+$env:ASPNETCORE_URLS = "http://0.0.0.0:5010"
 
 $env:ConnectionStrings__DefaultConnection = "server=192.168.1.72;port=3309;database=nexum_altivon;user=nexum_app;password=COLOQUE_A_SENHA_REAL_AQUI;SslMode=none;AllowPublicKeyRetrieval=true;"
 

@@ -55,6 +55,7 @@ backups/
 _backups/
 _arquivo_morto/
 artifacts/
+api/
 *.sql.gz
 
 # Runtime local

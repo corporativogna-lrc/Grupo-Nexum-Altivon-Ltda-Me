@@ -40,7 +40,18 @@ Copy-Item (Join-Path $ScriptDirectory "99-api.env.example.ps1") $ScriptPackageDi
 Copy-Item (Join-Path $ScriptDirectory "03-instalar-api-24h-pacote.ps1") $ScriptPackageDirectory -Force
 Copy-Item (Join-Path $ScriptDirectory "04-iniciar-api-24h.ps1") $ScriptPackageDirectory -Force
 Copy-Item (Join-Path $ScriptDirectory "05-verificar-api-24h.ps1") $ScriptPackageDirectory -Force
+Copy-Item (Join-Path $ScriptDirectory "06-tunel-publico-servidor.ps1") $ScriptPackageDirectory -Force
+Copy-Item (Join-Path $ScriptDirectory "07-instalar-tunel-servidor.ps1") $ScriptPackageDirectory -Force
+Copy-Item (Join-Path $ScriptDirectory "11-aplicar-atualizacao-api.ps1") $ScriptPackageDirectory -Force
+Copy-Item (Join-Path $ScriptDirectory "13-reparar-guardiao-api.ps1") $ScriptPackageDirectory -Force
+Copy-Item (Join-Path $ScriptDirectory "14-instalar-agentes-conexao-servidor.ps1") $ScriptPackageDirectory -Force
+Copy-Item (Join-Path $ScriptDirectory "15-reparar-conexoes-servidor.ps1") $ScriptPackageDirectory -Force
+Copy-Item (Join-Path $ScriptDirectory "REPARAR-CONEXOES-SERVIDOR-COMO-ADMIN.cmd") $ScriptPackageDirectory -Force
 Copy-Item (Join-Path $ScriptDirectory "03-instalar-api-24h-pacote.cmd") $TargetDirectory -Force
+Copy-Item (Join-Path $ScriptDirectory "APLICAR-ATUALIZACAO-API.cmd") $TargetDirectory -Force
+Copy-Item (Join-Path $ScriptDirectory "INSTALAR-TUNEL-NO-SERVIDOR.cmd") $TargetDirectory -Force
+Copy-Item (Join-Path $ScriptDirectory "14-INSTALAR-AGENTES-CONEXAO-SERVIDOR-COMO-ADMIN.cmd") $TargetDirectory -Force
+Copy-Item (Join-Path $ScriptDirectory "REPARAR-CONEXOES-SERVIDOR-COMO-ADMIN.cmd") $TargetDirectory -Force
 Copy-Item (Join-Path $SourceRoot "API_24H_SERVIDOR.md") $TargetDirectory -Force
 
 Write-Host "Pacote da API 24h criado em:"

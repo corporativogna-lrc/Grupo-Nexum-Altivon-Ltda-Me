@@ -8,6 +8,9 @@ namespace NexumAltivon.Desktop;
 
 public partial class ManualNfeWindow : Window, INotifyPropertyChanged
 {
+    private static readonly Uri ApiBaseUri = new(
+        System.Environment.GetEnvironmentVariable("NEXUM_API_URL") ?? "https://api.nexumaltivon.com");
+
     private string _empresaEmissora = "Grupo Nexum Altivon Ltda. Me.";
     private string _cnpjEmissor = "";
     private string _clienteDestinatario = "";
@@ -51,7 +54,7 @@ public partial class ManualNfeWindow : Window, INotifyPropertyChanged
     {
         try
         {
-            using var http = new HttpClient { BaseAddress = new Uri("http://localhost:5000") };
+            using var http = new HttpClient { BaseAddress = ApiBaseUri };
             var request = BuildRequest();
 
             using var response = await http.PostAsJsonAsync("/api/fiscal/preparar-emissao-manual", request);
@@ -86,7 +89,7 @@ public partial class ManualNfeWindow : Window, INotifyPropertyChanged
     {
         try
         {
-            using var http = new HttpClient { BaseAddress = new Uri("http://localhost:5000") };
+            using var http = new HttpClient { BaseAddress = ApiBaseUri };
             var request = BuildRequest();
             using var response = await http.PostAsJsonAsync("/api/fiscal/rascunho-manual", request);
 

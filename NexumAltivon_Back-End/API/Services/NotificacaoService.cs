@@ -13,6 +13,7 @@ namespace NexumAltivon.API.Services
     {
         Task EnviarConfirmacaoPedidoAsync(Cliente cliente, Pedido pedido);
         Task EnviarConfirmacaoPagamentoAsync(Cliente cliente, Pedido pedido);
+        Task EnviarAcompanhamentoLogisticoAsync(Cliente cliente, Pedido pedido);
         Task EnviarNotaFiscalEmitidaAsync(Cliente cliente, Pedido pedido, Fiscal fiscal);
         Task EnviarNotificacaoWhatsAppAsync(string? telefone, string mensagem);
         Task EnviarEmailAsync(string? destinatario, string assunto, string corpoHtml);
@@ -99,6 +100,39 @@ h1 {{ color: #C9A227; }}
 <p><strong>Valor pago:</strong> R$ {pedido.Total:N2}</p>
 <p>Seu pedido agora estÃ¡ em <strong>separaÃ§Ã£o</strong> e em breve serÃ¡ enviado.</p>
 <p>Acompanhe o status pelo site: <a href='https://www.nexumaltivon.com/pedidos/{pedido.NumeroPedido}' style='color:#C9A227'>Meus Pedidos</a></p>
+</div>
+</body>
+</html>";
+
+            await EnviarEmailAsync(cliente.Email, assunto, corpo);
+        }
+
+        public async Task EnviarAcompanhamentoLogisticoAsync(Cliente cliente, Pedido pedido)
+        {
+            var assunto = $"Acompanhamento logistico - Pedido {pedido.NumeroPedido}";
+            var transportadora = string.IsNullOrWhiteSpace(pedido.FreteTransportadora) ? "Transportadora em definicao" : pedido.FreteTransportadora;
+            var servico = string.IsNullOrWhiteSpace(pedido.FreteMetodo) ? "Frete selecionado no checkout" : pedido.FreteMetodo;
+            var prazo = pedido.FretePrazoDias > 0 ? $"{pedido.FretePrazoDias} dia(s) uteis apos a postagem" : "Prazo em confirmacao";
+            var rastreio = string.IsNullOrWhiteSpace(pedido.FreteCodigoRastreio) ? "Sera enviado assim que a etiqueta/postagem for gerada" : pedido.FreteCodigoRastreio;
+
+            var corpo = $@"
+<!DOCTYPE html>
+<html>
+<body style='font-family:Arial,sans-serif;background:#f6f3ea;color:#1f1f1f;padding:0;margin:0;'>
+<div style='max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #d7c38a;padding:28px;'>
+<h1 style='margin-top:0;color:#8a6d1f;'>Acompanhamento logistico</h1>
+<p>Ola <strong>{cliente.Nome}</strong>,</p>
+<p>Seu pedido <strong>{pedido.NumeroPedido}</strong> ja esta registrado para acompanhamento logistico.</p>
+<div style='background:#faf7ef;border:1px solid #e4d8b7;padding:18px;margin:20px 0;'>
+<p><strong>Status do pedido:</strong> {pedido.Status}</p>
+<p><strong>Status do pagamento:</strong> {pedido.StatusPagamento}</p>
+<p><strong>Transportadora:</strong> {transportadora}</p>
+<p><strong>Servico:</strong> {servico}</p>
+<p><strong>Frete:</strong> R$ {pedido.FreteValor:N2}</p>
+<p><strong>Prazo:</strong> {prazo}</p>
+<p><strong>Rastreio:</strong> {rastreio}</p>
+</div>
+<p>Acompanhe pelo site: <a href='https://www.nexumaltivon.com/pedidos/{pedido.NumeroPedido}' style='color:#8a6d1f;'>Area do Cliente</a></p>
 </div>
 </body>
 </html>";

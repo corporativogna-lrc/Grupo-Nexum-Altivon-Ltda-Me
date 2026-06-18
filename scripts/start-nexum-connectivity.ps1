@@ -1,5 +1,5 @@
 param(
-  [string]$LocalUrl = "http://127.0.0.1:5011",
+  [string]$LocalUrl = "http://127.0.0.1:5010",
   [int]$CheckSeconds = 20,
   [switch]$WaitForPublic
 )

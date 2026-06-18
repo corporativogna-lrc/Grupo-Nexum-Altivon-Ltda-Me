@@ -10,8 +10,10 @@ namespace NexumAltivon.Desktop;
 
 public partial class MainWindow : Window, INotifyPropertyChanged
 {
-    private const string PortalUrl = "http://localhost:3000";
-    private const string ApiBaseUrl = "http://localhost:5000";
+    private static readonly string PortalUrl =
+        System.Environment.GetEnvironmentVariable("NEXUM_PORTAL_URL") ?? "https://www.nexumaltivon.com";
+    private static readonly string ApiBaseUrl =
+        System.Environment.GetEnvironmentVariable("NEXUM_API_URL") ?? "https://api.nexumaltivon.com";
 
     private string _environmentStatus = "Aguardando conexao";
     private string _environmentDetail = "Os blocos de gestao local e integrações estao preparados para receber as chaves.";

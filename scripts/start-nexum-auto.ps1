@@ -72,14 +72,14 @@ $FrontendLog = Join-Path $LogDir "frontend.log"
 $ApiProject = Join-Path $RootDir "NexumAltivon_Back-End\NexumAltivon.API.csproj"
 $FrontendDir = Join-Path $RootDir "NexumAltivon_Front-End"
 
-$ApiCommand = 'set ASPNETCORE_ENVIRONMENT=Development&& set ASPNETCORE_URLS=http://localhost:5000&& dotnet run --project "' + $ApiProject + '" --no-build --no-restore >> "' + $ApiLog + '" 2>&1'
-$FrontendCommand = 'set BROWSER=none&& set PORT=3000&& set REACT_APP_BACKEND_URL=http://localhost:5000&& npm start >> "' + $FrontendLog + '" 2>&1'
+$ApiCommand = 'set ASPNETCORE_ENVIRONMENT=Development&& set ASPNETCORE_URLS=http://localhost:5010&& dotnet run --project "' + $ApiProject + '" --no-build --no-restore >> "' + $ApiLog + '" 2>&1'
+$FrontendCommand = 'set BROWSER=none&& set PORT=3000&& set REACT_APP_BACKEND_URL=http://localhost:5010&& npm start >> "' + $FrontendLog + '" 2>&1'
 
 $ApiJob = Start-Job -Name "NexumApiWatcher" -ScriptBlock $Watcher -ArgumentList "API", $ApiCommand, $RootDir, $ApiLog, $ApiPidPath
 $FrontendJob = Start-Job -Name "NexumFrontendWatcher" -ScriptBlock $Watcher -ArgumentList "Frontend", $FrontendCommand, $FrontendDir, $FrontendLog, $FrontendPidPath
 
 Write-Host "Nexum supervisor started."
-Write-Host "API: http://localhost:5000"
+Write-Host "API: http://localhost:5010"
 Write-Host "Frontend: http://localhost:3000"
 Write-Host "Logs: $LogDir"
 

@@ -133,7 +133,7 @@ builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo
     {
-        Title = "Nexum Altivon API â€” ERP GenesisGest.Net",
+        Title = "Nexum Altivon API",
         Version = "v1.0.00.2600",
         Description = "API unificada E-Commerce + ERP/CRM do Grupo Nexum Altivon ME",
         Contact = new OpenApiContact

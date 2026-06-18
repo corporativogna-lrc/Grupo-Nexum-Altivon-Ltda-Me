@@ -1520,12 +1520,17 @@ app.MapPut("/api/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
         if (statusPagamentoAnterior != pedido.StatusPagamento && pedido.StatusPagamento == StatusPagamento.Aprovado)
         {
             await notificacaoService.EnviarConfirmacaoPagamentoAsync(pedido.Cliente, pedido);
+            await notificacaoService.EnviarAcompanhamentoLogisticoAsync(pedido.Cliente, pedido);
         }
 
         if (status is StatusPedido.EmSeparacao or StatusPedido.Enviado or StatusPedido.Entregue or StatusPedido.Cancelado or StatusPedido.Devolvido or StatusPedido.Reembolsado)
         {
             var mensagem = BuildMensagemAtualizacaoPedido(pedido);
             await notificacaoService.EnviarStatusPedidoAsync(pedido.Cliente, pedido, mensagem);
+            if (status is StatusPedido.EmSeparacao or StatusPedido.Enviado or StatusPedido.Entregue)
+            {
+                await notificacaoService.EnviarAcompanhamentoLogisticoAsync(pedido.Cliente, pedido);
+            }
         }
     }
 
@@ -1750,6 +1755,7 @@ app.MapPost("/api/pedidos", async (
     await transaction.CommitAsync(ct);
 
     await notificacaoService.EnviarConfirmacaoPedidoAsync(cliente, pedido);
+    await notificacaoService.EnviarAcompanhamentoLogisticoAsync(cliente, pedido);
     var gatewayResult = await TryStartGatewayPaymentAsync(pedido, cliente, configuration, httpClientFactory, http, ct);
     if (gatewayResult.Started)
     {
@@ -2067,6 +2073,7 @@ app.MapPost("/api/webhooks/mercadopago", async (
     if (pagamento.Pedido?.Cliente is not null && statusPagamentoAnterior != pagamento.Pedido.StatusPagamento && pagamento.Pedido.StatusPagamento == StatusPagamento.Aprovado)
     {
         await notificacaoService.EnviarConfirmacaoPagamentoAsync(pagamento.Pedido.Cliente, pagamento.Pedido);
+        await notificacaoService.EnviarAcompanhamentoLogisticoAsync(pagamento.Pedido.Cliente, pagamento.Pedido);
     }
 
     return Results.Ok(new { received = true, updated = true, paymentId, status });
@@ -2911,14 +2918,20 @@ static async Task EnsurePedidoFiscalAutomationAsync(
             ModeloDocumento = "NFe",
             AmbienteDocumento = "Pendente",
             StatusNfe = StatusNfe.Pendente,
-            StatusAutomacao = "Aguardando cadastro de empresa emitente",
-            ResumoRoteamento = "Nenhuma empresa fiscal ativa cadastrada para emitir a operação.",
+            StatusAutomacao = "Contingencia fiscal preparada",
+            ResumoRoteamento = "Nenhuma empresa fiscal ativa cadastrada; pedido mantido em contingencia fiscal para emissao manual.",
             PayloadOperacao = JsonSerializer.Serialize(new
             {
                 pedido.NumeroPedido,
                 pedido.MeioPagamento,
                 pedido.GatewayPagamento,
-                pedido.Total
+                pedido.Total,
+                contingencia = new
+                {
+                    ativa = true,
+                    tipo = "NFeManual",
+                    motivo = "Sem empresa emitente ativa no roteamento fiscal"
+                }
             }),
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -2978,8 +2991,8 @@ static async Task EnsurePedidoFiscalAutomationAsync(
         ModeloDocumento = "NFe",
         AmbienteDocumento = empresaEmitente.AmbienteNfe ?? "Homologacao",
         StatusNfe = StatusNfe.Pendente,
-        StatusAutomacao = "Pré-emissão automática preparada",
-        ResumoRoteamento = $"{decision.Resumo} Perfil tributário: {perfilTributacao}. {resumoPagamento}",
+        StatusAutomacao = "Pré-emissão automática/contingência preparada",
+        ResumoRoteamento = $"{decision.Resumo} Perfil tributário: {perfilTributacao}. {resumoPagamento} Contingencia pronta para emissao manual se autorizador/certificado falhar.",
         PayloadOperacao = JsonSerializer.Serialize(new
         {
             pedido.Id,
@@ -2991,6 +3004,12 @@ static async Task EnsurePedidoFiscalAutomationAsync(
             pedido.GatewayPagamento,
             resumoPagamento,
             perfilTributacao,
+            contingencia = new
+            {
+                ativa = true,
+                tipo = "NFeManual",
+                motivo = "Fallback operacional para falha de autorizador, certificado ou integracao fiscal"
+            },
             usaStLegado = empresaEmitente.UsaStLegado,
             destacaIcmsStSeparado = empresaEmitente.DestacaIcmsStSeparado,
             cliente = new { cliente.Id, cliente.Nome, cliente.Email, cliente.CpfCnpj },
@@ -4839,7 +4858,9 @@ public sealed record StatusUpdateRequest(
     [property: JsonPropertyName("novo_status")] string NovoStatus,
     [property: JsonPropertyName("responsavel_id")] int? ResponsavelId);
 
-public sealed record PedidoItemRequest(string ProdutoId, int Quantidade);
+public sealed record PedidoItemRequest(
+    [property: JsonPropertyName("produto_id")] string ProdutoId,
+    [property: JsonPropertyName("quantidade")] int Quantidade);
 
 public sealed record PedidoRequest(
     [property: JsonPropertyName("cliente_id")] int ClienteId,

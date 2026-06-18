@@ -1,4 +1,4 @@
-param([string]$BaseDirectory = "Y:\NexumAltivon_API_24H_20260613_V2")
+param([string]$BaseDirectory = "$env:ProgramData\NexumAltivon_API_24H")
 
 $ErrorActionPreference = "Stop"
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()

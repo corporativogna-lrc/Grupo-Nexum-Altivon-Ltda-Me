@@ -46,8 +46,7 @@ services:
       ConnectionStrings__NexumDb: "Server=mysql;Port=3306;Database=nexum_altivon;Uid=nexum_dev;Pwd=nexum_dev_2026;"
       JwtSettings__SecretKey: "NexumAltivon_DevSecret_2026_GenesisGest_Core_256bits!"
     ports:
-      - "5000:8080"
-      - "5001:8081"
+      - "5010:8080"
     networks:
       - nexum-network
     volumes:
@@ -58,7 +57,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.frontend
       args:
-        REACT_APP_BACKEND_URL: "http://localhost:5000"
+        REACT_APP_BACKEND_URL: "http://localhost:5010"
     container_name: nexum-frontend
     restart: unless-stopped
     depends_on:

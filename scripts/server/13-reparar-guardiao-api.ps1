@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$baseDirectory = "Y:\NexumAltivon_API_24H_20260613_V2"
+$baseDirectory = "$env:ProgramData\NexumAltivon_API_24H"
 $taskName = "NexumAltivonApi24h"
 $healthUrl = "http://127.0.0.1:5010/health/db"
 $resultPath = Join-Path $baseDirectory "logs\reparo-guardiao.log"

@@ -1,6 +1,6 @@
 param(
   [string]$SourceRoot = "",
-  [string]$BaseDirectory = "Y:\NexumAltivon_API_24H",
+  [string]$BaseDirectory = "$env:ProgramData\NexumAltivon_API_24H",
   [string]$ApiDirectory = "",
   [string]$ConfigDirectory = "",
   [string]$Url = "http://127.0.0.1:5010",
@@ -23,6 +23,7 @@ $BaseDirectory = [System.IO.Path]::GetFullPath($BaseDirectory.TrimEnd('\', '/'))
 
 $ProjectPath = Join-Path $SourceRoot "NexumAltivon_Back-End\NexumAltivon.API.csproj"
 $RunnerSource = Join-Path $ScriptDirectory "04-iniciar-api-24h.ps1"
+$TunnelRunnerSource = Join-Path $ScriptDirectory "06-tunel-publico-servidor.ps1"
 if (-not $ApiDirectory) {
   $ApiDirectory = Join-Path $BaseDirectory "api"
 }
@@ -31,6 +32,7 @@ if (-not $ConfigDirectory) {
 }
 
 $RunnerTarget = Join-Path $BaseDirectory "04-iniciar-api-24h.ps1"
+$TunnelRunnerTarget = Join-Path $BaseDirectory "start-public-tunnel.ps1"
 $ConfigExampleSource = Join-Path $ScriptDirectory "99-api.env.example.ps1"
 $ConfigTarget = Join-Path $ConfigDirectory "api.env.ps1"
 $TaskName = "NexumAltivonApi24h"
@@ -54,11 +56,28 @@ try {
 }
 
 Copy-Item $RunnerSource $RunnerTarget -Force
+if (Test-Path $TunnelRunnerSource) {
+  Copy-Item $TunnelRunnerSource $TunnelRunnerTarget -Force
+}
 
 if (-not (Test-Path $ConfigTarget)) {
   Copy-Item $ConfigExampleSource $ConfigTarget
   Write-Host "Configuração criada em: $ConfigTarget"
   Write-Host "Preencha as senhas reais antes de liberar a operação externa."
+}
+
+$configText = Get-Content $ConfigTarget -Raw
+if ($configText -match 'ASPNETCORE_URLS') {
+  $configText = $configText -replace '\$env:ASPNETCORE_URLS\s*=\s*"[^"]*"', '$env:ASPNETCORE_URLS = "http://0.0.0.0:5010"'
+} else {
+  $configText += "`r`n`$env:ASPNETCORE_URLS = `"http://0.0.0.0:5010`"`r`n"
+}
+Set-Content -Path $ConfigTarget -Value $configText -Encoding UTF8
+
+try {
+  New-NetFirewallRule -DisplayName "Nexum Altivon API 5010" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 5010 -ErrorAction SilentlyContinue | Out-Null
+} catch {
+  Write-Host "Aviso: regra de firewall da porta 5010 nao foi criada automaticamente: $($_.Exception.Message)"
 }
 
 $PowerShellPath = "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"
@@ -87,7 +106,7 @@ Register-ScheduledTask `
 
 Start-ScheduledTask -TaskName $TaskName
 
-Write-Host "API Nexum Altivon instalada para operar 24h."
+Write-Host "Nexum Altivon API instalada para operar 24h."
 Write-Host "Tarefa: $TaskName"
 Write-Host "URL local: $Url"
 Write-Host "Pasta da API: $ApiDirectory"

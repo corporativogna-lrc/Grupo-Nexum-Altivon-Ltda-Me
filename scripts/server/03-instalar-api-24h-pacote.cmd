@@ -18,5 +18,5 @@ if exist "%BASE%\scripts\03-instalar-api-24h-pacote.ps1" (
   set "INSTALLER=%BASE%\03-instalar-api-24h-pacote.ps1"
 )
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%INSTALLER%" -PackageApiDirectory "%PACKAGE_ROOT%\api" -BaseDirectory "%PACKAGE_ROOT%" -Url http://127.0.0.1:5010 -CheckSeconds 20
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%INSTALLER%" -PackageApiDirectory "%PACKAGE_ROOT%\api" -BaseDirectory "%ProgramData%\NexumAltivon_API_24H" -Url http://127.0.0.1:5010 -CheckSeconds 20
 pause

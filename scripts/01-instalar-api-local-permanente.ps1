@@ -1,5 +1,5 @@
 param(
-  [string]$Url = "http://localhost:5011",
+  [string]$Url = "http://localhost:5010",
   [int]$CheckSeconds = 20
 )
 
@@ -46,7 +46,7 @@ if (Test-Path $PidPath) {
   }
 }
 
-$portLine = netstat -ano | Select-String -Pattern "127\.0\.0\.1:5011\s+.*LISTENING\s+(\d+)" | Select-Object -First 1
+$portLine = netstat -ano | Select-String -Pattern "127\.0\.0\.1:5012\s+.*LISTENING\s+(\d+)" | Select-Object -First 1
 if ($portLine -and $portLine.Matches[0].Groups[1].Value) {
   Stop-Process -Id ([int]$portLine.Matches[0].Groups[1].Value) -Force -ErrorAction SilentlyContinue
 }

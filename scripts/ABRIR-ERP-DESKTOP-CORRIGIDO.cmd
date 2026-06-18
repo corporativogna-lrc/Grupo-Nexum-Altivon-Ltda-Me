@@ -3,7 +3,7 @@ setlocal
 
 set SCRIPT_DIR=%~dp0
 
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "C:\Users\Rodrigo Costa\Documents\Codex\2026-05-28\files-mentioned-by-the-user-nexumaltivon\NexumAltivon.com\scripts\erp-desktop.ps1"
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%erp-desktop-corrigido.ps1" -Url https://admin.nexumaltivon.com/login
 
 if errorlevel 1 (
     echo.

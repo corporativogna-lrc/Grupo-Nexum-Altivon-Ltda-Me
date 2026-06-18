@@ -16,7 +16,7 @@ try {
     $ErrorActionPreference = "Stop"
 
     if ([string]::IsNullOrWhiteSpace($Url)) {
-        $Url = "http://localhost:3000/dashboard/erp"
+        $Url = "https://admin.nexumaltivon.com/login"
     }
 
     $profileDir = Join-Path $env:LOCALAPPDATA "NexumAltivon\ERPDesktop"
@@ -28,10 +28,10 @@ try {
     $browser = $null
 
     $candidatos = @(
-        "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
-        "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
         "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
-        "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
+        "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
+        "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
+        "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
     )
 
     foreach ($arquivo in $candidatos) {
