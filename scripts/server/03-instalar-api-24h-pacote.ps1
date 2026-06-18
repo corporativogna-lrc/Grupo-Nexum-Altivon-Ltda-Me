@@ -52,6 +52,27 @@ New-Item -ItemType Directory -Force -Path $ApiDirectory, $ConfigDirectory, (Join
 $PackageApiDirectory = [System.IO.Path]::GetFullPath($PackageApiDirectory.TrimEnd('\', '/'))
 $ApiDirectory = [System.IO.Path]::GetFullPath($ApiDirectory.TrimEnd('\', '/'))
 if (-not [string]::Equals($PackageApiDirectory, $ApiDirectory, [StringComparison]::OrdinalIgnoreCase)) {
+  Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+  Start-Sleep -Seconds 2
+
+  $PidPath = Join-Path $BaseDirectory "runtime\api.pid"
+  if (Test-Path $PidPath) {
+    $oldPid = Get-Content $PidPath -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($oldPid) {
+      Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
+    }
+    Remove-Item $PidPath -Force -ErrorAction SilentlyContinue
+  }
+
+  $lockedProcesses = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+    ($_.Name -eq "NexumAltivon.API.exe" -and $_.ExecutablePath -like "$BaseDirectory*") -or
+    ($_.Name -match "dotnet" -and $_.CommandLine -like "*NexumAltivon.API.dll*")
+  }
+  foreach ($process in $lockedProcesses) {
+    Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+  }
+
+  Start-Sleep -Seconds 2
   Copy-Item (Join-Path $PackageApiDirectory "*") $ApiDirectory -Recurse -Force
 }
 Copy-Item $RunnerSource $RunnerTarget -Force
