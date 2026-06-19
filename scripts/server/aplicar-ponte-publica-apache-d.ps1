@@ -21,8 +21,8 @@ if ($vhostText -notmatch 'ServerName\s+api\.nexumaltivon\.com') {
     ServerAlias back.nexumaltivon.com
 
     ProxyPreserveHost On
-    ProxyPass / http://127.0.0.1:5010/
-    ProxyPassReverse / http://127.0.0.1:5010/
+    ProxyPass / http://192.168.1.72:5010/
+    ProxyPassReverse / http://192.168.1.72:5010/
 
     ErrorLog "logs/nexum-api-error.log"
     CustomLog "logs/nexum-api-access.log" common

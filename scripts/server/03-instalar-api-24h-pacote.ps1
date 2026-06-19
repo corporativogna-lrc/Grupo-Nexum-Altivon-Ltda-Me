@@ -73,7 +73,11 @@ if (-not [string]::Equals($PackageApiDirectory, $ApiDirectory, [StringComparison
   }
 
   Start-Sleep -Seconds 2
-  Copy-Item (Join-Path $PackageApiDirectory "*") $ApiDirectory -Recurse -Force
+  $robocopy = Join-Path $env:WINDIR "System32\robocopy.exe"
+  & $robocopy $PackageApiDirectory $ApiDirectory /MIR /R:5 /W:2 /NFL /NDL /NP
+  if ($LASTEXITCODE -gt 7) {
+    throw "Falha ao atualizar a API em $ApiDirectory. Feche processos travando a pasta e execute novamente. Codigo Robocopy: $LASTEXITCODE"
+  }
 }
 Copy-Item $RunnerSource $RunnerTarget -Force
 if (Test-Path $TunnelRunnerSource) {

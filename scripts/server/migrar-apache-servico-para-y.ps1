@@ -42,8 +42,8 @@ if ($vhostText -notmatch 'ServerName\s+api\.nexumaltivon\.com') {
     ServerAlias back.nexumaltivon.com
 
     ProxyPreserveHost On
-    ProxyPass / http://127.0.0.1:5010/
-    ProxyPassReverse / http://127.0.0.1:5010/
+    ProxyPass / http://192.168.1.72:5010/
+    ProxyPassReverse / http://192.168.1.72:5010/
 
     ErrorLog "logs/nexum-api-error.log"
     CustomLog "logs/nexum-api-access.log" common
@@ -79,5 +79,5 @@ Write-Host "Testando API via Apache Y: na porta 80..."
 curl.exe -i --max-time 10 -H "Host: api.nexumaltivon.com" http://127.0.0.1/health/db
 
 Write-Host "Testando API direta na porta 5010..."
-curl.exe -i --max-time 10 http://127.0.0.1:5010/health/db
+curl.exe -i --max-time 10 http://192.168.1.72:5010/health/db
 Write-Step "Migracao concluida."

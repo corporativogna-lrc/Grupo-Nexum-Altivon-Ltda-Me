@@ -1,7 +1,7 @@
 param(
   [string]$PackageRoot = "",
   [string]$BaseDirectory = "$env:ProgramData\NexumAltivon_API_24H",
-  [string]$Url = "http://127.0.0.1:5010",
+  [string]$Url = "http://192.168.1.72:5010",
   [int]$CheckSeconds = 20
 )
 
@@ -76,7 +76,8 @@ if (-not (Test-Path (Join-Path $packageApiDirectory "NexumAltivon.API.dll"))) {
   New-Item -ItemType Directory -Force -Path $packageApiDirectory | Out-Null
   Write-Step "Publicacao da API nao encontrada no pacote. Publicando a partir do projeto fonte."
 
-  dotnet publish $projectPath --configuration Release --output $packageApiDirectory -p:UseAppHost=false
+  $buildBase = Join-Path $BaseDirectory ("build-api-" + [guid]::NewGuid().ToString("N"))
+  dotnet publish $projectPath --configuration Release --runtime win-x64 --self-contained true --output $packageApiDirectory -p:UseAppHost=true -p:BaseOutputPath="$buildBase\bin\" -p:BaseIntermediateOutputPath="$buildBase\obj\"
   if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $packageApiDirectory "NexumAltivon.API.dll"))) {
     throw "Falha ao publicar a API a partir do projeto fonte. Verifique se o .NET SDK esta instalado no servidor."
   }

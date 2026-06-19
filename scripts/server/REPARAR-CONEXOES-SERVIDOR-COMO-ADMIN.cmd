@@ -10,5 +10,5 @@ if not "%errorlevel%"=="0" (
   exit /b
 )
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%15-reparar-conexoes-servidor.ps1" -PackageRoot "%PACKAGE_ROOT%" -BaseDirectory "%PACKAGE_ROOT%\.nexum-runtime\api-24h" -Url http://127.0.0.1:5010 -CheckSeconds 20
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%15-reparar-conexoes-servidor.ps1" -PackageRoot "%PACKAGE_ROOT%" -BaseDirectory "%PACKAGE_ROOT%\.nexum-runtime\api-24h" -Url http://192.168.1.72:5010 -CheckSeconds 20
 pause

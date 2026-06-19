@@ -50,6 +50,14 @@ public class NexumDbContext : DbContext
             .HasIndex(c => c.CpfCnpj)
             .IsUnique();
 
+        modelBuilder.Entity<Cliente>()
+            .Property(cliente => cliente.Tipo)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Cliente>()
+            .Property(cliente => cliente.Status)
+            .HasConversion<string>();
+
         modelBuilder.Entity<Produto>()
             .HasIndex(p => p.Sku)
             .IsUnique();
@@ -218,10 +226,10 @@ public class NexumDbContext : DbContext
             .Property(empresa => empresa.MargemMinimaPercentual)
             .HasPrecision(10, 4);
 
-        // Seed inicial das 6 lojas
+        // Seed alinhado ao banco de produção: Chronos já é a loja 1 e possui produtos vinculados.
         modelBuilder.Entity<Loja>().HasData(
-            new Loja { Id = 1, Nome = "Grann-Tur", Slug = "grann-tur", Segmento = "Viagens & Turismo", Descricao = "Mochilas, malas, acessórios de viagem", CorPrimaria = "#C9A227", CorSecundaria = "#1E3A5F", Dominio = "grann-tur.nexumaltivon.com", Ativa = true, OrdemExibicao = 1 },
-            new Loja { Id = 2, Nome = "Chronos", Slug = "chronos", Segmento = "Relógios & Acessórios", Descricao = "Relógios que marcam estilo", CorPrimaria = "#C9A227", CorSecundaria = "#2E5A8F", Dominio = "chronos.nexumaltivon.com", Ativa = true, OrdemExibicao = 2 },
+            new Loja { Id = 1, Nome = "Chronos", Slug = "chronos", Segmento = "Relógios & Acessórios", Descricao = "Relógios que marcam estilo", CorPrimaria = "#C9A227", CorSecundaria = "#2E5A8F", Dominio = "chronos.nexumaltivon.com", Ativa = true, OrdemExibicao = 1 },
+            new Loja { Id = 2, Nome = "Grann-Tur", Slug = "grann-tur", Segmento = "Viagens & Turismo", Descricao = "Mochilas, malas, acessórios de viagem", CorPrimaria = "#C9A227", CorSecundaria = "#1E3A5F", Dominio = "grann-tur.nexumaltivon.com", Ativa = true, OrdemExibicao = 2 },
             new Loja { Id = 3, Nome = "Moda Mim", Slug = "moda-mim", Segmento = "Moda & Vestuário", Descricao = "Tendências que vestem a sua personalidade", CorPrimaria = "#C9A227", CorSecundaria = "#8B1E3F", Dominio = "moda-mim.nexumaltivon.com", Ativa = true, OrdemExibicao = 3 },
             new Loja { Id = 4, Nome = "Geração Top+", Slug = "geracao-top", Segmento = "Tecnologia & Gadgets", Descricao = "Tecnologia de ponta ao alcance de todos", CorPrimaria = "#C9A227", CorSecundaria = "#0F4C3A", Dominio = "geracao-top.nexumaltivon.com", Ativa = true, OrdemExibicao = 4 },
             new Loja { Id = 5, Nome = "Estruturaline", Slug = "estruturaline", Segmento = "Construção & Estruturas", Descricao = "Ferramentas e materiais de construção", CorPrimaria = "#C9A227", CorSecundaria = "#4A3728", Dominio = "estruturaline.nexumaltivon.com", Ativa = true, OrdemExibicao = 5 },

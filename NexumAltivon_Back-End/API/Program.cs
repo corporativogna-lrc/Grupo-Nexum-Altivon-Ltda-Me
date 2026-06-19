@@ -4403,6 +4403,11 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
         return;
     }
 
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS email_verificado_em DATETIME NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS token_confirmacao_email VARCHAR(255) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS token_confirmacao_expira_em DATETIME NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE clientes ADD INDEX IF NOT EXISTS ix_clientes_token_confirmacao_email (token_confirmacao_email);");
+
     await db.Database.ExecuteSqlRawAsync(
         """
         CREATE TABLE IF NOT EXISTS erp_empresas_grupo (

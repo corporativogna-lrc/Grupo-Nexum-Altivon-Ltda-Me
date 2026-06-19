@@ -9,14 +9,23 @@ let runtimeApiUrlPromise = null;
 let runtimeApiUrlResolvedAt = 0;
 const apiHealthCache = new Map();
 const RUNTIME_URL_TTL_MS = 30 * 1000;
+const LAN_OR_IP_HOST_RE = /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.|\d{1,3}(\.\d{1,3}){3}$)/;
+
+const isLocalOrLanHost = (hostname = '') => (
+  hostname === ''
+  || hostname === 'localhost'
+  || hostname === '127.0.0.1'
+  || LAN_OR_IP_HOST_RE.test(hostname)
+);
 
 const getDefaultApiUrl = () => {
   if (typeof window === 'undefined') return 'http://localhost:5010';
 
-  const { hostname } = window.location;
-  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
+  const { hostname, origin, protocol } = window.location;
 
-  return isLocalhost ? 'http://localhost:5010' : PUBLIC_API_URL;
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '') return 'http://localhost:5010';
+  if (isLocalOrLanHost(hostname) || protocol === 'http:') return origin;
+  return PUBLIC_API_URL;
 };
 
 export const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || getDefaultApiUrl();
@@ -56,8 +65,7 @@ const canUseApiUrl = async (baseUrl, force = false) => {
 
 const isLocalApi = () => {
   if (typeof window === 'undefined') return true;
-  const { hostname } = window.location;
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
+  return isLocalOrLanHost(window.location.hostname);
 };
 
 export const getRuntimeApiBaseUrl = async ({ force = false } = {}) => {
