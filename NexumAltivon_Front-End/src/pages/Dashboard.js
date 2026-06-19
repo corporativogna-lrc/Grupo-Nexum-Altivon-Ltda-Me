@@ -875,7 +875,6 @@ export default function Dashboard() {
   const submitProduto = async (event) => {
     event.preventDefault();
     setFormStatus('');
-    const duplicateMessage = getProdutoDuplicateMessage(produtoForm, produtos, produtoEditingId);
     const requiredProductFields = [
       produtoForm.nome,
       produtoForm.descricao,
