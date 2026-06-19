@@ -62,9 +62,17 @@ public class NexumDbContext : DbContext
             .HasIndex(p => p.Sku)
             .IsUnique();
 
+        modelBuilder.Entity<Produto>()
+            .Property(produto => produto.TipoProduto)
+            .HasConversion<string>();
+
         modelBuilder.Entity<Fornecedor>()
             .HasIndex(f => f.Cnpj)
             .IsUnique();
+
+        modelBuilder.Entity<Fornecedor>()
+            .Property(fornecedor => fornecedor.Status)
+            .HasConversion<string>();
 
         modelBuilder.Entity<Cupom>()
             .HasIndex(c => c.Codigo)
