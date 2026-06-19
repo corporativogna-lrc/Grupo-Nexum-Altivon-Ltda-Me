@@ -5,6 +5,7 @@ import { CartProvider } from './context/CartContext';
 
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
+import GlobalActions from './components/GlobalActions';
 import Home from './pages/Home';
 import Produtos from './pages/Produtos';
 import ProdutoDetalhe from './pages/ProdutoDetalhe';
@@ -52,6 +53,7 @@ function AppShell() {
         <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <GlobalActions />
       {showStoreShell && <Footer />}
     </div>
   );

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LogIn } from 'lucide-react';
+import { Eye, EyeOff, LogIn } from 'lucide-react';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -10,6 +10,7 @@ export default function Login() {
   const [senha, setSenha] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showSenha, setShowSenha] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -60,15 +61,26 @@ export default function Login() {
 
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">Senha</label>
-            <input
-              type="password"
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              required
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-              placeholder="••••••••"
-              data-testid="senha-input"
-            />
+            <div className="flex items-center gap-2 rounded-lg border border-gray-300 focus-within:ring-2 focus-within:ring-amber-500">
+              <input
+                type={showSenha ? 'text' : 'password'}
+                value={senha}
+                onChange={(e) => setSenha(e.target.value)}
+                required
+                className="w-full rounded-lg px-4 py-3 outline-none"
+                placeholder="••••••••"
+                data-testid="senha-input"
+              />
+              <button
+                type="button"
+                onClick={() => setShowSenha((current) => !current)}
+                className="mr-2 inline-flex h-10 w-10 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-gray-900"
+                aria-label={showSenha ? 'Ocultar senha' : 'Mostrar senha'}
+                title={showSenha ? 'Ocultar senha' : 'Mostrar senha'}
+              >
+                {showSenha ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
 
           <button

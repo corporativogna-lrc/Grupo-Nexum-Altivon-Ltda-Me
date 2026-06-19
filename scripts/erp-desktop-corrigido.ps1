@@ -1,63 +1,18 @@
-# PROJETO: GenesisGest.Net
-# VERSÃO: 1.0.02.11.2520
-# MÓDULO: ERP Desktop
-# CAMADA: Scripts
-# ARQUIVO: erp-desktop.ps1
-# AUTOR: [Rodrigo Costa/InfocoSystem]
-# DATA: 10/06/2026
-# STATUS: Operacional Ativo.
-# DESCRIÇÃO: Inicialização do ERP Desktop.
-
 param(
-    [string]$Url = $env:NEXUM_ERP_URL
+    [string]$Url = $env:NEXUM_ERP_URL,
+    [ValidateSet('Perguntar', 'Chrome', 'Edge', 'Sistema')]
+    [string]$BrowserChoice = $(if ($env:NEXUM_ERP_BROWSER) { $env:NEXUM_ERP_BROWSER } else { 'Perguntar' })
 )
 
-try {
-    $ErrorActionPreference = "Stop"
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$target = Join-Path $scriptDir "erp-desktop.ps1"
 
-    if ([string]::IsNullOrWhiteSpace($Url)) {
-        $Url = "http://localhost:3000/dashboard/erp"
-    }
-
-    $profileDir = Join-Path $env:LOCALAPPDATA "NexumAltivon\ERPDesktop"
-
-    if (-not (Test-Path $profileDir)) {
-        New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
-    }
-
-    $browser = $null
-
-    $candidatos = @(
-        "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
-        "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
-        "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
-        "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
-    )
-
-    foreach ($arquivo in $candidatos) {
-        if (Test-Path $arquivo) {
-            $browser = $arquivo
-            break
-        }
-    }
-
-    if ($browser) {
-        Start-Process -FilePath $browser -ArgumentList @(
-            "--app=$Url",
-            "--new-window",
-            "--user-data-dir=$profileDir"
-        )
-    }
-    else {
-        Start-Process -FilePath $Url
-    }
-
-    exit 0
+if ([string]::IsNullOrWhiteSpace($Url)) {
+    $Url = "http://127.0.0.1:3000/dashboard"
 }
-catch {
-    Write-Host ""
-    Write-Host "ERRO AO INICIAR ERP:" -ForegroundColor Red
-    Write-Host $_.Exception.Message -ForegroundColor Yellow
-    Read-Host "Pressione ENTER para finalizar"
-    exit 1
+
+if (-not (Test-Path -LiteralPath $target)) {
+    throw "Nao foi possivel localizar o launcher do ERP Desktop: $target"
 }
+
+& $target -Url $Url -BrowserChoice $BrowserChoice

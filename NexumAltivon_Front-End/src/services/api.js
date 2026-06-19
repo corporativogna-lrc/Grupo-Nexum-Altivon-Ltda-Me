@@ -14,9 +14,13 @@ const getDefaultApiUrl = () => {
   if (typeof window === 'undefined') return 'http://localhost:5000';
 
   const { hostname } = window.location;
-  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
+  const isLocalhost =
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname === '';
 
-  return isLocalhost ? 'http://localhost:5011' : PUBLIC_API_URL;
+  return isLocalhost ? 'http://192.168.1.72:5012' : PUBLIC_API_URL;
 };
 
 export const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || getDefaultApiUrl();
@@ -57,7 +61,7 @@ const canUseApiUrl = async (baseUrl, force = false) => {
 const isLocalApi = () => {
   if (typeof window === 'undefined') return true;
   const { hostname } = window.location;
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '';
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '';
 };
 
 export const getRuntimeApiBaseUrl = async ({ force = false } = {}) => {
@@ -270,12 +274,15 @@ export const clienteAPI = {
   getAll: () => api.get('/clientes'),
   verificarCadastro: (params) => api.get('/clientes/verificar', { params }),
   create: (data) => api.post('/clientes', data),
+  update: (id, data) => api.put(`/clientes/${id}`, data),
+  confirmarCadastro: (token) => api.get('/clientes/confirmar', { params: { token } }),
   getPortal: () => api.get('/clientes/portal/me'),
 };
 
 export const fornecedorAPI = {
   getAll: () => api.get('/fornecedores'),
   create: (data) => api.post('/fornecedores', data),
+  update: (id, data) => api.put(`/fornecedores/${id}`, data),
 };
 
 export const empresaGrupoAPI = {

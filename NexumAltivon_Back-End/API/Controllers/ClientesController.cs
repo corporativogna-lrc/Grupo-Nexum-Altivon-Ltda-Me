@@ -74,6 +74,20 @@ public class ClientesController : ControllerBase
     }
 
     /// <summary>
+    /// Confirma o e-mail do cadastro do cliente
+    /// </summary>
+    [HttpGet("confirmar")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(ApiResponse<ClienteDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<ClienteDto>>> ConfirmarEmail([FromQuery] string token)
+    {
+        var resultado = await _clienteService.ConfirmarEmailAsync(token);
+        if (!resultado.Sucesso)
+            return BadRequest(resultado);
+        return Ok(resultado);
+    }
+
+    /// <summary>
     /// Atualiza um cliente
     /// </summary>
     [HttpPut("{id:int}")]

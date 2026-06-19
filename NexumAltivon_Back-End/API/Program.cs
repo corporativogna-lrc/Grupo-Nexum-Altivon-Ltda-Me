@@ -3,6 +3,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Data;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -52,17 +53,24 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("NexumCorsPolicy", policy =>
     {
+        if (builder.Environment.IsDevelopment() || builder.Environment.IsStaging())
+        {
+            policy
+                .AllowAnyOrigin()
+                .AllowAnyMethod()
+                .AllowAnyHeader();
+            return;
+        }
+
         var origins = apiSettings.GetSection("CorsOrigins").Get<string[]>()
             ?? new[]
             {
-                "http://localhost:5000",
-                "http://localhost:5001",
-                "http://localhost:3000",
                 "https://www.nexumaltivon.com",
                 "https://admin.nexumaltivon.com"
             };
 
-        policy.WithOrigins(origins)
+        policy
+            .WithOrigins(origins)
             .AllowAnyMethod()
             .AllowAnyHeader()
             .WithExposedHeaders("Token-Expired", "X-Total-Count", "X-Page-Count");
@@ -264,10 +272,15 @@ app.MapPost("/api/auth/login", async (
     }
 
     var cliente = await db.Clientes
-        .FirstOrDefaultAsync(item => item.Email == normalizedEmail && item.Status == StatusCliente.Ativo, ct);
+        .FirstOrDefaultAsync(item => item.Email == normalizedEmail, ct);
 
     if (cliente is not null && !string.IsNullOrWhiteSpace(cliente.SenhaHash) && BCrypt.Net.BCrypt.Verify(request.Senha, cliente.SenhaHash))
     {
+        if (cliente.Status != StatusCliente.Ativo)
+        {
+            return Results.BadRequest(ApiResponse<LoginResponse>.Erro("Seu cadastro ainda não foi confirmado. Verifique seu e-mail antes de entrar."));
+        }
+
         cliente.UltimoAcesso = DateTime.UtcNow;
         cliente.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
@@ -531,14 +544,7 @@ app.MapPost("/api/categorias", [Authorize(Policy = "Gerente")] async (
 
 app.MapGet("/api/produtos", async (string? categoria_id, NexumDbContext db, CancellationToken ct) =>
 {
-    IQueryable<Produto> query = db.Produtos.AsNoTracking().Where(produto =>
-        produto.Ativo
-        && !string.IsNullOrWhiteSpace(produto.ImagemPrincipal)
-        && (!string.IsNullOrWhiteSpace(produto.DescricaoCurta) || !string.IsNullOrWhiteSpace(produto.DescricaoLonga))
-        && produto.Peso > 0
-        && produto.Altura > 0
-        && produto.Largura > 0
-        && produto.Comprimento > 0);
+    IQueryable<Produto> query = FiltrarProdutosPublicaveis(db.Produtos.AsNoTracking());
 
     if (!string.IsNullOrWhiteSpace(categoria_id))
     {
@@ -566,7 +572,7 @@ app.MapGet("/api/produtos", async (string? categoria_id, NexumDbContext db, Canc
             produto.DescricaoCurta,
             produto.Preco,
             produto.PrecoPromocional,
-            produto.ImagemPrincipal!,
+            produto.ImagemPrincipal ?? string.Empty,
             produto.EstoqueAtual,
             produto.EstoqueMinimo,
             produto.EstoqueReservado,
@@ -597,16 +603,8 @@ app.MapGet("/api/produtos", async (string? categoria_id, NexumDbContext db, Canc
 
 app.MapGet("/api/produtos/destaques", async (NexumDbContext db, CancellationToken ct) =>
 {
-    var produtos = await db.Produtos
-        .AsNoTracking()
-        .Where(produto => produto.Ativo
-            && produto.Destaque
-            && !string.IsNullOrWhiteSpace(produto.ImagemPrincipal)
-            && (!string.IsNullOrWhiteSpace(produto.DescricaoCurta) || !string.IsNullOrWhiteSpace(produto.DescricaoLonga))
-            && produto.Peso > 0
-            && produto.Altura > 0
-            && produto.Largura > 0
-            && produto.Comprimento > 0)
+    var produtos = await FiltrarProdutosPublicaveis(db.Produtos.AsNoTracking())
+        .Where(produto => produto.Destaque)
         .OrderByDescending(produto => produto.UpdatedAt)
         .Take(24)
         .Select(produto => new ProdutoLojaDto(
@@ -616,7 +614,7 @@ app.MapGet("/api/produtos/destaques", async (NexumDbContext db, CancellationToke
             produto.DescricaoCurta,
             produto.Preco,
             produto.PrecoPromocional,
-            produto.ImagemPrincipal!,
+            produto.ImagemPrincipal ?? string.Empty,
             produto.EstoqueAtual,
             produto.EstoqueMinimo,
             produto.EstoqueReservado,
@@ -647,16 +645,8 @@ app.MapGet("/api/produtos/destaques", async (NexumDbContext db, CancellationToke
 
 app.MapGet("/api/produtos/{id}", async (string id, NexumDbContext db, CancellationToken ct) =>
 {
-    var dto = await db.Produtos
-        .AsNoTracking()
-        .Where(item => item.Slug == id
-            && item.Ativo
-            && !string.IsNullOrWhiteSpace(item.ImagemPrincipal)
-            && (!string.IsNullOrWhiteSpace(item.DescricaoCurta) || !string.IsNullOrWhiteSpace(item.DescricaoLonga))
-            && item.Peso > 0
-            && item.Altura > 0
-            && item.Largura > 0
-            && item.Comprimento > 0)
+    var dto = await FiltrarProdutosPublicaveis(db.Produtos.AsNoTracking())
+        .Where(item => item.Slug == id)
         .Select(item => new ProdutoLojaDto(
             item.Slug,
             item.Nome,
@@ -664,7 +654,7 @@ app.MapGet("/api/produtos/{id}", async (string id, NexumDbContext db, Cancellati
             item.DescricaoCurta,
             item.Preco,
             item.PrecoPromocional,
-            item.ImagemPrincipal!,
+            item.ImagemPrincipal ?? string.Empty,
             item.EstoqueAtual,
             item.EstoqueMinimo,
             item.EstoqueReservado,
@@ -864,7 +854,6 @@ app.MapPost("/api/produtos", [Authorize(Policy = "Gerente")] async (
     db.Produtos.Add(produto);
     await db.SaveChangesAsync(ct);
 
-    const string defaultImage = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85";
     var dto = new ProdutoLojaDto(
         produto.Slug,
         produto.Nome,
@@ -872,7 +861,7 @@ app.MapPost("/api/produtos", [Authorize(Policy = "Gerente")] async (
         produto.DescricaoCurta,
         produto.Preco,
         produto.PrecoPromocional,
-        produto.ImagemPrincipal ?? defaultImage,
+        produto.ImagemPrincipal ?? string.Empty,
         produto.EstoqueAtual,
         produto.EstoqueMinimo,
         produto.EstoqueReservado,
@@ -976,7 +965,6 @@ app.MapPut("/api/produtos/{id}", [Authorize(Policy = "Gerente")] async (
 
     await db.SaveChangesAsync(ct);
 
-    const string defaultImage = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85";
     var dto = new ProdutoLojaDto(
         produto.Slug,
         produto.Nome,
@@ -984,7 +972,7 @@ app.MapPut("/api/produtos/{id}", [Authorize(Policy = "Gerente")] async (
         produto.DescricaoCurta,
         produto.Preco,
         produto.PrecoPromocional,
-        produto.ImagemPrincipal ?? defaultImage,
+        produto.ImagemPrincipal ?? string.Empty,
         produto.EstoqueAtual,
         produto.EstoqueMinimo,
         produto.EstoqueReservado,
@@ -1097,7 +1085,7 @@ app.MapGet("/api/clientes/verificar", async (string? email, string? cpf, NexumDb
 .WithName("VerificarCadastroCliente")
 ;
 
-app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, CancellationToken ct) =>
+app.MapPost("/api/clientes", async (ClienteRequest request, IConfiguration configuration, INotificacaoService notificacaoService, NexumDbContext db, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Nome))
     {
@@ -1130,10 +1118,22 @@ app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, C
 
         clienteExistente.Newsletter = request.Newsletter ?? clienteExistente.Newsletter;
         clienteExistente.UpdatedAt = DateTime.UtcNow;
+
+        if (clienteExistente.Status != StatusCliente.Ativo)
+        {
+            clienteExistente.TokenConfirmacaoEmail ??= Guid.NewGuid().ToString("N");
+            clienteExistente.Status = StatusCliente.Pendente;
+            var baseUrlExistente = configuration["PublicSite:BaseUrl"]?.TrimEnd('/') ?? "https://www.nexumaltivon.com";
+            var linkExistente = $"{baseUrlExistente}/confirmar-cadastro.html?token={Uri.EscapeDataString(clienteExistente.TokenConfirmacaoEmail)}";
+            await notificacaoService.EnviarConfirmacaoCadastroAsync(clienteExistente, linkExistente);
+        }
+
         await db.SaveChangesAsync(ct);
 
         var existenteDto = new ClienteLojaDto(clienteExistente.Id, clienteExistente.Nome, clienteExistente.Email, clienteExistente.Telefone, clienteExistente.CpfCnpj);
-        return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(existenteDto, "Cliente ja cadastrado. Registro existente reutilizado."));
+        return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(existenteDto, clienteExistente.Status == StatusCliente.Ativo
+            ? "Cliente ja cadastrado. Registro existente reutilizado."
+            : "Cliente já cadastrado. Reenviamos o link de confirmação para liberar o acesso."));
     }
 
     var cliente = new Cliente
@@ -1145,7 +1145,8 @@ app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, C
         CpfCnpj = cpfCnpj,
         SenhaHash = !string.IsNullOrWhiteSpace(request.Senha) ? BCrypt.Net.BCrypt.HashPassword(request.Senha.Trim(), 12) : null,
         Newsletter = request.Newsletter ?? true,
-        Status = StatusCliente.Ativo,
+        Status = StatusCliente.Pendente,
+        TokenConfirmacaoEmail = Guid.NewGuid().ToString("N"),
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow
     };
@@ -1153,11 +1154,42 @@ app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, C
     db.Clientes.Add(cliente);
     await db.SaveChangesAsync(ct);
 
+    var baseUrl = configuration["PublicSite:BaseUrl"]?.TrimEnd('/') ?? "https://www.nexumaltivon.com";
+    var linkConfirmacao = $"{baseUrl}/confirmar-cadastro.html?token={Uri.EscapeDataString(cliente.TokenConfirmacaoEmail ?? string.Empty)}";
+    await notificacaoService.EnviarConfirmacaoCadastroAsync(cliente, linkConfirmacao);
+
     var dto = new ClienteLojaDto(cliente.Id, cliente.Nome, cliente.Email, cliente.Telefone, cliente.CpfCnpj);
-    return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(dto, "Cliente registrado."));
+    return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(dto, "Cliente registrado. Enviamos um link de confirmação por e-mail."));
 })
 .AllowAnonymous()
 .WithName("CriarCliente")
+;
+
+app.MapGet("/api/clientes/confirmar", async (string token, NexumDbContext db, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(token))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Token de confirmação inválido."));
+    }
+
+    var cliente = await db.Clientes.FirstOrDefaultAsync(item => item.TokenConfirmacaoEmail == token, ct);
+    if (cliente is null)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Token de confirmação não encontrado ou expirado."));
+    }
+
+    cliente.Status = StatusCliente.Ativo;
+    cliente.ConfirmadoEm = DateTime.UtcNow;
+    cliente.TokenConfirmacaoEmail = null;
+    cliente.UpdatedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync(ct);
+
+    return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(
+        new ClienteLojaDto(cliente.Id, cliente.Nome, cliente.Email, cliente.Telefone, cliente.CpfCnpj),
+        "Cadastro confirmado com sucesso. Agora você já pode entrar na área do cliente."));
+})
+.AllowAnonymous()
+.WithName("ConfirmarCadastroCliente")
 ;
 
 app.MapGet("/api/clientes/portal/me", [Authorize] async (ClaimsPrincipal principal, NexumDbContext db, CancellationToken ct) =>
@@ -1221,6 +1253,8 @@ app.MapGet("/api/clientes/portal/me", [Authorize] async (ClaimsPrincipal princip
         cliente.Email,
         cliente.Telefone,
         cliente.CpfCnpj,
+        cliente.Status.ToString(),
+        cliente.ConfirmadoEm,
         cliente.PontosFidelidade,
         score,
         cliente.Vip,
@@ -1306,6 +1340,55 @@ app.MapPost("/api/fornecedores", [Authorize(Policy = "Gerente")] async (Forneced
 .WithName("CriarFornecedor")
 ;
 
+app.MapPut("/api/fornecedores/{id:int}", [Authorize(Policy = "Gerente")] async (int id, FornecedorRequest request, NexumDbContext db, CancellationToken ct) =>
+{
+    var fornecedor = await db.Fornecedores.FirstOrDefaultAsync(item => item.Id == id, ct);
+    if (fornecedor is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Fornecedor nao encontrado."));
+    }
+
+    if (string.IsNullOrWhiteSpace(request.Nome))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Nome do fornecedor obrigatorio."));
+    }
+
+    var documento = string.IsNullOrWhiteSpace(request.Documento) ? null : request.Documento.Trim();
+    var email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim().ToLowerInvariant();
+    var fornecedorExistente = await db.Fornecedores.FirstOrDefaultAsync(item =>
+        item.Id != fornecedor.Id &&
+        ((!string.IsNullOrWhiteSpace(documento) && item.Cnpj == documento) ||
+         (!string.IsNullOrWhiteSpace(email) && item.Email != null && item.Email.ToLower() == email)), ct);
+
+    if (fornecedorExistente is not null)
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("Fornecedor ja cadastrado com este documento ou e-mail."));
+    }
+
+    fornecedor.RazaoSocial = request.Nome.Trim();
+    fornecedor.NomeFantasia = request.Nome.Trim();
+    fornecedor.Cnpj = documento;
+    fornecedor.Email = email;
+    fornecedor.Telefone = request.Telefone;
+    fornecedor.Segmento = request.Categoria;
+    fornecedor.UpdatedAt = DateTime.UtcNow;
+
+    await db.SaveChangesAsync(ct);
+
+    var dto = new FornecedorDto(
+        fornecedor.Id,
+        string.IsNullOrWhiteSpace(fornecedor.NomeFantasia) ? fornecedor.RazaoSocial : fornecedor.NomeFantasia,
+        fornecedor.Cnpj ?? string.Empty,
+        fornecedor.Email ?? string.Empty,
+        fornecedor.Telefone ?? string.Empty,
+        fornecedor.Segmento ?? "Geral",
+        fornecedor.CreatedAt);
+
+    return Results.Ok(ApiResponse<FornecedorDto>.Ok(dto, "Fornecedor atualizado."));
+})
+.WithName("AtualizarFornecedor")
+;
+
 app.MapGet("/api/pedidos", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
 {
     var pedidos = await db.Pedidos
@@ -1350,12 +1433,14 @@ app.MapPut("/api/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
     int id,
     StatusUpdateRequest request,
     NexumDbContext db,
+    INotificacaoService notificacaoService,
     CancellationToken ct) =>
 {
     await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
     var pedido = await db.Pedidos
         .Include(item => item.Itens)
         .Include(item => item.Pagamentos)
+        .Include(item => item.Cliente)
         .FirstOrDefaultAsync(item => item.Id == id, ct);
     if (pedido is null)
     {
@@ -1368,6 +1453,7 @@ app.MapPut("/api/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
     }
 
     var statusAnterior = pedido.Status;
+    var statusPagamentoAnterior = pedido.StatusPagamento;
     var statusAnteriorConfirmaEstoque = statusAnterior is StatusPedido.Pago or StatusPedido.EmSeparacao or StatusPedido.Enviado or StatusPedido.Entregue;
     var novoStatusConfirmaEstoque = status is StatusPedido.Pago or StatusPedido.EmSeparacao or StatusPedido.Enviado or StatusPedido.Entregue;
     var novoStatusCancelaEstoque = status is StatusPedido.Cancelado or StatusPedido.Devolvido or StatusPedido.Reembolsado;
@@ -1445,6 +1531,20 @@ app.MapPut("/api/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
     await db.SaveChangesAsync(ct);
     await transaction.CommitAsync(ct);
 
+    if (pedido.Cliente is not null && statusAnterior != pedido.Status)
+    {
+        if (statusPagamentoAnterior != pedido.StatusPagamento && pedido.StatusPagamento == StatusPagamento.Aprovado)
+        {
+            await notificacaoService.EnviarConfirmacaoPagamentoAsync(pedido.Cliente, pedido);
+        }
+
+        if (status is StatusPedido.EmSeparacao or StatusPedido.Enviado or StatusPedido.Entregue or StatusPedido.Cancelado or StatusPedido.Devolvido or StatusPedido.Reembolsado)
+        {
+            var mensagem = BuildMensagemAtualizacaoPedido(pedido);
+            await notificacaoService.EnviarStatusPedidoAsync(pedido.Cliente, pedido, mensagem);
+        }
+    }
+
     var pagamentoAtual = pedido.Pagamentos?
         .OrderByDescending(item => item.CreatedAt)
         .FirstOrDefault();
@@ -1477,6 +1577,7 @@ app.MapPost("/api/pedidos", async (
     NexumDbContext db,
     IConfiguration configuration,
     IFiscalRoutingEngine fiscalRoutingEngine,
+    INotificacaoService notificacaoService,
     IHttpClientFactory httpClientFactory,
     HttpContext http,
     CancellationToken ct) =>
@@ -1496,7 +1597,7 @@ app.MapPost("/api/pedidos", async (
         .Select(group => new PedidoItemRequest(group.Key, group.Sum(item => item.Quantidade)))
         .ToList();
 
-    var cliente = await db.Clientes.FirstOrDefaultAsync(item => item.Id == request.ClienteId, ct);
+    var cliente = await LoadClienteCheckoutAsync(db, request.ClienteId, ct);
     if (cliente is null)
     {
         return Results.BadRequest(ApiResponse<string>.Erro("Cliente invalido."));
@@ -1641,7 +1742,6 @@ app.MapPost("/api/pedidos", async (
         UpdatedAt = DateTime.UtcNow,
         Itens = itens
     };
-
     pedido.Pagamentos = new List<Pagamento>
     {
         new()
@@ -1658,17 +1758,33 @@ app.MapPost("/api/pedidos", async (
 
     db.Pedidos.Add(pedido);
     await db.SaveChangesAsync(ct);
-
-    await EnsurePedidoFiscalAutomationAsync(pedido, cliente, request, db, fiscalRoutingEngine, ct);
-    await db.SaveChangesAsync(ct);
     await transaction.CommitAsync(ct);
 
-    var gatewayResult = await TryStartGatewayPaymentAsync(pedido, cliente, configuration, httpClientFactory, http, ct);
+    try
+    {
+        await EnsurePedidoFiscalAutomationAsync(pedido, cliente, request, db, fiscalRoutingEngine, ct);
+        await db.SaveChangesAsync(ct);
+    }
+    catch
+    {
+        // A automacao fiscal nao pode derrubar a venda: o pedido ja foi gravado e commitado.
+    }
+
+    await notificacaoService.EnviarConfirmacaoPedidoAsync(cliente, pedido);
+    var metodoPagamento = (request.MetodoPagamento ?? string.Empty).Trim().ToLowerInvariant();
+    var gatewayResult = metodoPagamento switch
+    {
+        "cartao" or "cartão" or "cartao_credito" or "cartãocredito" or "cartaocredito" =>
+            await TryStartMercadoPagoPaymentAsync(pedido, cliente, request.DadosCartao, request.Parcelas ?? 1, configuration, httpClientFactory, http, ct),
+        "boleto" =>
+            await TryStartMercadoPagoPaymentAsync(pedido, cliente, null, request.Parcelas ?? 1, configuration, httpClientFactory, http, ct),
+        _ =>
+            await TryStartGatewayPaymentAsync(pedido, cliente, configuration, httpClientFactory, http, ct)
+    };
     if (gatewayResult.Started)
     {
         pedido.GatewayPagamento = gatewayResult.Gateway;
         pedido.GatewayTransacaoId = gatewayResult.TransactionId;
-        pedido.StatusPagamento = StatusPagamento.Aguardando;
         var pagamento = pedido.Pagamentos?.FirstOrDefault();
         if (pagamento is not null)
         {
@@ -1916,6 +2032,7 @@ app.MapPost("/api/webhooks/mercadopago", async (
     HttpContext http,
     IConfiguration configuration,
     NexumDbContext db,
+    INotificacaoService notificacaoService,
     IHttpClientFactory httpClientFactory,
     CancellationToken ct) =>
 {
@@ -1957,6 +2074,7 @@ app.MapPost("/api/webhooks/mercadopago", async (
 
     var pagamento = await db.Pagamentos
         .Include(item => item.Pedido)
+        .ThenInclude(pedido => pedido.Cliente)
         .FirstOrDefaultAsync(item => item.GatewayTransacaoId == paymentId, ct);
 
     if (pagamento is null)
@@ -1964,6 +2082,7 @@ app.MapPost("/api/webhooks/mercadopago", async (
         return Results.Ok(new { received = true, updated = false, reason = "pagamento_nao_encontrado" });
     }
 
+    var statusPagamentoAnterior = pagamento.Pedido?.StatusPagamento;
     pagamento.WebhookPayload = rawPaymentPayload ?? payload;
     pagamento.DataProcessamento = DateTime.UtcNow;
     pagamento.UpdatedAt = DateTime.UtcNow;
@@ -1974,6 +2093,12 @@ app.MapPost("/api/webhooks/mercadopago", async (
     }
 
     await db.SaveChangesAsync(ct);
+
+    if (pagamento.Pedido?.Cliente is not null && statusPagamentoAnterior != pagamento.Pedido.StatusPagamento && pagamento.Pedido.StatusPagamento == StatusPagamento.Aprovado)
+    {
+        await notificacaoService.EnviarConfirmacaoPagamentoAsync(pagamento.Pedido.Cliente, pagamento.Pedido);
+    }
+
     return Results.Ok(new { received = true, updated = true, paymentId, status });
 })
 .AllowAnonymous()
@@ -2483,6 +2608,65 @@ app.MapGet("/api/fiscal/pedidos", [Authorize(Policy = "Gerente")] async (NexumDb
 .WithName("FiscalPedidos")
 ;
 
+app.MapPut("/api/fiscal/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
+    int id,
+    StatusUpdateRequest request,
+    NexumDbContext db,
+    INotificacaoService notificacaoService,
+    CancellationToken ct) =>
+{
+    var fiscal = await db.Fiscais
+        .Include(item => item.Pedido)
+        .ThenInclude(pedido => pedido.Cliente)
+        .FirstOrDefaultAsync(item => item.Id == id, ct);
+
+    if (fiscal is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Registro fiscal nao encontrado."));
+    }
+
+    if (!TryParseStatusNfe(request.NovoStatus, out var novoStatus))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Status fiscal invalido."));
+    }
+
+    var statusAnterior = fiscal.StatusNfe;
+    fiscal.StatusNfe = novoStatus;
+    fiscal.UpdatedAt = DateTime.UtcNow;
+
+    if (novoStatus == StatusNfe.Emitida)
+    {
+        fiscal.DataEmissao ??= DateTime.UtcNow;
+        fiscal.StatusAutomacao = "NFe emitida.";
+    }
+    else if (novoStatus == StatusNfe.Autorizada)
+    {
+        fiscal.DataEmissao ??= DateTime.UtcNow;
+        fiscal.DataAutorizacao ??= DateTime.UtcNow;
+        fiscal.StatusAutomacao = "NFe autorizada.";
+    }
+    else if (novoStatus is StatusNfe.Cancelada or StatusNfe.Denegada or StatusNfe.Inutilizada)
+    {
+        fiscal.StatusAutomacao = $"NFe {novoStatus.ToString().ToLowerInvariant()}.";
+    }
+
+    await db.SaveChangesAsync(ct);
+
+    if (fiscal.Pedido?.Cliente is not null &&
+        statusAnterior != novoStatus &&
+        novoStatus is StatusNfe.Emitida or StatusNfe.Autorizada &&
+        fiscal.EmailClienteNotificadoEm is null)
+    {
+        await notificacaoService.EnviarNotaFiscalEmitidaAsync(fiscal.Pedido.Cliente, fiscal.Pedido, fiscal);
+        fiscal.EmailClienteNotificadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+    }
+
+    return Results.Ok(ApiResponse<string>.Ok("Status fiscal atualizado com sucesso."));
+})
+.WithName("AtualizarStatusFiscal")
+;
+
 app.MapPost("/api/fiscal/simular-roteamento", [Authorize(Policy = "Gerente")] async (
     FiscalRoutingSimulationRequest request,
     NexumDbContext db,
@@ -2526,6 +2710,7 @@ app.MapPost("/api/fiscal/simular-roteamento", [Authorize(Policy = "Gerente")] as
             item.Empresa.SubcategoriaFiscal,
             item.CustoTributarioEstimado,
             item.CustoOperacionalEstimado,
+            item.CustoTotalEstimado,
             item.LucroEstimado,
             item.MargemEstimadaPercentual,
             item.Score,
@@ -2534,6 +2719,142 @@ app.MapPost("/api/fiscal/simular-roteamento", [Authorize(Policy = "Gerente")] as
     return Results.Ok(ApiResponse<FiscalRoutingSimulationDto>.Ok(resultado));
 })
 .WithName("FiscalSimularRoteamento")
+;
+
+app.MapPost("/api/fiscal/preparar-emissao-manual", [Authorize(Policy = "Gerente")] async (
+    FiscalManualEmissaoRequest request,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IFiscalRoutingEngine fiscalRoutingEngine,
+    CancellationToken ct) =>
+{
+    var certificado = TestCertificadoNFe(configuration);
+    var empresas = await db.EmpresasGrupo
+        .AsNoTracking()
+        .Where(item => item.Ativa)
+        .ToListAsync(ct);
+
+    var routingRequest = new FiscalRoutingRequest(
+        request.TipoOperacao,
+        request.Subtotal,
+        request.Frete,
+        request.EstadoOrigem,
+        request.EstadoDestino,
+        request.CategoriaFiscal,
+        request.SubcategoriaFiscal,
+        request.NaturezaOperacao,
+        request.ExigeMarketplace,
+        request.ExigeDropshipping,
+        request.RequerSaidaNfe,
+        request.RequerEntradaNfe);
+
+    var decision = fiscalRoutingEngine.Evaluate(routingRequest, empresas.Select(fiscalRoutingEngine.ToSnapshot).ToList());
+    var pendencias = new List<string>();
+
+    if (!certificado.Operacional)
+    {
+        pendencias.AddRange(certificado.Pendencias);
+    }
+
+    if (decision.EmpresaSelecionada is null)
+    {
+        pendencias.Add("Nenhuma empresa ativa atende os critérios fiscais informados.");
+    }
+
+    if (request.Subtotal <= 0)
+    {
+        pendencias.Add("Subtotal precisa ser maior que zero.");
+    }
+
+    if (request.MargemMinima > 0 && request.ImpostosEstimados > 0)
+    {
+        var receitaLiquidaEstim = request.Subtotal + request.Frete - request.ImpostosEstimados;
+        var margemPercentual = request.Subtotal <= 0 ? 0 : receitaLiquidaEstim / request.Subtotal * 100m;
+        if (margemPercentual < request.MargemMinima)
+        {
+            pendencias.Add("Margem estimada abaixo do mínimo informado.");
+        }
+    }
+
+    var resumo = new FiscalManualEmissaoResponseDto(
+        certificado.Operacional,
+        certificado.Status,
+        certificado.Referencia,
+        decision.Resumo,
+        decision.EmpresaSelecionada?.CodigoEmpresa,
+        decision.EmpresaSelecionada?.RazaoSocial,
+        decision.EmpresaSelecionada?.Cnpj,
+        decision.EmpresaSelecionada?.Estado,
+        pendencias.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+        DateTime.UtcNow);
+
+    return Results.Ok(ApiResponse<FiscalManualEmissaoResponseDto>.Ok(resumo));
+})
+.WithName("FiscalPrepararEmissaoManual")
+;
+
+app.MapPost("/api/fiscal/rascunho-manual", [Authorize(Policy = "Gerente")] async (
+    FiscalManualEmissaoRequest request,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var key = "fiscal.manual.rascunho";
+    var payload = JsonSerializer.Serialize(request, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+    var entity = await db.ConfiguracoesSistema.FirstOrDefaultAsync(item => item.Chave == key, ct);
+
+    if (entity is null)
+    {
+        entity = new ConfiguracaoSistema
+        {
+            Chave = key,
+            Tipo = TipoConfiguracao.JSON,
+            Grupo = "Fiscal",
+            Descricao = "Rascunho manual de emissão de NF-e",
+            Editavel = true,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        db.ConfiguracoesSistema.Add(entity);
+    }
+
+    entity.Valor = payload;
+    entity.Tipo = TipoConfiguracao.JSON;
+    entity.UpdatedAt = DateTime.UtcNow;
+
+    await db.SaveChangesAsync(ct);
+
+    var resposta = new
+    {
+        Salvo = true,
+        Chave = key,
+        SalvoEm = entity.UpdatedAt
+    };
+
+    return Results.Ok(ApiResponse<object>.Ok(resposta, "Rascunho fiscal salvo com sucesso."));
+})
+.WithName("FiscalSalvarRascunhoManual")
+;
+
+app.MapGet("/api/fiscal/rascunho-manual", [Authorize(Policy = "Gerente")] async (
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var key = "fiscal.manual.rascunho";
+    var entity = await db.ConfiguracoesSistema.AsNoTracking().FirstOrDefaultAsync(item => item.Chave == key, ct);
+
+    if (entity is null || string.IsNullOrWhiteSpace(entity.Valor))
+    {
+        return Results.Ok(ApiResponse<object>.Ok(new { Existe = false }, "Nenhum rascunho encontrado."));
+    }
+
+    return Results.Ok(ApiResponse<object>.Ok(new
+    {
+        Existe = true,
+        entity.Valor,
+        entity.UpdatedAt
+    }, "Rascunho manual localizado."));
+})
+.WithName("FiscalObterRascunhoManual")
 ;
 
 static string? Slugify(string? value)
@@ -2589,6 +2910,117 @@ static string? NormalizeDocument(string? value)
 
     var digits = new string(value.Where(char.IsDigit).ToArray());
     return digits.Length == 0 ? null : digits;
+}
+
+static async Task<Cliente?> LoadClienteCheckoutAsync(
+    NexumDbContext db,
+    int clienteId,
+    CancellationToken ct)
+{
+    var connection = db.Database.GetDbConnection();
+    var shouldClose = connection.State != ConnectionState.Open;
+    if (shouldClose)
+    {
+        await connection.OpenAsync(ct);
+    }
+
+    try
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, nome, email, cpf_cnpj, telefone, whatsapp, newsletter, vip, pontos_fidelidade, status, tipo
+            FROM clientes
+            WHERE id = @id
+            LIMIT 1
+            """;
+
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = "@id";
+        parameter.Value = clienteId;
+        command.Parameters.Add(parameter);
+
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+        {
+            return null;
+        }
+
+        var statusRaw = ReadNullableString(reader, "status");
+        var tipoRaw = ReadNullableString(reader, "tipo");
+
+        return new Cliente
+        {
+            Id = reader.GetInt32(reader.GetOrdinal("id")),
+            Nome = ReadNullableString(reader, "nome") ?? string.Empty,
+            Email = ReadNullableString(reader, "email") ?? string.Empty,
+            CpfCnpj = ReadNullableString(reader, "cpf_cnpj"),
+            Telefone = ReadNullableString(reader, "telefone"),
+            Whatsapp = ReadNullableString(reader, "whatsapp"),
+            Newsletter = ReadNullableBoolean(reader, "newsletter") ?? true,
+            Vip = ReadNullableBoolean(reader, "vip") ?? false,
+            PontosFidelidade = ReadNullableInt32(reader, "pontos_fidelidade") ?? 0,
+            Status = Enum.TryParse<StatusCliente>(statusRaw, true, out var status) ? status : StatusCliente.Pendente,
+            Tipo = Enum.TryParse<TipoCliente>(tipoRaw, true, out var tipo) ? tipo : TipoCliente.PF
+        };
+    }
+    finally
+    {
+        if (shouldClose && connection.State == ConnectionState.Open)
+        {
+            await connection.CloseAsync();
+        }
+    }
+}
+
+static string? ReadNullableString(IDataRecord reader, string columnName)
+{
+    var ordinal = reader.GetOrdinal(columnName);
+    return reader.IsDBNull(ordinal) ? null : Convert.ToString(reader.GetValue(ordinal), CultureInfo.InvariantCulture);
+}
+
+static bool? ReadNullableBoolean(IDataRecord reader, string columnName)
+{
+    var ordinal = reader.GetOrdinal(columnName);
+    if (reader.IsDBNull(ordinal))
+    {
+        return null;
+    }
+
+    var value = reader.GetValue(ordinal);
+    return value switch
+    {
+        bool boolValue => boolValue,
+        sbyte signedByte => signedByte != 0,
+        byte unsignedByte => unsignedByte != 0,
+        short shortValue => shortValue != 0,
+        ushort ushortValue => ushortValue != 0,
+        int intValue => intValue != 0,
+        long longValue => longValue != 0,
+        string textValue when bool.TryParse(textValue, out var parsedBool) => parsedBool,
+        string textValue when int.TryParse(textValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedInt) => parsedInt != 0,
+        _ => Convert.ToBoolean(value, CultureInfo.InvariantCulture)
+    };
+}
+
+static int? ReadNullableInt32(IDataRecord reader, string columnName)
+{
+    var ordinal = reader.GetOrdinal(columnName);
+    if (reader.IsDBNull(ordinal))
+    {
+        return null;
+    }
+
+    var value = reader.GetValue(ordinal);
+    return value switch
+    {
+        int intValue => intValue,
+        long longValue => checked((int)longValue),
+        short shortValue => shortValue,
+        byte byteValue => byteValue,
+        sbyte signedByte => signedByte,
+        string textValue when int.TryParse(textValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedInt) => parsedInt,
+        _ => Convert.ToInt32(value, CultureInfo.InvariantCulture)
+    };
 }
 
 static async Task EnsurePedidoFiscalAutomationAsync(
@@ -2711,6 +3143,7 @@ static async Task EnsurePedidoFiscalAutomationAsync(
                 item.Score,
                 item.CustoTributarioEstimado,
                 item.CustoOperacionalEstimado,
+                item.CustoTotalEstimado,
                 item.MargemEstimadaPercentual,
                 item.Justificativas
             }).ToList()
@@ -2813,6 +3246,22 @@ static string? NormalizePhone(string? value)
 static string? TrimOrNull(string? value) =>
     string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
+static IQueryable<Produto> FiltrarProdutosPublicaveis(IQueryable<Produto> query) =>
+    query.Where(produto =>
+        produto.Ativo &&
+        produto.LojaId > 0 &&
+        produto.CategoriaId.HasValue &&
+        !string.IsNullOrEmpty(produto.Nome) &&
+        !string.IsNullOrEmpty(produto.Sku) &&
+        !string.IsNullOrEmpty(produto.Slug) &&
+        (!string.IsNullOrEmpty(produto.DescricaoCurta) || !string.IsNullOrEmpty(produto.DescricaoLonga)) &&
+        !string.IsNullOrEmpty(produto.ImagemPrincipal) &&
+        produto.Preco > 0 &&
+        produto.Peso > 0 &&
+        produto.Altura > 0 &&
+        produto.Largura > 0 &&
+        produto.Comprimento > 0);
+
 static string FormatStatusPedido(StatusPedido status) =>
     status switch
     {
@@ -2881,6 +3330,7 @@ static async Task<IntegracaoDiagnosticoDto> BuildIntegracaoDiagnosticoAsync(
     {
         "ecommerce" => await TestEcommerceAsync(db, ct),
         "mercadopago" or "gateways" or "gateway" => await TestMercadoPagoAsync(configuration, httpClientFactory, ct),
+        "certificadonfe" or "certificadonf" or "nfe" or "certificado" => TestCertificadoNFe(configuration),
         "melhorenvio" or "logistica" or "frete" => await TestMelhorEnvioAsync(configuration, httpClientFactory, ct),
         "mercadolivre" or "marketplaces" or "marketplace" => await TestMercadoLivreAsync(configuration, httpClientFactory, ct),
         "dropshipping" or "dropship" => await TestDropshippingAsync(db, ct),
@@ -2894,10 +3344,75 @@ static async Task<IntegracaoDiagnosticoDto> BuildIntegracaoDiagnosticoAsync(
             false,
             false,
             "Integração não mapeada no Nexum Altivon.",
-            ["Use: ecommerce, dropshipping, shopify, cjdropshipping, mercadopago, melhorenvio, mercadolivre ou bancaria."],
+            ["Use: ecommerce, dropshipping, shopify, cjdropshipping, mercadopago, melhorenvio, mercadolivre, certificado ou bancaria."],
             DateTime.UtcNow,
             null)
     };
+}
+
+static IntegracaoDiagnosticoDto TestCertificadoNFe(IConfiguration configuration)
+{
+    var tipo = GetIntegrationValue(configuration, "CertificadoNFe:Tipo", "Integracoes:CertificadoNFe:Tipo");
+    var arquivoPfx = GetIntegrationValue(configuration, "CertificadoNFe:ArquivoPfx", "Integracoes:CertificadoNFe:ArquivoPfx");
+    var senha = GetIntegrationValue(configuration, "CertificadoNFe:Senha", "Integracoes:CertificadoNFe:Senha");
+    var thumbprint = GetIntegrationValue(configuration, "CertificadoNFe:Thumbprint", "Integracoes:CertificadoNFe:Thumbprint");
+    var cnpj = GetIntegrationValue(configuration, "CertificadoNFe:Cnpj", "Integracoes:CertificadoNFe:Cnpj");
+    var validoAte = GetIntegrationValue(configuration, "CertificadoNFe:ValidoAte", "Integracoes:CertificadoNFe:ValidoAte");
+    var modelo = string.IsNullOrWhiteSpace(tipo) ? "Nao configurado" : tipo.ToUpperInvariant();
+
+    if (string.Equals(tipo, "A1", StringComparison.OrdinalIgnoreCase))
+    {
+        var arquivoExiste = !string.IsNullOrWhiteSpace(arquivoPfx) && File.Exists(arquivoPfx);
+        var configurada = arquivoExiste && IsConfiguredSecret(senha);
+        var operacional = configurada && !string.IsNullOrWhiteSpace(cnpj);
+
+        return new IntegracaoDiagnosticoDto(
+            "Certificado NF-e",
+            "certificado",
+            operacional ? "Pronto" : "Aguardando arquivo",
+            configurada,
+            operacional,
+            operacional
+                ? "Certificado A1 localizado e apto para uso no emissor."
+                : "Certificado A1 ainda depende do arquivo PFX e da senha no servidor.",
+            operacional
+                ? []
+                : ["CertificadoNFe__ArquivoPfx", "CertificadoNFe__Senha", "CertificadoNFe__Cnpj"],
+            DateTime.UtcNow,
+            $"Tipo: A1 | CNPJ: {cnpj ?? "nao informado"} | Validade: {validoAte ?? "nao informada"}");
+    }
+
+    if (string.Equals(tipo, "A3", StringComparison.OrdinalIgnoreCase))
+    {
+        var configurada = IsConfiguredSecret(thumbprint);
+        var operacional = configurada && !string.IsNullOrWhiteSpace(cnpj);
+
+        return new IntegracaoDiagnosticoDto(
+            "Certificado NF-e",
+            "certificado",
+            operacional ? "Pronto" : "Aguardando token/identificador",
+            configurada,
+            operacional,
+            operacional
+                ? "Certificado A3 identificado e apto para emissão."
+                : "Certificado A3 precisa do thumbprint/serial válido no servidor.",
+            operacional
+                ? []
+                : ["CertificadoNFe__Thumbprint", "CertificadoNFe__Cnpj"],
+            DateTime.UtcNow,
+            $"Tipo: A3 | CNPJ: {cnpj ?? "nao informado"} | Validade: {validoAte ?? "nao informada"}");
+    }
+
+    return new IntegracaoDiagnosticoDto(
+        "Certificado NF-e",
+        "certificado",
+        "Aguardando configuração",
+        false,
+        false,
+        "Informe se o certificado será A1 ou A3. O sistema está pronto para validar o emissor assim que a empresa cadastrar os dados.",
+        ["CertificadoNFe__Tipo", "CertificadoNFe__Cnpj"],
+        DateTime.UtcNow,
+        modelo);
 }
 
 static async Task<IntegracaoDiagnosticoDto> TestEcommerceAsync(NexumDbContext db, CancellationToken ct)
@@ -3440,6 +3955,175 @@ static async Task<GatewayPaymentStartResult> TryStartGatewayPaymentAsync(
     }
 }
 
+static async Task<GatewayPaymentStartResult> TryStartMercadoPagoPaymentAsync(
+    Pedido pedido,
+    Cliente cliente,
+    object? dadosCartao,
+    int parcelas,
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    HttpContext http,
+    CancellationToken ct)
+{
+    var token = GetIntegrationValue(configuration, "MercadoPago:AccessToken", "Integracoes:MercadoPago:AccessToken");
+    if (!IsConfiguredSecret(token))
+    {
+        return GatewayPaymentStartResult.NotStarted();
+    }
+
+    try
+    {
+        var client = httpClientFactory.CreateClient("mercado-pago");
+        var metodo = (pedido.MeioPagamento ?? string.Empty).Trim().ToLowerInvariant();
+
+        if (metodo == "boleto")
+        {
+            using var boletoRequest = new HttpRequestMessage(HttpMethod.Post, "v1/payments");
+            boletoRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            boletoRequest.Headers.Add("X-Idempotency-Key", $"nexum-{pedido.NumeroPedido}-boleto");
+            boletoRequest.Content = JsonContent.Create(new
+            {
+                transaction_amount = pedido.Total,
+                description = $"Pedido {pedido.NumeroPedido} - Nexum Altivon",
+                payment_method_id = "bolbradesco",
+                notification_url = BuildPublicUrl(http, "/api/webhooks/mercadopago"),
+                external_reference = pedido.NumeroPedido,
+                payer = new
+                {
+                    email = cliente.Email,
+                    first_name = cliente.Nome.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? cliente.Nome,
+                    identification = new
+                    {
+                        type = string.IsNullOrWhiteSpace(cliente.CpfCnpj) || cliente.CpfCnpj.Length > 14 ? "CNPJ" : "CPF",
+                        number = new string((cliente.CpfCnpj ?? string.Empty).Where(char.IsDigit).ToArray())
+                    }
+                }
+            });
+
+            using var boletoResponse = await client.SendAsync(boletoRequest, ct);
+            var boletoBody = await boletoResponse.Content.ReadAsStringAsync(ct);
+            if (!boletoResponse.IsSuccessStatusCode)
+            {
+                return GatewayPaymentStartResult.NotStarted(boletoBody);
+            }
+
+            using var boletoDocument = JsonDocument.Parse(boletoBody);
+            var boletoRoot = boletoDocument.RootElement;
+            var boletoId = boletoRoot.TryGetProperty("id", out var boletoIdProp) ? boletoIdProp.ToString() : null;
+            string? boletoPaymentUrl = null;
+            string? linhaDigitavel = null;
+            if (boletoRoot.TryGetProperty("transaction_details", out var boletoDetails))
+            {
+                boletoPaymentUrl = boletoDetails.TryGetProperty("external_resource_url", out var boletoUrlProp) ? boletoUrlProp.ToString() : null;
+                linhaDigitavel = boletoDetails.TryGetProperty("payment_method_reference_id", out var linhaProp) ? linhaProp.ToString() : null;
+            }
+
+            return GatewayPaymentStartResult.Success("MercadoPago", boletoId, linhaDigitavel, boletoPaymentUrl, boletoBody);
+        }
+
+        if (dadosCartao is null)
+        {
+            return GatewayPaymentStartResult.NotStarted("dados_cartao_ausentes");
+        }
+
+        var cartaoJson = JsonSerializer.Serialize(dadosCartao);
+        var cartao = JsonSerializer.Deserialize<DadosCartaoPedidoRequest>(cartaoJson, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        });
+        if (cartao is null || string.IsNullOrWhiteSpace(cartao.Numero) || string.IsNullOrWhiteSpace(cartao.NomeTitular) || string.IsNullOrWhiteSpace(cartao.Validade))
+        {
+            return GatewayPaymentStartResult.NotStarted("dados_cartao_invalidos");
+        }
+
+        var partes = cartao.Validade.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (partes.Length != 2 || !int.TryParse(partes[0], out var mesValidade) || !int.TryParse(partes[1], out var anoCurto))
+        {
+            return GatewayPaymentStartResult.NotStarted("validade_cartao_invalida");
+        }
+
+        var tokenRequest = new
+        {
+            card_number = cartao.Numero.Replace(" ", string.Empty),
+            expiration_month = mesValidade,
+            expiration_year = int.Parse($"20{anoCurto:D2}"),
+            security_code = cartao.Cvv,
+            cardholder = new
+            {
+                name = cartao.NomeTitular,
+                identification = new
+                {
+                    type = string.IsNullOrWhiteSpace(cartao.CpfTitular) || cartao.CpfTitular.Length > 14 ? "CNPJ" : "CPF",
+                    number = new string((cartao.CpfTitular ?? string.Empty).Where(char.IsDigit).ToArray())
+                }
+            }
+        };
+
+        using var tokenRequestMessage = new HttpRequestMessage(HttpMethod.Post, "v1/card_tokens");
+        tokenRequestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        tokenRequestMessage.Content = JsonContent.Create(tokenRequest);
+
+        using var tokenResponse = await client.SendAsync(tokenRequestMessage, ct);
+        var tokenBody = await tokenResponse.Content.ReadAsStringAsync(ct);
+        if (!tokenResponse.IsSuccessStatusCode)
+        {
+            return GatewayPaymentStartResult.NotStarted(tokenBody);
+        }
+
+        using var tokenDocument = JsonDocument.Parse(tokenBody);
+        var cardToken = tokenDocument.RootElement.TryGetProperty("id", out var tokenIdProp) ? tokenIdProp.ToString() : null;
+        if (string.IsNullOrWhiteSpace(cardToken))
+        {
+            return GatewayPaymentStartResult.NotStarted(tokenBody);
+        }
+
+        using var paymentRequest = new HttpRequestMessage(HttpMethod.Post, "v1/payments");
+        paymentRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        paymentRequest.Headers.Add("X-Idempotency-Key", $"nexum-{pedido.NumeroPedido}-cartao");
+        paymentRequest.Content = JsonContent.Create(new
+        {
+            transaction_amount = pedido.Total,
+            token = cardToken,
+            description = $"Pedido {pedido.NumeroPedido} - Nexum Altivon",
+            installments = Math.Clamp(parcelas, 1, 24),
+            payment_method_id = "master",
+            payer = new
+            {
+                email = cliente.Email,
+                identification = new
+                {
+                    type = string.IsNullOrWhiteSpace(cliente.CpfCnpj) || cliente.CpfCnpj.Length > 14 ? "CNPJ" : "CPF",
+                    number = new string((cliente.CpfCnpj ?? string.Empty).Where(char.IsDigit).ToArray())
+                }
+            },
+            external_reference = pedido.NumeroPedido,
+            notification_url = BuildPublicUrl(http, "/api/webhooks/mercadopago")
+        });
+
+        using var paymentResponse = await client.SendAsync(paymentRequest, ct);
+        var paymentBody = await paymentResponse.Content.ReadAsStringAsync(ct);
+        if (!paymentResponse.IsSuccessStatusCode)
+        {
+            return GatewayPaymentStartResult.NotStarted(paymentBody);
+        }
+
+        using var paymentDocument = JsonDocument.Parse(paymentBody);
+        var paymentRoot = paymentDocument.RootElement;
+        var paymentId = paymentRoot.TryGetProperty("id", out var paymentIdProp) ? paymentIdProp.ToString() : null;
+        string? paymentUrl = null;
+        if (paymentRoot.TryGetProperty("transaction_details", out var transactionDetails))
+        {
+            paymentUrl = transactionDetails.TryGetProperty("external_resource_url", out var urlProp) ? urlProp.ToString() : null;
+        }
+
+        return GatewayPaymentStartResult.Success("MercadoPago", paymentId, null, paymentUrl, paymentBody);
+    }
+    catch (Exception ex)
+    {
+        return GatewayPaymentStartResult.NotStarted(ex.Message);
+    }
+}
+
 static string BuildPublicUrl(HttpContext http, string path)
 {
     var forwardedProto = http.Request.Headers["X-Forwarded-Proto"].FirstOrDefault();
@@ -3581,6 +4265,35 @@ static bool TryParseStatusPedido(string? raw, out StatusPedido status)
     }
 
     return Enum.TryParse(raw.Trim(), ignoreCase: true, out status);
+}
+
+static bool TryParseStatusNfe(string? raw, out StatusNfe status)
+{
+    status = StatusNfe.Pendente;
+
+    if (string.IsNullOrWhiteSpace(raw))
+    {
+        return false;
+    }
+
+    return Enum.TryParse(raw.Trim(), ignoreCase: true, out status);
+}
+
+static string BuildMensagemAtualizacaoPedido(Pedido pedido)
+{
+    return pedido.Status switch
+    {
+        StatusPedido.Pago => $"Pagamento confirmado para o pedido {pedido.NumeroPedido}. Estamos preparando o envio.",
+        StatusPedido.EmSeparacao => $"Seu pedido {pedido.NumeroPedido} entrou em separacao. Em breve seguira para expedicao.",
+        StatusPedido.Enviado => string.IsNullOrWhiteSpace(pedido.FreteCodigoRastreio)
+            ? $"Seu pedido {pedido.NumeroPedido} foi enviado e esta em transporte."
+            : $"Seu pedido {pedido.NumeroPedido} foi enviado. Codigo de rastreio: {pedido.FreteCodigoRastreio}.",
+        StatusPedido.Entregue => $"Seu pedido {pedido.NumeroPedido} foi entregue. Obrigado por comprar conosco.",
+        StatusPedido.Cancelado => $"O pedido {pedido.NumeroPedido} foi cancelado. Se precisar, fale com nosso atendimento.",
+        StatusPedido.Devolvido => $"O pedido {pedido.NumeroPedido} foi devolvido e voltou para analise interna.",
+        StatusPedido.Reembolsado => $"O pedido {pedido.NumeroPedido} foi reembolsado com sucesso.",
+        _ => $"Seu pedido {pedido.NumeroPedido} foi atualizado para o status {pedido.Status}."
+    };
 }
 
 static string FormatStatusLead(StatusLead status) =>
@@ -4067,6 +4780,11 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS status_automacao VARCHAR(40) NULL;");
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS resumo_roteamento TEXT NULL;");
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS payload_operacao LONGTEXT NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS email_cliente_notificado_em DATETIME NULL;");
+
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS token_confirmacao_email VARCHAR(255) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS confirmado_em DATETIME NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS status INT NOT NULL DEFAULT 3;");
 
     await db.Database.ExecuteSqlRawAsync(
         """
@@ -4130,8 +4848,8 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
             ('home_intro_badge', 'www.nexumaltivon.com', 'Texto', 'Texto do selo institucional da home', 'SiteHome', 1),
             ('home_footer_texto', 'Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas.', 'Texto', 'Texto do rodapé público da home', 'SiteHome', 1),
             ('home_quality_items', '["Curadoria rigorosa de fornecedores","Atendimento humano e especializado","Política de devolução simplificada","Preços justos e acessíveis"]', 'JSON', 'Itens do bloco de qualidade da home', 'SiteHome', 1),
-            ('home_partner_cards', '[{"title":"Parceiros de Vendas","text":"Lojas físicas ou online podem ampliar seus horizontes de venda com nossa infraestrutura comercial e operação integrada.","cta":"Quero Vender","href":"https://wa.me/5514996731879?text=Olá! Tenho interesse em ser parceiro de vendas do Grupo Nexum Altivon.","icon":"Store"},{"title":"Fornecedores & Distribuidores","text":"Distribuidores e fabricantes encontram um canal de venda em crescimento, com visão de volume, relacionamento e longo prazo.","cta":"Quero Fornecer","href":"https://wa.me/5514996348409?text=Olá! Sou fornecedor/distribuidor e tenho interesse em parceria com o Grupo Nexum Altivon.","icon":"Truck"},{"title":"Dropshipping","text":"Integre seu catálogo às nossas lojas ou utilize nossa infraestrutura para conectar produtos, logística e novos canais.","cta":"Quero Fazer Dropship","href":"https://wa.me/5514996731879?text=Olá! Tenho interesse em parceria de dropshipping com o Grupo Nexum Altivon.","icon":"Building2"}]', 'JSON', 'Cards de parceria da home', 'SiteHome', 1),
-            ('home_hero_slides', '[{"id":"ecommerce","badge":"Grupo Nexum Altivon","title":"O Futuro do","highlight":"E-Commerce","description":"Seis lojas, uma operação conectada e uma proposta premium para transformar a experiência de compra online.","image":"https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1920&q=88"},{"id":"marcas","badge":"6 marcas em expansão","title":"Uma operação,","highlight":"múltiplos mercados","description":"Turismo, relógios, moda, tecnologia, construção e festas com a mesma curadoria comercial do Grupo Nexum Altivon.","image":"https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=1920&q=88"},{"id":"tecnologia","badge":"Experiência tecnológica","title":"Compra segura com","highlight":"atendimento humano","description":"Fluxos preparados para catálogo, clientes, pedidos, integrações e relacionamento com visão de crescimento contínuo.","image":"https://images.unsplash.com/photo-1524805444758-089113d48a6d?auto=format&fit=crop&w=1920&q=88"}]', 'JSON', 'Slides principais da home', 'SiteHome', 1)
+            ('home_partner_cards', '[{{"title":"Parceiros de Vendas","text":"Lojas físicas ou online podem ampliar seus horizontes de venda com nossa infraestrutura comercial e operação integrada.","cta":"Quero Vender","href":"https://wa.me/5514996731879?text=Olá! Tenho interesse em ser parceiro de vendas do Grupo Nexum Altivon.","icon":"Store"}},{{"title":"Fornecedores & Distribuidores","text":"Distribuidores e fabricantes encontram um canal de venda em crescimento, com visão de volume, relacionamento e longo prazo.","cta":"Quero Fornecer","href":"https://wa.me/5514996348409?text=Olá! Sou fornecedor/distribuidor e tenho interesse em parceria com o Grupo Nexum Altivon.","icon":"Truck"}},{{"title":"Dropshipping","text":"Integre seu catálogo às nossas lojas ou utilize nossa infraestrutura para conectar produtos, logística e novos canais.","cta":"Quero Fazer Dropship","href":"https://wa.me/5514996731879?text=Olá! Tenho interesse em parceria de dropshipping com o Grupo Nexum Altivon.","icon":"Building2"}}]', 'JSON', 'Cards de parceria da home', 'SiteHome', 1),
+            ('home_hero_slides', '[{{"id":"ecommerce","badge":"Grupo Nexum Altivon","title":"O Futuro do","highlight":"E-Commerce","description":"Seis lojas, uma operação conectada e uma proposta premium para transformar a experiência de compra online.","image":"https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1920&q=88"}},{{"id":"marcas","badge":"6 marcas em expansão","title":"Uma operação,","highlight":"múltiplos mercados","description":"Turismo, relógios, moda, tecnologia, construção e festas com a mesma curadoria comercial do Grupo Nexum Altivon.","image":"https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=1920&q=88"}},{{"id":"tecnologia","badge":"Experiência tecnológica","title":"Compra segura com","highlight":"atendimento humano","description":"Fluxos preparados para catálogo, clientes, pedidos, integrações e relacionamento com visão de crescimento contínuo.","image":"https://images.unsplash.com/photo-1524805444758-089113d48a6d?auto=format&fit=crop&w=1920&q=88"}}]', 'JSON', 'Slides principais da home', 'SiteHome', 1)
         ON DUPLICATE KEY UPDATE
             valor = VALUES(valor),
             descricao = VALUES(descricao),
@@ -4300,7 +5018,7 @@ public sealed record ProdutoRequest(
             DescricaoCurta,
             Preco,
             PrecoPromocional,
-            ImagemUrl ?? "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85",
+            ImagemUrl ?? string.Empty,
             Estoque,
             EstoqueMinimo ?? 5,
             EstoqueReservado ?? 0,
@@ -4364,6 +5082,8 @@ public sealed record ClientePortalDto(
     string Email,
     string? Telefone,
     string? Documento,
+    string StatusCadastro,
+    DateTime? ConfirmadoEm,
     int PontosFidelidade,
     string ScoreRelacionamento,
     bool Vip,
@@ -4391,10 +5111,18 @@ public sealed record PedidoRequest(
     [property: JsonPropertyName("metodo_pagamento")] string? MetodoPagamento,
     [property: JsonPropertyName("parcelas")] int? Parcelas,
     [property: JsonPropertyName("gateway_pagamento")] string? GatewayPagamento,
+    [property: JsonPropertyName("dados_cartao")] object? DadosCartao,
     [property: JsonPropertyName("frete_valor")] decimal? FreteValor,
     [property: JsonPropertyName("frete_metodo")] string? FreteMetodo,
     [property: JsonPropertyName("frete_transportadora")] string? FreteTransportadora,
     [property: JsonPropertyName("frete_prazo_dias")] int? FretePrazoDias);
+
+public sealed record DadosCartaoPedidoRequest(
+    [property: JsonPropertyName("numero")] string Numero,
+    [property: JsonPropertyName("nomeTitular")] string NomeTitular,
+    [property: JsonPropertyName("validade")] string Validade,
+    [property: JsonPropertyName("cvv")] string Cvv,
+    [property: JsonPropertyName("cpfTitular")] string? CpfTitular);
 
 public sealed record EnderecoEntregaRequest(
     string? Cep,
@@ -4809,10 +5537,45 @@ public sealed record FiscalRoutingRankingDto(
     string? SubcategoriaFiscal,
     decimal CustoTributarioEstimado,
     decimal CustoOperacionalEstimado,
+    decimal CustoTotalEstimado,
     decimal LucroEstimado,
     decimal MargemEstimadaPercentual,
     decimal Score,
     List<string> Justificativas);
+
+public sealed record FiscalManualEmissaoRequest(
+    string EmpresaEmissora,
+    string CnpjEmissor,
+    string ClienteDestinatario,
+    string DocumentoDestinatario,
+    string NaturezaOperacao,
+    string Cfop,
+    decimal Subtotal,
+    decimal Frete,
+    decimal ImpostosEstimados,
+    decimal MargemMinima,
+    string? Observacoes,
+    TipoOperacaoFiscal TipoOperacao,
+    string EstadoOrigem,
+    string EstadoDestino,
+    string? CategoriaFiscal,
+    string? SubcategoriaFiscal,
+    bool ExigeMarketplace,
+    bool ExigeDropshipping,
+    bool RequerSaidaNfe,
+    bool RequerEntradaNfe);
+
+public sealed record FiscalManualEmissaoResponseDto(
+    bool CertificadoOperacional,
+    string CertificadoStatus,
+    string? CertificadoReferencia,
+    string RoteamentoResumo,
+    string? CodigoEmpresaSelecionada,
+    string? RazaoSocialSelecionada,
+    string? CnpjSelecionado,
+    string? EstadoSelecionado,
+    List<string> Pendencias,
+    DateTime GeradoEm);
 
 public static class StoreData
 {
@@ -4901,62 +5664,14 @@ public sealed record DashboardCompletoDto(
 
     public static DashboardCompletoDto CreateSample()
     {
-        var hoje = DateTime.Today;
-
         return new DashboardCompletoDto(
-            new DashboardKpiDto(2847.50m, 45230.80m, 387450.00m, 12, 186, 23, 45, 892, 34, 1247, 3856, 243.50m, 3.2m, 1245, 18, 5, 12, 8, 15),
-            [
-                new("17/05", 1850.00m, 8),
-                new("18/05", 2340.50m, 10),
-                new("19/05", 1560.00m, 6),
-                new("20/05", 3120.80m, 13),
-                new("21/05", 2780.00m, 11),
-                new("22/05", 1950.00m, 8),
-                new("23/05", 2847.50m, 12)
-            ],
-            [
-                new("jun/25", 32450.00m, 142),
-                new("jul/25", 38920.50m, 168),
-                new("ago/25", 35670.00m, 154),
-                new("set/25", 42180.80m, 182),
-                new("out/25", 39850.00m, 172),
-                new("nov/25", 44560.00m, 195),
-                new("dez/25", 52340.00m, 228),
-                new("jan/26", 28950.00m, 126),
-                new("fev/26", 31240.00m, 138),
-                new("mar/26", 36780.00m, 162),
-                new("abr/26", 41250.00m, 178),
-                new("mai/26", 45230.80m, 186)
-            ],
-            [
-                new("Geracao Top+", "geracao-top", 98560.00m, 412, 239.22m, 25.4m),
-                new("Moda Mim", "moda-mim", 72340.00m, 298, 242.75m, 18.7m),
-                new("Chronos", "chronos", 67890.00m, 245, 277.10m, 17.5m),
-                new("Grann-Tur", "grann-tur", 54230.00m, 198, 273.89m, 14.0m),
-                new("Estruturaline", "estruturaline", 45670.00m, 156, 292.76m, 11.8m),
-                new("Gran-fest-festas", "gran-fest", 48760.00m, 187, 260.75m, 12.6m)
-            ],
-            [
-                new(1, "Smartphone Galaxy S24", null, "Geracao Top+", 142, 213400.00m),
-                new(2, "Relogio Chronos Elite", null, "Chronos", 98, 78400.00m),
-                new(3, "Mala de Viagem Premium", null, "Grann-Tur", 87, 43500.00m),
-                new(4, "Vestido Floral Verao", null, "Moda Mim", 76, 22800.00m),
-                new(5, "Kit Festa Premium", null, "Gran-fest-festas", 65, 19500.00m)
-            ],
-            [
-                new(1, "Ana Carolina Silva", "ana.silva@email.com", "(14) 99876-5432", hoje.AddDays(-1), 3, 1250.00m),
-                new(2, "Bruno Oliveira", "bruno.oliveira@email.com", "(14) 99765-4321", hoje.AddDays(-1), 1, 450.00m),
-                new(3, "Carla Mendes", "carla.mendes@email.com", "(14) 99654-3210", hoje.AddDays(-2), 5, 2340.00m)
-            ],
-            [
-                new(1, "NX2605230001", "Ana Carolina Silva", 450.00m, "Pago", "Aprovado", "Geracao Top+", hoje.AddHours(-2)),
-                new(2, "NX2605230002", "Bruno Oliveira", 890.00m, "EmSeparacao", "Aprovado", "Moda Mim", hoje.AddHours(-4)),
-                new(3, "NX2605230003", "Carla Mendes", 1250.00m, "Pendente", "Aguardando", "Chronos", hoje.AddHours(-6))
-            ],
-            [
-                new(1, "Fernando Lopes", "Fornecedor", "Novo", "Alta", "fernando@fornecedor.com", "(11) 98765-4321", hoje.AddHours(-3)),
-                new(2, "Gabriela Rocha", "Dropshipping", "EmAtendimento", "Media", "gabriela@dropship.com", "(21) 97654-3210", hoje.AddHours(-8)),
-                new(3, "Henrique Almeida", "Parceiro", "Qualificado", "Alta", "henrique@parceiro.com", "(31) 96543-2109", hoje.AddDays(-1))
-            ]);
+            new DashboardKpiDto(0m, 0m, 0m, 0, 0, 0, 0, 0, 0, 0, 0, 0m, 0m, 0, 0, 0, 0, 0, 0),
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            []);
     }
 }

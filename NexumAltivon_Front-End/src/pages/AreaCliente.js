@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
-import { AlertCircle, BadgeDollarSign, FileText, LifeBuoy, LoaderCircle, Receipt, ShoppingBag, Star, UserCircle2 } from 'lucide-react';
+import { AlertCircle, BadgeDollarSign, CheckCircle2, FileText, LifeBuoy, LoaderCircle, Receipt, ShoppingBag, Star, UserCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { clienteAPI } from '../services/api';
 
@@ -68,6 +68,10 @@ export default function AreaCliente() {
     };
   }, [portal]);
 
+  const statusCadastro = String(portal?.statusCadastro || portal?.status || '').toLowerCase();
+  const cadastroConfirmado = statusCadastro === 'ativo';
+  const confirmadoEm = portal?.confirmadoEm || portal?.confirmado_em;
+
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (isAdmin) return <Navigate to="/dashboard" replace />;
 
@@ -82,6 +86,12 @@ export default function AreaCliente() {
               <p className="mt-3 max-w-2xl text-zinc-300">
                 Aqui você acompanha pedidos, documentos, relacionamento e suporte em um canal direto com a operação comercial.
               </p>
+              <div className={`mt-5 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-black ${cadastroConfirmado ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200' : 'border-amber-400/30 bg-amber-400/10 text-amber-200'}`}>
+                {cadastroConfirmado ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                {cadastroConfirmado
+                  ? `Cadastro confirmado${confirmadoEm ? ` em ${formatDate(confirmadoEm)}` : ''}`
+                  : 'Cadastro pendente de confirmação'}
+              </div>
             </div>
             <div className="rounded-3xl border border-[#C9A227]/20 bg-black/30 p-5">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-zinc-500">Cadastro principal</p>
@@ -110,6 +120,9 @@ export default function AreaCliente() {
               <AlertCircle size={20} />
               {error}
             </div>
+            <p className="mt-3 text-sm text-red-50/90">
+              Se você acabou de se cadastrar, confira o e-mail de confirmação antes de tentar entrar novamente.
+            </p>
           </section>
         ) : (
           <>

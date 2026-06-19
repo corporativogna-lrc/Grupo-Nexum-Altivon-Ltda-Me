@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { categoriaAPI, clienteAPI, dashboardAPI, empresaGrupoAPI, fiscalAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI, siteAPI } from '../services/api';
+import { categoriaAPI, clienteAPI, dashboardAPI, empresaGrupoAPI, fiscalAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI, siteAPI, unwrapApiData } from '../services/api';
 import { fallbackCategories, fallbackLeads, fallbackPedidos, fallbackResumo } from '../data/mockStore';
 import { formatDate, formatPrice, getLeadStatusClass, getPagamentoLabel, getPedidoStatusClass } from '../utils/formatters';
 import {
   Activity,
   ArrowDownRight,
   ArrowUpRight,
-  Bell,
   Boxes,
   Building2,
   ChevronRight,
@@ -26,6 +25,7 @@ import {
   Trash2,
   Save,
   Search,
+  MessageCircleMore,
   ShoppingBag,
   Sparkles,
   Truck,
@@ -85,8 +85,7 @@ const empresaGrupoHighlights = [
   'A base fica pronta para roteamento inteligente de NF-e entre empresas do grupo e parceiras.',
 ];
 
-const sophiaMailTo =
-  'mailto:corporativo.gna@gmail.com?subject=Sophia%20-%20Apoio%20ERP&body=Ol%C3%A1%20Sophia%2C%20preciso%20de%20apoio%20interno%20na%20opera%C3%A7%C3%A3o%20do%20GenesisGest.Net.';
+const erpDesktopLauncher = 'file:///C:/Users/Rodrigo%20Costa/Documents/Codex/2026-05-28/files-mentioned-by-the-user-nexumaltivon/NexumAltivon.com/ABRIR-ERP-DESKTOP.cmd';
 
 const plannedModules = [
   { label: 'Lojas', icon: Building2, section: 'Gestão' },
@@ -154,6 +153,25 @@ const erpModules = [
   },
 ];
 
+const erpWorkspaceNavItems = [
+  { id: 'erp', label: 'Painel', short: 'painel', signal: 'Visão geral' },
+  { id: 'erp-fiscal', label: 'Fiscal', short: 'nf-e', signal: 'Emissão' },
+  { id: 'erp-financeiro', label: 'Financeiro', short: 'caixa', signal: 'Fluxo de caixa' },
+  { id: 'erp-logistica', label: 'Logística', short: 'estoque', signal: 'Expedição' },
+  { id: 'erp-empresas', label: 'Empresas', short: 'grupo', signal: 'Matriz / filiais' },
+  { id: 'erp-compras', label: 'Compras', short: 'supr.', signal: 'Reposição' },
+  { id: 'erp-relatorios', label: 'Relatórios', short: 'kpi', signal: 'Gestão' },
+  { id: 'erp-rh', label: 'RH', short: 'equipe', signal: 'Equipe' },
+];
+
+const erpCockpitActions = [
+  { id: 'erp-fiscal', label: 'Emissão fiscal', detail: 'Fila, emitente e automação NF-e' },
+  { id: 'erp-financeiro', label: 'Caixa / Financeiro', detail: 'Fluxo de caixa, liquidação e conciliação' },
+  { id: 'erp-logistica', label: 'Expedição / Estoque', detail: 'Separação, despacho e rastreio' },
+  { id: 'erp-empresas', label: 'Cadastro societário', detail: 'Grupo, filiais e regras tributárias' },
+  { id: 'erp-compras', label: 'Compras e custo', detail: 'Reposição, margem e fornecedores' },
+];
+
 const fallbackIntegracoes = [
   { nome: 'E-commerce e API', slug: 'ecommerce', status: 'Operacional', detalhe: 'Catálogo, clientes, pedidos, estoque e painel usam a API operacional.', configurada: true, ambiente: 'Produção' },
   { nome: 'Dropshipping', slug: 'dropshipping', status: 'Aguardando cadastros', detalhe: 'Roteamento depende dos fornecedores e produtos vinculados.', configurada: false, ambiente: 'Produção assistida' },
@@ -161,6 +179,7 @@ const fallbackIntegracoes = [
   { nome: 'CJ Dropshipping', slug: 'cjdropshipping', status: 'Aguardando conexão', detalhe: 'Canal preparado para receber endpoint, token e vínculo de catálogo.', configurada: false, ambiente: 'Staging privado' },
   { nome: 'Logística e Fretes', slug: 'logistica', status: 'Aguardando credenciais', detalhe: 'Frete está registrado no checkout; cotação e etiqueta dependem da transportadora.', configurada: false, ambiente: 'Sandbox' },
   { nome: 'Gateways de pagamento', slug: 'gateways', status: 'Aguardando credenciais', detalhe: 'Pedido registra método; cobrança real depende do token e webhook.', configurada: false, ambiente: 'Não configurado' },
+  { nome: 'Certificado NF-e', slug: 'certificado', status: 'Aguardando configuração', detalhe: 'O emissor fiscal está pronto para A1 ou A3, mas depende do certificado da empresa.', configurada: false, ambiente: 'Servidor local' },
   { nome: 'Marketplaces', slug: 'marketplaces', status: 'Aguardando credenciais', detalhe: 'Sincronização de catálogo e pedidos depende da autorização externa.', configurada: false, ambiente: 'Integração externa' },
   { nome: 'Bancos e conciliação', slug: 'bancaria', status: 'Planejado', detalhe: 'Conciliação depende da definição do banco e convênio.', configurada: false, ambiente: 'Não configurado' },
 ];
@@ -190,6 +209,11 @@ const integrationGuides = {
     description: 'Cotação de frete, seleção de serviço, etiqueta e rastreamento.',
     requirements: ['Token da transportadora', 'Endereço de origem', 'Peso e dimensões dos produtos'],
     nextTest: 'Executar uma cotação em sandbox e validar prazo e valor retornados.',
+  },
+  certificado: {
+    description: 'Validação do certificado digital usado para emissão de NF-e em produção.',
+    requirements: ['Certificado A1 com PFX e senha ou A3 com thumbprint', 'CNPJ da empresa emissora', 'Arquivo ou token acessível no servidor'],
+    nextTest: 'Preencher os dados do certificado e validar o diagnóstico de prontidão.',
   },
   gateways: {
     description: 'Cobrança por Pix, boleto e cartão, com retorno automático do pagamento e contingência entre provedores.',
@@ -238,6 +262,22 @@ const integrationCredentialCategoryMap = {
   mercadolivre: ['marketplace'],
   bancaria: ['bancaria'],
 };
+
+const isProdutoPublicavel = (produto) =>
+  Boolean(
+    produto &&
+      produto.ativo !== false &&
+      produto.nome &&
+      produto.sku &&
+      (produto.slug || produto.id) &&
+      (produto.descricao_curta || produto.descricaoCurta || produto.descricao_longa || produto.descricaoLonga || produto.descricao) &&
+      (produto.imagem_url || produto.imagemUrl || produto.imagem || produto.imagemPrincipal || produto.imagem_principal) &&
+      Number(produto.preco) > 0 &&
+      Number(produto.peso) > 0 &&
+      Number(produto.altura) > 0 &&
+      Number(produto.largura) > 0 &&
+      Number(produto.comprimento) > 0,
+  );
 
 const fallbackClientes = [
   { id: 1, nome: 'Ana Carolina Silva', email: 'ana.silva@email.com', telefone: '(14) 99876-5432', cpf: '123.456.789-00' },
@@ -371,6 +411,7 @@ const emptySiteConfigForm = {
   site_whatsapp: '5514996731879',
   site_whatsapp_secundario: '5514996348409',
   site_yara_email: 'corporativo.gna@gmail.com',
+  site_logo: '/assets/logo-2.jpg',
   home_intro_titulo: 'Uma Nova Era Começa',
   home_intro_texto_1: 'A Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro.',
   home_intro_texto_2: 'Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso.',
@@ -388,6 +429,7 @@ const siteConfigFieldMeta = [
   { key: 'site_whatsapp', label: 'WhatsApp principal', type: 'text', group: 'Geral', description: 'Número usado em links do site.' },
   { key: 'site_whatsapp_secundario', label: 'WhatsApp secundário', type: 'text', group: 'Geral', description: 'Número usado em parceria/fornecedores.' },
   { key: 'site_yara_email', label: 'E-mail da Yara', type: 'text', group: 'Atendimento', description: 'Canal atual da Yara para atendimento comercial.' },
+  { key: 'site_logo', label: 'Logo do site', type: 'text', group: 'Geral', description: 'URL pública ou caminho relativo do logo exibido na home.' },
   { key: 'home_intro_titulo', label: 'Título institucional', type: 'text', group: 'SiteHome', description: 'Título principal do bloco institucional.' },
   { key: 'home_intro_texto_1', label: 'Texto institucional 1', type: 'textarea', group: 'SiteHome', description: 'Primeiro texto institucional da home.' },
   { key: 'home_intro_texto_2', label: 'Texto institucional 2', type: 'textarea', group: 'SiteHome', description: 'Segundo texto institucional da home.' },
@@ -399,7 +441,7 @@ const siteConfigFieldMeta = [
 ];
 const pedidoStatusOptions = ['Pendente', 'Processando', 'Enviado', 'Entregue', 'Cancelado'];
 const leadStatusOptions = ['Novo', 'Contato', 'Qualificado', 'Negociacao', 'Ganho', 'Perdido'];
-const allowDemoData = process.env.NODE_ENV !== 'production';
+const allowDemoData = false;
 const emptyResumo = {
   pedidos_hoje: 0,
   total_clientes: 0,
@@ -428,6 +470,21 @@ const galleryToArray = (value) =>
     .map((item) => item.trim())
     .filter(Boolean);
 const galleryToText = (items) => items.filter(Boolean).join('\n');
+const parseJsonPreview = (value, fallback) => {
+  if (!value) return fallback;
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+};
+const normalizePreviewImage = (value) => String(value || '').trim();
+const asArray = (data) => {
+  const normalized = unwrapApiData(data);
+  return Array.isArray(normalized) ? normalized : [];
+};
 
 const getDashboardRouteState = (path = '') => {
   const segments = String(path || '').split('/').filter(Boolean);
@@ -463,6 +520,27 @@ const getDashboardPath = (tabId, cadastroId = 'produtos') => {
   return `/dashboard/${tabId}`;
 };
 
+const getProdutoPrefixoInterno = (tipoProduto, fornecedorId) => {
+  const valorComparacao = `${tipoProduto ?? ''} ${fornecedorId ? 'fornecedor' : ''}`.toLowerCase();
+
+  if (valorComparacao.includes('drop')) return 'Ds';
+  if (valorComparacao.includes('marketplace')) return 'Ec';
+  if (fornecedorId) return 'Fo';
+  return 'Ec';
+};
+
+const normalizarSkuInterno = (form) => {
+  const prefixo = getProdutoPrefixoInterno(form.tipoProduto, form.fornecedorId);
+  const bruto = String(form.sku || form.id || form.nome || '').trim();
+  const semPrefixo = bruto.replace(/^(fo|ds|ec|cl|fu|lj|pr)[\s\-_]*/i, '');
+  const corpo = semPrefixo
+    .replace(/[^a-z0-9]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .toUpperCase();
+
+  return corpo ? `${prefixo.toUpperCase()}-${corpo}` : `${prefixo.toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+};
+
 const fileToDataUrl = (file) =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -471,63 +549,66 @@ const fileToDataUrl = (file) =>
     reader.readAsDataURL(file);
   });
 
-const getProdutoDuplicateMessage = (form, produtos) => {
+const getProdutoDuplicateMessage = (form, produtos, ignoreId = '') => {
   const sku = normalizeText(form.sku);
   const id = normalizeText(form.id);
   const nome = normalizeText(form.nome);
+  const ignoreKey = normalizeText(ignoreId);
 
   if (sku) {
-    const duplicate = produtos.find((produto) => normalizeText(produto.sku) === sku);
+    const duplicate = produtos.find((produto) => normalizeText(produto.sku) === sku && normalizeText(produto.id) !== ignoreKey);
     if (duplicate) return `SKU já usado em ${duplicate.nome || 'outro produto'}.`;
   }
 
   if (id) {
-    const duplicate = produtos.find((produto) => normalizeText(produto.id) === id);
+    const duplicate = produtos.find((produto) => normalizeText(produto.id) === id && normalizeText(produto.id) !== ignoreKey);
     if (duplicate) return `Identificador público já usado em ${duplicate.nome || 'outro produto'}.`;
   }
 
   if (nome) {
-    const duplicate = produtos.find((produto) => normalizeText(produto.nome) === nome);
+    const duplicate = produtos.find((produto) => normalizeText(produto.nome) === nome && normalizeText(produto.id) !== ignoreKey);
     if (duplicate) return 'Produto com este nome já existe no catálogo.';
   }
 
   return '';
 };
 
-const getClienteDuplicateMessage = (form, clientes) => {
+const getClienteDuplicateMessage = (form, clientes, ignoreId = '') => {
   const email = normalizeText(form.email);
   const documento = normalizeDocument(form.cpf);
+  const ignoreKey = normalizeText(ignoreId);
 
   if (email) {
-    const duplicate = clientes.find((cliente) => normalizeText(cliente.email) === email);
+    const duplicate = clientes.find((cliente) => normalizeText(cliente.email) === email && normalizeText(cliente.id) !== ignoreKey);
     if (duplicate) return `Cliente já cadastrado com este e-mail: ${duplicate.nome || duplicate.email}.`;
   }
 
   if (documento) {
-    const duplicate = clientes.find((cliente) => normalizeDocument(cliente.cpf) === documento || normalizeDocument(cliente.cpfCnpj) === documento);
+    const duplicate = clientes.find((cliente) => (normalizeDocument(cliente.cpf) === documento || normalizeDocument(cliente.cpfCnpj) === documento) && normalizeText(cliente.id) !== ignoreKey);
     if (duplicate) return `Cliente já cadastrado com este CPF/CNPJ: ${duplicate.nome || duplicate.email}.`;
   }
 
   return '';
 };
 
-const getFornecedorDuplicateMessage = (form, fornecedores) => {
+const getFornecedorDuplicateMessage = (form, fornecedores, ignoreId = '') => {
   const documento = normalizeDocument(form.documento);
   const email = normalizeText(form.email);
   const nome = normalizeText(form.nome);
+  const ignoreKey = normalizeText(ignoreId);
 
   if (documento) {
-    const duplicate = fornecedores.find((fornecedor) => normalizeDocument(fornecedor.documento) === documento || normalizeDocument(fornecedor.cnpj) === documento);
+    const duplicate = fornecedores.find((fornecedor) => (normalizeDocument(fornecedor.documento) === documento || normalizeDocument(fornecedor.cnpj) === documento) && normalizeText(fornecedor.id) !== ignoreKey);
     if (duplicate) return `Fornecedor já cadastrado com este documento: ${duplicate.nome || duplicate.email}.`;
   }
 
   if (email) {
-    const duplicate = fornecedores.find((fornecedor) => normalizeText(fornecedor.email) === email);
+    const duplicate = fornecedores.find((fornecedor) => normalizeText(fornecedor.email) === email && normalizeText(fornecedor.id) !== ignoreKey);
     if (duplicate) return `Fornecedor já cadastrado com este e-mail: ${duplicate.nome || duplicate.email}.`;
   }
 
   if (nome) {
-    const duplicate = fornecedores.find((fornecedor) => normalizeText(fornecedor.nome) === nome);
+    const duplicate = fornecedores.find((fornecedor) => normalizeText(fornecedor.nome) === nome && normalizeText(fornecedor.id) !== ignoreKey);
     if (duplicate) return 'Fornecedor com este nome já existe na base.';
   }
 
@@ -557,7 +638,7 @@ const getEmpresaGrupoDuplicateMessage = (form, empresas) => {
   return '';
 };
 
-function StatCard({ title, value, detail, icon: Icon, trend, tone = 'slate' }) {
+function StatCard({ title, value, detail, icon: Icon, trend, tone = 'slate', onClick }) {
   const toneClass = {
     slate: 'bg-slate-950 text-white',
     amber: 'bg-amber-400 text-slate-950',
@@ -566,14 +647,19 @@ function StatCard({ title, value, detail, icon: Icon, trend, tone = 'slate' }) {
   }[tone];
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm" data-testid={`dashboard-stat-${title}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-lg border border-slate-200 bg-white p-5 text-left shadow-sm transition ${onClick ? 'cursor-pointer hover:-translate-y-0.5 hover:border-[#C9A227] hover:shadow-md' : ''}`}
+      data-testid={`dashboard-stat-${title}`}
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{title}</p>
-          <p className="mt-3 text-3xl font-black text-slate-950">{value}</p>
+          <p className="mt-3 text-2xl font-black text-slate-950 sm:text-3xl">{value}</p>
         </div>
-        <div className={`flex h-11 w-11 items-center justify-center rounded-lg ${toneClass}`}>
-          <Icon size={22} />
+        <div className={`flex h-10 w-10 items-center justify-center rounded-lg sm:h-11 sm:w-11 ${toneClass}`}>
+          <Icon size={20} className="sm:h-[22px] sm:w-[22px]" />
         </div>
       </div>
       <div className="mt-5 flex items-center gap-2 text-sm font-bold text-slate-500">
@@ -581,16 +667,20 @@ function StatCard({ title, value, detail, icon: Icon, trend, tone = 'slate' }) {
         <span className={trend >= 0 ? 'text-emerald-700' : 'text-rose-700'}>{Math.abs(trend)}%</span>
         <span>{detail}</span>
       </div>
-    </div>
+    </button>
   );
 }
 
-function StatMiniCard({ label, value }) {
+function StatMiniCard({ label, value, onClick }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+    <button
+      type="button"
+      onClick={onClick}
+      className={`erp-mini-card rounded-lg border border-slate-200 bg-white p-5 text-left shadow-sm transition ${onClick ? 'cursor-pointer hover:-translate-y-0.5 hover:border-[#C9A227] hover:shadow-md' : ''}`}
+    >
       <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
-      <p className="mt-3 text-3xl font-black text-slate-950">{value}</p>
-    </div>
+      <p className="mt-3 text-2xl font-black text-slate-950 sm:text-3xl">{value}</p>
+    </button>
   );
 }
 
@@ -599,6 +689,7 @@ export default function Dashboard() {
   const params = useParams();
   const { user, isAuthenticated, loading: authLoading, logout } = useAuth();
   const routeState = useMemo(() => getDashboardRouteState(params['*']), [params]);
+  const sophiaHref = 'mailto:corporativo.gna@gmail.com?subject=Sophia%20-%20Apoio%20ERP&body=Ol%C3%A1%20Sophia%2C%20preciso%20de%20apoio%20interno%20na%20opera%C3%A7%C3%A3o%20do%20GenesisGest.Net.';
   const [resumo, setResumo] = useState(allowDemoData ? fallbackResumo : emptyResumo);
   const [pedidos, setPedidos] = useState(allowDemoData ? fallbackPedidos : []);
   const [leads, setLeads] = useState(allowDemoData ? fallbackLeads : []);
@@ -607,6 +698,9 @@ export default function Dashboard() {
   const [clientes, setClientes] = useState(allowDemoData ? fallbackClientes : []);
   const [fornecedores, setFornecedores] = useState(allowDemoData ? fallbackFornecedores : []);
   const [empresasGrupo, setEmpresasGrupo] = useState(allowDemoData ? fallbackEmpresasGrupo : []);
+  const [produtoEditingId, setProdutoEditingId] = useState('');
+  const [clienteEditingId, setClienteEditingId] = useState('');
+  const [fornecedorEditingId, setFornecedorEditingId] = useState('');
   const [fiscalPedidos, setFiscalPedidos] = useState([]);
   const [integracoes, setIntegracoes] = useState(fallbackIntegracoes);
   const [credenciaisModelo, setCredenciaisModelo] = useState([]);
@@ -625,6 +719,45 @@ export default function Dashboard() {
   const [leadForm, setLeadForm] = useState(emptyLead);
   const [empresaGrupoForm, setEmpresaGrupoForm] = useState(emptyEmpresaGrupo);
   const [formStatus, setFormStatus] = useState('');
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const isErpWorkspace = activeTab === 'erp' || activeTab.startsWith('erp-');
+  const sitePreviewLogo = String(siteConfigForm.site_logo || '').trim() || '/assets/logo-2.jpg';
+  const previewSlides = parseJsonPreview(siteConfigForm.home_hero_slides, [{
+    id: 'preview',
+    badge: siteConfigForm.home_intro_badge || 'Preview do banner',
+    title: siteConfigForm.home_intro_titulo || 'Título institucional',
+    highlight: 'Visual ao vivo',
+    description: siteConfigForm.home_intro_texto_1 || 'A prévia mostra como o banner ficará na home antes de salvar no banco.',
+    image: siteConfigForm.site_logo || '/assets/logo-2.jpg',
+  }]);
+  const previewSlide = previewSlides[0] || {
+    badge: siteConfigForm.home_intro_badge || 'Preview do banner',
+    title: siteConfigForm.home_intro_titulo || 'Título institucional',
+    highlight: 'Visual ao vivo',
+    description: siteConfigForm.home_intro_texto_1 || 'A prévia mostra como o banner ficará na home antes de salvar no banco.',
+    image: siteConfigForm.site_logo || '/assets/logo-2.jpg',
+  };
+  const previewQualityItems = parseJsonPreview(siteConfigForm.home_quality_items, []);
+  const previewPartnerCards = parseJsonPreview(siteConfigForm.home_partner_cards, []);
+
+  useEffect(() => {
+    const syncFullscreen = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    syncFullscreen();
+    document.addEventListener('fullscreenchange', syncFullscreen);
+    return () => document.removeEventListener('fullscreenchange', syncFullscreen);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch {
+      setFormStatus('Nao foi possivel alternar para tela cheia neste navegador.');
+    }
+  };
 
   const loadData = useCallback(async () => {
     try {
@@ -645,20 +778,31 @@ export default function Dashboard() {
         siteAPI.getAll().catch(() => ({ data: [] })),
       ]);
       if (resumoRes.data) setResumo({ ...fallbackResumo, ...resumoRes.data });
-      if (Array.isArray(pedidosRes.data) && pedidosRes.data.length > 0) setPedidos(pedidosRes.data);
-      if (Array.isArray(leadsRes.data) && leadsRes.data.length > 0) setLeads(leadsRes.data);
-      setProdutos(Array.isArray(produtosRes.data) ? produtosRes.data : []);
-      if (Array.isArray(categoriasRes.data) && categoriasRes.data.length > 0) setCategorias(categoriasRes.data);
-      if (Array.isArray(clientesRes.data) && clientesRes.data.length > 0) setClientes(clientesRes.data);
-      if (Array.isArray(fornecedoresRes.data) && fornecedoresRes.data.length > 0) setFornecedores(fornecedoresRes.data);
-      if (Array.isArray(empresasGrupoRes.data) && empresasGrupoRes.data.length > 0) setEmpresasGrupo(empresasGrupoRes.data);
-      if (Array.isArray(fiscalPedidosRes.data) && fiscalPedidosRes.data.length > 0) setFiscalPedidos(fiscalPedidosRes.data);
-      if (Array.isArray(integracoesRes.data) && integracoesRes.data.length > 0) setIntegracoes(integracoesRes.data);
-      if (Array.isArray(credenciaisRes.data) && credenciaisRes.data.length > 0) setCredenciaisModelo(credenciaisRes.data);
-      if (Array.isArray(siteConfigRes.data) && siteConfigRes.data.length > 0) {
-        setSiteConfigItems(siteConfigRes.data);
+      const pedidosData = asArray(pedidosRes.data);
+      const leadsData = asArray(leadsRes.data);
+      if (pedidosData.length > 0) setPedidos(pedidosData);
+      if (leadsData.length > 0) setLeads(leadsData);
+      const produtosData = asArray(produtosRes.data).filter(isProdutoPublicavel);
+      const categoriasData = asArray(categoriasRes.data);
+      const clientesData = asArray(clientesRes.data);
+      const fornecedoresData = asArray(fornecedoresRes.data);
+      const empresasGrupoData = asArray(empresasGrupoRes.data);
+      const fiscalPedidosData = asArray(fiscalPedidosRes.data);
+      if (produtosData.length > 0) setProdutos(produtosData);
+      if (categoriasData.length > 0) setCategorias(categoriasData);
+      if (clientesData.length > 0) setClientes(clientesData);
+      if (fornecedoresData.length > 0) setFornecedores(fornecedoresData);
+      if (empresasGrupoData.length > 0) setEmpresasGrupo(empresasGrupoData);
+      if (fiscalPedidosData.length > 0) setFiscalPedidos(fiscalPedidosData);
+      const integracoesData = asArray(integracoesRes.data);
+      const credenciaisData = asArray(credenciaisRes.data);
+      const siteConfigData = asArray(siteConfigRes.data);
+      if (integracoesData.length > 0) setIntegracoes(integracoesData);
+      if (credenciaisData.length > 0) setCredenciaisModelo(credenciaisData);
+      if (siteConfigData.length > 0) {
+        setSiteConfigItems(siteConfigData);
         setSiteConfigForm((current) =>
-          siteConfigRes.data.reduce((acc, item) => ({ ...acc, [item.chave]: item.valor ?? '' }), { ...current }),
+          siteConfigData.reduce((acc, item) => ({ ...acc, [item.chave]: item.valor ?? '' }), { ...current }),
         );
       }
     } catch (error) {
@@ -731,6 +875,7 @@ export default function Dashboard() {
   const submitProduto = async (event) => {
     event.preventDefault();
     setFormStatus('');
+    const duplicateMessage = getProdutoDuplicateMessage(produtoForm, produtos, produtoEditingId);
     const requiredProductFields = [
       produtoForm.nome,
       produtoForm.descricao,
@@ -747,7 +892,7 @@ export default function Dashboard() {
       return;
     }
 
-    const duplicateMessage = getProdutoDuplicateMessage(produtoForm, produtos);
+    const duplicateMessage = getProdutoDuplicateMessage(produtoForm, produtos, produtoEditingId);
     if (duplicateMessage) {
       setFormStatus(duplicateMessage);
       return;
@@ -755,6 +900,7 @@ export default function Dashboard() {
 
     const payload = {
       ...produtoForm,
+      sku: normalizarSkuInterno(produtoForm),
       preco: Number(produtoForm.preco),
       precoPromocional: produtoForm.precoPromocional ? Number(produtoForm.precoPromocional) : null,
       custo: produtoForm.custo ? Number(produtoForm.custo) : null,
@@ -770,10 +916,19 @@ export default function Dashboard() {
       fornecedorId: produtoForm.fornecedorId ? Number(produtoForm.fornecedorId) : null,
     };
 
-    const response = await produtoAPI.create(payload);
-    setProdutos((current) => [response.data, ...current]);
+    const response = produtoEditingId
+      ? await produtoAPI.update(produtoEditingId, payload)
+      : await produtoAPI.create(payload);
+    setProdutos((current) => {
+      const respostaId = String(response.data.id ?? response.data.slug ?? response.data.Slug ?? produtoEditingId);
+      const semDuplicidade = current.filter((produto) => String(produto.id ?? produto.slug ?? produto.Slug ?? '') !== respostaId);
+      return isProdutoPublicavel(response.data) ? [response.data, ...semDuplicidade] : semDuplicidade;
+    });
     setProdutoForm(emptyProduto);
-    setFormStatus('Produto cadastrado e disponível no catálogo.');
+    setProdutoEditingId('');
+    setFormStatus(isProdutoPublicavel(response.data)
+      ? (produtoEditingId ? 'Produto atualizado e pronto para o catálogo.' : 'Produto cadastrado e disponível no catálogo.')
+      : 'Produto salvo, mas ainda não atende os requisitos para aparecer no catálogo.');
   };
 
   const uploadProdutoImagem = async (file) => {
@@ -860,34 +1015,52 @@ export default function Dashboard() {
   const submitCliente = async (event) => {
     event.preventDefault();
     setFormStatus('');
-    const duplicateMessage = getClienteDuplicateMessage(clienteForm, clientes);
+    const duplicateMessage = getClienteDuplicateMessage(clienteForm, clientes, clienteEditingId);
     if (duplicateMessage) {
       setFormStatus(duplicateMessage);
       return;
     }
 
-    const response = await clienteAPI.create(clienteForm);
+    const response = clienteEditingId
+      ? await clienteAPI.update(clienteEditingId, {
+        nome: clienteForm.nome,
+        email: clienteForm.email,
+        cpfCnpj: clienteForm.cpf || null,
+        telefone: clienteForm.telefone || null,
+        whatsapp: clienteForm.telefone || null,
+        newsletter: true,
+        vip: false,
+        status: 'Ativo',
+      })
+      : await clienteAPI.create(clienteForm);
     setClientes((current) => {
-      const semDuplicidade = current.filter((cliente) => cliente.id !== response.data.id);
+      const semDuplicidade = current.filter((cliente) => String(cliente.id) !== String(response.data.id ?? clienteEditingId));
       return [response.data, ...semDuplicidade];
     });
     setClienteForm(emptyCliente);
-    setFormStatus('Cliente cadastrado no painel.');
+    setClienteEditingId('');
+    setFormStatus(clienteEditingId ? 'Cliente atualizado no painel.' : 'Cliente cadastrado no painel.');
   };
 
   const submitFornecedor = async (event) => {
     event.preventDefault();
     setFormStatus('');
-    const duplicateMessage = getFornecedorDuplicateMessage(fornecedorForm, fornecedores);
+    const duplicateMessage = getFornecedorDuplicateMessage(fornecedorForm, fornecedores, fornecedorEditingId);
     if (duplicateMessage) {
       setFormStatus(duplicateMessage);
       return;
     }
 
-    const response = await fornecedorAPI.create(fornecedorForm);
-    setFornecedores((current) => [response.data, ...current]);
+    const response = fornecedorEditingId
+      ? await fornecedorAPI.update(fornecedorEditingId, fornecedorForm)
+      : await fornecedorAPI.create(fornecedorForm);
+    setFornecedores((current) => {
+      const semDuplicidade = current.filter((fornecedor) => String(fornecedor.id) !== String(response.data.id ?? fornecedorEditingId));
+      return [response.data, ...semDuplicidade];
+    });
     setFornecedorForm(emptyFornecedor);
-    setFormStatus('Fornecedor cadastrado no painel.');
+    setFornecedorEditingId('');
+    setFormStatus(fornecedorEditingId ? 'Fornecedor atualizado no painel.' : 'Fornecedor cadastrado no painel.');
   };
 
   const submitLead = async (event) => {
@@ -988,9 +1161,9 @@ export default function Dashboard() {
     );
   }, [leads, query]);
 
-  const produtoDuplicateMessage = useMemo(() => getProdutoDuplicateMessage(produtoForm, produtos), [produtoForm, produtos]);
-  const clienteDuplicateMessage = useMemo(() => getClienteDuplicateMessage(clienteForm, clientes), [clienteForm, clientes]);
-  const fornecedorDuplicateMessage = useMemo(() => getFornecedorDuplicateMessage(fornecedorForm, fornecedores), [fornecedorForm, fornecedores]);
+  const produtoDuplicateMessage = useMemo(() => getProdutoDuplicateMessage(produtoForm, produtos, produtoEditingId), [produtoForm, produtos, produtoEditingId]);
+  const clienteDuplicateMessage = useMemo(() => getClienteDuplicateMessage(clienteForm, clientes, clienteEditingId), [clienteForm, clientes, clienteEditingId]);
+  const fornecedorDuplicateMessage = useMemo(() => getFornecedorDuplicateMessage(fornecedorForm, fornecedores, fornecedorEditingId), [fornecedorForm, fornecedores, fornecedorEditingId]);
   const empresaGrupoDuplicateMessage = useMemo(() => getEmpresaGrupoDuplicateMessage(empresaGrupoForm, empresasGrupo), [empresaGrupoForm, empresasGrupo]);
   const selectedCadastro = cadastroTabs.find((item) => item.id === activeCadastroTab) || cadastroTabs[0];
   const cadastroCounts = {
@@ -1012,6 +1185,71 @@ export default function Dashboard() {
     navigate(`/dashboard/integracoes/${slug}`);
   };
 
+  const startEditProduto = (produto) => {
+    setProdutoEditingId(String(produto.id ?? produto.slug ?? produto.Slug ?? '').trim());
+    setProdutoForm({
+      ...emptyProduto,
+      id: produto.id ?? produto.slug ?? produto.Slug ?? '',
+      nome: produto.nome ?? produto.Nome ?? '',
+      descricaoCurta: produto.descricao_curta ?? produto.descricaoCurta ?? produto.DescricaoCurta ?? '',
+      descricao: produto.descricao_longa ?? produto.descricaoLonga ?? produto.descricao ?? produto.DescricaoLonga ?? '',
+      preco: String(produto.preco ?? produto.Preco ?? ''),
+      precoPromocional: String(produto.preco_promocional ?? produto.precoPromocional ?? produto.PrecoPromocional ?? ''),
+      custo: String(produto.custo ?? produto.Custo ?? ''),
+      peso: String(produto.peso ?? produto.Peso ?? ''),
+      altura: String(produto.altura ?? produto.Altura ?? ''),
+      largura: String(produto.largura ?? produto.Largura ?? ''),
+      comprimento: String(produto.comprimento ?? produto.Comprimento ?? ''),
+      imagemUrl: produto.imagemUrl ?? produto.imagem_url ?? produto.imagem_principal ?? produto.imagemPrincipal ?? produto.ImagemPrincipal ?? '',
+      imagensGaleria: produto.imagensGaleria ?? produto.imagens_galeria ?? produto.ImagensGaleria ?? '',
+      estoque: String(produto.estoque ?? produto.estoque_atual ?? produto.EstoqueAtual ?? ''),
+      estoqueMinimo: String(produto.estoqueMinimo ?? produto.estoque_minimo ?? produto.EstoqueMinimo ?? ''),
+      estoqueReservado: String(produto.estoqueReservado ?? produto.estoque_reservado ?? produto.EstoqueReservado ?? ''),
+      destaque: Boolean(produto.destaque ?? produto.Destaque),
+      ativo: Boolean(produto.ativo ?? produto.Ativo ?? true),
+      sku: produto.sku ?? produto.Sku ?? '',
+      categoriaId: String(produto.categoria_id ?? produto.categoriaId ?? produto.CategoriaId ?? 'classicos'),
+      subcategoriaId: String(produto.subcategoria_id ?? produto.subcategoriaId ?? produto.SubcategoriaId ?? ''),
+      tipoProduto: produto.tipo_produto ?? produto.tipoProduto ?? produto.TipoProduto ?? 'Proprio',
+      fornecedorId: String(produto.fornecedor_id ?? produto.fornecedorId ?? produto.FornecedorId ?? ''),
+      marca: produto.marca ?? produto.Marca ?? '',
+      tags: produto.tags ?? produto.Tags ?? '',
+      seoTitulo: produto.seo_titulo ?? produto.seoTitulo ?? produto.SeoTitulo ?? '',
+      seoDescricao: produto.seo_descricao ?? produto.seoDescricao ?? produto.SeoDescricao ?? '',
+      seoKeywords: produto.seo_keywords ?? produto.seoKeywords ?? produto.SeoKeywords ?? '',
+    });
+    setFormStatus(`Editando produto ${produto.nome ?? produto.Nome ?? ''}.`);
+    setActiveTab('cadastro-produtos');
+    setActiveCadastroTab('produtos');
+  };
+
+  const startEditCliente = (cliente) => {
+    setClienteEditingId(String(cliente.id ?? cliente.Id ?? '').trim());
+    setClienteForm({
+      nome: cliente.nome ?? cliente.Nome ?? '',
+      email: cliente.email ?? cliente.Email ?? '',
+      telefone: cliente.telefone ?? cliente.Telefone ?? '',
+      cpf: cliente.cpf ?? cliente.cpfCnpj ?? cliente.CpfCnpj ?? '',
+    });
+    setFormStatus(`Editando cliente ${cliente.nome ?? cliente.Nome ?? ''}.`);
+    setActiveTab('cadastro-clientes');
+    setActiveCadastroTab('clientes');
+  };
+
+  const startEditFornecedor = (fornecedor) => {
+    setFornecedorEditingId(String(fornecedor.id ?? fornecedor.Id ?? '').trim());
+    setFornecedorForm({
+      nome: fornecedor.nome ?? fornecedor.Nome ?? '',
+      documento: fornecedor.documento ?? fornecedor.cnpj ?? fornecedor.Cnpj ?? '',
+      email: fornecedor.email ?? fornecedor.Email ?? '',
+      telefone: fornecedor.telefone ?? fornecedor.Telefone ?? '',
+      categoria: fornecedor.categoria ?? fornecedor.segmento ?? fornecedor.Categoria ?? 'Geral',
+    });
+    setFormStatus(`Editando fornecedor ${fornecedor.nome ?? fornecedor.Nome ?? ''}.`);
+    setActiveTab('cadastro-fornecedores');
+    setActiveCadastroTab('fornecedores');
+  };
+
   const statusCounts = useMemo(() => {
     return pedidos.reduce((acc, pedido) => {
       acc[pedido.status] = (acc[pedido.status] || 0) + 1;
@@ -1030,18 +1268,26 @@ export default function Dashboard() {
   if (!isAuthenticated) return <Navigate to="/login" />;
 
   return (
-    <main className="nexum-admin-shell min-h-screen bg-[#050505]">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 border-r border-[#2A2A2A] bg-[#0A0A0A] text-white lg:block">
-        <div className="flex h-full flex-col p-6">
-          <Link to="/" className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#C9A227] text-sm font-black text-black">NA</div>
+    <main className={`nexum-admin-shell min-h-screen bg-[#050505] ${isErpWorkspace ? 'erp-desktop-shell' : ''}`}>
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-80 border-r border-[#2A2A2A] bg-[#0A0A0A] text-white lg:block">
+        <div className="flex h-full flex-col p-5">
+          <Link to="/" className="flex items-center gap-3 rounded-2xl border border-white/5 bg-white/5 px-4 py-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#C9A227] text-sm font-black text-black shadow-[0_12px_35px_rgba(201,162,39,0.25)]">NA</div>
             <div>
-              <p className="font-serif text-lg font-black tracking-widest text-[#C9A227]">GENESISGEST.NET</p>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">Painel administrativo Nexum Altivon</p>
+              <p className="font-black tracking-[0.18em] text-[#C9A227]">GENESISGEST.NET</p>
+              <p className="text-[0.66rem] font-bold uppercase tracking-[0.22em] text-zinc-500">Workstation administrativa local</p>
             </div>
           </Link>
 
-          <nav className="mt-8 space-y-5 overflow-y-auto pb-6">
+          <div className="mt-5 rounded-2xl border border-white/6 bg-black/30 px-4 py-3 text-xs font-semibold text-zinc-400">
+            <div className="flex items-center justify-between">
+              <span className="uppercase tracking-[0.18em] text-zinc-500">Console</span>
+              <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[0.62rem] font-black uppercase text-emerald-300">local</span>
+            </div>
+            <p className="mt-2 text-zinc-300">API 192.168.1.72:5012 · BD 3309 · modo operacional</p>
+          </div>
+
+          <nav className="mt-5 space-y-4 overflow-y-auto pb-6 pr-1">
             {navSections.map((section) => {
               const activeItems = tabs.filter((tab) => tab.section === section);
               const futureItems = plannedModules.filter((module) => module.section === section);
@@ -1049,7 +1295,7 @@ export default function Dashboard() {
 
               return (
                 <div key={section}>
-                  <p className="px-3 pb-2 text-[0.65rem] font-black uppercase tracking-[0.22em] text-zinc-600">{section}</p>
+                  <p className="px-3 pb-2 text-[0.62rem] font-black uppercase tracking-[0.26em] text-zinc-600">{section}</p>
                   <div className="space-y-1">
                     {activeItems.map((tab) => {
                       const Icon = tab.icon;
@@ -1058,14 +1304,14 @@ export default function Dashboard() {
                         <button
                           key={tab.id}
                           onClick={() => openMainTab(tab.id)}
-                          className={`flex w-full items-center gap-3 border-l-4 px-3 py-3 text-left text-sm font-bold transition ${
-                            active ? 'border-[#C9A227] bg-[#C9A227]/10 text-[#C9A227]' : 'border-transparent text-zinc-400 hover:border-[#C9A227]/60 hover:bg-white/5 hover:text-[#E8D5A3]'
+                          className={`flex w-full items-center gap-3 border-l-4 px-3 py-3 text-left text-[0.88rem] font-bold transition ${
+                            active ? 'border-[#C9A227] bg-[#C9A227]/12 text-[#C9A227] shadow-[inset_0_0_0_1px_rgba(201,162,39,0.12)]' : 'border-transparent text-zinc-400 hover:border-[#C9A227]/60 hover:bg-white/5 hover:text-[#E8D5A3]'
                           }`}
                           data-testid={`tab-${tab.id}`}
                         >
-                          <Icon size={18} />
+                          <Icon size={17} />
                           <span>{tab.label}</span>
-                          {tab.badge && <span className="ml-auto rounded-full bg-emerald-600 px-2 py-0.5 text-[0.62rem] uppercase text-white">{tab.badge}</span>}
+                          {tab.badge && <span className="ml-auto rounded-full bg-emerald-600/15 px-2 py-0.5 text-[0.6rem] uppercase text-emerald-300 ring-1 ring-emerald-500/20">{tab.badge}</span>}
                         </button>
                       );
                     })}
@@ -1075,12 +1321,12 @@ export default function Dashboard() {
                         <button
                           key={item.label}
                           type="button"
-                          className="flex w-full cursor-not-allowed items-center gap-3 border-l-4 border-transparent px-3 py-3 text-left text-sm font-semibold text-zinc-700"
+                          className="flex w-full cursor-not-allowed items-center gap-3 border-l-4 border-transparent px-3 py-3 text-left text-[0.88rem] font-semibold text-zinc-700"
                           title="Módulo em estruturação"
                         >
-                          <Icon size={18} />
+                          <Icon size={17} />
                           <span>{item.label}</span>
-                          <span className="ml-auto rounded-full border border-zinc-700 px-2 py-0.5 text-[0.62rem] uppercase text-zinc-600">{item.track || 'breve'}</span>
+                          <span className="ml-auto rounded-full border border-zinc-700 px-2 py-0.5 text-[0.6rem] uppercase text-zinc-600">{item.track || 'breve'}</span>
                         </button>
                       );
                     })}
@@ -1090,53 +1336,59 @@ export default function Dashboard() {
             })}
           </nav>
 
-          <div className="mt-auto rounded-lg border border-white/10 bg-white/5 p-4">
+          <div className="mt-auto rounded-2xl border border-white/10 bg-white/[0.04] p-4">
             <div className="flex items-center gap-2 text-[#E8D5A3]">
               <Sparkles size={16} />
               <p className="text-xs font-black uppercase tracking-[0.18em]">Operação real</p>
             </div>
-            <p className="mt-3 text-2xl font-black">{formatPrice(resumo.faturamento_mes)}</p>
+            <p className="mt-3 text-[1.8rem] font-black tracking-tight">{formatPrice(resumo.faturamento_mes)}</p>
             <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-              <div className="h-full w-[72%] rounded-full bg-[#C9A227]" />
+              <div className="h-full w-[72%] rounded-full bg-gradient-to-r from-[#B88E1B] to-[#FFD95A]" />
             </div>
             <p className="mt-3 text-xs font-semibold text-zinc-400">Base operacional conectada à API e ao banco real.</p>
           </div>
         </div>
       </aside>
 
-      <section className="lg:pl-72">
-        <header className="sticky top-0 z-30 border-b border-[#2A2A2A] bg-[#0A0A0A]/95 text-white backdrop-blur-xl">
-          <div className="flex min-h-[76px] flex-col gap-4 px-4 py-4 sm:px-6 xl:flex-row xl:items-center xl:justify-between xl:px-8">
+      <section className="lg:pl-80">
+        <header className="sticky top-0 z-30 border-b border-[#2A2A2A] bg-[#0A0A0A]/96 text-white backdrop-blur-xl">
+          <div className="flex min-h-[84px] flex-col gap-4 px-4 py-4 sm:px-6 xl:flex-row xl:items-center xl:justify-between xl:px-8">
             <div>
-              <p className="text-sm font-bold text-zinc-500"><span className="text-[#C9A227]">{tabs.find((tab) => tab.id === activeTab)?.label || 'Dashboard'}</span> / Gestão</p>
-              <h1 className="text-2xl font-black text-white" data-testid="dashboard-title">GenesisGest.Net</h1>
+              <p className="text-[0.72rem] font-black uppercase tracking-[0.24em] text-zinc-500"><span className="text-[#C9A227]">{tabs.find((tab) => tab.id === activeTab)?.label || 'Dashboard'}</span> / Operação local</p>
+              <h1 className="mt-1 text-[2rem] font-black tracking-tight text-white" data-testid="dashboard-title">GenesisGest.Net</h1>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="rounded-full border border-[#2A2A2A] bg-[#111111] px-4 py-2 text-right">
-                <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-zinc-500">Operando como</p>
+              <div className="rounded-2xl border border-[#2A2A2A] bg-[#111111] px-4 py-2 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-zinc-500">Usuário</p>
                 <p className="text-sm font-bold text-white">{user?.nome || user?.email || 'Equipe Nexum'}</p>
               </div>
               <a
-                href={sophiaMailTo}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#2A2A2A] bg-[#111111] px-5 text-sm font-black text-[#E8D5A3] transition hover:border-[#C9A227] hover:text-white"
+                href={sophiaHref}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#2A2A2A] bg-[#111111] text-[#E8D5A3] hover:border-[#C9A227] hover:text-white"
+                title="Chamar Sophia"
               >
-                Chamar Sophia
+                <MessageCircleMore size={18} />
               </a>
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#2A2A2A] bg-[#111111] px-5 text-sm font-black text-zinc-200 hover:border-[#C9A227] hover:text-white"
+                title={isFullscreen ? 'Sair da tela cheia' : 'Ativar tela cheia'}
+              >
+                {isFullscreen ? 'Janela' : 'Tela cheia'}
+              </button>
               <div className="relative">
                 <Search className="absolute left-3 top-3 text-zinc-500" size={18} />
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Buscar pedidos, clientes, produtos ou leads"
-                  className="h-11 w-full rounded-full border border-[#2A2A2A] bg-[#050505] pl-10 pr-4 text-sm font-semibold text-white outline-none transition focus:border-[#C9A227] focus:ring-4 focus:ring-[#C9A227]/10 sm:w-80"
+                  className="h-11 w-full rounded-full border border-[#2A2A2A] bg-[#050505] pl-10 pr-4 text-sm font-semibold text-white outline-none focus:border-[#C9A227] focus:ring-4 focus:ring-[#C9A227]/10 sm:w-80"
                 />
               </div>
-              <button className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#2A2A2A] bg-[#1A1A1A] text-zinc-300" aria-label="Notificações" title="Notificações">
-                <Bell size={19} />
-              </button>
               <button
                 onClick={logout}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#C9A227] px-5 text-sm font-black text-black"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#C9A227] px-5 text-sm font-black text-black shadow-[0_16px_35px_rgba(201,162,39,0.18)] hover:bg-[#FFD95A]"
               >
                 <LogOut size={17} />
                 Sair
@@ -1168,7 +1420,7 @@ export default function Dashboard() {
           {loading ? (
             <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
               {[1, 2, 3, 4].map((item) => (
-                <div key={item} className="h-40 animate-pulse rounded-lg bg-white" />
+                <div key={item} className="h-40 animate-pulse rounded-2xl bg-white/5" />
               ))}
             </div>
           ) : (
@@ -1176,13 +1428,13 @@ export default function Dashboard() {
               {activeTab === 'overview' && (
                 <div className="space-y-6">
                   <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-                    <StatCard title="Pedidos hoje" value={resumo.pedidos_hoje} detail="vs. ontem" trend={12} icon={ShoppingBag} tone="slate" />
-                    <StatCard title="Clientes" value={resumo.total_clientes} detail="base ativa" trend={8} icon={Users} tone="emerald" />
-                    <StatCard title="Faturamento" value={formatPrice(resumo.faturamento_mes)} detail="no mês" trend={18} icon={TrendingUp} tone="amber" />
-                    <StatCard title="Leads novos" value={resumo.leads_novos} detail="em qualificação" trend={-3} icon={UserRound} tone="indigo" />
+                    <StatCard title="Pedidos hoje" value={resumo.pedidos_hoje} detail="vs. ontem" trend={12} icon={ShoppingBag} tone="slate" onClick={() => openMainTab('pedidos')} />
+                    <StatCard title="Clientes" value={resumo.total_clientes} detail="base ativa" trend={8} icon={Users} tone="emerald" onClick={() => openMainTab('cadastro-clientes')} />
+                    <StatCard title="Faturamento" value={formatPrice(resumo.faturamento_mes)} detail="no mês" trend={18} icon={TrendingUp} tone="amber" onClick={() => openMainTab('erp-financeiro')} />
+                    <StatCard title="Leads novos" value={resumo.leads_novos} detail="em qualificação" trend={-3} icon={UserRound} tone="indigo" onClick={() => openMainTab('crm')} />
                   </div>
 
-                  <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                  <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <h2 className="text-xl font-black text-slate-950">Arquitetura operacional integrada</h2>
@@ -1190,8 +1442,8 @@ export default function Dashboard() {
                           E-commerce, dropshipping, logística, gateways de pagamento e módulos empresariais conectados pelo canal de API.
                         </p>
                       </div>
-                      <span className="rounded-full bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-800">API em produção temporária</span>
-                    </div>
+                        <span className="rounded-full bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-800">Operação local validada</span>
+                      </div>
                     <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                       {[
                         { label: 'E-commerce', status: 'Operante', icon: ShoppingBag },
@@ -1201,12 +1453,21 @@ export default function Dashboard() {
                         { label: 'Gateways/API', status: 'Paralelo', icon: Database },
                       ].map((item) => {
                         const Icon = item.icon;
+                        const targetTab = item.label === 'Cadastros reais'
+                          ? 'cadastro-produtos'
+                          : item.label === 'Dropshipping'
+                            ? 'integracoes'
+                            : item.label === 'Logística'
+                              ? 'erp-logistica'
+                              : item.label === 'Gateways/API'
+                                ? 'integracoes'
+                                : 'overview';
                         return (
-                          <div key={item.label} className="rounded-lg border border-slate-100 bg-slate-50 p-4">
+                          <button key={item.label} type="button" onClick={() => openMainTab(targetTab)} className="rounded-lg border border-slate-100 bg-slate-50 p-4 text-left transition hover:-translate-y-0.5 hover:border-[#C9A227] hover:shadow-md">
                             <Icon className="text-amber-600" size={22} />
                             <p className="mt-3 text-sm font-black text-slate-950">{item.label}</p>
                             <p className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-500">{item.status}</p>
-                          </div>
+                          </button>
                         );
                       })}
                     </div>
@@ -1337,7 +1598,7 @@ export default function Dashboard() {
                   {activeCadastroTab === 'produtos' && (
                     <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
                       <form onSubmit={submitProduto} className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-                        <h3 className="text-lg font-black text-slate-950">Cadastro detalhado de produto</h3>
+                        <h3 className="text-lg font-black text-slate-950">{produtoEditingId ? 'Editar produto cadastrado' : 'Cadastro detalhado de produto'}</h3>
                         <p className="mt-1 text-sm font-semibold text-slate-500">Informações principais para catálogo, estoque e vitrine pública.</p>
                         {produtoDuplicateMessage && <DuplicateAlert message={produtoDuplicateMessage} />}
                         <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -1438,10 +1699,25 @@ export default function Dashboard() {
                             Produto em destaque na vitrine
                           </label>
                         </div>
-                        <button disabled={Boolean(produtoDuplicateMessage)} className="mt-5 inline-flex h-11 items-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300">
-                          <Save size={17} />
-                          Salvar produto
-                        </button>
+                        <div className="mt-5 flex flex-wrap gap-3">
+                          <button disabled={Boolean(produtoDuplicateMessage)} className="inline-flex h-11 items-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300">
+                            <Save size={17} />
+                            {produtoEditingId ? 'Atualizar produto' : 'Salvar produto'}
+                          </button>
+                          {produtoEditingId && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setProdutoForm(emptyProduto);
+                                setProdutoEditingId('');
+                                setFormStatus('Edição de produto cancelada.');
+                              }}
+                              className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-5 text-sm font-black text-slate-700"
+                            >
+                              Cancelar edição
+                            </button>
+                          )}
+                        </div>
                       </form>
                       <div className="space-y-6">
                         <ProductPreview produto={produtoForm} categorias={categorias} />
@@ -1473,14 +1749,14 @@ export default function Dashboard() {
                           </button>
                         </form>
                         <CompactList title="Hierarquia do catálogo" items={categoriasHierarquicas} fields={['label', 'descricao']} />
-                        <CompactList title="Produtos cadastrados" items={produtos} fields={['nome', 'sku', 'estoque']} />
+                        <CompactList title="Produtos cadastrados" items={produtos} fields={['nome', 'sku', 'estoque']} onEdit={startEditProduto} />
                       </div>
                     </div>
                   )}
 
                   {activeCadastroTab === 'clientes' && (
                     <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-                      <SimpleForm title="Cadastro detalhado de cliente" subtitle="Evita duplicidade por e-mail/CPF e reaproveita registros existentes." onSubmit={submitCliente} buttonLabel="Salvar cliente" alertMessage={clienteDuplicateMessage} disabled={Boolean(clienteDuplicateMessage)}>
+                      <SimpleForm title={clienteEditingId ? 'Editar cliente cadastrado' : 'Cadastro detalhado de cliente'} subtitle="Evita duplicidade por e-mail/CPF e reaproveita registros existentes." onSubmit={submitCliente} buttonLabel={clienteEditingId ? 'Atualizar cliente' : 'Salvar cliente'} alertMessage={clienteDuplicateMessage} disabled={Boolean(clienteDuplicateMessage)}>
                         <Field label="Nome completo / Razão social" value={clienteForm.nome} onChange={(value) => setClienteForm((form) => ({ ...form, nome: value }))} required />
                         <Field label="Email principal" type="email" value={clienteForm.email} onChange={(value) => setClienteForm((form) => ({ ...form, email: value }))} required />
                         <Field label="Telefone / WhatsApp" value={clienteForm.telefone} onChange={(value) => setClienteForm((form) => ({ ...form, telefone: value }))} />
@@ -1488,14 +1764,14 @@ export default function Dashboard() {
                       </SimpleForm>
                       <div className="space-y-6">
                         <CadastroInsightPanel title="Controle de clientes" checks={cadastroHighlights.clientes} />
-                        <CompactList title="Clientes cadastrados" items={clientes} fields={['nome', 'email', 'telefone', 'cpf']} />
+                        <CompactList title="Clientes cadastrados" items={clientes} fields={['nome', 'email', 'telefone', 'cpf']} onEdit={startEditCliente} />
                       </div>
                     </div>
                   )}
 
                   {activeCadastroTab === 'fornecedores' && (
                     <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-                      <SimpleForm title="Cadastro detalhado de fornecedor" subtitle="Base para compras, dropshipping, logística e integrações futuras." onSubmit={submitFornecedor} buttonLabel="Salvar fornecedor" alertMessage={fornecedorDuplicateMessage} disabled={Boolean(fornecedorDuplicateMessage)}>
+                      <SimpleForm title={fornecedorEditingId ? 'Editar fornecedor cadastrado' : 'Cadastro detalhado de fornecedor'} subtitle="Base para compras, dropshipping, logística e integrações futuras." onSubmit={submitFornecedor} buttonLabel={fornecedorEditingId ? 'Atualizar fornecedor' : 'Salvar fornecedor'} alertMessage={fornecedorDuplicateMessage} disabled={Boolean(fornecedorDuplicateMessage)}>
                         <Field label="Nome / Razão social" value={fornecedorForm.nome} onChange={(value) => setFornecedorForm((form) => ({ ...form, nome: value }))} required />
                         <Field label="Documento CNPJ/CPF" value={fornecedorForm.documento} onChange={(value) => setFornecedorForm((form) => ({ ...form, documento: value }))} />
                         <Field label="Email comercial" type="email" value={fornecedorForm.email} onChange={(value) => setFornecedorForm((form) => ({ ...form, email: value }))} />
@@ -1504,7 +1780,7 @@ export default function Dashboard() {
                       </SimpleForm>
                       <div className="space-y-6">
                         <CadastroInsightPanel title="Controle de fornecedores" checks={cadastroHighlights.fornecedores} />
-                        <CompactList title="Fornecedores cadastrados" items={fornecedores} fields={['nome', 'documento', 'email', 'categoria']} />
+                        <CompactList title="Fornecedores cadastrados" items={fornecedores} fields={['nome', 'documento', 'email', 'categoria']} onEdit={startEditFornecedor} />
                       </div>
                     </div>
                   )}
@@ -1549,94 +1825,126 @@ export default function Dashboard() {
               )}
 
               {activeTab === 'erp' && (
-                <section className="space-y-6">
-                  <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                      <div>
-                        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Gestão absoluta</p>
-                        <h2 className="mt-2 text-2xl font-black text-slate-950">GenesisGest.Net</h2>
-                        <p className="mt-1 max-w-3xl text-sm text-slate-500">
-                          Central empresarial para financeiro, fiscal, logística, estoque, empresas do grupo e parceiros estratégicos.
+                <section className="erp-desktop-surface space-y-6">
+                  <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
+                  <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+                    <ErpCockpitMenu activeTab={activeTab} onNavigate={openMainTab} />
+                    <div className="space-y-6">
+                      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                          <div>
+                            <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Gestão absoluta</p>
+                            <h2 className="mt-2 text-2xl font-black text-slate-950">GenesisGest.Net</h2>
+                            <p className="mt-1 max-w-3xl text-sm text-slate-500">
+                              Central empresarial para financeiro, fiscal, logística, estoque, empresas do grupo e parceiros estratégicos.
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-slate-950 px-4 py-2 text-sm font-black text-[#C9A227]">Painel + Desktop</span>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-[#C9A227]/30 bg-[#C9A227]/10 p-6 shadow-sm">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                          <div>
+                            <p className="text-xs font-black uppercase tracking-[0.2em] text-[#8B6B12]">Acesso direto</p>
+                            <h3 className="mt-2 text-xl font-black text-slate-950">ERP Desktop para operação local</h3>
+                            <p className="mt-1 max-w-3xl text-sm text-slate-600">
+                              Baixe ou execute o atalho do Windows para abrir o painel desktop do GenesisGest.Net com o portal e a API já apontados para o ambiente local.
+                            </p>
+                          </div>
+                          <a
+                            href={erpDesktopLauncher}
+                            download="ABRIR-ERP-DESKTOP.cmd"
+                            className="inline-flex items-center justify-center rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800"
+                          >
+                            Abrir ERP Desktop
+                          </a>
+                        </div>
+                        <p className="mt-4 text-xs font-semibold text-slate-500">
+                          Se o navegador baixar o arquivo, execute <span className="font-black text-slate-700">ABRIR-ERP-DESKTOP.cmd</span> no Windows.
                         </p>
                       </div>
-                      <span className="rounded-full bg-slate-950 px-4 py-2 text-sm font-black text-[#C9A227]">Painel + Desktop</span>
-                    </div>
-                  </div>
 
-                  <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-                    {erpModules.map((module) => {
-                      const Icon = module.icon;
-                      return (
-                        <button
-                          type="button"
-                          key={module.title}
-                          onClick={() => openMainTab(module.tabId)}
-                          className="rounded-lg border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-[#C9A227] hover:shadow-md"
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-950 text-[#C9A227]">
-                              <Icon size={23} />
-                            </div>
-                            <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black uppercase tracking-wide text-amber-900">
-                              {module.signal}
-                            </span>
-                          </div>
-                          <h3 className="mt-5 text-xl font-black text-slate-950">{module.title}</h3>
-                          <p className="mt-2 text-sm font-bold text-slate-500">{module.status}</p>
-                          <div className="mt-5 grid gap-2">
-                            {module.metrics.map((metric) => (
-                              <div key={metric} className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                                <span className="h-2 w-2 rounded-full bg-[#C9A227]" />
-                                <span className="text-sm font-bold text-slate-700">{metric}</span>
+                      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+                        {erpModules.map((module) => {
+                          const Icon = module.icon;
+                          return (
+                            <button
+                              type="button"
+                              key={module.title}
+                              onClick={() => openMainTab(module.tabId)}
+                              className="rounded-lg border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-[#C9A227] hover:shadow-md"
+                            >
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-950 text-[#C9A227]">
+                                  <Icon size={23} />
+                                </div>
+                                <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black uppercase tracking-wide text-amber-900">
+                                  {module.signal}
+                                </span>
                               </div>
-                            ))}
-                          </div>
-                          <div className="mt-5 inline-flex items-center gap-2 text-sm font-black text-slate-950">
-                            Abrir módulo
-                            <ChevronRight size={16} />
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                              <h3 className="mt-5 text-xl font-black text-slate-950">{module.title}</h3>
+                              <p className="mt-2 text-sm font-bold text-slate-500">{module.status}</p>
+                              <div className="mt-5 grid gap-2">
+                                {module.metrics.map((metric) => (
+                                  <div key={metric} className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                                    <span className="h-2 w-2 rounded-full bg-[#C9A227]" />
+                                    <span className="text-sm font-bold text-slate-700">{metric}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="mt-5 inline-flex items-center gap-2 text-sm font-black text-slate-950">
+                                Abrir módulo
+                                <ChevronRight size={16} />
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
 
-                  <section className="rounded-lg border border-slate-200 bg-slate-950 p-6 text-white shadow-sm">
-                    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-center">
-                      <div>
-                        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Roteamento fiscal inteligente</p>
-                        <h3 className="mt-2 text-2xl font-black">Motor de decisão por empresa emitente</h3>
-                        <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-300">
-                          A análise compara empresa do grupo, regime tributário, CFOP, origem/destino, custo fiscal estimado e margem operacional para recomendar a emissão com menor ônus e maior lucratividade.
-                        </p>
-                      </div>
-                      <div className="rounded-lg border border-white/10 bg-white/5 p-5">
-                        <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Prontidão</p>
-                        <p className="mt-2 text-3xl font-black text-[#C9A227]">Staging</p>
-                        <p className="mt-2 text-sm font-bold text-slate-300">Estrutura pronta para credenciais, homologação fiscal e regras finais do contador.</p>
-                      </div>
+                      <section className="rounded-lg border border-slate-200 bg-slate-950 p-6 text-white shadow-sm">
+                        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-center">
+                          <div>
+                            <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Roteamento fiscal inteligente</p>
+                            <h3 className="mt-2 text-2xl font-black">Motor de decisão por empresa emitente</h3>
+                            <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-300">
+                              A análise compara empresa do grupo, regime tributário, CFOP, origem/destino, custo fiscal estimado e margem operacional para recomendar a emissão com menor ônus e maior lucratividade.
+                            </p>
+                          </div>
+                          <div className="rounded-lg border border-white/10 bg-white/5 p-5">
+                            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Prontidão</p>
+                            <p className="mt-2 text-3xl font-black text-[#C9A227]">Staging</p>
+                            <p className="mt-2 text-sm font-bold text-slate-300">Estrutura pronta para credenciais, homologação fiscal e regras finais do contador.</p>
+                          </div>
+                        </div>
+                      </section>
                     </div>
-                  </section>
+                  </div>
                 </section>
               )}
 
               {activeTab === 'erp-empresas' && (
-                <section className="space-y-6">
-                  <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-                    <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Cadastro fiscal mestre</p>
-                    <h2 className="mt-2 text-2xl font-black text-slate-950">Empresas do grupo e parceiras</h2>
-                    <p className="mt-1 max-w-3xl text-sm text-slate-500">
-                      Cadastre as empresas com o máximo de detalhes fiscais, tributários e operacionais para suportar a decisão automática de emissão.
-                    </p>
-                  </div>
+                <section className="erp-desktop-surface space-y-6">
+                  <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
+                  <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+                    <ErpCockpitMenu activeTab={activeTab} onNavigate={openMainTab} />
+                    <div className="space-y-6">
+                      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Cadastro fiscal mestre</p>
+                        <h2 className="mt-2 text-2xl font-black text-slate-950">Empresas do grupo e parceiras</h2>
+                        <p className="mt-1 max-w-3xl text-sm text-slate-500">
+                          Cadastre as empresas com o máximo de detalhes fiscais, tributários e operacionais para suportar a decisão automática de emissão.
+                        </p>
+                      </div>
 
-                  <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_380px]">
-                    <SimpleForm
-                      title="Nova empresa fiscal"
-                      subtitle="Este cadastro alimenta o motor tributário, relatórios e a futura automação de NF-e."
-                      onSubmit={submitEmpresaGrupo}
-                      buttonLabel="Salvar empresa fiscal"
-                      alertMessage={formStatus || empresaGrupoDuplicateMessage}
-                    >
+                      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_380px]">
+                        <SimpleForm
+                          title="Nova empresa fiscal"
+                          subtitle="Este cadastro alimenta o motor tributário, relatórios e a futura automação de NF-e."
+                          onSubmit={submitEmpresaGrupo}
+                          buttonLabel="Salvar empresa fiscal"
+                          alertMessage={formStatus || empresaGrupoDuplicateMessage}
+                        >
                       <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                         <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Base societária</p>
                         <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -1745,40 +2053,46 @@ export default function Dashboard() {
                       <TextAreaField label="Benefícios estratégicos" value={empresaGrupoForm.beneficiosEstrategicos} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, beneficiosEstrategicos: value }))} />
                       <TextAreaField label="Resumo contratual" value={empresaGrupoForm.contratoResumo} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, contratoResumo: value }))} />
                       <TextAreaField label="Observações fiscais e operacionais" value={empresaGrupoForm.observacoes} onChange={(value) => setEmpresaGrupoForm((form) => ({ ...form, observacoes: value }))} />
-                    </SimpleForm>
+                        </SimpleForm>
 
-                    <div className="space-y-6">
-                      <CadastroInsightPanel title="Proteções do cadastro fiscal" checks={empresaGrupoHighlights} />
-                      <CompactList title="Empresas já mapeadas" items={empresasGrupo} fields={['razaoSocial', 'cnpj', 'regimeTributario', 'cidade']} />
+                        <div className="space-y-6">
+                          <CadastroInsightPanel title="Proteções do cadastro fiscal" checks={empresaGrupoHighlights} />
+                          <CompactList title="Empresas já mapeadas" items={empresasGrupo} fields={['razaoSocial', 'cnpj', 'regimeTributario', 'cidade']} />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </section>
               )}
 
               {activeTab === 'erp-fiscal' && (
-                <section className="space-y-6">
-                  <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-                    <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Fiscal operacional</p>
-                    <h2 className="mt-2 text-2xl font-black text-slate-950">Notas e automação fiscal</h2>
-                    <p className="mt-1 max-w-3xl text-sm text-slate-500">
-                      A ERP agora expõe a fila fiscal dos pedidos, com empresa emitente sugerida, ambiente, CFOP e resumo da automação preparada no ato da compra.
-                    </p>
-                  </div>
+                <section className="erp-desktop-surface space-y-6">
+                  <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
+                  <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+                    <ErpCockpitMenu activeTab={activeTab} onNavigate={openMainTab} />
+                    <div className="space-y-6">
+                      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Fiscal operacional</p>
+                        <h2 className="mt-2 text-2xl font-black text-slate-950">Notas e automação fiscal</h2>
+                        <p className="mt-1 max-w-3xl text-sm text-slate-500">
+                          A ERP agora expõe a fila fiscal dos pedidos, com empresa emitente sugerida, ambiente, CFOP e resumo da automação preparada no ato da compra.
+                        </p>
+                      </div>
 
-                  <div className="grid gap-4 md:grid-cols-4">
-                    <StatMiniCard label="Pendências fiscais" value={fiscalPedidos.filter((item) => item.statusNfe === 'Pendente').length} />
-                    <StatMiniCard label="Autorizadas" value={fiscalPedidos.filter((item) => item.statusNfe === 'Autorizada').length} />
-                    <StatMiniCard label="Empresas emitentes" value={new Set(fiscalPedidos.map((item) => item.codigoEmpresaEmitente).filter(Boolean)).size} />
-                    <StatMiniCard label="Pedidos na fila" value={fiscalPedidos.length} />
-                  </div>
+                      <div className="grid gap-4 md:grid-cols-4">
+                        <StatMiniCard label="Pendências fiscais" value={fiscalPedidos.filter((item) => item.statusNfe === 'Pendente').length} />
+                        <StatMiniCard label="Autorizadas" value={fiscalPedidos.filter((item) => item.statusNfe === 'Autorizada').length} />
+                        <StatMiniCard label="Empresas emitentes" value={new Set(fiscalPedidos.map((item) => item.codigoEmpresaEmitente).filter(Boolean)).size} />
+                        <StatMiniCard label="Pedidos na fila" value={fiscalPedidos.length} />
+                      </div>
 
-                  <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-                    <div className="border-b border-slate-200 px-6 py-5">
-                      <h3 className="text-lg font-black text-slate-950">Fila fiscal dos pedidos</h3>
-                      <p className="mt-1 text-sm text-slate-500">Pré-emissão automática gerada a partir do checkout e do roteamento fiscal.</p>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[1100px]">
+                      <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                        <div className="border-b border-slate-200 px-6 py-5">
+                          <h3 className="text-lg font-black text-slate-950">Fila fiscal dos pedidos</h3>
+                          <p className="mt-1 text-sm text-slate-500">Pré-emissão automática gerada a partir do checkout e do roteamento fiscal.</p>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full min-w-[1100px]">
                         <thead className="bg-slate-50">
                           <tr>
                             <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Pedido</th>
@@ -1817,14 +2131,17 @@ export default function Dashboard() {
                             </tr>
                           ))}
                         </tbody>
-                      </table>
+                          </table>
+                        </div>
+                      </section>
                     </div>
-                  </section>
+                  </div>
                 </section>
               )}
 
               {activeTab === 'erp-financeiro' && (
-                <section className="space-y-6">
+                <section className="erp-desktop-surface space-y-6">
+                  <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
                   <ErpModuleHero
                     eyebrow="Financeiro operacional"
                     title="Fluxo de caixa, contas e conciliação"
@@ -1869,7 +2186,8 @@ export default function Dashboard() {
               )}
 
               {activeTab === 'erp-logistica' && (
-                <section className="space-y-6">
+                <section className="erp-desktop-surface space-y-6">
+                  <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
                   <ErpModuleHero
                     eyebrow="Logística e estoque"
                     title="Despacho, rastreamento e posição operacional"
@@ -1906,7 +2224,8 @@ export default function Dashboard() {
               )}
 
               {activeTab === 'erp-rh' && (
-                <section className="space-y-6">
+                <section className="erp-desktop-surface space-y-6">
+                  <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
                   <ErpModuleHero
                     eyebrow="RH e diretoria operacional"
                     title="Equipe, cargos e supervisão da rotina"
@@ -1944,7 +2263,8 @@ export default function Dashboard() {
               )}
 
               {activeTab === 'erp-compras' && (
-                <section className="space-y-6">
+                <section className="erp-desktop-surface space-y-6">
+                  <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
                   <ErpModuleHero
                     eyebrow="Compras e suprimentos"
                     title="Fornecedores, reposição e estratégia de custo"
@@ -1975,7 +2295,8 @@ export default function Dashboard() {
               )}
 
               {activeTab === 'erp-relatorios' && (
-                <section className="space-y-6">
+                <section className="erp-desktop-surface space-y-6">
+                  <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
                   <ErpModuleHero
                     eyebrow="Relatórios executivos"
                     title="KPIs, gráficos e controle gerencial"
@@ -2065,6 +2386,102 @@ export default function Dashboard() {
                       </button>
                     </form>
                     <div className="space-y-6">
+                      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 text-white shadow-sm">
+                        <div className="border-b border-white/10 px-5 py-4">
+                          <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Espelho da home</p>
+                          <p className="mt-1 text-sm text-slate-300">Prévia condensada do que o cliente verá na home pública.</p>
+                        </div>
+
+                        <div className="bg-[#050505]">
+                          <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-3">
+                            <div className="flex items-center gap-3">
+                              <img src={normalizePreviewImage(sitePreviewLogo)} alt="Preview do logo" className="h-11 w-11 rounded-2xl object-cover" />
+                              <div>
+                                <p className="text-xs font-black uppercase tracking-[0.2em] text-[#E8D5A3]">
+                                  {siteConfigForm.site_nome || 'Grupo Nexum Altivon'}
+                                </p>
+                                <p className="text-[11px] text-slate-400">Configuração salva no banco</p>
+                              </div>
+                            </div>
+                            <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 md:flex">
+                              {['Início', 'Catálogo', 'Lojas'].map((item) => (
+                                <span key={item} className="rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-slate-200">
+                                  {item}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="relative min-h-64 overflow-hidden">
+                            {previewSlide.image ? (
+                              <img
+                                src={normalizePreviewImage(previewSlide.image)}
+                                alt="Preview do banner"
+                                className="absolute inset-0 h-full w-full object-cover opacity-30"
+                              />
+                            ) : null}
+                            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(201,162,39,0.16),_transparent_40%),linear-gradient(135deg,#0b0b0b,#1a1a1a)]" />
+                            <div className="relative grid gap-4 px-5 py-6 md:grid-cols-[1fr_240px] md:items-center">
+                              <div>
+                                <p className="inline-flex rounded-full border border-[#C9A227]/30 bg-[#C9A227]/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-[#E8D5A3]">
+                                  {previewSlide.badge}
+                                </p>
+                                <h4 className="mt-4 text-3xl font-black leading-tight text-white">
+                                  {previewSlide.title} <span className="block text-[#C9A227]">{previewSlide.highlight}</span>
+                                </h4>
+                                <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">{previewSlide.description}</p>
+                                <div className="mt-5 flex flex-wrap gap-2">
+                                  {(previewQualityItems.length > 0 ? previewQualityItems : ['Qualidade premium']).slice(0, 4).map((item) => (
+                                    <span key={item} className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200">
+                                      {item}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div className="rounded-2xl border border-white/10 bg-black/35 p-4 backdrop-blur">
+                                <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Chamada principal</p>
+                                <p className="mt-3 text-sm font-semibold leading-6 text-slate-200">
+                                  {siteConfigForm.home_intro_texto_1 || 'A home vai refletir o texto institucional definido no painel.'}
+                                </p>
+                                <p className="mt-2 text-xs text-slate-400">
+                                  WhatsApp: {siteConfigForm.site_whatsapp || '5514996731879'}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid gap-0 border-t border-white/10 md:grid-cols-[1.1fr_0.9fr]">
+                            <div className="px-5 py-5">
+                              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C9A227]">Bloco institucional</p>
+                              <h5 className="mt-3 text-xl font-black text-white">{siteConfigForm.home_intro_titulo || 'Uma Nova Era Começa'}</h5>
+                              <p className="mt-3 text-sm leading-6 text-slate-300">
+                                {siteConfigForm.home_intro_texto_2 || 'Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso.'}
+                              </p>
+                              <div className="mt-4 inline-flex rounded-full border border-[#C9A227]/30 bg-[#C9A227]/10 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-[#E8D5A3]">
+                                {siteConfigForm.home_intro_badge || 'www.nexumaltivon.com'}
+                              </div>
+                            </div>
+
+                            <div className="border-t border-white/10 px-5 py-5 md:border-l md:border-t-0">
+                              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Parcerias e qualidade</p>
+                              <div className="mt-3 space-y-2">
+                                {(previewPartnerCards.length > 0 ? previewPartnerCards : [{ title: 'Parceiros de Vendas', text: 'Prévia carregada do banco.' }]).slice(0, 2).map((item) => (
+                                  <div key={item.title} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                                    <p className="text-sm font-black text-white">{item.title}</p>
+                                    <p className="mt-1 text-xs leading-5 text-slate-300 line-clamp-3">{item.text}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="border-t border-white/10 px-5 py-4 text-xs font-semibold text-slate-400">
+                            Rodapé: {siteConfigForm.home_footer_texto || 'Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas.'}
+                          </div>
+                        </div>
+                      </section>
+
                       <ErpChecklistCard
                         title="O que já vinha pronto no banco"
                         items={[
@@ -2199,7 +2616,7 @@ function CadastroInsightPanel({ title, checks }) {
 
 function ErpModuleHero({ eyebrow, title, description }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="erp-module-card rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">{eyebrow}</p>
       <h2 className="mt-2 text-2xl font-black text-slate-950">{title}</h2>
       <p className="mt-1 max-w-3xl text-sm text-slate-500">{description}</p>
@@ -2209,7 +2626,7 @@ function ErpModuleHero({ eyebrow, title, description }) {
 
 function ErpChecklistCard({ title, items }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="erp-module-card rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <h3 className="text-lg font-black text-slate-950">{title}</h3>
       <div className="mt-5 space-y-3">
         {items.map((item) => (
@@ -2225,7 +2642,7 @@ function ErpChecklistCard({ title, items }) {
 
 function ModuleActionGrid({ title, actions }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="erp-module-card rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <div className="flex items-center justify-between gap-4">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Operação direta</p>
@@ -2254,20 +2671,115 @@ function ModuleActionGrid({ title, actions }) {
   );
 }
 
+function ErpWorkspaceNav({ activeTab, onNavigate }) {
+  return (
+    <section className="erp-module-card rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-[#C9A227]">Atalhos internos do ERP</p>
+          <p className="mt-1 text-sm font-semibold text-slate-500">Navegação rápida entre os blocos operacionais do desktop corporativo.</p>
+        </div>
+        <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black uppercase tracking-[0.16em] text-slate-500">
+          {erpWorkspaceNavItems.find((item) => item.id === activeTab)?.signal || 'Operação local'}
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {erpWorkspaceNavItems.map((item) => {
+          const active = activeTab === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onNavigate(item.id)}
+              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-black transition ${
+                active
+                  ? 'bg-slate-950 text-[#C9A227] shadow-[0_14px_30px_rgba(0,0,0,0.16)]'
+                  : 'border border-slate-200 bg-white text-slate-700 hover:border-[#C9A227] hover:text-slate-950'
+              }`}
+            >
+              <span className={`rounded-full px-2 py-1 text-[0.62rem] uppercase tracking-[0.18em] ${active ? 'bg-[#C9A227]/15 text-[#C9A227]' : 'bg-slate-100 text-slate-500'}`}>
+                {item.short}
+              </span>
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ErpCockpitMenu({ activeTab, onNavigate }) {
+  return (
+    <aside className="erp-module-card rounded-lg border border-slate-200 bg-white p-4 shadow-sm xl:sticky xl:top-24">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-[#C9A227]">Cockpit técnico</p>
+          <p className="mt-1 text-sm font-semibold text-slate-500">Menu interno de operação do ERP/PDV.</p>
+        </div>
+        <span className="rounded-full bg-[#C9A227]/10 px-3 py-1 text-[0.62rem] font-black uppercase tracking-[0.18em] text-[#C9A227]">
+          online local
+        </span>
+      </div>
+
+      <div className="mt-4 space-y-2">
+        {erpCockpitActions.map((item) => {
+          const active = activeTab === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onNavigate(item.id)}
+              className={`w-full rounded-xl border px-4 py-3 text-left transition ${
+                active
+                  ? 'border-[#C9A227] bg-[#C9A227]/10 shadow-[0_12px_25px_rgba(201,162,39,0.10)]'
+                  : 'border-slate-200 bg-slate-50 hover:border-[#C9A227] hover:bg-white'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-black text-slate-950">{item.label}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">{item.detail}</p>
+                </div>
+                <span className={`rounded-full px-2 py-1 text-[0.62rem] font-black uppercase tracking-[0.18em] ${active ? 'bg-[#C9A227]/15 text-[#8B6B12]' : 'bg-slate-100 text-slate-500'}`}>
+                  abrir
+                </span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-950 p-4 text-white">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C9A227]">Status do motor</p>
+        <p className="mt-2 text-sm font-semibold text-slate-300">
+          API local apontada para o ambiente de operação, pronta para emissão, caixa e expedição.
+        </p>
+      </div>
+    </aside>
+  );
+}
+
 function ProductPreview({ produto, categorias }) {
   const categoriaSelecionada = produto.subcategoriaId || produto.categoriaId;
   const categoria = categorias.find((item) => item.id === categoriaSelecionada)?.caminho
     || categorias.find((item) => item.id === categoriaSelecionada)?.nome
     || categorias.find((item) => item.id === produto.categoriaId)?.nome
     || 'Sem categoria';
-  const image = produto.imagemUrl || 'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85';
+  const image = produto.imagemUrl || '';
   const price = Number(produto.preco || 0);
   const promotional = Number(produto.precoPromocional || 0);
 
   return (
     <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="aspect-[16/10] bg-slate-100">
-        <img src={image} alt={produto.nome || 'Prévia do produto'} className="h-full w-full object-cover" />
+        {image ? (
+          <img src={image} alt={produto.nome || 'Prévia do produto'} className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200">
+            <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-400">Imagem não cadastrada</p>
+          </div>
+        )}
       </div>
       <div className="p-5">
         <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Prévia da vitrine</p>
@@ -2538,18 +3050,31 @@ function SimpleForm({ title, subtitle, onSubmit, buttonLabel, children, alertMes
   );
 }
 
-function CompactList({ title, items, fields }) {
+function CompactList({ title, items, fields, onEdit }) {
   return (
     <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 px-5 py-4">
-        <h3 className="font-black text-slate-950">{title}</h3>
-        <p className="mt-1 text-sm text-slate-500">{items.length} registros</p>
+      <div className="border-b border-slate-200 px-4 py-4 sm:px-5">
+        <h3 className="text-base font-black text-slate-950 sm:text-lg">{title}</h3>
+        <p className="mt-1 text-xs text-slate-500 sm:text-sm">{items.length} registros</p>
       </div>
-      <div className="max-h-96 divide-y divide-slate-100 overflow-auto">
+      <div className="max-h-72 divide-y divide-slate-100 overflow-auto sm:max-h-96">
         {items.slice(0, 12).map((item) => (
-          <div key={item.id || item.sku || item.email} className="px-5 py-4">
-            <p className="font-black text-slate-950">{item[fields[0]] || '-'}</p>
-            <p className="mt-1 text-sm font-semibold text-slate-500">{fields.slice(1).map((field) => item[field] || '-').join(' · ')}</p>
+          <div key={item.id || item.sku || item.email} className="px-3 py-2 sm:px-5 sm:py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-black text-slate-950 sm:text-base">{item[fields[0]] || '-'}</p>
+                <p className="mt-1 text-[11px] font-semibold leading-4 text-slate-500 sm:text-sm">{fields.slice(1).map((field) => item[field] || '-').join(' · ')}</p>
+              </div>
+              {onEdit && (
+                <button
+                  type="button"
+                  onClick={() => onEdit(item)}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-700 hover:border-[#C9A227] hover:text-[#8E6A12]"
+                >
+                  Editar
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>

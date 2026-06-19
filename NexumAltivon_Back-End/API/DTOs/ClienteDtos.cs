@@ -12,6 +12,7 @@ public class ClienteDto
     public bool Vip { get; set; }
     public int PontosFidelidade { get; set; }
     public string Status { get; set; } = "Ativo";
+    public DateTime? ConfirmadoEm { get; set; }
     public DateTime CreatedAt { get; set; }
     public List<EnderecoDto>? Enderecos { get; set; }
 }
@@ -32,6 +33,8 @@ public class CriarClienteDto
 public class AtualizarClienteDto
 {
     public string Nome { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string? CpfCnpj { get; set; }
     public string? Telefone { get; set; }
     public string? Whatsapp { get; set; }
     public bool Newsletter { get; set; }

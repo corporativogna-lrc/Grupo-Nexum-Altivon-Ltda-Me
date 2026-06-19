@@ -114,6 +114,28 @@ code {
     }
 }
 
+@keyframes nexum-rise {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes nexum-pop {
+    from {
+        opacity: 0;
+        transform: scale(0.985);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
 /* Identidade original Nexum Altivon: preto profundo, dourado e painel empresarial */
 .nexum-admin-shell,
 .nexum-admin-login,
@@ -131,9 +153,25 @@ code {
 
 .nexum-admin-shell {
     background:
-        radial-gradient(circle at top right, rgba(201, 162, 39, 0.12), transparent 32rem),
-        linear-gradient(135deg, var(--nexum-darker) 0%, #101114 100%) !important;
+        radial-gradient(circle at top right, rgba(201, 162, 39, 0.16), transparent 28rem),
+        radial-gradient(circle at bottom left, rgba(255, 255, 255, 0.03), transparent 22rem),
+        linear-gradient(135deg, #050505 0%, #0b0c10 45%, #111318 100%) !important;
     color: var(--nexum-text);
+    position: relative;
+    overflow: hidden;
+}
+
+.nexum-admin-shell::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+        linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(circle at center, black, transparent 82%);
+    opacity: 0.35;
 }
 
 .nexum-admin-shell .bg-white,
@@ -182,8 +220,12 @@ code {
 .nexum-admin-shell section,
 .nexum-admin-shell form,
 .nexum-admin-shell [data-testid^="dashboard-stat"] {
-    border-radius: 12px !important;
-    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.22) !important;
+    border-radius: 16px !important;
+    box-shadow:
+        0 20px 45px rgba(0, 0, 0, 0.26),
+        inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    animation: nexum-rise 0.42s ease-out both;
 }
 
 .nexum-admin-shell [data-testid^="dashboard-stat"] {
@@ -199,13 +241,215 @@ code {
     background: var(--nexum-gold);
 }
 
+.nexum-admin-shell aside {
+    background:
+        linear-gradient(180deg, rgba(12, 12, 12, 0.98), rgba(6, 6, 6, 0.98)),
+        radial-gradient(circle at top, rgba(201, 162, 39, 0.08), transparent 32rem) !important;
+    box-shadow: 18px 0 40px rgba(0, 0, 0, 0.35) !important;
+    animation: nexum-rise 0.5s ease-out both;
+}
+
+.nexum-admin-shell header {
+    background:
+        linear-gradient(180deg, rgba(13, 13, 13, 0.96), rgba(8, 8, 8, 0.92)) !important;
+    border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+    animation: nexum-pop 0.45s ease-out both;
+}
+
+.nexum-admin-shell button,
+.nexum-admin-shell a {
+    transition:
+        transform 0.18s ease,
+        box-shadow 0.18s ease,
+        border-color 0.18s ease,
+        background-color 0.18s ease,
+        color 0.18s ease !important;
+}
+
+.nexum-admin-shell button:hover,
+.nexum-admin-shell a:hover {
+    transform: translateY(-1px);
+}
+
+.nexum-admin-shell [data-testid^="tab-"] {
+    border-radius: 12px !important;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid transparent !important;
+    box-shadow: none !important;
+}
+
+.nexum-admin-shell [data-testid^="tab-"]:hover {
+    background: rgba(201, 162, 39, 0.08);
+    border-color: rgba(201, 162, 39, 0.15) !important;
+}
+
+.nexum-admin-shell [data-testid^="tab-"][class*="text-[#C9A227]"] {
+    background: linear-gradient(90deg, rgba(201, 162, 39, 0.16), rgba(201, 162, 39, 0.04));
+    box-shadow: inset 0 0 0 1px rgba(201, 162, 39, 0.16);
+}
+
+.nexum-admin-shell table {
+    border-collapse: separate !important;
+    border-spacing: 0 10px;
+}
+
+.nexum-admin-shell table thead th {
+    background: rgba(255, 255, 255, 0.03) !important;
+    letter-spacing: 0.14em;
+}
+
+.nexum-admin-shell table tbody tr {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.nexum-admin-shell table tbody tr:hover {
+    background: rgba(201, 162, 39, 0.08) !important;
+}
+
+.nexum-admin-shell table td,
+.nexum-admin-shell table th {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
 .nexum-admin-shell table thead,
 .nexum-admin-shell table tr:hover {
     background: rgba(201, 162, 39, 0.06) !important;
 }
 
+.nexum-admin-shell button:active,
+.nexum-admin-shell a:active {
+    transform: translateY(0) scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .nexum-admin-shell section,
+    .nexum-admin-shell form,
+    .nexum-admin-shell [data-testid^="dashboard-stat"],
+    .nexum-admin-shell aside,
+    .nexum-admin-shell header {
+        animation: none !important;
+    }
+
+    .nexum-admin-shell button,
+    .nexum-admin-shell a {
+        transition: none !important;
+    }
+}
+
 .nexum-admin-shell .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
     border-color: var(--nexum-gray-light) !important;
+}
+
+.erp-desktop-shell {
+    background:
+        radial-gradient(circle at top left, rgba(201, 162, 39, 0.18), transparent 24rem),
+        radial-gradient(circle at bottom right, rgba(76, 160, 255, 0.08), transparent 22rem),
+        linear-gradient(135deg, #050505 0%, #090a0d 45%, #111318 100%) !important;
+}
+
+.erp-desktop-shell .erp-desktop-surface {
+    position: relative;
+    border-radius: 20px !important;
+    background: linear-gradient(180deg, rgba(14, 16, 22, 0.98), rgba(9, 10, 14, 0.98)) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow:
+        0 26px 70px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+    padding: 1.25rem !important;
+}
+
+.erp-desktop-shell .erp-desktop-surface::before {
+    content: "ERP / PDV CORPORATIVO";
+    position: sticky;
+    top: 0;
+    display: inline-flex;
+    margin-bottom: 1rem;
+    padding: 0.45rem 0.8rem;
+    border-radius: 999px;
+    background: rgba(201, 162, 39, 0.12);
+    border: 1px solid rgba(201, 162, 39, 0.2);
+    color: #f2d27b;
+    font-size: 0.68rem;
+    font-weight: 900;
+    letter-spacing: 0.22em;
+}
+
+.erp-desktop-shell .erp-desktop-surface > section,
+.erp-desktop-shell .erp-desktop-surface > form,
+.erp-desktop-shell .erp-desktop-surface > div > section,
+.erp-desktop-shell .erp-desktop-surface > div > form,
+.erp-desktop-shell .erp-desktop-surface .rounded-lg,
+.erp-desktop-shell .erp-desktop-surface .rounded-2xl {
+    border-radius: 16px !important;
+}
+
+.erp-desktop-shell .erp-desktop-surface .bg-white,
+.erp-desktop-shell .erp-desktop-surface .bg-slate-50,
+.erp-desktop-shell .erp-desktop-surface .bg-slate-100,
+.erp-desktop-shell .erp-desktop-surface form {
+    background: rgba(255, 255, 255, 0.035) !important;
+    color: #f5f5f5 !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.erp-desktop-shell .erp-desktop-surface .text-slate-950,
+.erp-desktop-shell .erp-desktop-surface .text-slate-900 {
+    color: #f5f5f5 !important;
+}
+
+.erp-desktop-shell .erp-desktop-surface .text-slate-700,
+.erp-desktop-shell .erp-desktop-surface .text-slate-600,
+.erp-desktop-shell .erp-desktop-surface .text-slate-500 {
+    color: #a2a8b3 !important;
+}
+
+.erp-desktop-shell .erp-desktop-surface .border-slate-200,
+.erp-desktop-shell .erp-desktop-surface .border-slate-100 {
+    border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.erp-desktop-shell .erp-desktop-surface table thead th {
+    background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.erp-desktop-shell .erp-desktop-surface table tbody tr {
+    background: rgba(255, 255, 255, 0.02) !important;
+}
+
+.erp-desktop-shell .erp-desktop-surface table tbody tr:hover {
+    background: rgba(201, 162, 39, 0.08) !important;
+}
+
+.erp-desktop-shell .erp-desktop-surface button {
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.erp-desktop-shell .erp-desktop-surface button:hover {
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.2);
+}
+
+.erp-desktop-shell .erp-module-card {
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow:
+        0 18px 42px rgba(0, 0, 0, 0.26),
+        inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+}
+
+.erp-desktop-shell .erp-mini-card {
+    min-height: 120px;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.03)) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow:
+        0 16px 36px rgba(0, 0, 0, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+}
+
+.erp-desktop-shell .erp-desktop-surface input,
+.erp-desktop-shell .erp-desktop-surface select,
+.erp-desktop-shell .erp-desktop-surface textarea {
+    background: rgba(0, 0, 0, 0.35) !important;
 }
 
 .nexum-admin-login {

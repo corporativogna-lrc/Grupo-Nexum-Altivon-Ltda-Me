@@ -60,17 +60,19 @@ export default function Navbar() {
           </Link>
           <Link
             to="/carrinho"
-            className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#2A2A2A] text-zinc-300 transition hover:border-[#C9A227] hover:text-[#C9A227]"
-            aria-label="Carrinho"
-            title="Carrinho"
+            className="inline-flex items-center gap-2 rounded-full border border-[#2A2A2A] px-4 py-2 text-sm font-black text-zinc-200 transition hover:border-[#C9A227] hover:text-[#E8D5A3]"
+            aria-label={`Carrinho (${itemCount} itens)`}
+            title={`Carrinho (${itemCount} itens)`}
             data-testid="nav-cart"
           >
             <ShoppingBag size={19} />
-            {itemCount > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1 text-xs font-bold text-white">
-                {itemCount}
-              </span>
-            )}
+            <span>Carrinho</span>
+            <span
+              className="inline-flex min-w-6 items-center justify-center rounded-full bg-rose-600 px-2 py-0.5 text-xs font-black text-white"
+              data-testid="nav-cart-count"
+            >
+              {itemCount}
+            </span>
           </Link>
 
           {isAuthenticated ? (
@@ -140,13 +142,32 @@ export default function Navbar() {
           )}
         </div>
 
-        <button
-          onClick={() => setIsOpen((value) => !value)}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#2A2A2A] text-[#C9A227] md:hidden"
-          aria-label="Abrir menu"
-        >
-          {isOpen ? <X size={20} /> : <Menu size={20} />}
-        </button>
+        <div className="flex items-center gap-2 md:hidden">
+          <Link
+            to="/carrinho"
+            className="inline-flex items-center gap-2 rounded-full border border-[#2A2A2A] px-3 py-2 text-xs font-black text-zinc-200 transition hover:border-[#C9A227] hover:text-[#E8D5A3]"
+            aria-label={`Carrinho (${itemCount} itens)`}
+            title={`Carrinho (${itemCount} itens)`}
+            data-testid="nav-cart-mobile"
+          >
+            <ShoppingBag size={17} />
+            <span>Carrinho</span>
+            <span
+              className="inline-flex min-w-6 items-center justify-center rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-black text-white"
+              data-testid="nav-cart-count-mobile"
+            >
+              {itemCount}
+            </span>
+          </Link>
+
+          <button
+            onClick={() => setIsOpen((value) => !value)}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#2A2A2A] text-[#C9A227]"
+            aria-label="Abrir menu"
+          >
+            {isOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
       </div>
 
       {isOpen && (
