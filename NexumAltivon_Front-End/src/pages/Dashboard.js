@@ -865,9 +865,9 @@ export default function Dashboard() {
   const submitProduto = async (event) => {
     event.preventDefault();
     setFormStatus('');
-    const duplicateMessage = getProdutoDuplicateMessage(produtoForm, produtos);
-    if (duplicateMessage) {
-      setFormStatus(duplicateMessage);
+    const produtoDuplicateMessage = getProdutoDuplicateMessage(produtoForm, produtos);
+    if (produtoDuplicateMessage) {
+      setFormStatus(produtoDuplicateMessage);
       return;
     }
 
@@ -978,9 +978,9 @@ export default function Dashboard() {
   const submitCliente = async (event) => {
     event.preventDefault();
     setFormStatus('');
-    const duplicateMessage = getClienteDuplicateMessage(clienteForm, clientes);
-    if (duplicateMessage) {
-      setFormStatus(duplicateMessage);
+    const clienteDuplicateMessage = getClienteDuplicateMessage(clienteForm, clientes);
+    if (clienteDuplicateMessage) {
+      setFormStatus(clienteDuplicateMessage);
       return;
     }
 
@@ -996,9 +996,9 @@ export default function Dashboard() {
   const submitFornecedor = async (event) => {
     event.preventDefault();
     setFormStatus('');
-    const duplicateMessage = getFornecedorDuplicateMessage(fornecedorForm, fornecedores);
-    if (duplicateMessage) {
-      setFormStatus(duplicateMessage);
+    const fornecedorDuplicateMessage = getFornecedorDuplicateMessage(fornecedorForm, fornecedores);
+    if (fornecedorDuplicateMessage) {
+      setFormStatus(fornecedorDuplicateMessage);
       return;
     }
 
@@ -1059,9 +1059,9 @@ export default function Dashboard() {
   const submitEmpresaGrupo = async (event) => {
     event.preventDefault();
     setFormStatus('');
-    const duplicateMessage = getEmpresaGrupoDuplicateMessage(empresaGrupoForm, empresasGrupo);
-    if (duplicateMessage) {
-      setFormStatus(duplicateMessage);
+    const empresaDuplicateMessage = getEmpresaGrupoDuplicateMessage(empresaGrupoForm, empresasGrupo);
+    if (empresaDuplicateMessage) {
+      setFormStatus(empresaDuplicateMessage);
       return;
     }
 
