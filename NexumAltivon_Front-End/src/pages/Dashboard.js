@@ -84,9 +84,6 @@ const empresaGrupoHighlights = [
   'A base fica pronta para roteamento inteligente de NF-e entre empresas do grupo e parceiras.',
 ];
 
-const sophiaMailTo =
-  'mailto:corporativo.gna@gmail.com?subject=Sophia%20-%20Apoio%20ERP&body=Ol%C3%A1%20Sophia%2C%20preciso%20de%20apoio%20interno%20na%20opera%C3%A7%C3%A3o%20do%20GenesisGest.Net.';
-
 const plannedModules = [
   { label: 'Lojas', icon: Building2, section: 'Gestão' },
   { label: 'Cupons', icon: CreditCard, section: 'Marketing & CRM' },
@@ -400,6 +397,7 @@ const emptySiteConfigForm = {
   site_whatsapp: '5514996731879',
   site_whatsapp_secundario: '5514996348409',
   site_yara_email: 'corporativo.gna@gmail.com',
+  site_sophia_email: 'corporativo.gna@gmail.com',
   home_intro_titulo: 'Uma Nova Era Começa',
   home_intro_texto_1: 'A Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro.',
   home_intro_texto_2: 'Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso.',
@@ -420,6 +418,7 @@ const siteConfigFieldMeta = [
   { key: 'site_whatsapp', label: 'WhatsApp principal', type: 'text', group: 'Geral', description: 'Número usado em links do site.' },
   { key: 'site_whatsapp_secundario', label: 'WhatsApp secundário', type: 'text', group: 'Geral', description: 'Número usado em parceria/fornecedores.' },
   { key: 'site_yara_email', label: 'E-mail da Yara', type: 'text', group: 'Atendimento', description: 'Canal atual da Yara para atendimento comercial.' },
+  { key: 'site_sophia_email', label: 'E-mail da Sophia', type: 'text', group: 'Atendimento', description: 'Canal da Sophia para apoio administrativo interno.' },
   { key: 'home_intro_titulo', label: 'Título institucional', type: 'text', group: 'SiteHome', description: 'Título principal do bloco institucional.' },
   { key: 'home_intro_texto_1', label: 'Texto institucional 1', type: 'textarea', group: 'SiteHome', description: 'Primeiro texto institucional da home.' },
   { key: 'home_intro_texto_2', label: 'Texto institucional 2', type: 'textarea', group: 'SiteHome', description: 'Segundo texto institucional da home.' },
@@ -435,7 +434,7 @@ const siteConfigSections = [
     id: 'identidade',
     title: 'Identidade e contatos',
     description: 'Marca principal, endereço público, logo e canais de atendimento que aparecem na operação.',
-    fields: ['site_nome', 'site_url', 'site_logo', 'site_email_contato', 'site_telefone', 'site_telefone_secundario', 'site_whatsapp', 'site_whatsapp_secundario', 'site_yara_email'],
+    fields: ['site_nome', 'site_url', 'site_logo', 'site_email_contato', 'site_telefone', 'site_telefone_secundario', 'site_whatsapp', 'site_whatsapp_secundario', 'site_yara_email', 'site_sophia_email'],
   },
   {
     id: 'home',
@@ -721,6 +720,8 @@ export default function Dashboard() {
   const [leadForm, setLeadForm] = useState(emptyLead);
   const [empresaGrupoForm, setEmpresaGrupoForm] = useState(emptyEmpresaGrupo);
   const [formStatus, setFormStatus] = useState('');
+  const sophiaEmail = siteConfigForm.site_sophia_email || siteConfigForm.site_email_contato || 'corporativo.gna@gmail.com';
+  const sophiaMailTo = `mailto:${encodeURIComponent(sophiaEmail)}?subject=Sophia%20-%20Apoio%20administrativo&body=Ol%C3%A1%20Sophia%2C%20preciso%20de%20apoio%20administrativo%20por%20mensagem%20instant%C3%A2nea%20para%20d%C3%BAvidas%20internas%20e%20solu%C3%A7%C3%B5es%20operacionais.`;
 
   const loadData = useCallback(async () => {
     try {

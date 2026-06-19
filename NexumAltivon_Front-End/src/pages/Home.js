@@ -196,7 +196,7 @@ export default function Home() {
   const secondaryPhone = siteConfig?.secondaryPhone || '+55 (14) 99634-8409';
   const publicContactEmail = siteConfig?.contactEmail || 'corporativo.gna@gmail.com';
   const yaraEmail = siteConfig?.yaraEmail || publicContactEmail;
-  const yaraMailTo = `mailto:${encodeURIComponent(yaraEmail)}?subject=Yara%20-%20Atendimento%20de%20vendas&body=Ol%C3%A1%20Yara%2C%20preciso%20de%20ajuda%20com%20assuntos%20da%20empresa%2C%20produtos%20ou%20d%C3%BAvidas%20sobre%20a%20compra.`;
+  const yaraMailTo = `mailto:${encodeURIComponent(yaraEmail)}?subject=Yara%20-%20Atendimento%20comercial%20proativo&body=Ol%C3%A1%20Yara%2C%20preciso%20de%20apoio%20comercial%20e%20atendimento%20ao%20cliente%20nesta%20p%C3%A1gina.%20Pode%20me%20ajudar%20com%20foco%20em%20vendas%20e%20no%20que%20eu%20preciso%3F%20Se%20eu%20pedir%20para%20n%C3%A3o%20ser%20incomodado(a)%2C%20pause%20as%20abordagens.`;
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -692,7 +692,7 @@ export default function Home() {
         </span>
         <span className="flex flex-col text-left leading-tight">
           <span>Yara online</span>
-          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-400">Ajuda de vendas</span>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-400">Vendas proativas (respeita não incomodar)</span>
         </span>
       </a>
     </main>

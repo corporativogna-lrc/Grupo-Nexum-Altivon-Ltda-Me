@@ -19,7 +19,7 @@ const formatDate = (value) =>
     : '-';
 
 const yaraMailTo =
-  'mailto:corporativo.gna@gmail.com?subject=Yara%20-%20Atendimento%20ao%20cliente&body=Ol%C3%A1%20Yara%2C%20preciso%20de%20ajuda%20com%20produtos%2C%20empresa%20ou%20d%C3%BAvidas%20do%20meu%20pedido.';
+  'mailto:corporativo.gna@gmail.com?subject=Yara%20-%20Atendimento%20comercial%20proativo&body=Ol%C3%A1%20Yara%2C%20quero%20apoio%20comercial%20e%20atendimento%20ao%20cliente.%20Me%20oriente%20com%20foco%20em%20vendas%20e%20no%20que%20eu%20preciso%20nesta%20p%C3%A1gina.%20Se%20eu%20pedir%20para%20n%C3%A3o%20ser%20incomodado(a)%2C%20pause%20as%20abordagens.';
 
 export default function AreaCliente() {
   const { isAuthenticated, user, isAdmin } = useAuth();
