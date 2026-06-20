@@ -2,7 +2,7 @@ param(
   [string]$PackageDirectory = "",
   [string]$BaseDirectory = "Y:\NexumAltivon_API_24H_20260613_V2",
   [string]$TaskName = "NexumAltivonApi24h",
-  [string]$HealthUrl = "http://127.0.0.1:5010/health/db"
+  [string]$HealthUrl = "http://127.0.0.1:5012/health/db"
 )
 
 $ErrorActionPreference = "Stop"

@@ -12,5 +12,5 @@ if not "%errorlevel%"=="0" (
   exit /b
 )
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%INSTALLER%" -PackageApiDirectory "%PACKAGE_ROOT%\api" -BaseDirectory "%RUNTIME%" -Url http://127.0.0.1:5010 -CheckSeconds 20
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%INSTALLER%" -PackageApiDirectory "%PACKAGE_ROOT%\api" -BaseDirectory "%RUNTIME%" -Url http://127.0.0.1:5012 -CheckSeconds 20
 pause

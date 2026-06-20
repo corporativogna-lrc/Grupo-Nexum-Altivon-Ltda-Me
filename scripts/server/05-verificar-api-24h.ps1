@@ -1,5 +1,5 @@
 param(
-  [string]$Url = "http://127.0.0.1:5010",
+  [string]$Url = "http://127.0.0.1:5012",
   [string]$PublicUrl = "https://api.nexumaltivon.com"
 )
 
@@ -12,7 +12,7 @@ Write-Host "[1/5] Tarefa automática"
 Get-ScheduledTask -TaskName "NexumAltivonApi24h" -ErrorAction SilentlyContinue | Format-List TaskName, State
 
 Write-Host "[2/5] Porta local"
-netstat -ano | findstr ":5010"
+netstat -ano | findstr ":5012"
 
 Write-Host "[3/5] Saúde local"
 try {

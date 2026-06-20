@@ -15,6 +15,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using NexumAltivon.API.Data;
 using NexumAltivon.API.ERP.FiscalRouting;
+using NexumAltivon.API.ERP.SharedData;
 using NexumAltivon.API.Models;
 using NexumAltivon.API.Services;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
@@ -41,12 +42,20 @@ var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? builder.Configuration.GetConnectionString("NexumDb");
+var genesisConnectionString = builder.Configuration.GetConnectionString("GenesisConnection");
 
 if (!string.IsNullOrWhiteSpace(connectionString))
 {
     var serverVersion = new MySqlServerVersion(new Version(8, 0, 0));
     builder.Services.AddDbContext<NexumDbContext>(options =>
         options.UseMySql(connectionString, serverVersion));
+}
+
+if (!string.IsNullOrWhiteSpace(genesisConnectionString))
+{
+    var genesisServerVersion = new MySqlServerVersion(new Version(8, 0, 0));
+    builder.Services.AddDbContext<GenesisDbContext>(options =>
+        options.UseMySql(genesisConnectionString, genesisServerVersion));
 }
 
 builder.Services.AddCors(options =>
@@ -209,6 +218,168 @@ app.MapGet("/health/db", async (IServiceProvider services, CancellationToken ct)
         return Results.Problem(ex.Message);
     }
 });
+
+app.MapGet("/health/db/genesis", async (IServiceProvider services, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(genesisConnectionString))
+    {
+        return Results.Ok(new { status = "sem_genesis_configurado" });
+    }
+
+    try
+    {
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<GenesisDbContext>();
+        var canConnect = await db.Database.CanConnectAsync(ct);
+        return canConnect
+            ? Results.Ok(new { status = "Healthy" })
+            : Results.Problem("Genesis configurado, mas sem conexão.");
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message);
+    }
+});
+
+app.MapGet("/api/erp/genesis/financeiro/resumo", async (GenesisDbContext db, CancellationToken ct) =>
+{
+    var resumo = await GenesisFinanceService.GetResumoAsync(db, ct);
+    return Results.Ok(resumo);
+})
+.RequireAuthorization("Financeiro");
+
+app.MapGet("/api/erp/genesis/financeiro/contas-pagar", async (GenesisDbContext db, CancellationToken ct) =>
+{
+    var itens = await GenesisFinanceService.ListarContasPagarAsync(db, ct);
+    return Results.Ok(itens);
+})
+.RequireAuthorization("Financeiro");
+
+app.MapGet("/api/erp/genesis/financeiro/contas-receber", async (GenesisDbContext db, CancellationToken ct) =>
+{
+    var itens = await GenesisFinanceService.ListarContasReceberAsync(db, ct);
+    return Results.Ok(itens);
+})
+.RequireAuthorization("Financeiro");
+
+app.MapPost("/api/erp/genesis/financeiro/contas-pagar", async (GenesisDbContext db, GenesisContaPagarCreateRequest request, CancellationToken ct) =>
+{
+    var created = await GenesisFinanceService.CriarContaPagarAsync(db, request, ct);
+    return Results.Created($"/api/erp/genesis/financeiro/contas-pagar/{created.Id}", created);
+})
+.RequireAuthorization("Financeiro");
+
+app.MapPost("/api/erp/genesis/financeiro/contas-receber", async (GenesisDbContext db, GenesisContaReceberCreateRequest request, CancellationToken ct) =>
+{
+    var created = await GenesisFinanceService.CriarContaReceberAsync(db, request, ct);
+    return Results.Created($"/api/erp/genesis/financeiro/contas-receber/{created.Id}", created);
+})
+.RequireAuthorization("Financeiro");
+
+app.MapPost("/api/erp/genesis/financeiro/contas-pagar/{id:int}/baixa", async (int id, GenesisDbContext db, GenesisBaixaPagarRequest request, CancellationToken ct) =>
+{
+    var updated = await GenesisFinanceService.BaixarContaPagarAsync(db, id, request, ct);
+    return updated is null ? Results.NotFound() : Results.Ok(updated);
+})
+.RequireAuthorization("Financeiro");
+
+app.MapPost("/api/erp/genesis/financeiro/contas-receber/{id:int}/baixa", async (int id, GenesisDbContext db, GenesisBaixaReceberRequest request, CancellationToken ct) =>
+{
+    var updated = await GenesisFinanceService.BaixarContaReceberAsync(db, id, request, ct);
+    return updated is null ? Results.NotFound() : Results.Ok(updated);
+})
+.RequireAuthorization("Financeiro");
+
+app.MapGet("/api/erp/genesis/financeiro/boletos", async (GenesisDbContext db, CancellationToken ct) =>
+{
+    var boletos = await GenesisFinanceService.ListarBoletosAsync(db, ct);
+    return Results.Ok(boletos);
+})
+.RequireAuthorization("Financeiro");
+
+app.MapPost("/api/erp/genesis/financeiro/boletos", async (GenesisDbContext db, GenesisBoletoCreateRequest request, CancellationToken ct) =>
+{
+    var created = await GenesisFinanceService.CriarBoletoAsync(db, request, ct);
+    return Results.Created($"/api/erp/genesis/financeiro/boletos/{created.Id}", created);
+})
+.RequireAuthorization("Financeiro");
+
+app.MapGet("/api/erp/genesis/financeiro/referencias", async (GenesisDbContext db, string? tipo, CancellationToken ct) =>
+{
+    var referencias = await GenesisFinanceService.ListarReferenciasAsync(db, tipo, ct);
+    return Results.Ok(referencias);
+})
+.RequireAuthorization("Financeiro");
+
+app.MapPost("/api/erp/genesis/financeiro/referencias", async (GenesisDbContext db, GenesisFinanceReferenciaCreateRequest request, CancellationToken ct) =>
+{
+    try
+    {
+        var created = await GenesisFinanceService.CriarReferenciaAsync(db, request, ct);
+        return Results.Created($"/api/erp/genesis/financeiro/referencias/{created.Id}", created);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { erro = ex.Message });
+    }
+})
+.RequireAuthorization("Financeiro");
+
+app.MapGet("/api/erp/genesis/rh/resumo", async (GenesisDbContext db, CancellationToken ct) =>
+{
+    var resumo = await GenesisRhService.GetResumoAsync(db, ct);
+    return Results.Ok(resumo);
+})
+.RequireAuthorization("RH");
+
+app.MapGet("/api/erp/genesis/rh/colaboradores", async (GenesisDbContext db, CancellationToken ct) =>
+{
+    var colaboradores = await GenesisRhService.GetColaboradoresAsync(db, ct);
+    return Results.Ok(colaboradores);
+})
+.RequireAuthorization("RH");
+
+app.MapPost("/api/erp/genesis/rh/colaboradores", async (GenesisDbContext db, GenesisRhColaboradorUpsertRequest request, CancellationToken ct) =>
+{
+    var created = await GenesisRhService.CriarColaboradorAsync(db, request, ct);
+    return Results.Created($"/api/erp/genesis/rh/colaboradores/{created.Id}", created);
+})
+.RequireAuthorization("RH");
+
+app.MapPut("/api/erp/genesis/rh/colaboradores/{id:int}", async (int id, GenesisDbContext db, GenesisRhColaboradorUpsertRequest request, CancellationToken ct) =>
+{
+    var updated = await GenesisRhService.AtualizarColaboradorAsync(db, id, request, ct);
+    return updated is null ? Results.NotFound() : Results.Ok(updated);
+})
+.RequireAuthorization("RH");
+
+app.MapPatch("/api/erp/genesis/rh/colaboradores/{id:int}/status", async (int id, GenesisDbContext db, GenesisRhStatusUpdateRequest request, CancellationToken ct) =>
+{
+    var updated = await GenesisRhService.AtualizarStatusAsync(db, id, request.Status, ct);
+    return updated is null ? Results.NotFound() : Results.Ok(updated);
+})
+.RequireAuthorization("RH");
+
+app.MapGet("/api/erp/genesis/rh/referencias", async (GenesisDbContext db, string? tipo, CancellationToken ct) =>
+{
+    var referencias = await GenesisRhService.ListarReferenciasAsync(db, tipo, ct);
+    return Results.Ok(referencias);
+})
+.RequireAuthorization("RH");
+
+app.MapPost("/api/erp/genesis/rh/referencias", async (GenesisDbContext db, GenesisRhReferenciaCreateRequest request, CancellationToken ct) =>
+{
+    try
+    {
+        var created = await GenesisRhService.CriarReferenciaAsync(db, request, ct);
+        return Results.Created($"/api/erp/genesis/rh/referencias/{created.Id}", created);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { erro = ex.Message });
+    }
+})
+.RequireAuthorization("RH");
 
 app.MapGet("/", (IHostEnvironment environment) =>
     environment.IsDevelopment() || environment.IsStaging()
@@ -1683,10 +1854,11 @@ app.MapPost("/api/pedidos", async (
     }
 
     int? enderecoEntregaId = null;
+    EnderecoEntregaRequest? enderecoRequest = null;
     if (request.EnderecoEntrega is not null)
     {
         var enderecoJson = System.Text.Json.JsonSerializer.Serialize(request.EnderecoEntrega);
-        var enderecoRequest = System.Text.Json.JsonSerializer.Deserialize<EnderecoEntregaRequest>(
+        enderecoRequest = System.Text.Json.JsonSerializer.Deserialize<EnderecoEntregaRequest>(
             enderecoJson,
             new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         if (enderecoRequest is not null && !string.IsNullOrWhiteSpace(enderecoRequest.Cep) && !string.IsNullOrWhiteSpace(enderecoRequest.Logradouro))
@@ -1714,6 +1886,36 @@ app.MapPost("/api/pedidos", async (
         }
     }
 
+    if (enderecoRequest is null || string.IsNullOrWhiteSpace(enderecoRequest.Cep))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("CEP de entrega obrigatorio para calcular o frete."));
+    }
+
+    var freteRequest = new FreteCotacaoRequest(
+        configuration["Frete:CepOrigem"] ?? configuration["MelhorEnvio:CepOrigem"] ?? "17400000",
+        enderecoRequest.Cep,
+        itensSolicitados.Select(item =>
+        {
+            var produto = produtosMap[item.ProdutoId];
+            return new FreteCotacaoItemRequest(
+                produto.Sku,
+                item.Quantidade,
+                produto.PrecoPromocional ?? produto.Preco,
+                produto.Peso,
+                produto.Altura,
+                produto.Largura,
+                produto.Comprimento);
+        }).ToList());
+    var freteCotacoes = await CotarFreteAsync(freteRequest, configuration, httpClientFactory, ct);
+    var freteSelecionado = string.IsNullOrWhiteSpace(request.FreteMetodo)
+        ? freteCotacoes.OrderBy(item => item.Valor).ThenBy(item => item.PrazoDias).FirstOrDefault()
+        : freteCotacoes.FirstOrDefault(item => string.Equals(item.Codigo, request.FreteMetodo, StringComparison.OrdinalIgnoreCase));
+
+    if (freteSelecionado is null)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Opcao de frete invalida ou indisponivel. Refaca a cotacao."));
+    }
+
     var pedido = new Pedido
     {
         NumeroPedido = $"NX{DateTime.UtcNow:yyMMddHHmmss}{Random.Shared.Next(10, 99)}",
@@ -1726,11 +1928,11 @@ app.MapPost("/api/pedidos", async (
         GatewayPagamento = string.IsNullOrWhiteSpace(request.GatewayPagamento) ? "ConfiguracaoPendente" : request.GatewayPagamento,
         Subtotal = subtotal,
         Desconto = desconto,
-        FreteValor = request.FreteValor ?? 0m,
-        FreteMetodo = request.FreteMetodo,
-        FreteTransportadora = request.FreteTransportadora,
-        FretePrazoDias = request.FretePrazoDias ?? 0,
-        Total = Math.Max(0m, subtotal + (request.FreteValor ?? 0m) - desconto),
+        FreteValor = freteSelecionado.Valor,
+        FreteMetodo = freteSelecionado.Codigo,
+        FreteTransportadora = freteSelecionado.Transportadora,
+        FretePrazoDias = freteSelecionado.PrazoDias,
+        Total = Math.Max(0m, subtotal + freteSelecionado.Valor - desconto),
         CupomCodigo = request.CupomCodigo,
         Origem = OrigemPedido.Site,
         IpCliente = http.Connection.RemoteIpAddress?.ToString(),
@@ -3056,10 +3258,35 @@ static async Task EnsurePedidoFiscalAutomationAsync(
             ResumoRoteamento = "Nenhuma empresa fiscal ativa cadastrada para emitir a operação.",
             PayloadOperacao = JsonSerializer.Serialize(new
             {
+                pedido.Id,
                 pedido.NumeroPedido,
+                pedido.Subtotal,
+                pedido.Desconto,
+                pedido.FreteValor,
+                pedido.FreteMetodo,
+                pedido.FreteTransportadora,
+                pedido.FretePrazoDias,
                 pedido.MeioPagamento,
                 pedido.GatewayPagamento,
-                pedido.Total
+                pedido.Total,
+                cliente = new
+                {
+                    cliente.Id,
+                    cliente.Nome,
+                    cliente.Email,
+                    cliente.Telefone,
+                    cliente.CpfCnpj
+                },
+                enderecoEntrega = request.EnderecoEntrega,
+                itens = pedido.Itens?.Select(item => new
+                {
+                    item.ProdutoId,
+                    item.SkuProduto,
+                    item.NomeProduto,
+                    item.Quantidade,
+                    item.PrecoUnitario,
+                    item.PrecoTotal
+                }).ToList()
             }),
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -3128,14 +3355,35 @@ static async Task EnsurePedidoFiscalAutomationAsync(
             pedido.Total,
             pedido.Subtotal,
             pedido.FreteValor,
+            pedido.FreteMetodo,
+            pedido.FreteTransportadora,
+            pedido.FretePrazoDias,
+            pedido.Desconto,
             pedido.MeioPagamento,
             pedido.GatewayPagamento,
             resumoPagamento,
             perfilTributacao,
             usaStLegado = empresaEmitente.UsaStLegado,
             destacaIcmsStSeparado = empresaEmitente.DestacaIcmsStSeparado,
-            cliente = new { cliente.Id, cliente.Nome, cliente.Email, cliente.CpfCnpj },
+            cliente = new
+            {
+                cliente.Id,
+                cliente.Nome,
+                cliente.Email,
+                cliente.Telefone,
+                cliente.CpfCnpj
+            },
+            enderecoEntrega = request.EnderecoEntrega,
             destino = new { estadoDestino },
+            itens = pedido.Itens?.Select(item => new
+            {
+                item.ProdutoId,
+                item.SkuProduto,
+                item.NomeProduto,
+                item.Quantidade,
+                item.PrecoUnitario,
+                item.PrecoTotal
+            }).ToList(),
             ranking = decision.Ranking.Select(item => new
             {
                 item.Empresa.CodigoEmpresa,

@@ -105,6 +105,35 @@ CREATE TABLE IF NOT EXISTS erp_fluxo_caixa (
     INDEX idx_data_tipo (data, tipo)
 );
 
+CREATE TABLE IF NOT EXISTS erp_boletos (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    conta_receber_id INT NOT NULL,
+    nosso_numero VARCHAR(100),
+    linha_digitavel VARCHAR(255),
+    codigo_barras VARCHAR(255),
+    banco VARCHAR(100),
+    vencimento DATETIME NOT NULL,
+    valor DECIMAL(18,2) NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'EM_ABERTO',
+    url_boleto VARCHAR(500),
+    pdf_url VARCHAR(500),
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_boleto_conta_receber (conta_receber_id),
+    INDEX idx_boleto_status_vencimento (status, vencimento)
+);
+
+CREATE TABLE IF NOT EXISTS erp_financeiro_referencias (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tipo VARCHAR(40) NOT NULL,
+    codigo VARCHAR(50) NOT NULL,
+    descricao VARCHAR(150) NOT NULL,
+    ordem INT NOT NULL DEFAULT 0,
+    ativo TINYINT(1) NOT NULL DEFAULT 1,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_erp_fin_ref_tipo_codigo (tipo, codigo),
+    INDEX idx_erp_fin_ref_tipo_ordem (tipo, ordem, descricao)
+);
+
 -- =====================================================
 -- TABELAS FISCAL
 -- =====================================================
@@ -352,6 +381,31 @@ CREATE TABLE IF NOT EXISTS erp_fornecedores (
     criado_por VARCHAR(100)
 );
 
+CREATE TABLE IF NOT EXISTS erp_rh_colaboradores (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nome VARCHAR(150) NOT NULL,
+    cargo VARCHAR(120),
+    departamento VARCHAR(120),
+    status VARCHAR(50) NOT NULL DEFAULT 'ATIVO',
+    data_admissao DATETIME,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+    atualizado_em DATETIME,
+    INDEX idx_rh_status_departamento (status, departamento),
+    INDEX idx_rh_nome (nome)
+);
+
+CREATE TABLE IF NOT EXISTS erp_rh_referencias (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tipo VARCHAR(40) NOT NULL,
+    codigo VARCHAR(50) NOT NULL,
+    descricao VARCHAR(120) NOT NULL,
+    ordem INT NOT NULL DEFAULT 0,
+    ativo TINYINT(1) NOT NULL DEFAULT 1,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_erp_rh_ref_tipo_codigo (tipo, codigo),
+    INDEX idx_erp_rh_ref_tipo_ordem (tipo, ordem, descricao)
+);
+
 CREATE TABLE IF NOT EXISTS erp_avaliacoes_fornecedor (
     id INT AUTO_INCREMENT PRIMARY KEY,
     fornecedor_id INT NOT NULL,
@@ -391,6 +445,53 @@ INSERT INTO erp_contas_bancarias (nome, banco, agencia, conta, tipo_conta, saldo
 ('Conta Secundária Itaú', 'Itaú', '5678', '12345-6', 'Corrente', 0),
 ('Poupança Reserva', 'Bradesco', '1234', '99999-9', 'Poupanca', 0)
 ON DUPLICATE KEY UPDATE nome = VALUES(nome);
+
+INSERT INTO erp_financeiro_referencias (tipo, codigo, descricao, ordem, ativo) VALUES
+('FORMA_PAGAMENTO', 'PIX', 'PIX', 10, 1),
+('FORMA_PAGAMENTO', 'BOLETO', 'Boleto bancario', 20, 1),
+('FORMA_PAGAMENTO', 'TED', 'Transferencia TED', 30, 1),
+('FORMA_PAGAMENTO', 'DOC', 'Transferencia DOC', 40, 1),
+('FORMA_PAGAMENTO', 'DINHEIRO', 'Dinheiro', 50, 1),
+('FORMA_PAGAMENTO', 'CARTAO_CREDITO', 'Cartao de credito', 60, 1),
+('FORMA_PAGAMENTO', 'CARTAO_DEBITO', 'Cartao de debito', 70, 1),
+('BANCO', 'ITAU', 'Itau', 10, 1),
+('BANCO', 'BRADESCO', 'Bradesco', 20, 1),
+('BANCO', 'SANTANDER', 'Santander', 30, 1),
+('BANCO', 'CAIXA', 'Caixa Economica Federal', 40, 1),
+('BANCO', 'BANCO_DO_BRASIL', 'Banco do Brasil', 50, 1),
+('BANCO', 'NUBANK', 'Nubank', 60, 1),
+('STATUS_TITULO', 'PENDENTE', 'Pendente', 10, 1),
+('STATUS_TITULO', 'PARCIAL', 'Parcial', 20, 1),
+('STATUS_TITULO', 'PAGO', 'Pago', 30, 1),
+('STATUS_TITULO', 'RECEBIDO', 'Recebido', 40, 1),
+('STATUS_TITULO', 'VENCIDO', 'Vencido', 50, 1)
+ON DUPLICATE KEY UPDATE
+    descricao = VALUES(descricao),
+    ordem = VALUES(ordem),
+    ativo = VALUES(ativo);
+
+INSERT INTO erp_rh_referencias (tipo, codigo, descricao, ordem, ativo) VALUES
+('DEPARTAMENTO', 'RH', 'Recursos Humanos', 10, 1),
+('DEPARTAMENTO', 'DP', 'Departamento Pessoal', 20, 1),
+('DEPARTAMENTO', 'FINANCEIRO', 'Financeiro', 30, 1),
+('DEPARTAMENTO', 'COMERCIAL', 'Comercial', 40, 1),
+('DEPARTAMENTO', 'OPERACOES', 'Operacoes', 50, 1),
+('DEPARTAMENTO', 'TI', 'Tecnologia da Informacao', 60, 1),
+('CARGO', 'ASSISTENTE_ADMINISTRATIVO', 'Assistente Administrativo', 10, 1),
+('CARGO', 'ANALISTA_RH', 'Analista de RH', 20, 1),
+('CARGO', 'ASSISTENTE_DP', 'Assistente de DP', 30, 1),
+('CARGO', 'ANALISTA_FINANCEIRO', 'Analista Financeiro', 40, 1),
+('CARGO', 'VENDEDOR', 'Vendedor', 50, 1),
+('STATUS_COLABORADOR', 'ATIVO', 'Ativo', 10, 1),
+('STATUS_COLABORADOR', 'AFASTADO', 'Afastado', 20, 1),
+('STATUS_COLABORADOR', 'FERIAS_PROGRAMADAS', 'Ferias Programadas', 30, 1),
+('STATUS_COLABORADOR', 'FERIAS', 'Ferias', 40, 1),
+('STATUS_COLABORADOR', 'DESLIGADO', 'Desligado', 50, 1),
+('STATUS_COLABORADOR', 'INATIVO', 'Inativo', 60, 1)
+ON DUPLICATE KEY UPDATE
+    descricao = VALUES(descricao),
+    ordem = VALUES(ordem),
+    ativo = VALUES(ativo);
 
 -- Locais de Estoque
 INSERT INTO erp_locais_estoque (codigo, nome, descricao, setor, prateleira) VALUES
