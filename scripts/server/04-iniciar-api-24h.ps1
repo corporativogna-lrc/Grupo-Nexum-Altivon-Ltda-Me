@@ -2,7 +2,7 @@ param(
   [string]$ApiDirectory = "Y:\NexumAltivon_API_24H\api",
   [string]$ConfigPath = "Y:\NexumAltivon_API_24H\config\api.env.ps1",
   [string]$BaseDirectory = "Y:\NexumAltivon_API_24H",
-  [string]$Url = "http://127.0.0.1:5010",
+  [string]$Url = "http://127.0.0.1:5012",
   [int]$CheckSeconds = 20
 )
 

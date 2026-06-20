@@ -185,7 +185,7 @@ export default function Checkout() {
               id: cotacao.codigo,
               nome: cotacao.nome,
               transportadora: cotacao.transportadora,
-              prazo: cotacao.prazo_dias,
+              prazo: cotacao.prazoDias ?? cotacao.prazo_dias,
               valor: cotacao.valor,
             })),
           ];
@@ -256,7 +256,7 @@ export default function Checkout() {
         gateway_pagamento: mapGatewayLabel(metodoPagamento),
         dados_cartao: metodoPagamento === 'cartao' ? dadosCartao : undefined,
         frete_valor: frete.valor,
-        frete_metodo: frete.nome,
+        frete_metodo: frete.id,
         frete_transportadora: frete.transportadora,
         frete_prazo_dias: frete.prazo
       };

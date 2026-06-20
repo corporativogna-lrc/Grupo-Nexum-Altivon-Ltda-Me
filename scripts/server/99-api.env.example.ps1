@@ -3,7 +3,7 @@
 # Preencha os valores reais somente no servidor. Não envie este arquivo preenchido para o Git.
 
 $env:ASPNETCORE_ENVIRONMENT = "Production"
-$env:ASPNETCORE_URLS = "http://127.0.0.1:5010"
+$env:ASPNETCORE_URLS = "http://0.0.0.0:5012"
 
 $env:ConnectionStrings__DefaultConnection = "server=192.168.1.72;port=3309;database=nexum_altivon_schema;user=nexum_app;password=COLOQUE_A_SENHA_REAL_AQUI;SslMode=none;AllowPublicKeyRetrieval=true;"
 
