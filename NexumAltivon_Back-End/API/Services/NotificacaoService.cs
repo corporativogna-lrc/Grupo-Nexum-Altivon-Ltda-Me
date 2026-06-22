@@ -13,6 +13,8 @@ namespace NexumAltivon.API.Services
     {
         Task EnviarConfirmacaoPedidoAsync(Cliente cliente, Pedido pedido);
         Task EnviarConfirmacaoPagamentoAsync(Cliente cliente, Pedido pedido);
+        Task EnviarNotaFiscalEmitidaAsync(Cliente cliente, Pedido pedido, Fiscal fiscal);
+        Task EnviarConfirmacaoCadastroAsync(Cliente cliente, string linkConfirmacao);
         Task EnviarNotificacaoWhatsAppAsync(string? telefone, string mensagem);
         Task EnviarEmailAsync(string? destinatario, string assunto, string corpoHtml);
         Task EnviarAlertaEstoqueBaixoAsync(Produto produto);
@@ -27,6 +29,7 @@ namespace NexumAltivon.API.Services
         private readonly string? _sendGridKey;
         private readonly string _fromEmail;
         private readonly string _fromName;
+        private readonly string _salesAdminEmail;
         private readonly bool _whatsappAtivo;
         private readonly string? _whatsappApiUrl;
         private readonly string? _whatsappApiKey;
@@ -39,6 +42,7 @@ namespace NexumAltivon.API.Services
             _sendGridKey = _config["Integracoes:SendGrid:ApiKey"];
             _fromEmail = _config["Integracoes:SendGrid:FromEmail"] ?? "corporativo.gna@gmail.com";
             _fromName = _config["Integracoes:SendGrid:FromName"] ?? "Grupo Nexum Altivon";
+            _salesAdminEmail = _config["Alertas:VendaEmailAdmin"] ?? "corporativo.gna@gmail.com";
             _whatsappAtivo = bool.Parse(_config["Integracoes:WhatsApp:Ativo"] ?? "false");
             _whatsappApiUrl = _config["Integracoes:WhatsApp:ApiUrl"];
             _whatsappApiKey = _config["Integracoes:WhatsApp:ApiKey"];
@@ -103,6 +107,66 @@ h1 {{ color: #C9A227; }}
 </html>";
 
             await EnviarEmailAsync(cliente.Email, assunto, corpo);
+            await EnviarEmailAsync(_salesAdminEmail, $"[COPIA] {assunto}", corpo);
+        }
+
+        public async Task EnviarConfirmacaoCadastroAsync(Cliente cliente, string linkConfirmacao)
+        {
+            var assunto = $"Confirme seu cadastro - Nexum Altivon";
+            var corpo = $@"
+<!DOCTYPE html>
+<html>
+<body style='font-family:Arial,sans-serif;background:#f6f3ea;color:#1f1f1f;padding:0;margin:0;'>
+<div style='max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #d7c38a;padding:28px;'>
+<h1 style='margin-top:0;color:#8a6d1f;'>Confirme seu cadastro</h1>
+<p>Olá <strong>{cliente.Nome}</strong>,</p>
+<p>Recebemos seu cadastro na Nexum Altivon e ele está pronto para ativação.</p>
+<p>Para liberar o acesso da sua área do cliente, clique no botão abaixo:</p>
+<p><a href='{linkConfirmacao}' style='display:inline-block;background:#c9a227;color:#000;padding:14px 22px;border-radius:8px;text-decoration:none;font-weight:bold;'>Confirmar cadastro</a></p>
+<p>Se o botão não abrir, copie e cole este endereço no navegador:</p>
+<p style='word-break:break-all;'><a href='{linkConfirmacao}'>{linkConfirmacao}</a></p>
+<p>Depois da confirmação, você poderá entrar normalmente com seu e-mail e senha.</p>
+</div>
+</body>
+</html>";
+
+            await EnviarEmailAsync(cliente.Email, assunto, corpo);
+            await EnviarEmailAsync(_salesAdminEmail, $"[COPIA] {assunto}", corpo);
+        }
+
+        public async Task EnviarNotaFiscalEmitidaAsync(Cliente cliente, Pedido pedido, Fiscal fiscal)
+        {
+            var assunto = $"Nota Fiscal emitida - Pedido {pedido.NumeroPedido}";
+            var arquivoXml = string.IsNullOrWhiteSpace(fiscal.XmlUrl) ? "Indisponivel" : fiscal.XmlUrl;
+            var arquivoDanfe = string.IsNullOrWhiteSpace(fiscal.DanfeUrl) ? "Indisponivel" : fiscal.DanfeUrl;
+            var chaveAcesso = string.IsNullOrWhiteSpace(fiscal.ChaveAcesso) ? "Nao informada" : fiscal.ChaveAcesso;
+            var numeroNfe = string.IsNullOrWhiteSpace(fiscal.NumeroNfe) ? "Nao informado" : fiscal.NumeroNfe;
+            var statusFiscal = fiscal.StatusNfe.ToString();
+
+            var corpo = $@"
+<!DOCTYPE html>
+<html>
+<body style='font-family:Arial,sans-serif;background:#f6f3ea;color:#1f1f1f;padding:0;margin:0;'>
+<div style='max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #d7c38a;padding:28px;'>
+<h1 style='margin-top:0;color:#8a6d1f;'>Nota Fiscal emitida</h1>
+<p>Ola <strong>{cliente.Nome}</strong>,</p>
+<p>A nota fiscal do seu pedido <strong>{pedido.NumeroPedido}</strong> foi emitida no sistema.</p>
+<div style='background:#faf7ef;border:1px solid #e4d8b7;padding:18px;margin:20px 0;'>
+<p><strong>Status:</strong> {statusFiscal}</p>
+<p><strong>NFe:</strong> {numeroNfe}</p>
+<p><strong>Chave de acesso:</strong> {chaveAcesso}</p>
+<p><strong>Total:</strong> R$ {pedido.Total:N2}</p>
+<p><strong>XML:</strong> {arquivoXml}</p>
+<p><strong>DANFE:</strong> {arquivoDanfe}</p>
+</div>
+<p>Voce pode acompanhar o pedido pela area do cliente no site.</p>
+<p>Se quiser, responda este e-mail ou fale com nosso atendimento.</p>
+            </div>
+</body>
+</html>";
+
+            await EnviarEmailAsync(cliente.Email, assunto, corpo);
+            await EnviarEmailAsync(_salesAdminEmail, $"[COPIA] {assunto}", corpo);
         }
 
         public async Task EnviarNotificacaoWhatsAppAsync(string? telefone, string mensagem)

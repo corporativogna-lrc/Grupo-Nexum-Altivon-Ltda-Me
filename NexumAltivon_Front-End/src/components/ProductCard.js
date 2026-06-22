@@ -8,7 +8,7 @@ export default function ProductCard({ product }) {
   const finalPrice = product.preco_promocional || product.preco;
   const hasDiscount = product.preco_promocional && product.preco_promocional < product.preco;
   const discount = hasDiscount ? Math.round(((product.preco - product.preco_promocional) / product.preco) * 100) : 0;
-  const image = product.imagem_url || product.imagem || 'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85';
+  const image = product.imagem_url || product.imagem || '';
   const isOut = Number(product.estoque) === 0;
 
   return (
@@ -16,14 +16,23 @@ export default function ProductCard({ product }) {
       className="group overflow-hidden rounded-2xl border border-[#2A2A2A] bg-[#111111] shadow-[0_24px_80px_rgba(0,0,0,0.35)] transition duration-300 hover:-translate-y-1 hover:border-[#C9A227]/70 hover:shadow-[0_28px_90px_rgba(201,162,39,0.16)]"
       data-testid={`product-card-${product.id}`}
     >
-      <div className="relative aspect-[4/5] overflow-hidden bg-[#080808]">
+      <div className="relative aspect-[16/11] overflow-hidden bg-[#080808] sm:aspect-[4/5]">
         <Link to={`/produto/${product.id}`} aria-label={product.nome}>
-          <img
-            src={image}
-            alt={product.nome}
-            className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-            loading="lazy"
-          />
+          {image ? (
+            <img
+              src={image}
+              alt={product.nome}
+              className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+              loading="lazy"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(201,162,39,0.18),_transparent_44%),linear-gradient(180deg,#111,#080808)] p-6 text-center">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-[#C9A227]">Foto pendente</p>
+                <p className="mt-3 text-sm font-semibold text-[#A0A0A0]">Produto real sem imagem vinculada no banco.</p>
+              </div>
+            </div>
+          )}
         </Link>
         <div className="absolute left-3 top-3 flex flex-wrap gap-2">
           {product.destaque && (
@@ -46,7 +55,7 @@ export default function ProductCard({ product }) {
         </button>
       </div>
 
-      <div className="space-y-4 p-4">
+      <div className="space-y-3 p-3 sm:space-y-4 sm:p-4">
         <div className="flex items-center justify-between gap-3 text-xs font-semibold text-[#A0A0A0]">
           <span>{product.sku || 'NA Premium'}</span>
           <span className="inline-flex items-center gap-1 text-[#C9A227]">
@@ -57,23 +66,23 @@ export default function ProductCard({ product }) {
 
         <div>
           <Link to={`/produto/${product.id}`}>
-            <h3 className="line-clamp-2 min-h-[3.25rem] text-lg font-black leading-snug text-white transition hover:text-[#C9A227]" data-testid="product-name">
+            <h3 className="line-clamp-2 min-h-[2.75rem] text-base font-black leading-snug text-white transition hover:text-[#C9A227] sm:min-h-[3.25rem] sm:text-lg" data-testid="product-name">
               {product.nome}
             </h3>
           </Link>
-          <p className="mt-2 line-clamp-2 min-h-[2.5rem] text-sm leading-5 text-[#B8B8B8]">{product.descricao}</p>
+          <p className="mt-2 line-clamp-2 min-h-[2.25rem] text-xs leading-5 text-[#B8B8B8] sm:min-h-[2.5rem] sm:text-sm">{product.descricao}</p>
         </div>
 
         <div className="flex items-end justify-between gap-4">
           <div>
             {hasDiscount && <p className="text-sm font-semibold text-[#777] line-through">{formatPrice(product.preco)}</p>}
-            <p className="text-2xl font-black text-[#C9A227]" data-testid="product-price">{formatPrice(finalPrice)}</p>
+            <p className="text-xl font-black text-[#C9A227] sm:text-2xl" data-testid="product-price">{formatPrice(finalPrice)}</p>
             <p className="text-xs font-semibold text-emerald-400">ou 10x sem juros</p>
           </div>
           <button
             onClick={() => addToCart(product)}
             disabled={isOut}
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#C9A227] text-black shadow-sm transition hover:bg-[#FFD95A] disabled:cursor-not-allowed disabled:bg-[#2A2A2A] disabled:text-[#777]"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#C9A227] text-black shadow-sm transition hover:bg-[#FFD95A] disabled:cursor-not-allowed disabled:bg-[#2A2A2A] disabled:text-[#777] sm:h-11 sm:w-11"
             data-testid="add-to-cart-btn"
             aria-label="Adicionar ao carrinho"
             title="Adicionar ao carrinho"

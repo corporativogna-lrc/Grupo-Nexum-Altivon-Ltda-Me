@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { categoriaAPI, produtoAPI } from '../services/api';
+import { categoriaAPI, produtoAPI, unwrapApiData } from '../services/api';
 import ProductCard from '../components/ProductCard';
-import { fallbackCategories, fallbackProducts } from '../data/mockStore';
+import { fallbackCategories } from '../data/mockStore';
 import { ArrowDownUp, Filter, Search, SlidersHorizontal, X } from 'lucide-react';
 
 const sortOptions = {
@@ -12,10 +12,26 @@ const sortOptions = {
   nome: 'Nome',
 };
 
+const isProdutoPublicavel = (produto) =>
+  Boolean(
+    produto &&
+      produto.ativo !== false &&
+      produto.nome &&
+      produto.sku &&
+      (produto.slug || produto.id) &&
+      (produto.descricao_curta || produto.descricaoCurta || produto.descricao_longa || produto.descricaoLonga || produto.descricao) &&
+      (produto.imagem_url || produto.imagemUrl || produto.imagem || produto.imagemPrincipal || produto.imagem_principal) &&
+      Number(produto.preco) > 0 &&
+      Number(produto.peso) > 0 &&
+      Number(produto.altura) > 0 &&
+      Number(produto.largura) > 0 &&
+      Number(produto.comprimento) > 0,
+  );
+
 export default function Produtos() {
   const [params, setParams] = useSearchParams();
-  const [produtos, setProdutos] = useState(fallbackProducts);
-  const [categorias, setCategorias] = useState(fallbackCategories);
+  const [produtos, setProdutos] = useState([]);
+  const [categorias, setCategorias] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(params.get('categoria') || '');
@@ -29,12 +45,16 @@ export default function Produtos() {
         produtoAPI.getAll(selectedCategory ? { categoria_id: selectedCategory } : {}),
         categoriaAPI.getAll(),
       ]);
-      if (Array.isArray(produtosRes.data) && produtosRes.data.length > 0) setProdutos(produtosRes.data);
-      if (Array.isArray(categoriasRes.data) && categoriasRes.data.length > 0) setCategorias(categoriasRes.data);
+      const produtosData = unwrapApiData(produtosRes.data);
+      const categoriasData = unwrapApiData(categoriasRes.data);
+      setProdutos(Array.isArray(produtosData) ? produtosData.filter(isProdutoPublicavel) : []);
+      setCategorias(Array.isArray(categoriasData) ? categoriasData : []);
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
         console.error('Erro:', error);
       }
+      setProdutos([]);
+      setCategorias([]);
     } finally {
       setLoading(false);
     }
@@ -55,6 +75,7 @@ export default function Produtos() {
   const filteredProdutos = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
     const filtered = produtos.filter((produto) => {
+      if (!isProdutoPublicavel(produto)) return false;
       const matchesSearch =
         !normalizedSearch ||
         produto.nome?.toLowerCase().includes(normalizedSearch) ||
@@ -199,8 +220,8 @@ export default function Produtos() {
 
           {!loading && filteredProdutos.length === 0 && (
             <div className="rounded-2xl border border-[#2A2A2A] bg-[#111111] px-6 py-16 text-center shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
-              <p className="text-xl font-black text-white">Nenhum produto encontrado</p>
-              <p className="mt-2 text-[#A0A0A0]">Ajuste os filtros para ver outras opções do catálogo.</p>
+              <p className="text-xl font-black text-white">Nenhum produto cadastrado</p>
+              <p className="mt-2 text-[#A0A0A0]">Quando o banco devolver itens reais, eles aparecem aqui. Se quiser, ajuste os filtros para buscar outra categoria.</p>
               <button onClick={clearFilters} className="mt-6 rounded-full bg-[#C9A227] px-5 py-3 text-sm font-black text-black">
                 Limpar filtros
               </button>

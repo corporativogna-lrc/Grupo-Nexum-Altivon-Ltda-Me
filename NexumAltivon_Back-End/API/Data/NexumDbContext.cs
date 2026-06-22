@@ -50,13 +50,29 @@ public class NexumDbContext : DbContext
             .HasIndex(c => c.CpfCnpj)
             .IsUnique();
 
+        modelBuilder.Entity<Cliente>()
+            .Property(cliente => cliente.Tipo)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Cliente>()
+            .Property(cliente => cliente.Status)
+            .HasConversion<string>();
+
         modelBuilder.Entity<Produto>()
             .HasIndex(p => p.Sku)
             .IsUnique();
 
+        modelBuilder.Entity<Produto>()
+            .Property(produto => produto.TipoProduto)
+            .HasConversion<string>();
+
         modelBuilder.Entity<Fornecedor>()
             .HasIndex(f => f.Cnpj)
             .IsUnique();
+
+        modelBuilder.Entity<Fornecedor>()
+            .Property(fornecedor => fornecedor.Status)
+            .HasConversion<string>();
 
         modelBuilder.Entity<Cupom>()
             .HasIndex(c => c.Codigo)
@@ -117,6 +133,62 @@ public class NexumDbContext : DbContext
             .HasForeignKey(a => a.LeadId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        modelBuilder.Entity<Usuario>()
+            .Property(usuario => usuario.Perfil)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Cupom>()
+            .Property(cupom => cupom.Tipo)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Endereco>()
+            .Property(endereco => endereco.Tipo)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<CrmAtendimento>()
+            .Property(atendimento => atendimento.Tipo)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<CrmAtendimento>()
+            .Property(atendimento => atendimento.Status)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Envio>()
+            .Property(envio => envio.StatusEnvio)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Financeiro>()
+            .Property(lancamento => lancamento.Tipo)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Financeiro>()
+            .Property(lancamento => lancamento.Status)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Fiscal>()
+            .Property(fiscal => fiscal.StatusNfe)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<LogAuditoria>()
+            .Property(log => log.Acao)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<LogAuditoria>()
+            .Property(log => log.UsuarioTipo)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Notificacao>()
+            .Property(notificacao => notificacao.Tipo)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Notificacao>()
+            .Property(notificacao => notificacao.DestinatarioTipo)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<ConfiguracaoSistema>()
+            .Property(configuracao => configuracao.Tipo)
+            .HasConversion<string>();
+
         modelBuilder.Entity<CrmLead>()
             .Property(lead => lead.Origem)
             .HasConversion<string>();
@@ -143,6 +215,14 @@ public class NexumDbContext : DbContext
 
         modelBuilder.Entity<Pedido>()
             .Property(pedido => pedido.Origem)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<PedidoItem>()
+            .Property(item => item.TipoFulfillment)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<PedidoItem>()
+            .Property(item => item.StatusItem)
             .HasConversion<string>();
 
         modelBuilder.Entity<Pagamento>()

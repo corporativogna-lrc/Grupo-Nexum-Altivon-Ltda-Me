@@ -55,6 +55,7 @@ public sealed record FiscalRoutingCandidate(
     decimal ReceitaBruta,
     decimal CustoTributarioEstimado,
     decimal CustoOperacionalEstimado,
+    decimal CustoTotalEstimado,
     decimal LucroEstimado,
     decimal MargemEstimadaPercentual,
     decimal Score,
