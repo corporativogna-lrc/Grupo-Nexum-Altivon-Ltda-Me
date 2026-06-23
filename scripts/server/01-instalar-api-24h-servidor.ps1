@@ -174,6 +174,14 @@ if (Test-Path $ConfigTarget) {
   Write-Host "Configuração preservada e ajustada para operar em 5012: $ConfigTarget"
 }
 
+New-NetFirewallRule `
+  -DisplayName "Nexum Altivon API 5012" `
+  -Direction Inbound `
+  -Action Allow `
+  -Protocol TCP `
+  -LocalPort 5012 `
+  -ErrorAction SilentlyContinue | Out-Null
+
 $PowerShellPath = "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"
 $Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$RunnerTarget`" -ApiDirectory `"$ApiDirectory`" -ConfigPath `"$ConfigTarget`" -BaseDirectory `"$BaseDirectory`" -Url $Url -CheckSeconds $CheckSeconds -StartupGraceSeconds $StartupGraceSeconds"
 

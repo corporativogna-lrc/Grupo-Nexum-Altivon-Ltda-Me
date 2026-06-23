@@ -74,6 +74,34 @@ try {
 }
 
 Write-Host ""
+Write-Host "[3.0.1] API pela rede interna"
+try {
+  $lanHealth = Invoke-WebRequest -UseBasicParsing -Uri "http://192.168.1.72:5012/health/db" -TimeoutSec 12
+  if ($lanHealth.StatusCode -eq 200) {
+    Write-Host "OK - API responde pela rede interna em 192.168.1.72:5012"
+  } else {
+    Write-Host "FALHOU - API interna respondeu diferente de 200"
+  }
+} catch {
+  Write-Host "FALHOU - API nao respondeu pela rede interna em 192.168.1.72:5012: $($_.Exception.Message)"
+}
+
+Write-Host ""
+Write-Host "[3.0.2] API pelo IP publico"
+try {
+  $publicIp = (Invoke-RestMethod -Uri "https://api.ipify.org?format=json" -TimeoutSec 10).ip
+  Write-Host "IP publico detectado: $publicIp"
+  $publicIpHealth = Invoke-WebRequest -UseBasicParsing -Uri "http://$publicIp`:5012/health/db" -TimeoutSec 15
+  if ($publicIpHealth.StatusCode -eq 200) {
+    Write-Host "OK - API responde pelo IP publico na porta 5012"
+  } else {
+    Write-Host "FALHOU - IP publico respondeu diferente de 200"
+  }
+} catch {
+  Write-Host "FALHOU - IP publico nao chegou na API 5012: $($_.Exception.Message)"
+}
+
+Write-Host ""
 Write-Host "[3.1] Login administrativo"
 if ($localOk) {
   try {
