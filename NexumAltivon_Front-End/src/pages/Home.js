@@ -425,15 +425,6 @@ export default function Home() {
 
         <div className="relative mx-auto flex min-h-[84vh] max-w-7xl items-center px-4 py-20 sm:px-6 lg:px-8">
           <div className="max-w-3xl">
-            {siteConfig?.siteLogo && (
-              <div className="mb-6 inline-flex items-center gap-3 rounded-full border border-white/15 bg-black/35 px-4 py-3 shadow-2xl shadow-black/25 backdrop-blur">
-                <img src={siteConfig.siteLogo} alt={siteConfig?.siteName || 'Logo Nexum Altivon'} className="h-8 w-8 rounded-full object-cover" />
-                <div className="text-left">
-                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-[#E8D5A3]">{siteConfig?.siteName || 'Grupo Nexum Altivon'}</p>
-                  <p className="text-xs font-semibold text-zinc-300">Seis marcas em expansao</p>
-                </div>
-              </div>
-            )}
             <p className="mb-5 inline-flex items-center rounded-full border border-[#C9A227]/40 bg-black/40 px-4 py-2 text-xs font-bold uppercase tracking-[0.25em] text-[#E8D5A3]">
               {activeSlide.badge}
             </p>
