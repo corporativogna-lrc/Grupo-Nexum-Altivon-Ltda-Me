@@ -280,7 +280,7 @@ export default function Checkout() {
 
   // Success page
   if (step === 4 && pedidoCriado) {
-    return <CheckoutSuccess pedido={pedidoCriado} onContinue={() => navigate('/')} />;
+    return <CheckoutSuccess pedido={pedidoCriado} clienteEmail={dadosCliente.email} onContinue={() => navigate('/')} />;
   }
 
   return (

@@ -21,7 +21,7 @@ const formatDate = (value) =>
 export default function AcompanharPedido() {
   const [searchParams] = useSearchParams();
   const [numero, setNumero] = useState(searchParams.get('pedido') || '');
-  const [identificador, setIdentificador] = useState('');
+  const [identificador, setIdentificador] = useState(searchParams.get('email') || searchParams.get('documento') || '');
   const [pedido, setPedido] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);

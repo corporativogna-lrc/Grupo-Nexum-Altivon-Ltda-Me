@@ -354,9 +354,12 @@ export function CheckoutStepper({ step }) {
 }
 
 // Success page
-export function CheckoutSuccess({ pedido, onContinue }) {
+export function CheckoutSuccess({ pedido, clienteEmail, onContinue }) {
   const formatPrice = (price) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
+  const acompanharPedidoUrl = `/acompanhar-pedido?pedido=${encodeURIComponent(pedido.numero_pedido || '')}${
+    clienteEmail ? `&email=${encodeURIComponent(clienteEmail)}` : ''
+  }`;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#050505] py-12 text-white">
@@ -419,7 +422,7 @@ export function CheckoutSuccess({ pedido, onContinue }) {
 
         <div className="flex flex-col justify-center gap-3 sm:flex-row">
           <Link
-            to={`/acompanhar-pedido?pedido=${encodeURIComponent(pedido.numero_pedido || '')}`}
+            to={acompanharPedidoUrl}
             className="rounded-full border border-[#C9A227]/40 px-8 py-3 font-black text-[#E8D5A3] transition hover:border-[#E8D5A3] hover:text-white"
           >
             Acompanhar Pedido
