@@ -1589,6 +1589,7 @@ app.MapGet("/api/pedidos", [Authorize(Policy = "Gerente")] async (NexumDbContext
         pedido.FreteMetodo,
         pedido.FreteTransportadora,
         pedido.FretePrazoDias,
+        pedido.FreteCodigoRastreio,
         BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId),
         pagamentoAtual?.Parcelas ?? 1,
         pagamentoAtual?.PixQrcode,
@@ -1802,6 +1803,7 @@ app.MapPut("/api/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
         pedido.FreteMetodo,
         pedido.FreteTransportadora,
         pedido.FretePrazoDias,
+        pedido.FreteCodigoRastreio,
         BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId),
         pagamentoAtual?.Parcelas ?? 1,
         pagamentoAtual?.PixQrcode,
@@ -1809,6 +1811,65 @@ app.MapPut("/api/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
     return Results.Ok(ApiResponse<PedidoLojaDto>.Ok(dto, "Status do pedido atualizado."));
 })
 .WithName("AtualizarStatusPedido")
+;
+
+app.MapPut("/api/pedidos/{id}/logistica", [Authorize(Policy = "Gerente")] async (
+    int id,
+    PedidoLogisticaRequest request,
+    NexumDbContext db,
+    INotificacaoService notificacaoService,
+    CancellationToken ct) =>
+{
+    var pedido = await db.Pedidos
+        .Include(item => item.Pagamentos)
+        .Include(item => item.Cliente)
+        .FirstOrDefaultAsync(item => item.Id == id, ct);
+
+    if (pedido is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Pedido nao encontrado."));
+    }
+
+    pedido.FreteMetodo = TrimOrNull(request.FreteMetodo) ?? pedido.FreteMetodo;
+    pedido.FreteTransportadora = TrimOrNull(request.FreteTransportadora) ?? pedido.FreteTransportadora;
+    pedido.FreteCodigoRastreio = TrimOrNull(request.FreteCodigoRastreio);
+    pedido.FretePrazoDias = request.FretePrazoDias is > 0 ? Math.Min(request.FretePrazoDias.Value, 120) : pedido.FretePrazoDias;
+    pedido.UpdatedAt = DateTime.UtcNow;
+
+    if (pedido.Status == StatusPedido.Enviado && pedido.Cliente is not null)
+    {
+        await notificacaoService.EnviarStatusPedidoAsync(pedido.Cliente, pedido, BuildMensagemAtualizacaoPedido(pedido));
+    }
+
+    await db.SaveChangesAsync(ct);
+
+    var pagamentoAtual = pedido.Pagamentos?
+        .OrderByDescending(item => item.CreatedAt)
+        .FirstOrDefault();
+
+    var dto = new PedidoLojaDto(
+        pedido.Id,
+        pedido.NumeroPedido,
+        pedido.Total,
+        FormatStatusPedido(pedido.Status),
+        pedido.CreatedAt,
+        FormatStatusPagamento(pedido.StatusPagamento),
+        pedido.MeioPagamento,
+        pedido.GatewayPagamento,
+        pedido.GatewayTransacaoId,
+        pedido.FreteValor,
+        pedido.FreteMetodo,
+        pedido.FreteTransportadora,
+        pedido.FretePrazoDias,
+        pedido.FreteCodigoRastreio,
+        BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId),
+        pagamentoAtual?.Parcelas ?? 1,
+        pagamentoAtual?.PixQrcode,
+        pagamentoAtual?.BoletoUrl);
+
+    return Results.Ok(ApiResponse<PedidoLojaDto>.Ok(dto, "Logistica do pedido atualizada."));
+})
+.WithName("AtualizarLogisticaPedido")
 ;
 
 app.MapPost("/api/pedidos", async (
@@ -2088,6 +2149,7 @@ app.MapPost("/api/pedidos", async (
         pedido.FreteMetodo,
         pedido.FreteTransportadora,
         pedido.FretePrazoDias,
+        pedido.FreteCodigoRastreio,
         BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId),
         pagamentoFinal?.Parcelas ?? 1,
         pagamentoFinal?.PixQrcode,
@@ -5463,10 +5525,17 @@ public sealed record PedidoLojaDto(
     string? FreteMetodo,
     string? FreteTransportadora,
     int FretePrazoDias,
+    string? FreteCodigoRastreio,
     string InstrucaoPagamento,
     int Parcelas,
     string? PixQrcode,
     string? PaymentUrl);
+
+public sealed record PedidoLogisticaRequest(
+    [property: JsonPropertyName("frete_metodo")] string? FreteMetodo,
+    [property: JsonPropertyName("frete_transportadora")] string? FreteTransportadora,
+    [property: JsonPropertyName("frete_prazo_dias")] int? FretePrazoDias,
+    [property: JsonPropertyName("frete_codigo_rastreio")] string? FreteCodigoRastreio);
 
 public sealed record PedidoAcompanhamentoDto(
     int Id,
@@ -5963,9 +6032,9 @@ public static class StoreData
 
     public static readonly List<PedidoLojaDto> Pedidos =
     [
-        new(1029, "NA-1029", 6490, "Processando", DateTime.UtcNow.AddHours(-2), "Aguardando pagamento", "pix", "ConfiguracaoPendente", null, 0, "Retirada / combinar entrega", "Nexum Altivon", 0, "Pedido reservado. Configure o gateway para cobrança real e confirmação automática.", 1, "QR-CODE-PIX-DEMO", null),
-        new(1028, "NA-1028", 4290, "Enviado", DateTime.UtcNow.AddHours(-5), "Pagamento aprovado", "cartao", "MercadoPago", "demo-1028", 29.9m, "Entrega padrão", "Correios / Melhor Envio", 7, "Pagamento confirmado. Pedido pronto para separação e logística.", 6, null, "https://pagamento.nexumaltivon.com/demo-1028"),
-        new(1027, "NA-1027", 7580, "Entregue", DateTime.UtcNow.AddDays(-1), "Pagamento aprovado", "boleto", "MercadoPago", "demo-1027", 49.9m, "Entrega expressa", "Transportadora parceira", 3, "Pagamento confirmado. Pedido pronto para separação e logística.", 1, null, "https://pagamento.nexumaltivon.com/demo-1027")
+        new(1029, "NA-1029", 6490, "Processando", DateTime.UtcNow.AddHours(-2), "Aguardando pagamento", "pix", "ConfiguracaoPendente", null, 0, "Retirada / combinar entrega", "Nexum Altivon", 0, null, "Pedido reservado. Configure o gateway para cobrança real e confirmação automática.", 1, "QR-CODE-PIX-DEMO", null),
+        new(1028, "NA-1028", 4290, "Enviado", DateTime.UtcNow.AddHours(-5), "Pagamento aprovado", "cartao", "MercadoPago", "demo-1028", 29.9m, "Entrega padrão", "Correios / Melhor Envio", 7, "BR-DEMO-1028", "Pagamento confirmado. Pedido pronto para separação e logística.", 6, null, "https://pagamento.nexumaltivon.com/demo-1028"),
+        new(1027, "NA-1027", 7580, "Entregue", DateTime.UtcNow.AddDays(-1), "Pagamento aprovado", "boleto", "MercadoPago", "demo-1027", 49.9m, "Entrega expressa", "Transportadora parceira", 3, "BR-DEMO-1027", "Pagamento confirmado. Pedido pronto para separação e logística.", 1, null, "https://pagamento.nexumaltivon.com/demo-1027")
     ];
 
     public static readonly List<LeadLojaDto> Leads =

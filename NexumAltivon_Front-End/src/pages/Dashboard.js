@@ -439,7 +439,7 @@ const siteConfigFieldMeta = [
   { key: 'home_partner_cards', label: 'Cards de parceria (JSON)', type: 'textarea', group: 'SiteHome', description: 'Array JSON com title, text, cta, href e icon.' },
   { key: 'home_hero_slides', label: 'Slides do banner (JSON)', type: 'textarea', group: 'SiteHome', description: 'Array JSON com id, badge, title, highlight, description e image.' },
 ];
-const pedidoStatusOptions = ['Pendente', 'Processando', 'Enviado', 'Entregue', 'Cancelado'];
+const pedidoStatusOptions = ['Pendente', 'Pago', 'Em Separacao', 'Enviado', 'Entregue', 'Cancelado', 'Devolvido', 'Reembolsado'];
 const leadStatusOptions = ['Novo', 'Contato', 'Qualificado', 'Negociacao', 'Ganho', 'Perdido'];
 const allowDemoData = false;
 const emptyResumo = {
@@ -1144,6 +1144,26 @@ export default function Dashboard() {
     setPedidos((current) => current.map((pedido) => (pedido.id === id ? response.data : pedido)));
   };
 
+  const updatePedidoLogistica = async (pedido) => {
+    const transportadora = window.prompt('Transportadora ou forma de entrega:', pedido.frete_transportadora || 'Nexum Altivon');
+    if (transportadora === null) return;
+
+    const rastreio = window.prompt('Codigo de rastreio, se houver:', pedido.frete_codigo_rastreio || '');
+    if (rastreio === null) return;
+
+    const prazo = window.prompt('Prazo em dias:', String(pedido.frete_prazo_dias || 3));
+    if (prazo === null) return;
+
+    const response = await pedidoAPI.updateLogistica(pedido.id, {
+      frete_metodo: pedido.frete_metodo || 'manual',
+      frete_transportadora: transportadora,
+      frete_codigo_rastreio: rastreio,
+      frete_prazo_dias: Number(prazo) || pedido.frete_prazo_dias || 3,
+    });
+
+    setPedidos((current) => current.map((item) => (item.id === pedido.id ? response.data : item)));
+  };
+
   const filteredPedidos = useMemo(() => {
     const term = query.trim().toLowerCase();
     if (!term) return pedidos;
@@ -1535,7 +1555,7 @@ export default function Dashboard() {
                         <ChevronRight size={16} />
                       </button>
                     </div>
-                    <OrdersTable pedidos={pedidos.slice(0, 5)} onStatusChange={updatePedidoStatus} />
+                    <OrdersTable pedidos={pedidos.slice(0, 5)} onStatusChange={updatePedidoStatus} onLogisticaChange={updatePedidoLogistica} />
                   </section>
                 </div>
               )}
@@ -1791,7 +1811,7 @@ export default function Dashboard() {
                     <h2 className="text-xl font-black text-slate-950">Gestão de pedidos</h2>
                     <p className="mt-1 text-sm text-slate-500">{filteredPedidos.length} pedidos encontrados.</p>
                   </div>
-                  <OrdersTable pedidos={filteredPedidos} onStatusChange={updatePedidoStatus} />
+                  <OrdersTable pedidos={filteredPedidos} onStatusChange={updatePedidoStatus} onLogisticaChange={updatePedidoLogistica} />
                 </section>
               )}
 
@@ -3081,7 +3101,7 @@ function CompactList({ title, items, fields, onEdit }) {
   );
 }
 
-function OrdersTable({ pedidos, onStatusChange }) {
+function OrdersTable({ pedidos, onStatusChange, onLogisticaChange }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[920px]">
@@ -3116,6 +3136,9 @@ function OrdersTable({ pedidos, onStatusChange }) {
                   <p className="mt-1 text-xs font-semibold text-slate-400">
                     {pedido.frete_metodo || 'Frete a combinar'} · {pedido.frete_transportadora || 'Nexum Altivon'}
                   </p>
+                  <p className="mt-1 text-xs font-black text-slate-500">
+                    Rastreio: {pedido.frete_codigo_rastreio || 'pendente'}
+                  </p>
                 </td>
                 <td className="px-6 py-4 text-sm font-semibold text-slate-500">{formatDate(pedido.created_at)}</td>
                 <td className="px-6 py-4">
@@ -3126,6 +3149,13 @@ function OrdersTable({ pedidos, onStatusChange }) {
                   >
                     {pedidoStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
                   </select>
+                  <button
+                    type="button"
+                    onClick={() => onLogisticaChange?.(pedido)}
+                    className="mt-2 h-9 rounded-lg border border-slate-200 bg-slate-950 px-3 text-xs font-black text-white transition hover:bg-[#C9A227] hover:text-black"
+                  >
+                    Logistica
+                  </button>
                 </td>
               </tr>
             ))
