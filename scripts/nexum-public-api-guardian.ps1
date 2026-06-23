@@ -52,7 +52,10 @@ function Set-Utf8NoBomText {
 function Test-HttpHealth {
   param([string]$Url)
   try {
-    $response = Invoke-WebRequest -UseBasicParsing -Uri "$Url/health" -TimeoutSec 12
+    if (-not $Url -or $Url -eq "https://api.trycloudflare.com") {
+      return $false
+    }
+    $response = Invoke-WebRequest -UseBasicParsing -Uri "$Url/health/db" -TimeoutSec 20
     return ($response.StatusCode -eq 200)
   } catch {
     return $false
@@ -93,6 +96,9 @@ function Start-QuickTunnel {
   do {
     Start-Sleep -Seconds 2
     $text = Get-Content $TunnelErrLog -Raw -ErrorAction SilentlyContinue
+    if (-not $text) {
+      $text = ""
+    }
     $matches = [regex]::Matches($text, "https://[a-z0-9-]+\.trycloudflare\.com")
     $validMatch = $matches | Where-Object { $_.Value -ne "https://api.trycloudflare.com" } | Select-Object -Last 1
     if ($validMatch) {
@@ -104,7 +110,7 @@ function Start-QuickTunnel {
     throw "Nao foi possivel obter URL publica do Cloudflare Tunnel."
   }
 
-  $healthDeadline = (Get-Date).AddSeconds(45)
+  $healthDeadline = (Get-Date).AddSeconds(120)
   while (-not (Test-HttpHealth $url) -and (Get-Date) -lt $healthDeadline -and -not $process.HasExited) {
     Start-Sleep -Seconds 3
   }

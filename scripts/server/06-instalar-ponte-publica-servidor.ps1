@@ -84,7 +84,7 @@ Register-ScheduledTask `
 Start-ScheduledTask -TaskName $TaskName
 
 $runtimePath = Join-Path $SourceRoot "api-runtime.json"
-$deadline = (Get-Date).AddSeconds([Math]::Max(60, $CheckSeconds + 30))
+$deadline = (Get-Date).AddSeconds([Math]::Max(180, $CheckSeconds + 135))
 $publicUrl = $null
 do {
   Start-Sleep -Seconds 3
@@ -92,7 +92,7 @@ do {
     $runtime = Get-Content -LiteralPath $runtimePath -Raw -ErrorAction Stop | ConvertFrom-Json
     $url = [string]$runtime.apiUrl
     if ($url -and $url -ne "https://api.trycloudflare.com") {
-      $health = Invoke-WebRequest -UseBasicParsing -Uri "$url/health" -TimeoutSec 10 -ErrorAction Stop
+      $health = Invoke-WebRequest -UseBasicParsing -Uri "$url/health/db" -TimeoutSec 20 -ErrorAction Stop
       if ($health.StatusCode -eq 200) {
         Write-Host "URL publica saudavel: $url"
         $publicUrl = $url
@@ -105,7 +105,7 @@ do {
 } while ((Get-Date) -lt $deadline)
 
 if (-not $publicUrl) {
-  throw "Ponte publica nao ficou saudavel dentro do tempo limite. Execute novamente em alguns minutos se o Cloudflare estiver demorando para entregar novo tunel."
+  throw "Ponte publica nao ficou saudavel. A API local esta OK, mas o Cloudflare nao entregou acesso externo valido neste momento."
 }
 
 Write-Host "Ponte publica Nexum instalada no servidor principal."
