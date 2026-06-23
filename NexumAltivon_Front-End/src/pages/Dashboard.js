@@ -440,6 +440,14 @@ const siteConfigFieldMeta = [
   { key: 'home_hero_slides', label: 'Slides do banner (JSON)', type: 'textarea', group: 'SiteHome', description: 'Array JSON com id, badge, title, highlight, description e image.' },
 ];
 const pedidoStatusOptions = ['Pendente', 'Pago', 'Em Separacao', 'Enviado', 'Entregue', 'Cancelado', 'Devolvido', 'Reembolsado'];
+const pedidoFilaOptions = [
+  { id: 'todos', label: 'Todos' },
+  { id: 'pendente', label: 'Pendentes' },
+  { id: 'pago', label: 'Pagos' },
+  { id: 'separacao', label: 'Separacao' },
+  { id: 'enviado', label: 'Enviados' },
+  { id: 'sem-rastreio', label: 'Sem rastreio' },
+];
 const leadStatusOptions = ['Novo', 'Contato', 'Qualificado', 'Negociacao', 'Ganho', 'Perdido'];
 const allowDemoData = false;
 const emptyResumo = {
@@ -712,6 +720,7 @@ export default function Dashboard() {
   const [activeCadastroTab, setActiveCadastroTab] = useState(routeState.activeCadastroTab);
   const [activeIntegration, setActiveIntegration] = useState(routeState.activeIntegration);
   const [query, setQuery] = useState('');
+  const [pedidoFila, setPedidoFila] = useState('todos');
   const [produtoForm, setProdutoForm] = useState(emptyProduto);
   const [categoriaForm, setCategoriaForm] = useState(emptyCategoria);
   const [clienteForm, setClienteForm] = useState(emptyCliente);
@@ -1164,13 +1173,28 @@ export default function Dashboard() {
     setPedidos((current) => current.map((item) => (item.id === pedido.id ? response.data : item)));
   };
 
+  const pedidosPorFila = useMemo(() => {
+    if (pedidoFila === 'todos') return pedidos;
+
+    return pedidos.filter((pedido) => {
+      const status = String(pedido.status || '').toLowerCase();
+      if (pedidoFila === 'sem-rastreio') {
+        return status.includes('enviado') && !pedido.frete_codigo_rastreio;
+      }
+      if (pedidoFila === 'separacao') {
+        return status.includes('separ');
+      }
+      return status.includes(pedidoFila);
+    });
+  }, [pedidoFila, pedidos]);
+
   const filteredPedidos = useMemo(() => {
     const term = query.trim().toLowerCase();
-    if (!term) return pedidos;
-    return pedidos.filter((pedido) =>
-      [pedido.numero_pedido, pedido.status, pedido.total].some((value) => String(value || '').toLowerCase().includes(term))
+    if (!term) return pedidosPorFila;
+    return pedidosPorFila.filter((pedido) =>
+      [pedido.numero_pedido, pedido.status, pedido.total, pedido.frete_codigo_rastreio, pedido.frete_transportadora].some((value) => String(value || '').toLowerCase().includes(term))
     );
-  }, [pedidos, query]);
+  }, [pedidosPorFila, query]);
 
   const filteredLeads = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -1810,6 +1834,22 @@ export default function Dashboard() {
                   <div className="border-b border-slate-200 px-6 py-5">
                     <h2 className="text-xl font-black text-slate-950">Gestão de pedidos</h2>
                     <p className="mt-1 text-sm text-slate-500">{filteredPedidos.length} pedidos encontrados.</p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {pedidoFilaOptions.map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => setPedidoFila(option.id)}
+                          className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${
+                            pedidoFila === option.id
+                              ? 'border-slate-950 bg-slate-950 text-white'
+                              : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-[#C9A227] hover:text-[#8E6A12]'
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   <OrdersTable pedidos={filteredPedidos} onStatusChange={updatePedidoStatus} onLogisticaChange={updatePedidoLogistica} />
                 </section>
