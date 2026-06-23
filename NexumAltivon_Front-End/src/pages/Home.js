@@ -295,7 +295,7 @@ export default function Home() {
 
         if (active) {
           const publicaveis = Array.isArray(produtos)
-            ? produtos.filter(isProdutoPublicavel).slice(0, 12)
+            ? produtos.filter(isProdutoPublicavel).slice(0, 5)
             : [];
           setFeaturedProducts(publicaveis);
         }
@@ -430,7 +430,7 @@ export default function Home() {
                 <img src={siteConfig.siteLogo} alt={siteConfig?.siteName || 'Logo Nexum Altivon'} className="h-8 w-8 rounded-full object-cover" />
                 <div className="text-left">
                   <p className="text-[11px] font-black uppercase tracking-[0.22em] text-[#E8D5A3]">{siteConfig?.siteName || 'Grupo Nexum Altivon'}</p>
-                  <p className="text-xs font-semibold text-zinc-300">Home gerenciada pelo banco</p>
+                  <p className="text-xs font-semibold text-zinc-300">Seis marcas em expansao</p>
                 </div>
               </div>
             )}
