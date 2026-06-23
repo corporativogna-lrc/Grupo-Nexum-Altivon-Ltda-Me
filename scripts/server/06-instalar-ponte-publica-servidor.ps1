@@ -44,6 +44,10 @@ if (-not (Test-Path $CloudflaredPath)) {
 $TaskName = "NexumAltivonPontePublica"
 $PowerShellPath = "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"
 $Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$GuardianScript`" -LocalUrl $LocalUrl -CheckSeconds $CheckSeconds -Branch $Branch -PushUrl `"$PushUrl`""
+$GuardianRunDir = Join-Path $SourceRoot ".nexum-runtime\public-api-guardian"
+$GuardianPidPath = Join-Path $GuardianRunDir "guardian.pid"
+$TunnelPidPath = Join-Path $GuardianRunDir "cloudflared.pid"
+$TunnelUrlPath = Join-Path $GuardianRunDir "api-url.txt"
 
 $Action = New-ScheduledTaskAction -Execute $PowerShellPath -Argument $Arguments -WorkingDirectory $SourceRoot
 $TriggerStartup = New-ScheduledTaskTrigger -AtStartup
@@ -59,6 +63,15 @@ $Settings = New-ScheduledTaskSettingsSet `
   -StartWhenAvailable
 
 Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+foreach ($pidFile in @($GuardianPidPath, $TunnelPidPath)) {
+  if (Test-Path $pidFile) {
+    $oldPid = Get-Content -LiteralPath $pidFile -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($oldPid) {
+      Stop-Process -Id ([int]$oldPid) -Force -ErrorAction SilentlyContinue
+    }
+  }
+}
+Remove-Item $GuardianPidPath, $TunnelPidPath, $TunnelUrlPath -Force -ErrorAction SilentlyContinue
 
 Register-ScheduledTask `
   -TaskName $TaskName `
