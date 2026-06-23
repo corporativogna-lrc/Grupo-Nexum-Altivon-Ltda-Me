@@ -121,6 +121,16 @@ if (Test-Path $ConfigTarget) {
   } else {
     $configText = $configText.TrimEnd() + [Environment]::NewLine + $desiredUrlLine + [Environment]::NewLine
   }
+
+  if ($configText -notmatch '(?m)^\s*\$env:ConnectionStrings__GenesisConnection\s*=') {
+    $defaultMatch = [regex]::Match($configText, '(?m)^\s*\$env:ConnectionStrings__DefaultConnection\s*=\s*"([^"]+)"')
+    if ($defaultMatch.Success) {
+      $genesisConnection = $defaultMatch.Groups[1].Value -replace '(?i)database\s*=\s*[^;]+', 'database=genesis_bd'
+      $configText = $configText.TrimEnd() + [Environment]::NewLine +
+        "`$env:ConnectionStrings__GenesisConnection = `"$genesisConnection`"" + [Environment]::NewLine
+    }
+  }
+
   Set-Content -LiteralPath $ConfigTarget -Value $configText -Encoding UTF8
   Write-Host "Configuração preservada e ajustada para operar em 5012: $ConfigTarget"
 }
