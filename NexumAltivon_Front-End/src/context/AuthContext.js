@@ -6,8 +6,11 @@ import api, { API_BASE_URL, getRuntimeApiBaseUrl } from '../services/api';
 const AuthContext = createContext();
 const CLIENT_ROLE = 'Cliente';
 
-const normalizeRole = (userData) => userData?.role || userData?.perfil || '';
-const isAdminRole = (userData) => ADMIN_ROLES.includes(normalizeRole(userData));
+const normalizeRole = (userData) => String(userData?.role || userData?.perfil || '').trim();
+const isAdminRole = (userData) => {
+  const role = normalizeRole(userData).toLowerCase();
+  return ADMIN_ROLES.some((adminRole) => adminRole.toLowerCase() === role);
+};
 const getPostLoginDestination = (userData) => (isAdminRole(userData) ? '/dashboard' : '/area-cliente');
 
 export function AuthProvider({ children }) {
@@ -20,8 +23,15 @@ export function AuthProvider({ children }) {
     const userData = localStorage.getItem(STORAGE_KEYS.USER);
 
     if (token && userData) {
-      setUser(JSON.parse(userData));
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      try {
+        setUser(JSON.parse(userData));
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      } catch {
+        localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+        localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
+        localStorage.removeItem(STORAGE_KEYS.USER);
+        delete axios.defaults.headers.common['Authorization'];
+      }
     }
     setLoading(false);
   }, []);
@@ -43,7 +53,9 @@ export function AuthProvider({ children }) {
       };
       const normalizedUser = {
         ...userData,
-        role: userData.role || userData.perfil || payload.perfil || payload.role || CLIENT_ROLE,
+        role: normalizeRole({
+          role: userData.role || userData.perfil || payload.perfil || payload.role || CLIENT_ROLE,
+        }),
       };
 
       if (!accessToken) {
@@ -95,7 +107,7 @@ export function AuthProvider({ children }) {
     logout,
     isAuthenticated: !!user,
     isAdmin: user ? isAdminRole(user) : false,
-    isCliente: user ? normalizeRole(user) === CLIENT_ROLE : false,
+    isCliente: user ? normalizeRole(user).toLowerCase() === CLIENT_ROLE.toLowerCase() : false,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

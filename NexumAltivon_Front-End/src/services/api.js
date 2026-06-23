@@ -229,6 +229,10 @@ api.interceptors.response.use(
 
       try {
         const refreshToken = localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
+        if (!refreshToken) {
+          return Promise.reject(error);
+        }
+
         const runtimeApiBaseUrl = await getRuntimeApiBaseUrl();
         const response = await axios.post(`${runtimeApiBaseUrl}/api/auth/refresh`, {
           refresh_token: refreshToken,
@@ -240,7 +244,9 @@ api.interceptors.response.use(
 
         return api(originalRequest);
       } catch (refreshError) {
-        localStorage.clear();
+        localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+        localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
+        localStorage.removeItem(STORAGE_KEYS.USER);
         window.location.href = '/login';
         return Promise.reject(refreshError);
       }
