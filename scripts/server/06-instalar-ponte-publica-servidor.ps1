@@ -30,7 +30,7 @@ $CloudflaredPathCandidates = @(
   "C:\Program Files (x86)\cloudflared\cloudflared.exe"
 )
 $CloudflaredPath = $CloudflaredPathCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-if (-not (Test-Path $CloudflaredPath)) {
+if (-not $CloudflaredPath) {
   $CloudflaredPath = "C:\Cloudflared\cloudflared.exe"
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $CloudflaredPath) | Out-Null
   Write-Host "cloudflared nao encontrado. Baixando para: $CloudflaredPath"
