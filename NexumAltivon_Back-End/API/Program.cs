@@ -2344,7 +2344,7 @@ app.MapPost("/api/webhooks/mercadopago", async (
 
     var pagamento = await db.Pagamentos
         .Include(item => item.Pedido)
-        .ThenInclude(pedido => pedido.Cliente)
+        .ThenInclude(pedido => pedido!.Cliente)
         .FirstOrDefaultAsync(item => item.GatewayTransacaoId == paymentId, ct);
 
     if (pagamento is null)
@@ -2887,7 +2887,7 @@ app.MapPut("/api/fiscal/pedidos/{id}/status", [Authorize(Policy = "Gerente")] as
 {
     var fiscal = await db.Fiscais
         .Include(item => item.Pedido)
-        .ThenInclude(pedido => pedido.Cliente)
+        .ThenInclude(pedido => pedido!.Cliente)
         .FirstOrDefaultAsync(item => item.Id == id, ct);
 
     if (fiscal is null)
@@ -3942,7 +3942,7 @@ static async Task<IntegracaoDiagnosticoDto> TestShopifyAsync(
     try
     {
         var client = httpClientFactory.CreateClient();
-        client.BaseAddress = new Uri($"https://{storeDomain}/admin/api/{apiVersion.Trim('/')}/");
+        client.BaseAddress = new Uri($"https://{storeDomain}/admin/api/{apiVersion!.Trim('/')}/");
         using var request = new HttpRequestMessage(HttpMethod.Get, "shop.json");
         request.Headers.TryAddWithoutValidation("X-Shopify-Access-Token", accessToken);
         using var response = await client.SendAsync(request, ct);
