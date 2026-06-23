@@ -137,7 +137,38 @@ Register-ScheduledTask `
   -Force | Out-Null
 
 Start-ScheduledTask -TaskName $TaskName
-Start-Sleep -Seconds 5
+Start-Sleep -Seconds 8
+
+$healthy = $false
+for ($attempt = 1; $attempt -le 6; $attempt++) {
+  try {
+    $response = Invoke-WebRequest -UseBasicParsing -Uri "$Url/health" -TimeoutSec 8
+    if ($response.StatusCode -eq 200) {
+      $healthy = $true
+      break
+    }
+  } catch {
+    Start-Sleep -Seconds 5
+  }
+}
+
+if (-not $healthy) {
+  $guardianLog = Join-Path $BaseDirectory "logs\api-guardian.log"
+  $errorLog = Join-Path $BaseDirectory "logs\api.err.log"
+  Write-Host "API instalada, mas ainda nao respondeu em $Url."
+  if (Test-Path $guardianLog) {
+    Write-Host "Ultimas linhas do guardiao:"
+    Get-Content -LiteralPath $guardianLog -Tail 12
+  }
+  if (Test-Path $errorLog) {
+    $errorLines = Get-Content -LiteralPath $errorLog -Tail 12
+    if ($errorLines) {
+      Write-Host "Ultimas linhas de erro:"
+      $errorLines
+    }
+  }
+  throw "API 5012 nao iniciou corretamente. Veja o erro acima."
+}
 
 Write-Host "API Nexum Altivon instalada para operar 24h."
 Write-Host "Tarefa: $TaskName"
