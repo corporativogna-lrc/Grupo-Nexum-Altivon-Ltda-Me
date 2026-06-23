@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
-import { AlertCircle, BadgeDollarSign, CheckCircle2, FileText, LifeBuoy, LoaderCircle, Receipt, ShoppingBag, Star, UserCircle2 } from 'lucide-react';
+import { AlertCircle, BadgeDollarSign, CheckCircle2, FileText, LifeBuoy, LoaderCircle, Receipt, ShoppingBag, Star, Truck, UserCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { clienteAPI } from '../services/api';
 
@@ -20,6 +20,12 @@ const formatDate = (value) =>
 
 const yaraMailTo =
   'mailto:corporativo.gna@gmail.com?subject=Yara%20-%20Atendimento%20ao%20cliente&body=Ol%C3%A1%20Yara%2C%20preciso%20de%20ajuda%20com%20produtos%2C%20empresa%20ou%20d%C3%BAvidas%20do%20meu%20pedido.';
+
+const getPedidoTotal = (pedido) => pedido.valorTotal ?? pedido.total ?? 0;
+const getPedidoData = (pedido) => pedido.createdAt || pedido.dataCriacao || pedido.dataPedido;
+const getPedidoPagamento = (pedido) => pedido.meioPagamento || pedido.pagamento || pedido.statusPagamento || '-';
+const getPedidoRastreio = (pedido) => pedido.codigoRastreio || pedido.freteCodigoRastreio || pedido.rastreio;
+const getPedidoTransportadora = (pedido) => pedido.transportadora || pedido.freteTransportadora || 'Nexum Altivon';
 
 export default function AreaCliente() {
   const { isAuthenticated, user, isAdmin } = useAuth();
@@ -55,7 +61,7 @@ export default function AreaCliente() {
 
   const stats = useMemo(() => {
     const pedidos = portal?.pedidos || [];
-    const totalCompras = pedidos.reduce((sum, item) => sum + Number(item.valorTotal || 0), 0);
+    const totalCompras = pedidos.reduce((sum, item) => sum + Number(getPedidoTotal(item)), 0);
     const pontos = Math.round(totalCompras / 10);
     const score = pedidos.length >= 5 ? 'Premium' : pedidos.length >= 2 ? 'Em evolução' : 'Inicial';
     const limiteFuturo = totalCompras >= 2000 ? 'Elegível para análise futura' : 'Em observação';
@@ -165,23 +171,38 @@ export default function AreaCliente() {
                         <th className="px-4 py-3 text-left font-black uppercase tracking-[0.14em]">Pedido</th>
                         <th className="px-4 py-3 text-left font-black uppercase tracking-[0.14em]">Status</th>
                         <th className="px-4 py-3 text-left font-black uppercase tracking-[0.14em]">Pagamento</th>
+                        <th className="px-4 py-3 text-left font-black uppercase tracking-[0.14em]">Entrega</th>
                         <th className="px-4 py-3 text-left font-black uppercase tracking-[0.14em]">Total</th>
                         <th className="px-4 py-3 text-left font-black uppercase tracking-[0.14em]">Data</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
-                      {(portal?.pedidos || []).map((pedido) => (
-                        <tr key={pedido.id} className="bg-[#111111] text-zinc-200">
-                          <td className="px-4 py-4 font-bold">{pedido.numeroPedido || `NX-${pedido.id}`}</td>
-                          <td className="px-4 py-4">{pedido.status || '-'}</td>
-                          <td className="px-4 py-4">{pedido.meioPagamento || '-'}</td>
-                          <td className="px-4 py-4">{formatCurrency(pedido.valorTotal)}</td>
-                          <td className="px-4 py-4">{formatDate(pedido.createdAt || pedido.dataCriacao)}</td>
-                        </tr>
-                      ))}
+                      {(portal?.pedidos || []).map((pedido) => {
+                        const rastreio = getPedidoRastreio(pedido);
+                        return (
+                          <tr key={pedido.id} className="bg-[#111111] text-zinc-200">
+                            <td className="px-4 py-4 font-bold">{pedido.numeroPedido || `NX-${pedido.id}`}</td>
+                            <td className="px-4 py-4">{pedido.status || '-'}</td>
+                            <td className="px-4 py-4">{getPedidoPagamento(pedido)}</td>
+                            <td className="px-4 py-4">
+                              <div className="inline-flex items-start gap-2">
+                                <Truck className="mt-0.5 shrink-0 text-[#C9A227]" size={16} />
+                                <div>
+                                  <p className="font-bold text-zinc-100">{getPedidoTransportadora(pedido)}</p>
+                                  <p className="mt-1 text-xs text-zinc-400">
+                                    {rastreio ? `Rastreio: ${rastreio}` : 'Rastreio em preparação'}
+                                  </p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-4">{formatCurrency(getPedidoTotal(pedido))}</td>
+                            <td className="px-4 py-4">{formatDate(getPedidoData(pedido))}</td>
+                          </tr>
+                        );
+                      })}
                       {(portal?.pedidos || []).length === 0 && (
                         <tr>
-                          <td colSpan="5" className="px-4 py-8 text-center text-zinc-500">
+                          <td colSpan="6" className="px-4 py-8 text-center text-zinc-500">
                             Nenhum pedido registrado ainda.
                           </td>
                         </tr>
