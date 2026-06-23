@@ -465,6 +465,26 @@ app.MapPost("/api/auth/login", async (
 .AllowAnonymous()
 .WithName("Login");
 
+app.MapGet("/api/auth/me", (ClaimsPrincipal principal) =>
+{
+    var idRaw = principal.FindFirstValue(JwtRegisteredClaimNames.Sub)
+        ?? principal.FindFirstValue(ClaimTypes.NameIdentifier)
+        ?? "0";
+    _ = int.TryParse(idRaw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id);
+
+    var nome = principal.FindFirstValue(ClaimTypes.Name) ?? "Administrador Nexum";
+    var email = principal.FindFirstValue(ClaimTypes.Email)
+        ?? principal.FindFirstValue(JwtRegisteredClaimNames.Email)
+        ?? string.Empty;
+    var perfil = principal.FindFirstValue("perfil")
+        ?? principal.FindFirstValue(ClaimTypes.Role)
+        ?? "Gerente";
+
+    return Results.Ok(ApiResponse<UsuarioDto>.Ok(new UsuarioDto(id, nome, email, perfil)));
+})
+.RequireAuthorization()
+.WithName("AuthMe");
+
 app.MapGet("/api/admin/dashboard/completo", [Authorize(Policy = "Gerente")] () =>
 {
     var dashboard = DashboardCompletoDto.CreateSample();

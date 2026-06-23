@@ -707,8 +707,12 @@
       btn.disabled = true; btn.textContent = 'Entrando...';
       try {
         const data = await apiPost('/auth/login', { email: document.getElementById('nexum-email').value, senha: document.getElementById('nexum-senha').value });
-        localStorage.setItem(STORAGE_TOKEN, data.access_token);
-        localStorage.setItem(STORAGE_USER, JSON.stringify(data.user));
+        const payload = data?.dados || data?.Dados || data?.data || data;
+        const token = payload?.access_token || payload?.token || payload?.Token;
+        const user = payload?.user || payload?.usuario || payload?.Usuario || {};
+        if (!token) throw new Error('Token administrativo ausente.');
+        localStorage.setItem(STORAGE_TOKEN, token);
+        localStorage.setItem(STORAGE_USER, JSON.stringify(user));
         overlay.remove();
         initDashboard();
       } catch (err) {
