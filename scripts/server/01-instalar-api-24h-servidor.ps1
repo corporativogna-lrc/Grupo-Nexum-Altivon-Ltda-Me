@@ -72,7 +72,7 @@ if ($DotnetPath) {
   }
 } elseif ((Test-Path $SourcePublishedApiExecutable) -or (Test-Path $SourcePublishedApiDll)) {
   Write-Host "Dotnet nao encontrado no servidor. Copiando API ja publicada para pasta local: $ApiDirectory"
-  Copy-Item -LiteralPath (Join-Path $SourcePublishedApiDirectory "*") -Destination $ApiDirectory -Recurse -Force
+  Get-ChildItem -LiteralPath $SourcePublishedApiDirectory -Force | Copy-Item -Destination $ApiDirectory -Recurse -Force
 } elseif ((Test-Path $ApiExecutable) -or (Test-Path $ApiDll)) {
   Write-Host "Dotnet nao encontrado no servidor. Usando API local ja publicada em: $ApiDirectory"
 } else {
