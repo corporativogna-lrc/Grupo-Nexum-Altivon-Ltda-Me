@@ -24,7 +24,8 @@ import {
   UserPlus,
   Watch,
 } from 'lucide-react';
-import { clienteAPI, siteAPI } from '../services/api';
+import ProductCard from '../components/ProductCard';
+import { clienteAPI, produtoAPI, siteAPI, unwrapApiData } from '../services/api';
 
 const heroSlides = [
   {
@@ -177,6 +178,22 @@ const partnerIconMap = {
 const normalizeText = (value) => String(value || '').trim().toLowerCase();
 const normalizeDocument = (value) => String(value || '').replace(/\D/g, '');
 
+const isProdutoPublicavel = (produto) =>
+  Boolean(
+    produto &&
+      produto.ativo !== false &&
+      produto.nome &&
+      produto.sku &&
+      (produto.slug || produto.id) &&
+      (produto.descricao_curta || produto.descricaoCurta || produto.descricao_longa || produto.descricaoLonga || produto.descricao) &&
+      (produto.imagem_url || produto.imagemUrl || produto.imagem || produto.imagemPrincipal || produto.imagem_principal) &&
+      Number(produto.preco) > 0 &&
+      Number(produto.peso) > 0 &&
+      Number(produto.altura) > 0 &&
+      Number(produto.largura) > 0 &&
+      Number(produto.comprimento) > 0,
+  );
+
 const pickConfigValue = (config, keys, fallback = '') => {
   for (const key of keys) {
     const value = config?.[key];
@@ -214,6 +231,8 @@ const mapPublicSiteConfig = (config) => {
 export default function Home() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [siteConfig, setSiteConfig] = useState(null);
+  const [featuredProducts, setFeaturedProducts] = useState([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
   const [cadastroForm, setCadastroForm] = useState(emptyCadastro);
   const [cadastroStatus, setCadastroStatus] = useState({ tone: '', message: '' });
   const [loadingCadastro, setLoadingCadastro] = useState(false);
@@ -253,6 +272,45 @@ export default function Home() {
         }
       })
       .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadFeaturedProducts = async () => {
+      setLoadingProducts(true);
+
+      try {
+        const destaquesRes = await produtoAPI.getDestaques();
+        let produtos = unwrapApiData(destaquesRes.data);
+
+        if (!Array.isArray(produtos) || produtos.length === 0) {
+          const todosRes = await produtoAPI.getAll({});
+          produtos = unwrapApiData(todosRes.data);
+        }
+
+        if (active) {
+          const publicaveis = Array.isArray(produtos)
+            ? produtos.filter(isProdutoPublicavel).slice(0, 12)
+            : [];
+          setFeaturedProducts(publicaveis);
+        }
+      } catch {
+        if (active) {
+          setFeaturedProducts([]);
+        }
+      } finally {
+        if (active) {
+          setLoadingProducts(false);
+        }
+      }
+    };
+
+    loadFeaturedProducts();
 
     return () => {
       active = false;
@@ -451,6 +509,57 @@ export default function Home() {
           <div className="mx-auto mt-8 inline-flex rounded-full border border-[#C9A227]/35 bg-[#C9A227]/10 px-6 py-3 text-sm font-black uppercase tracking-[0.18em] text-[#E8D5A3]">
             {introBadge}
           </div>
+        </div>
+      </section>
+
+      <section id="produtos-destaque" className="relative overflow-hidden border-y border-[#2A2A2A] bg-[#080808] px-4 py-20">
+        <div className="absolute -left-24 top-16 h-72 w-72 rounded-full bg-[#C9A227]/10 blur-3xl" />
+        <div className="absolute -right-28 bottom-0 h-80 w-80 rounded-full bg-emerald-500/5 blur-3xl" />
+        <div className="relative mx-auto max-w-7xl sm:px-6 lg:px-8">
+          <div className="mb-10 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-sm font-black uppercase tracking-[0.25em] text-[#E8D5A3]">Vitrine em operação</p>
+              <h2 className="mt-4 font-serif text-4xl font-bold leading-tight text-[#C9A227]">Produtos disponíveis para compra</h2>
+              <p className="mt-4 max-w-2xl text-zinc-400">
+                Itens carregados diretamente da API operacional, com estoque, preço e checkout conectados ao fluxo interno de vendas.
+              </p>
+            </div>
+            <Link
+              to="/produtos"
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-[#C9A227]/40 px-6 py-3 text-sm font-black uppercase tracking-wide text-[#E8D5A3] transition hover:border-[#E8D5A3] hover:text-white"
+            >
+              Ver catálogo completo
+              <ArrowRight size={17} />
+            </Link>
+          </div>
+
+          {loadingProducts && (
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+              {[1, 2, 3, 4].map((item) => (
+                <div key={item} className="h-[430px] animate-pulse rounded-2xl border border-[#2A2A2A] bg-[#111111]" />
+              ))}
+            </div>
+          )}
+
+          {!loadingProducts && featuredProducts.length > 0 && (
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-testid="home-featured-products">
+              {featuredProducts.map((produto) => (
+                <ProductCard key={produto.id} product={produto} />
+              ))}
+            </div>
+          )}
+
+          {!loadingProducts && featuredProducts.length === 0 && (
+            <div className="rounded-[28px] border border-[#C9A227]/25 bg-[#111111] p-8 text-center shadow-2xl shadow-black/30">
+              <p className="text-xl font-black text-white">Produtos temporariamente indisponíveis na Home</p>
+              <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-zinc-400">
+                A vitrine está preparada para exibir os produtos assim que a API responder. Use o catálogo completo como rota de consulta enquanto isso.
+              </p>
+              <Link to="/produtos" className="mt-6 inline-flex rounded-full bg-[#C9A227] px-6 py-3 text-sm font-black text-black">
+                Abrir catálogo
+              </Link>
+            </div>
+          )}
         </div>
       </section>
 
