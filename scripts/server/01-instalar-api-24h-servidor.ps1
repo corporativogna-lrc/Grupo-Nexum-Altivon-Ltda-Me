@@ -102,16 +102,18 @@ if (-not ((Test-Path $ApiExecutable) -or (Test-Path $ApiDll))) {
 
 Copy-Item $RunnerSource $RunnerTarget -Force
 
-if (-not (Test-Path $ConfigTarget)) {
-  if (Test-Path $SourceConfig) {
-    Copy-Item $SourceConfig $ConfigTarget -Force
-    Write-Host "Configuracao real copiada para a pasta local do servidor: $ConfigTarget"
-  } else {
+if (Test-Path $SourceConfig) {
+  Copy-Item $SourceConfig $ConfigTarget -Force
+  Write-Host "Configuracao real sincronizada para a pasta local do servidor: $ConfigTarget"
+} else {
+  if (-not (Test-Path $ConfigTarget)) {
     Copy-Item $ConfigExampleSource $ConfigTarget
     Write-Host "Configuração criada em: $ConfigTarget"
     Write-Host "Preencha as senhas reais antes de liberar a operação externa."
   }
-} else {
+}
+
+if (Test-Path $ConfigTarget) {
   $configText = Get-Content -LiteralPath $ConfigTarget -Raw
   $desiredUrlLine = '$env:ASPNETCORE_URLS = "http://0.0.0.0:5012"'
   if ($configText -match '(?m)^\s*\$env:ASPNETCORE_URLS\s*=') {
