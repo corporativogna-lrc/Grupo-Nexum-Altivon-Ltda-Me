@@ -92,13 +92,24 @@ function Start-QuickTunnel {
   do {
     Start-Sleep -Seconds 2
     $text = Get-Content $TunnelErrLog -Raw -ErrorAction SilentlyContinue
-    if ($text -match "https://[a-z0-9-]+\.trycloudflare\.com") {
-      $url = $Matches[0]
+    $matches = [regex]::Matches($text, "https://[a-z0-9-]+\.trycloudflare\.com")
+    $validMatch = $matches | Where-Object { $_.Value -ne "https://api.trycloudflare.com" } | Select-Object -Last 1
+    if ($validMatch) {
+      $url = $validMatch.Value
     }
   } while (-not $url -and (Get-Date) -lt $deadline -and -not $process.HasExited)
 
   if (-not $url) {
     throw "Nao foi possivel obter URL publica do Cloudflare Tunnel."
+  }
+
+  $healthDeadline = (Get-Date).AddSeconds(45)
+  while (-not (Test-HttpHealth $url) -and (Get-Date) -lt $healthDeadline -and -not $process.HasExited) {
+    Start-Sleep -Seconds 3
+  }
+
+  if (-not (Test-HttpHealth $url)) {
+    throw "URL publica obtida, mas sem saude confirmada: $url"
   }
 
   Set-Content -Path $TunnelUrlPath -Value $url
@@ -122,6 +133,11 @@ function Get-CurrentRuntimeUrl {
 
 function Publish-RuntimeUrl {
   param([string]$Url)
+
+  if ($Url -eq "https://api.trycloudflare.com" -or -not (Test-HttpHealth $Url)) {
+    Write-GuardianLog "Runtime nao publicado: URL invalida ou sem saude confirmada ($Url)."
+    return
+  }
 
   $current = Get-CurrentRuntimeUrl
   if ($current -eq $Url) {

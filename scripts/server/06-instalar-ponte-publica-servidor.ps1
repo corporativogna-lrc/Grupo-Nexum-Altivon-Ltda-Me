@@ -70,6 +70,25 @@ Register-ScheduledTask `
 
 Start-ScheduledTask -TaskName $TaskName
 
+$runtimePath = Join-Path $SourceRoot "api-runtime.json"
+$deadline = (Get-Date).AddSeconds([Math]::Max(60, $CheckSeconds + 30))
+do {
+  Start-Sleep -Seconds 3
+  try {
+    $runtime = Get-Content -LiteralPath $runtimePath -Raw -ErrorAction Stop | ConvertFrom-Json
+    $url = [string]$runtime.apiUrl
+    if ($url -and $url -ne "https://api.trycloudflare.com") {
+      $health = Invoke-WebRequest -UseBasicParsing -Uri "$url/health" -TimeoutSec 10 -ErrorAction Stop
+      if ($health.StatusCode -eq 200) {
+        Write-Host "URL publica saudavel: $url"
+        break
+      }
+    }
+  } catch {
+    # A tarefa pode levar alguns segundos para abrir a nova ponte.
+  }
+} while ((Get-Date) -lt $deadline)
+
 Write-Host "Ponte publica Nexum instalada no servidor principal."
 Write-Host "Tarefa: $TaskName"
 Write-Host "Origem local: $LocalUrl"
