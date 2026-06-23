@@ -66,6 +66,7 @@ function Stop-ManagedTunnel {
       Stop-Process -Id ([int]$oldPid) -Force -ErrorAction SilentlyContinue
     }
   }
+  Remove-Item $TunnelUrlPath -Force -ErrorAction SilentlyContinue
 }
 
 function Start-QuickTunnel {
@@ -214,6 +215,9 @@ while ($true) {
     }
 
     $url = Get-Content $TunnelUrlPath -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($url -eq "https://api.trycloudflare.com") {
+      $url = $null
+    }
     if (-not $url -or -not (Test-HttpHealth -Url $url)) {
       $url = Start-QuickTunnel
     }

@@ -72,6 +72,7 @@ Start-ScheduledTask -TaskName $TaskName
 
 $runtimePath = Join-Path $SourceRoot "api-runtime.json"
 $deadline = (Get-Date).AddSeconds([Math]::Max(60, $CheckSeconds + 30))
+$publicUrl = $null
 do {
   Start-Sleep -Seconds 3
   try {
@@ -81,6 +82,7 @@ do {
       $health = Invoke-WebRequest -UseBasicParsing -Uri "$url/health" -TimeoutSec 10 -ErrorAction Stop
       if ($health.StatusCode -eq 200) {
         Write-Host "URL publica saudavel: $url"
+        $publicUrl = $url
         break
       }
     }
@@ -88,6 +90,10 @@ do {
     # A tarefa pode levar alguns segundos para abrir a nova ponte.
   }
 } while ((Get-Date) -lt $deadline)
+
+if (-not $publicUrl) {
+  throw "Ponte publica nao ficou saudavel dentro do tempo limite. Execute novamente em alguns minutos se o Cloudflare estiver demorando para entregar novo tunel."
+}
 
 Write-Host "Ponte publica Nexum instalada no servidor principal."
 Write-Host "Tarefa: $TaskName"
