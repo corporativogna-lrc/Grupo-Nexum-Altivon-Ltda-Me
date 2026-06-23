@@ -1,5 +1,8 @@
 {
-    "apiUrl":  "https://massachusetts-pumps-caring-mature.trycloudflare.com",
-    "updatedAt":  "2026-06-23T11:56:51.5766504Z",
-    "source":  "nexum-public-api-guardian"
+  "apiUrl": "https://api.nexumaltivon.com",
+  "apiUrls": [
+    "https://api.nexumaltivon.com"
+  ],
+  "updatedAt": "2026-06-23T13:30:00.0000000Z",
+  "source": "servidor-principal-guardian"
 }
