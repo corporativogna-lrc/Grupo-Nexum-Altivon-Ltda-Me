@@ -734,39 +734,12 @@ app.MapGet("/api/produtos", async (string? categoria_id, NexumDbContext db, Canc
     }
 
     var produtos = await query
+        .Include(produto => produto.Categoria)
         .OrderByDescending(produto => produto.Destaque)
         .ThenByDescending(produto => produto.UpdatedAt)
-        .Select(produto => new ProdutoLojaDto(
-            produto.Slug,
-            produto.Nome,
-            produto.DescricaoCurta ?? produto.DescricaoLonga ?? string.Empty,
-            produto.DescricaoCurta,
-            produto.Preco,
-            produto.PrecoPromocional,
-            produto.ImagemPrincipal ?? string.Empty,
-            produto.EstoqueAtual,
-            produto.EstoqueMinimo,
-            produto.EstoqueReservado,
-            produto.Destaque,
-            produto.Sku,
-            produto.Categoria != null ? produto.Categoria.Slug : "classicos",
-            4.8m,
-            produto.Custo,
-            produto.Peso,
-            produto.Altura,
-            produto.Largura,
-            produto.Comprimento,
-            produto.TipoProduto.ToString(),
-            produto.FornecedorId,
-            produto.Marca,
-            produto.Tags,
-            produto.SeoTitulo,
-            produto.SeoDescricao,
-            produto.SeoKeywords,
-            produto.ImagensGaleria))
         .ToListAsync(ct);
 
-    return Results.Ok(ApiResponse<List<ProdutoLojaDto>>.Ok(produtos));
+    return Results.Ok(ApiResponse<List<ProdutoLojaDto>>.Ok(produtos.Select(MapearProdutoLojaDto).ToList()));
 })
 .AllowAnonymous()
 .WithName("Produtos")
@@ -775,40 +748,13 @@ app.MapGet("/api/produtos", async (string? categoria_id, NexumDbContext db, Canc
 app.MapGet("/api/produtos/destaques", async (NexumDbContext db, CancellationToken ct) =>
 {
     var produtos = await FiltrarProdutosPublicaveis(db.Produtos.AsNoTracking())
+        .Include(produto => produto.Categoria)
         .Where(produto => produto.Destaque)
         .OrderByDescending(produto => produto.UpdatedAt)
         .Take(24)
-        .Select(produto => new ProdutoLojaDto(
-            produto.Slug,
-            produto.Nome,
-            produto.DescricaoCurta ?? produto.DescricaoLonga ?? string.Empty,
-            produto.DescricaoCurta,
-            produto.Preco,
-            produto.PrecoPromocional,
-            produto.ImagemPrincipal ?? string.Empty,
-            produto.EstoqueAtual,
-            produto.EstoqueMinimo,
-            produto.EstoqueReservado,
-            produto.Destaque,
-            produto.Sku,
-            produto.Categoria != null ? produto.Categoria.Slug : "classicos",
-            4.8m,
-            produto.Custo,
-            produto.Peso,
-            produto.Altura,
-            produto.Largura,
-            produto.Comprimento,
-            produto.TipoProduto.ToString(),
-            produto.FornecedorId,
-            produto.Marca,
-            produto.Tags,
-            produto.SeoTitulo,
-            produto.SeoDescricao,
-            produto.SeoKeywords,
-            produto.ImagensGaleria))
         .ToListAsync(ct);
 
-    return Results.Ok(ApiResponse<List<ProdutoLojaDto>>.Ok(produtos));
+    return Results.Ok(ApiResponse<List<ProdutoLojaDto>>.Ok(produtos.Select(MapearProdutoLojaDto).ToList()));
 })
 .AllowAnonymous()
 .WithName("ProdutosDestaques")
@@ -816,43 +762,17 @@ app.MapGet("/api/produtos/destaques", async (NexumDbContext db, CancellationToke
 
 app.MapGet("/api/produtos/{id}", async (string id, NexumDbContext db, CancellationToken ct) =>
 {
-    var dto = await FiltrarProdutosPublicaveis(db.Produtos.AsNoTracking())
+    var produto = await FiltrarProdutosPublicaveis(db.Produtos.AsNoTracking())
+        .Include(item => item.Categoria)
         .Where(item => item.Slug == id)
-        .Select(item => new ProdutoLojaDto(
-            item.Slug,
-            item.Nome,
-            item.DescricaoCurta ?? item.DescricaoLonga ?? string.Empty,
-            item.DescricaoCurta,
-            item.Preco,
-            item.PrecoPromocional,
-            item.ImagemPrincipal ?? string.Empty,
-            item.EstoqueAtual,
-            item.EstoqueMinimo,
-            item.EstoqueReservado,
-            item.Destaque,
-            item.Sku,
-            item.Categoria != null ? item.Categoria.Slug : "classicos",
-            4.8m,
-            item.Custo,
-            item.Peso,
-            item.Altura,
-            item.Largura,
-            item.Comprimento,
-            item.TipoProduto.ToString(),
-            item.FornecedorId,
-            item.Marca,
-            item.Tags,
-            item.SeoTitulo,
-            item.SeoDescricao,
-            item.SeoKeywords,
-            item.ImagensGaleria))
         .FirstOrDefaultAsync(ct);
 
-    if (dto is null)
+    if (produto is null)
     {
         return Results.NotFound(ApiResponse<string>.Erro("Produto nao encontrado ou cadastro incompleto."));
     }
 
+    var dto = MapearProdutoLojaDto(produto);
     return Results.Ok(ApiResponse<ProdutoLojaDto>.Ok(dto));
 })
 .AllowAnonymous()
@@ -3639,6 +3559,35 @@ static IQueryable<Produto> FiltrarProdutosPublicaveis(IQueryable<Produto> query)
         produto.Altura > 0 &&
         produto.Largura > 0 &&
         produto.Comprimento > 0);
+
+static ProdutoLojaDto MapearProdutoLojaDto(Produto produto) => new(
+    produto.Slug,
+    produto.Nome,
+    produto.DescricaoCurta ?? produto.DescricaoLonga ?? string.Empty,
+    produto.DescricaoCurta,
+    produto.Preco,
+    produto.PrecoPromocional,
+    produto.ImagemPrincipal ?? string.Empty,
+    produto.EstoqueAtual,
+    produto.EstoqueMinimo,
+    produto.EstoqueReservado,
+    produto.Destaque,
+    produto.Sku,
+    produto.Categoria?.Slug ?? "classicos",
+    4.8m,
+    produto.Custo,
+    produto.Peso,
+    produto.Altura,
+    produto.Largura,
+    produto.Comprimento,
+    produto.TipoProduto.ToString(),
+    produto.FornecedorId,
+    produto.Marca,
+    produto.Tags,
+    produto.SeoTitulo,
+    produto.SeoDescricao,
+    produto.SeoKeywords,
+    produto.ImagensGaleria);
 
 static string FormatStatusPedido(StatusPedido status) =>
     status switch
