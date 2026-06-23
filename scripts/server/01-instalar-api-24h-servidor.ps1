@@ -44,6 +44,22 @@ if (-not (Test-Path $ProjectPath)) {
   throw "Projeto da API não encontrado: $ProjectPath"
 }
 
+foreach ($oldTaskName in @("NexumAltivonApi24h", "NexumAltivonApiGuardian", $TaskName)) {
+  Stop-ScheduledTask -TaskName $oldTaskName -ErrorAction SilentlyContinue
+  Unregister-ScheduledTask -TaskName $oldTaskName -Confirm:$false -ErrorAction SilentlyContinue
+}
+
+$oldPidPath = Join-Path $BaseDirectory "runtime\api.pid"
+if (Test-Path $oldPidPath) {
+  $oldPid = Get-Content -LiteralPath $oldPidPath -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($oldPid) {
+    Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
+  }
+}
+
+Get-Process -Name "NexumAltivon.API" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 3
+
 New-Item -ItemType Directory -Force -Path $ApiDirectory, $ConfigDirectory, (Join-Path $BaseDirectory "logs"), (Join-Path $BaseDirectory "runtime") | Out-Null
 
 $DotnetPath = $DotnetPathCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
@@ -122,11 +138,6 @@ $Settings = New-ScheduledTaskSettingsSet `
   -RestartCount 999 `
   -RestartInterval (New-TimeSpan -Minutes 1) `
   -StartWhenAvailable
-
-foreach ($oldTaskName in @("NexumAltivonApi24h", "NexumAltivonApiGuardian", $TaskName)) {
-  Stop-ScheduledTask -TaskName $oldTaskName -ErrorAction SilentlyContinue
-  Unregister-ScheduledTask -TaskName $oldTaskName -Confirm:$false -ErrorAction SilentlyContinue
-}
 
 Register-ScheduledTask `
   -TaskName $TaskName `
