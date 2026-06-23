@@ -731,8 +731,12 @@ export default function Home() {
                 key={loja.nome}
                 className="group overflow-hidden rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] transition duration-300 hover:-translate-y-2 hover:border-[#C9A227] hover:shadow-2xl hover:shadow-[#C9A227]/10"
               >
-                <div className="relative h-56 overflow-hidden">
-                  <img src={loja.imagem} alt={loja.nome} className="h-full w-full object-cover transition duration-500 group-hover:scale-110" />
+                <div className="relative h-56 overflow-hidden bg-[#111111]">
+                  <div
+                    className="absolute inset-0 bg-cover bg-center transition duration-500 group-hover:scale-110"
+                    style={{ backgroundImage: `url(${loja.imagem})` }}
+                    aria-hidden="true"
+                  />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#1A1A1A] to-transparent" />
                   <div className="absolute left-5 top-5 flex h-12 w-12 items-center justify-center rounded-full bg-black/70 text-[#C9A227]">
                     <Icon size={24} />
