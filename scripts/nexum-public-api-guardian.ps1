@@ -20,6 +20,12 @@ $GuardianLog = Join-Path $LogDir "public-api-guardian.log"
 $RootRuntimeConfig = Join-Path $RootDir "api-runtime.json"
 $PublicRuntimeConfig = Join-Path $RootDir "NexumAltivon_Front-End\public\api-runtime.json"
 $CloudflaredPath = "C:\Program Files (x86)\cloudflared\cloudflared.exe"
+$GitPathCandidates = @(
+  "C:\Program Files\Git\cmd\git.exe",
+  "C:\Program Files\Git\bin\git.exe",
+  "C:\Program Files (x86)\Git\cmd\git.exe",
+  "git"
+)
 
 New-Item -ItemType Directory -Force -Path $RunDir, $LogDir, (Split-Path -Parent $PublicRuntimeConfig) | Out-Null
 
@@ -126,15 +132,27 @@ function Publish-RuntimeUrl {
   Set-Utf8NoBomText -Path $RootRuntimeConfig -Value $payload
   Set-Utf8NoBomText -Path $PublicRuntimeConfig -Value $payload
 
+  $gitPath = $GitPathCandidates | Where-Object {
+    if ($_ -eq "git") {
+      return [bool](Get-Command git -ErrorAction SilentlyContinue)
+    }
+    Test-Path $_
+  } | Select-Object -First 1
+
+  if (-not $gitPath) {
+    Write-GuardianLog "Git nao encontrado no servidor. api-runtime.json atualizado localmente, mas nao publicado no GitHub."
+    return
+  }
+
   Push-Location $RootDir
   try {
-    git add api-runtime.json NexumAltivon_Front-End/public/api-runtime.json
-    git diff --cached --quiet
+    & $gitPath add api-runtime.json NexumAltivon_Front-End/public/api-runtime.json
+    & $gitPath diff --cached --quiet
     if ($LASTEXITCODE -eq 0) {
       return
     }
 
-    git commit -m "atualiza ponte publica da api"
+    & $gitPath commit -m "atualiza ponte publica da api"
     if ($LASTEXITCODE -ne 0) {
       Write-GuardianLog "Falha ao criar commit da ponte publica."
       return
@@ -142,7 +160,7 @@ function Publish-RuntimeUrl {
 
     $env:GCM_INTERACTIVE = "never"
     $env:GIT_TERMINAL_PROMPT = "0"
-    git push $PushUrl "HEAD:$Branch"
+    & $gitPath push $PushUrl "HEAD:$Branch"
     if ($LASTEXITCODE -eq 0) {
       Write-GuardianLog "api-runtime.json publicado no GitHub."
     } else {

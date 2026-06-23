@@ -46,6 +46,8 @@ $Settings = New-ScheduledTaskSettingsSet `
   -RestartInterval (New-TimeSpan -Minutes 1) `
   -StartWhenAvailable
 
+Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+
 Register-ScheduledTask `
   -TaskName $TaskName `
   -Action $Action `

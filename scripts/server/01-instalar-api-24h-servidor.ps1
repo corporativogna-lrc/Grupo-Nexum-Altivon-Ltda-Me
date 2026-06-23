@@ -33,7 +33,7 @@ if (-not $ConfigDirectory) {
 $RunnerTarget = Join-Path $BaseDirectory "04-iniciar-api-24h.ps1"
 $ConfigExampleSource = Join-Path $ScriptDirectory "99-api.env.example.ps1"
 $ConfigTarget = Join-Path $ConfigDirectory "api.env.ps1"
-$TaskName = "NexumAltivonApi24h"
+$TaskName = "NexumAltivonApi24h5012"
 
 if (-not (Test-Path $ProjectPath)) {
   throw "Projeto da API não encontrado: $ProjectPath"
@@ -59,6 +59,16 @@ if (-not (Test-Path $ConfigTarget)) {
   Copy-Item $ConfigExampleSource $ConfigTarget
   Write-Host "Configuração criada em: $ConfigTarget"
   Write-Host "Preencha as senhas reais antes de liberar a operação externa."
+} else {
+  $configText = Get-Content -LiteralPath $ConfigTarget -Raw
+  $desiredUrlLine = '$env:ASPNETCORE_URLS = "http://0.0.0.0:5012"'
+  if ($configText -match '(?m)^\s*\$env:ASPNETCORE_URLS\s*=') {
+    $configText = $configText -replace '(?m)^\s*\$env:ASPNETCORE_URLS\s*=.*$', $desiredUrlLine
+  } else {
+    $configText = $configText.TrimEnd() + [Environment]::NewLine + $desiredUrlLine + [Environment]::NewLine
+  }
+  Set-Content -LiteralPath $ConfigTarget -Value $configText -Encoding UTF8
+  Write-Host "Configuração preservada e ajustada para operar em 5012: $ConfigTarget"
 }
 
 $PowerShellPath = "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"
@@ -76,6 +86,11 @@ $Settings = New-ScheduledTaskSettingsSet `
   -RestartCount 999 `
   -RestartInterval (New-TimeSpan -Minutes 1) `
   -StartWhenAvailable
+
+foreach ($oldTaskName in @("NexumAltivonApi24h", "NexumAltivonApiGuardian", $TaskName)) {
+  Stop-ScheduledTask -TaskName $oldTaskName -ErrorAction SilentlyContinue
+  Unregister-ScheduledTask -TaskName $oldTaskName -Confirm:$false -ErrorAction SilentlyContinue
+}
 
 Register-ScheduledTask `
   -TaskName $TaskName `

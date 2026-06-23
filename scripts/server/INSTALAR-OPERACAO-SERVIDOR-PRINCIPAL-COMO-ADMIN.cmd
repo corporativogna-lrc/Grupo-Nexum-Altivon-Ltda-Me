@@ -13,5 +13,5 @@ if errorlevel 1 exit /b %errorlevel%
 
 echo.
 echo Operacao instalada no servidor principal.
-echo Verifique com: scripts\server\05-verificar-api-24h.ps1
+echo Verifique com: scripts\server\VERIFICAR-OPERACAO-SERVIDOR-PRINCIPAL.cmd
 endlocal
