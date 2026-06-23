@@ -15,6 +15,10 @@ $ApiLog = Join-Path $LogDirectory "api.log"
 $ApiErrorLog = Join-Path $LogDirectory "api.err.log"
 $GuardianLog = Join-Path $LogDirectory "api-guardian.log"
 $ApiDll = Join-Path $ApiDirectory "NexumAltivon.API.dll"
+$DotnetPathCandidates = @(
+  "C:\Program Files\dotnet\dotnet.exe",
+  "C:\Program Files (x86)\dotnet\dotnet.exe"
+)
 
 New-Item -ItemType Directory -Force -Path $RuntimeDirectory, $LogDirectory | Out-Null
 
@@ -63,10 +67,21 @@ function Start-NexumApi {
     throw "Publicação da API não encontrada: $ApiDll"
   }
 
+  $dotnetPath = $DotnetPathCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+  if (-not $dotnetPath) {
+    $dotnetCommand = Get-Command dotnet -ErrorAction SilentlyContinue
+    if ($dotnetCommand) {
+      $dotnetPath = $dotnetCommand.Source
+    }
+  }
+  if (-not $dotnetPath) {
+    throw "dotnet nao encontrado para iniciar a API."
+  }
+
   Write-NexumLog "Iniciando API 24h em $Url"
 
   $process = Start-Process `
-    -FilePath "dotnet" `
+    -FilePath $dotnetPath `
     -ArgumentList "`"$ApiDll`"" `
     -WorkingDirectory $ApiDirectory `
     -WindowStyle Hidden `

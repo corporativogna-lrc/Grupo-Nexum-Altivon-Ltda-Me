@@ -3,6 +3,24 @@ $ErrorActionPreference = "Continue"
 Write-Host "== Verificacao da operacao no servidor principal =="
 Write-Host ""
 
+Write-Host "[0] Dotnet no servidor"
+$dotnetPath = @(
+  "C:\Program Files\dotnet\dotnet.exe",
+  "C:\Program Files (x86)\dotnet\dotnet.exe"
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $dotnetPath) {
+  $dotnetCommand = Get-Command dotnet -ErrorAction SilentlyContinue
+  if ($dotnetCommand) {
+    $dotnetPath = $dotnetCommand.Source
+  }
+}
+if ($dotnetPath) {
+  Write-Host "OK - Dotnet encontrado: $dotnetPath"
+} else {
+  Write-Host "FALHOU - Dotnet nao encontrado no servidor"
+}
+
+Write-Host ""
 Write-Host "[1] Tarefa API 5012"
 $apiTask = Get-ScheduledTask -TaskName "NexumAltivonApi24h5012" -ErrorAction SilentlyContinue
 if ($apiTask) {

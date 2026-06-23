@@ -34,16 +34,31 @@ $RunnerTarget = Join-Path $BaseDirectory "04-iniciar-api-24h.ps1"
 $ConfigExampleSource = Join-Path $ScriptDirectory "99-api.env.example.ps1"
 $ConfigTarget = Join-Path $ConfigDirectory "api.env.ps1"
 $TaskName = "NexumAltivonApi24h5012"
+$DotnetPathCandidates = @(
+  "C:\Program Files\dotnet\dotnet.exe",
+  "C:\Program Files (x86)\dotnet\dotnet.exe"
+)
 
 if (-not (Test-Path $ProjectPath)) {
   throw "Projeto da API não encontrado: $ProjectPath"
+}
+
+$DotnetPath = $DotnetPathCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $DotnetPath) {
+  $dotnetCommand = Get-Command dotnet -ErrorAction SilentlyContinue
+  if ($dotnetCommand) {
+    $DotnetPath = $dotnetCommand.Source
+  }
+}
+if (-not $DotnetPath) {
+  throw "dotnet nao encontrado no servidor. Instale o .NET SDK/Hosting Bundle no servidor principal e rode este instalador novamente."
 }
 
 New-Item -ItemType Directory -Force -Path $ApiDirectory, $ConfigDirectory, (Join-Path $BaseDirectory "logs"), (Join-Path $BaseDirectory "runtime") | Out-Null
 
 $BuildBase = Join-Path $env:TEMP ("nexum-api-publish-" + [guid]::NewGuid().ToString("N"))
 try {
-  dotnet publish $ProjectPath --configuration Release --output $ApiDirectory -p:UseAppHost=false -p:BaseOutputPath="$BuildBase\bin\" -p:BaseIntermediateOutputPath="$BuildBase\obj\"
+  & $DotnetPath publish $ProjectPath --configuration Release --output $ApiDirectory -p:UseAppHost=false -p:BaseOutputPath="$BuildBase\bin\" -p:BaseIntermediateOutputPath="$BuildBase\obj\"
   if ($LASTEXITCODE -ne 0) {
     throw "Falha ao publicar a API para: $ApiDirectory"
   }
@@ -107,3 +122,4 @@ Write-Host "Tarefa: $TaskName"
 Write-Host "URL local: $Url"
 Write-Host "Pasta da API: $ApiDirectory"
 Write-Host "Configuração privada: $ConfigTarget"
+Write-Host "Dotnet: $DotnetPath"
