@@ -1,24 +1,31 @@
 param(
-  [string]$LocalUrl = "http://127.0.0.1:5011",
-  [int]$CheckSeconds = 45,
+  [string]$RootDir = "Y:\Nexum Altivon\NexumAltivon.com",
+  [string]$ApiUrl = "http://127.0.0.1:5012",
+  [string]$LocalUrl = "",
+  [string]$PublicDomain = "https://api.nexumaltivon.com",
+  [int]$DbPort = 3309,
+  [int]$CheckSeconds = 30,
   [string]$Branch = "main",
   [string]$PushUrl = "https://corporativogna-lrc@github.com/corporativogna-lrc/Grupo-Nexum-Altivon-Ltda-Me.git"
 )
 
 $ErrorActionPreference = "Stop"
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$RootDir = Split-Path -Parent $ScriptDir
+if ($LocalUrl) {
+  $ApiUrl = $LocalUrl
+}
+
 $RunDir = Join-Path $RootDir ".nexum-runtime\public-api-guardian"
 $LogDir = Join-Path $RootDir "runtime-logs"
-$PidPath = Join-Path $RunDir "guardian.pid"
+$GuardianLog = Join-Path $LogDir "public-api-guardian.log"
 $TunnelPidPath = Join-Path $RunDir "cloudflared.pid"
 $TunnelUrlPath = Join-Path $RunDir "api-url.txt"
 $TunnelOutLog = Join-Path $RunDir "cloudflared.out.log"
 $TunnelErrLog = Join-Path $RunDir "cloudflared.err.log"
-$GuardianLog = Join-Path $LogDir "public-api-guardian.log"
 $RootRuntimeConfig = Join-Path $RootDir "api-runtime.json"
 $PublicRuntimeConfig = Join-Path $RootDir "NexumAltivon_Front-End\public\api-runtime.json"
+$PidPath = Join-Path $RunDir "guardian.pid"
+
 $CloudflaredPathCandidates = @(
   "C:\Cloudflared\cloudflared.exe",
   "C:\Program Files\cloudflared\cloudflared.exe",
@@ -32,7 +39,7 @@ $GitPathCandidates = @(
   "git"
 )
 
-New-Item -ItemType Directory -Force -Path $RunDir, $LogDir, (Split-Path -Parent $PublicRuntimeConfig) | Out-Null
+New-Item -ItemType Directory -Force -Path $RunDir, $LogDir, (Split-Path -Parent $PublicRuntimeConfig) -ErrorAction SilentlyContinue | Out-Null
 
 function Write-GuardianLog {
   param([string]$Message)
@@ -40,11 +47,7 @@ function Write-GuardianLog {
 }
 
 function Set-Utf8NoBomText {
-  param(
-    [string]$Path,
-    [string]$Value
-  )
-
+  param([string]$Path, [string]$Value)
   $encoding = New-Object System.Text.UTF8Encoding($false)
   [System.IO.File]::WriteAllText($Path, $Value, $encoding)
 }
@@ -52,14 +55,21 @@ function Set-Utf8NoBomText {
 function Test-HttpHealth {
   param([string]$Url)
   try {
-    if (-not $Url -or $Url -eq "https://api.trycloudflare.com") {
-      return $false
-    }
+    if (-not $Url -or $Url -eq "https://api.trycloudflare.com") { return $false }
     $response = Invoke-WebRequest -UseBasicParsing -Uri "$Url/health/db" -TimeoutSec 20
     return ($response.StatusCode -eq 200)
   } catch {
     return $false
   }
+}
+
+function Test-LocalApiHealth {
+  param([int]$MaxAttempts = 30)
+  for ($i = 0; $i -lt $MaxAttempts; $i++) {
+    if (Test-HttpHealth -Url $ApiUrl) { return $true }
+    Start-Sleep -Seconds 2
+  }
+  return $false
 }
 
 function Stop-ManagedTunnel {
@@ -70,6 +80,7 @@ function Stop-ManagedTunnel {
     }
   }
   Remove-Item $TunnelUrlPath -Force -ErrorAction SilentlyContinue
+  Remove-Item $TunnelOutLog, $TunnelErrLog -Force -ErrorAction SilentlyContinue
 }
 
 function Start-QuickTunnel {
@@ -78,12 +89,11 @@ function Start-QuickTunnel {
   }
 
   Stop-ManagedTunnel
-  Remove-Item $TunnelOutLog, $TunnelErrLog -Force -ErrorAction SilentlyContinue
 
-  Write-GuardianLog "Abrindo nova ponte publica para $LocalUrl"
+  Write-GuardianLog "Abrindo nova ponte publica para $ApiUrl"
   $process = Start-Process `
     -FilePath $CloudflaredPath `
-    -ArgumentList @("tunnel", "--protocol", "http2", "--url", $LocalUrl, "--no-autoupdate") `
+    -ArgumentList @("tunnel", "--protocol", "http2", "--url", $ApiUrl, "--no-autoupdate") `
     -RedirectStandardOutput $TunnelOutLog `
     -RedirectStandardError $TunnelErrLog `
     -WindowStyle Hidden `
@@ -91,22 +101,19 @@ function Start-QuickTunnel {
 
   Set-Content -Path $TunnelPidPath -Value $process.Id
 
-  $deadline = (Get-Date).AddSeconds(55)
+  $deadline = (Get-Date).AddSeconds(60)
   $url = $null
   do {
     Start-Sleep -Seconds 2
-    $text = Get-Content $TunnelErrLog -Raw -ErrorAction SilentlyContinue
-    if (-not $text) {
-      $text = ""
-    }
+    $text = (Get-Content $TunnelErrLog -Raw -ErrorAction SilentlyContinue)
+    if (-not $text) { $text = "" }
     $matches = [regex]::Matches($text, "https://[a-z0-9-]+\.trycloudflare\.com")
     $validMatch = $matches | Where-Object { $_.Value -ne "https://api.trycloudflare.com" } | Select-Object -Last 1
-    if ($validMatch) {
-      $url = $validMatch.Value
-    }
+    if ($validMatch) { $url = $validMatch.Value }
   } while (-not $url -and (Get-Date) -lt $deadline -and -not $process.HasExited)
 
   if (-not $url) {
+    Stop-ManagedTunnel
     throw "Nao foi possivel obter URL publica do Cloudflare Tunnel."
   }
 
@@ -116,6 +123,7 @@ function Start-QuickTunnel {
   }
 
   if (-not (Test-HttpHealth $url)) {
+    Stop-ManagedTunnel
     throw "URL publica obtida, mas sem saude confirmada: $url"
   }
 
@@ -125,40 +133,34 @@ function Start-QuickTunnel {
 }
 
 function Get-CurrentRuntimeUrl {
-  if (-not (Test-Path $PublicRuntimeConfig)) {
-    return ""
-  }
-
+  if (-not (Test-Path $PublicRuntimeConfig)) { return "" }
   try {
     $rawConfig = Get-Content $PublicRuntimeConfig -Raw
     $config = $rawConfig.TrimStart([char]0xFEFF) | ConvertFrom-Json
     return [string]$config.apiUrl
-  } catch {
-    return ""
-  }
+  } catch { return "" }
 }
 
 function Publish-RuntimeUrl {
   param([string]$Url)
-
   if ($Url -eq "https://api.trycloudflare.com" -or -not (Test-HttpHealth $Url)) {
-    Write-GuardianLog "Runtime nao publicado: URL invalida ou sem saude confirmada ($Url)."
+    Write-GuardianLog "Runtime nao publicado: URL invalida ou sem saude ($Url)."
     return
   }
 
   $current = Get-CurrentRuntimeUrl
-  if ($current -eq $Url) {
-    return
-  }
+  if ($current -eq $Url) { return }
 
   $payload = [ordered]@{
     apiUrl = $Url
+    apiUrls = @($Url, $PublicDomain)
     updatedAt = (Get-Date).ToUniversalTime().ToString("o")
     source = "nexum-public-api-guardian"
   } | ConvertTo-Json
 
   Set-Utf8NoBomText -Path $RootRuntimeConfig -Value $payload
   Set-Utf8NoBomText -Path $PublicRuntimeConfig -Value $payload
+  Write-GuardianLog "api-runtime.json atualizado: $Url"
 
   $gitPath = $GitPathCandidates | Where-Object {
     if ($_ -eq "git") {
@@ -168,7 +170,7 @@ function Publish-RuntimeUrl {
   } | Select-Object -First 1
 
   if (-not $gitPath) {
-    Write-GuardianLog "Git nao encontrado no servidor. api-runtime.json atualizado localmente, mas nao publicado no GitHub."
+    Write-GuardianLog "Git nao encontrado no servidor. Runtime atualizado localmente."
     return
   }
 
@@ -176,9 +178,7 @@ function Publish-RuntimeUrl {
   try {
     & $gitPath add api-runtime.json NexumAltivon_Front-End/public/api-runtime.json
     & $gitPath diff --cached --quiet
-    if ($LASTEXITCODE -eq 0) {
-      return
-    }
+    if ($LASTEXITCODE -eq 0) { return }
 
     & $gitPath commit -m "atualiza ponte publica da api"
     if ($LASTEXITCODE -ne 0) {
@@ -190,41 +190,43 @@ function Publish-RuntimeUrl {
     $env:GIT_TERMINAL_PROMPT = "0"
     & $gitPath push $PushUrl "HEAD:$Branch"
     if ($LASTEXITCODE -eq 0) {
-      Write-GuardianLog "api-runtime.json publicado no GitHub."
+      Write-GuardianLog "Runtime publicado no GitHub."
     } else {
-      Write-GuardianLog "Falha ao publicar api-runtime.json no GitHub."
+      Write-GuardianLog "Falha ao publicar runtime no GitHub."
     }
   } finally {
     Pop-Location
   }
 }
 
+function Test-CurrentPublicUrl {
+  $url = Get-CurrentRuntimeUrl
+  return (Test-HttpHealth -Url $url)
+}
+
 if (Test-Path $PidPath) {
   $existingPid = Get-Content $PidPath -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($existingPid -and ($existingPid -ne $PID)) {
     $existing = Get-CimInstance Win32_Process -Filter "ProcessId = $existingPid" -ErrorAction SilentlyContinue
-    if ($existing -and ([string]$existing.CommandLine).Contains("nexum-public-api-guardian.ps1")) {
-      exit 0
-    }
+    if ($existing -and ([string]$existing.CommandLine).Contains("nexum-public-api-guardian.ps1")) { exit 0 }
   }
 }
-
 Set-Content -Path $PidPath -Value $PID
 Write-GuardianLog "Guardiao publico iniciado."
 
 while ($true) {
   try {
-    if (-not (Test-HttpHealth -Url $LocalUrl)) {
-      Write-GuardianLog "API local indisponivel em $LocalUrl. Aguardando guardiao da API local."
+    if (-not (Test-LocalApiHealth)) {
+      Write-GuardianLog "API local indisponivel em $ApiUrl. Aguardando..."
       Start-Sleep -Seconds $CheckSeconds
       continue
     }
 
-    $url = Get-Content $TunnelUrlPath -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($url -eq "https://api.trycloudflare.com") {
-      $url = $null
-    }
+    $url = Get-CurrentRuntimeUrl
+    if ($url -eq "https://api.trycloudflare.com") { $url = $null }
+
     if (-not $url -or -not (Test-HttpHealth -Url $url)) {
+      Write-GuardianLog "Ponte publica em $url caiu ou nao existe. Recriando..."
       $url = Start-QuickTunnel
     }
 
