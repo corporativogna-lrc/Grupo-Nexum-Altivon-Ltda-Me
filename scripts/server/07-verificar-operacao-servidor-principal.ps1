@@ -3,7 +3,9 @@ $ErrorActionPreference = "Continue"
 Write-Host "== Verificacao da operacao no servidor principal =="
 Write-Host ""
 
-Write-Host "[0] Dotnet no servidor"
+Write-Host "[0] Motor da API"
+$apiExePath = "C:\NexumAltivon_API_24H\api\NexumAltivon.API.exe"
+$apiDllPath = "C:\NexumAltivon_API_24H\api\NexumAltivon.API.dll"
 $dotnetPath = @(
   "C:\Program Files\dotnet\dotnet.exe",
   "C:\Program Files (x86)\dotnet\dotnet.exe"
@@ -16,8 +18,12 @@ if (-not $dotnetPath) {
 }
 if ($dotnetPath) {
   Write-Host "OK - Dotnet encontrado: $dotnetPath"
+} elseif (Test-Path $apiExePath) {
+  Write-Host "OK - API executavel encontrada: $apiExePath"
+} elseif (Test-Path $apiDllPath) {
+  Write-Host "FALHOU - API publicada em DLL, mas dotnet nao encontrado"
 } else {
-  Write-Host "FALHOU - Dotnet nao encontrado no servidor"
+  Write-Host "FALHOU - Nem dotnet nem API executavel foram encontrados"
 }
 
 Write-Host ""

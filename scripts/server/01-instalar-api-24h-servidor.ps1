@@ -1,6 +1,6 @@
 param(
   [string]$SourceRoot = "",
-  [string]$BaseDirectory = "Y:\NexumAltivon_API_24H",
+  [string]$BaseDirectory = "C:\NexumAltivon_API_24H",
   [string]$ApiDirectory = "",
   [string]$ConfigDirectory = "",
   [string]$Url = "http://127.0.0.1:5012",
@@ -43,6 +43,8 @@ if (-not (Test-Path $ProjectPath)) {
   throw "Projeto da API não encontrado: $ProjectPath"
 }
 
+New-Item -ItemType Directory -Force -Path $ApiDirectory, $ConfigDirectory, (Join-Path $BaseDirectory "logs"), (Join-Path $BaseDirectory "runtime") | Out-Null
+
 $DotnetPath = $DotnetPathCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $DotnetPath) {
   $dotnetCommand = Get-Command dotnet -ErrorAction SilentlyContinue
@@ -50,22 +52,35 @@ if (-not $DotnetPath) {
     $DotnetPath = $dotnetCommand.Source
   }
 }
-if (-not $DotnetPath) {
-  throw "dotnet nao encontrado no servidor. Instale o .NET SDK/Hosting Bundle no servidor principal e rode este instalador novamente."
+
+$ApiExecutable = Join-Path $ApiDirectory "NexumAltivon.API.exe"
+$ApiDll = Join-Path $ApiDirectory "NexumAltivon.API.dll"
+$SourcePublishedApiDirectory = Join-Path $SourceRoot ".nexum-runtime\api-24h\api"
+$SourcePublishedApiExecutable = Join-Path $SourcePublishedApiDirectory "NexumAltivon.API.exe"
+$SourcePublishedApiDll = Join-Path $SourcePublishedApiDirectory "NexumAltivon.API.dll"
+if ($DotnetPath) {
+  $BuildBase = Join-Path $env:TEMP ("nexum-api-publish-" + [guid]::NewGuid().ToString("N"))
+  try {
+    & $DotnetPath publish $ProjectPath --configuration Release --output $ApiDirectory -p:UseAppHost=false -p:BaseOutputPath="$BuildBase\bin\" -p:BaseIntermediateOutputPath="$BuildBase\obj\"
+    if ($LASTEXITCODE -ne 0) {
+      throw "Falha ao publicar a API para: $ApiDirectory"
+    }
+  } finally {
+    if (Test-Path $BuildBase) {
+      Remove-Item $BuildBase -Recurse -Force -ErrorAction SilentlyContinue
+    }
+  }
+} elseif ((Test-Path $SourcePublishedApiExecutable) -or (Test-Path $SourcePublishedApiDll)) {
+  Write-Host "Dotnet nao encontrado no servidor. Copiando API ja publicada para pasta local: $ApiDirectory"
+  Copy-Item -LiteralPath (Join-Path $SourcePublishedApiDirectory "*") -Destination $ApiDirectory -Recurse -Force
+} elseif ((Test-Path $ApiExecutable) -or (Test-Path $ApiDll)) {
+  Write-Host "Dotnet nao encontrado no servidor. Usando API local ja publicada em: $ApiDirectory"
+} else {
+  throw "dotnet nao encontrado e API publicada nao encontrada. Publique a API em $SourcePublishedApiDirectory ou instale .NET 8 SDK no servidor."
 }
 
-New-Item -ItemType Directory -Force -Path $ApiDirectory, $ConfigDirectory, (Join-Path $BaseDirectory "logs"), (Join-Path $BaseDirectory "runtime") | Out-Null
-
-$BuildBase = Join-Path $env:TEMP ("nexum-api-publish-" + [guid]::NewGuid().ToString("N"))
-try {
-  & $DotnetPath publish $ProjectPath --configuration Release --output $ApiDirectory -p:UseAppHost=false -p:BaseOutputPath="$BuildBase\bin\" -p:BaseIntermediateOutputPath="$BuildBase\obj\"
-  if ($LASTEXITCODE -ne 0) {
-    throw "Falha ao publicar a API para: $ApiDirectory"
-  }
-} finally {
-  if (Test-Path $BuildBase) {
-    Remove-Item $BuildBase -Recurse -Force -ErrorAction SilentlyContinue
-  }
+if (-not ((Test-Path $ApiExecutable) -or (Test-Path $ApiDll))) {
+  throw "Publicacao da API nao encontrada em: $ApiDirectory"
 }
 
 Copy-Item $RunnerSource $RunnerTarget -Force
