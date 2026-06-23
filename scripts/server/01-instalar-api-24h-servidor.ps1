@@ -75,7 +75,21 @@ $ApiDll = Join-Path $ApiDirectory "NexumAltivon.API.dll"
 $SourcePublishedApiDirectory = Join-Path $SourceRoot ".nexum-runtime\api-24h\api"
 $SourcePublishedApiExecutable = Join-Path $SourcePublishedApiDirectory "NexumAltivon.API.exe"
 $SourcePublishedApiDll = Join-Path $SourcePublishedApiDirectory "NexumAltivon.API.dll"
+$HasPublishedApiPackage = (Test-Path $SourcePublishedApiExecutable) -or (Test-Path $SourcePublishedApiDll)
+$CanPublishWithSdk = $false
 if ($DotnetPath) {
+  try {
+    $sdkList = & $DotnetPath --list-sdks 2>$null
+    $CanPublishWithSdk = [bool]($sdkList | Where-Object { $_ -match '^8\.' } | Select-Object -First 1)
+  } catch {
+    $CanPublishWithSdk = $false
+  }
+}
+
+if ($HasPublishedApiPackage) {
+  Write-Host "Copiando API ja publicada para pasta local: $ApiDirectory"
+  Get-ChildItem -LiteralPath $SourcePublishedApiDirectory -Force | Copy-Item -Destination $ApiDirectory -Recurse -Force
+} elseif ($CanPublishWithSdk) {
   $BuildBase = Join-Path $env:TEMP ("nexum-api-publish-" + [guid]::NewGuid().ToString("N"))
   try {
     & $DotnetPath publish $ProjectPath --configuration Release --output $ApiDirectory -p:UseAppHost=false -p:BaseOutputPath="$BuildBase\bin\" -p:BaseIntermediateOutputPath="$BuildBase\obj\"
@@ -87,13 +101,10 @@ if ($DotnetPath) {
       Remove-Item $BuildBase -Recurse -Force -ErrorAction SilentlyContinue
     }
   }
-} elseif ((Test-Path $SourcePublishedApiExecutable) -or (Test-Path $SourcePublishedApiDll)) {
-  Write-Host "Dotnet nao encontrado no servidor. Copiando API ja publicada para pasta local: $ApiDirectory"
-  Get-ChildItem -LiteralPath $SourcePublishedApiDirectory -Force | Copy-Item -Destination $ApiDirectory -Recurse -Force
 } elseif ((Test-Path $ApiExecutable) -or (Test-Path $ApiDll)) {
-  Write-Host "Dotnet nao encontrado no servidor. Usando API local ja publicada em: $ApiDirectory"
+  Write-Host "SDK .NET nao encontrado. Usando API local ja publicada em: $ApiDirectory"
 } else {
-  throw "dotnet nao encontrado e API publicada nao encontrada. Publique a API em $SourcePublishedApiDirectory ou instale .NET 8 SDK no servidor."
+  throw "SDK .NET nao encontrado e API publicada nao encontrada. Publique a API em $SourcePublishedApiDirectory ou instale .NET 8 SDK no servidor."
 }
 
 if (-not ((Test-Path $ApiExecutable) -or (Test-Path $ApiDll))) {
