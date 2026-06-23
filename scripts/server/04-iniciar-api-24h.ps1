@@ -88,14 +88,20 @@ function Start-NexumApi {
 
   Write-NexumLog "Iniciando API 24h em $Url"
 
-  $process = Start-Process `
-    -FilePath $processFile `
-    -ArgumentList $processArguments `
-    -WorkingDirectory $ApiDirectory `
-    -WindowStyle Hidden `
-    -RedirectStandardOutput $ApiLog `
-    -RedirectStandardError $ApiErrorLog `
-    -PassThru
+  $startParams = @{
+    FilePath = $processFile
+    WorkingDirectory = $ApiDirectory
+    WindowStyle = "Hidden"
+    RedirectStandardOutput = $ApiLog
+    RedirectStandardError = $ApiErrorLog
+    PassThru = $true
+  }
+
+  if ($processArguments) {
+    $startParams.ArgumentList = $processArguments
+  }
+
+  $process = Start-Process @startParams
 
   Set-Content -Path $PidPath -Value $process.Id
 }
@@ -103,10 +109,15 @@ function Start-NexumApi {
 Write-NexumLog "Guardião 24h iniciado."
 
 while ($true) {
-  if (-not (Test-NexumApi)) {
-    Write-NexumLog "API indisponível. Reiniciando."
-    Stop-NexumApi
-    Start-NexumApi
+  try {
+    if (-not (Test-NexumApi)) {
+      Write-NexumLog "API indisponível. Reiniciando."
+      Stop-NexumApi
+      Start-NexumApi
+      Start-Sleep -Seconds 10
+    }
+  } catch {
+    Write-NexumLog "Erro no guardiao da API: $($_.Exception.Message)"
     Start-Sleep -Seconds 10
   }
 
