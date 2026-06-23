@@ -31,6 +31,19 @@ const normalizeApiUrl = (value) => {
   return /^https?:\/\//i.test(url) ? url : '';
 };
 
+const collectRuntimeApiUrls = (config) => {
+  const values = [
+    config?.apiUrl,
+    config?.api_url,
+    config?.url,
+    ...(Array.isArray(config?.apiUrls) ? config.apiUrls : []),
+    ...(Array.isArray(config?.api_urls) ? config.api_urls : []),
+    ...(Array.isArray(config?.fallbacks) ? config.fallbacks : []),
+  ];
+
+  return [...new Set(values.map(normalizeApiUrl).filter(Boolean))];
+};
+
 const canUseApiUrl = async (baseUrl, force = false) => {
   const normalized = normalizeApiUrl(baseUrl);
   if (!normalized) return false;
@@ -89,10 +102,7 @@ export const getRuntimeApiBaseUrl = async ({ force = false } = {}) => {
 
       if (response.ok) {
         const config = await response.json();
-        const runtimeUrl = normalizeApiUrl(config.apiUrl || config.api_url || config.url);
-        if (runtimeUrl) {
-          candidates.push(runtimeUrl);
-        }
+        candidates.push(...collectRuntimeApiUrls(config));
       }
     } catch {
       // Mantém a última ponte funcional em cache quando a configuração pública oscila.

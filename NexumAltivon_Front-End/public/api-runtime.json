@@ -1,5 +1,8 @@
 {
   "apiUrl": "https://api.nexumaltivon.com",
+  "apiUrls": [
+    "https://api.nexumaltivon.com"
+  ],
   "updatedAt": "2026-06-23T11:08:00.0000000Z",
   "source": "cloudflare-fixed-tunnel"
 }
