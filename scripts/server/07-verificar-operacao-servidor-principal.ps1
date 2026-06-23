@@ -30,7 +30,11 @@ Write-Host ""
 Write-Host "[1] Tarefa API 5012"
 $apiTask = Get-ScheduledTask -TaskName "NexumAltivonApi24h5012" -ErrorAction SilentlyContinue
 if ($apiTask) {
+  $apiTaskInfo = Get-ScheduledTaskInfo -TaskName "NexumAltivonApi24h5012" -ErrorAction SilentlyContinue
   Write-Host "OK - Tarefa API encontrada: $($apiTask.State)"
+  if ($apiTaskInfo) {
+    Write-Host "Ultimo resultado da API: $($apiTaskInfo.LastTaskResult)"
+  }
 } else {
   Write-Host "FALHOU - Tarefa API 5012 nao encontrada"
 }
@@ -75,4 +79,22 @@ if (Test-Path $runtimePath) {
   }
 } else {
   Write-Host "FALHOU - api-runtime.json nao encontrado"
+}
+
+Write-Host ""
+Write-Host "[5] Logs locais da API"
+$apiGuardianLog = "C:\NexumAltivon_API_24H\logs\api-guardian.log"
+$apiErrorLog = "C:\NexumAltivon_API_24H\logs\api.err.log"
+if (Test-Path $apiGuardianLog) {
+  Write-Host "Ultimas linhas do guardiao:"
+  Get-Content -LiteralPath $apiGuardianLog -Tail 8
+} else {
+  Write-Host "Sem log do guardiao em C:\NexumAltivon_API_24H"
+}
+if (Test-Path $apiErrorLog) {
+  $errorLines = Get-Content -LiteralPath $apiErrorLog -Tail 8
+  if ($errorLines) {
+    Write-Host "Ultimas linhas de erro:"
+    $errorLines
+  }
 }
