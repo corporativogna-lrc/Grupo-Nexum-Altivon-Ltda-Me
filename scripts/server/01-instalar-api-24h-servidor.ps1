@@ -40,6 +40,8 @@ $DotnetPathCandidates = @(
   "C:\Program Files\dotnet\dotnet.exe",
   "C:\Program Files (x86)\dotnet\dotnet.exe"
 )
+$Dotnet8HostingBundleUrl = "https://builds.dotnet.microsoft.com/dotnet/aspnetcore/Runtime/8.0.26/dotnet-hosting-8.0.26-win.exe"
+$Dotnet8HostingBundleInstaller = Join-Path $env:TEMP "dotnet-hosting-8.0.26-win.exe"
 
 if (-not (Test-Path $ProjectPath)) {
   throw "Projeto da API não encontrado: $ProjectPath"
@@ -69,6 +71,30 @@ if (-not $DotnetPath) {
   if ($dotnetCommand) {
     $DotnetPath = $dotnetCommand.Source
   }
+}
+
+function Test-Dotnet8Runtime {
+  if (-not $DotnetPath) {
+    return $false
+  }
+
+  try {
+    $runtimes = & $DotnetPath --list-runtimes 2>$null
+    return [bool]($runtimes | Where-Object { $_ -match '^Microsoft\.NETCore\.App 8\.' } | Select-Object -First 1)
+  } catch {
+    return $false
+  }
+}
+
+if (-not (Test-Dotnet8Runtime)) {
+  Write-Host ".NET 8 Hosting Bundle ausente. Instalando runtime oficial..."
+  Invoke-WebRequest -UseBasicParsing -Uri $Dotnet8HostingBundleUrl -OutFile $Dotnet8HostingBundleInstaller -TimeoutSec 180
+  Start-Process -FilePath $Dotnet8HostingBundleInstaller -ArgumentList "/quiet", "/norestart" -Wait -WindowStyle Hidden
+  $DotnetPath = $DotnetPathCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+  if (-not (Test-Dotnet8Runtime)) {
+    throw ".NET 8 Hosting Bundle nao foi detectado apos instalacao."
+  }
+  Write-Host ".NET 8 Hosting Bundle instalado."
 }
 
 $ApiExecutable = Join-Path $ApiDirectory "NexumAltivon.API.exe"

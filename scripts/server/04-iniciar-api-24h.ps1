@@ -69,7 +69,10 @@ function Start-NexumApi {
     throw "Publicação da API não encontrada: $ApiDirectory"
   }
 
-  if (Test-Path $ApiDll) {
+  if (Test-Path $ApiExecutable) {
+    $processFile = $ApiExecutable
+    $processArguments = ""
+  } elseif (Test-Path $ApiDll) {
     $dotnetPath = $DotnetPathCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
     if (-not $dotnetPath) {
       $dotnetCommand = Get-Command dotnet -ErrorAction SilentlyContinue
@@ -82,9 +85,6 @@ function Start-NexumApi {
     }
     $processFile = $dotnetPath
     $processArguments = "`"$ApiDll`""
-  } elseif (Test-Path $ApiExecutable) {
-    $processFile = $ApiExecutable
-    $processArguments = ""
   }
 
   Write-NexumLog "Iniciando API 24h em $Url"
