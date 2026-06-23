@@ -50,15 +50,75 @@ if ($publicTask) {
 
 Write-Host ""
 Write-Host "[3] Porta/API local"
+$localOk = $false
 try {
-  $health = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:5012/health/db" -TimeoutSec 15
-  if ($health.StatusCode -eq 200) {
+  for ($attempt = 1; $attempt -le 24; $attempt++) {
+    try {
+      $health = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:5012/health/db" -TimeoutSec 8
+      if ($health.StatusCode -eq 200) {
+        $localOk = $true
+        break
+      }
+    } catch {
+      Start-Sleep -Seconds 5
+    }
+  }
+
+  if ($localOk) {
     Write-Host "OK - API local saudavel em 5012"
   } else {
-    Write-Host "FALHOU - API local respondeu diferente de 200"
+    Write-Host "FALHOU - API local nao respondeu em 5012 dentro do tempo limite"
   }
 } catch {
   Write-Host "FALHOU - API local nao respondeu em 5012: $($_.Exception.Message)"
+}
+
+Write-Host ""
+Write-Host "[3.1] Login administrativo"
+if ($localOk) {
+  try {
+    $loginBody = @{ email = "admin@nexumaltivon.com"; senha = "1234" } | ConvertTo-Json
+    $login = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:5012/api/auth/login" -ContentType "application/json" -Body $loginBody -TimeoutSec 20
+    $token = $login.dados.token
+    if ($token) {
+      $me = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:5012/api/auth/me" -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 20
+      if ($me.StatusCode -eq 200) {
+        Write-Host "OK - Login admin e sessao administrativa saudaveis"
+      } else {
+        Write-Host "FALHOU - Sessao administrativa respondeu diferente de 200"
+      }
+    } else {
+      Write-Host "FALHOU - Login admin nao retornou token"
+    }
+  } catch {
+    Write-Host "FALHOU - Login admin nao validou: $($_.Exception.Message)"
+  }
+} else {
+  Write-Host "PULADO - API local indisponivel"
+}
+
+Write-Host ""
+Write-Host "[3.2] Area do cliente"
+if ($localOk) {
+  try {
+    $clienteBody = @{ email = "cliente.portal.teste.202606230815@nexumteste.local"; senha = "ClienteTeste2026!" } | ConvertTo-Json
+    $clienteLogin = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:5012/api/auth/login" -ContentType "application/json" -Body $clienteBody -TimeoutSec 20
+    $clienteToken = $clienteLogin.dados.token
+    if ($clienteToken) {
+      $portal = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:5012/api/clientes/portal/me" -Headers @{ Authorization = "Bearer $clienteToken" } -TimeoutSec 20
+      if ($portal.StatusCode -eq 200) {
+        Write-Host "OK - Login cliente e portal do cliente saudaveis"
+      } else {
+        Write-Host "FALHOU - Portal do cliente respondeu diferente de 200"
+      }
+    } else {
+      Write-Host "FALHOU - Login cliente nao retornou token"
+    }
+  } catch {
+    Write-Host "FALHOU - Area do cliente nao validou: $($_.Exception.Message)"
+  }
+} else {
+  Write-Host "PULADO - API local indisponivel"
 }
 
 Write-Host ""
