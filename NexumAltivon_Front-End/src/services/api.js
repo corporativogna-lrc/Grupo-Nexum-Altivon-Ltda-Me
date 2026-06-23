@@ -144,7 +144,10 @@ const normalizeRecord = (record) => {
     frete_metodo: record.frete_metodo ?? record.freteMetodo,
     frete_transportadora: record.frete_transportadora ?? record.freteTransportadora,
     frete_prazo_dias: record.frete_prazo_dias ?? record.fretePrazoDias,
+    frete_codigo_rastreio: record.frete_codigo_rastreio ?? record.freteCodigoRastreio,
     instrucao_pagamento: record.instrucao_pagamento ?? record.instrucaoPagamento,
+    cliente_nome: record.cliente_nome ?? record.clienteNome,
+    updated_at: record.updated_at ?? record.updatedAt,
     configurada: record.configurada ?? record.Configurada,
     operacional: record.operacional ?? record.Operacional,
     detalhe: record.detalhe ?? record.Detalhe,
@@ -267,6 +270,7 @@ export const pedidoAPI = {
   getAll: (params) => api.get('/pedidos', { params }),
   getById: (id) => api.get(`/pedidos/${id}`),
   create: (data) => api.post('/pedidos', data),
+  acompanhar: (params) => api.get('/pedidos/acompanhar', { params }),
   updateStatus: (id, status) => api.put(`/pedidos/${id}/status`, { novo_status: status }),
 };
 

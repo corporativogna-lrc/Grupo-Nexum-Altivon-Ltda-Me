@@ -1600,6 +1600,74 @@ app.MapGet("/api/pedidos", [Authorize(Policy = "Gerente")] async (NexumDbContext
 .WithName("Pedidos")
 ;
 
+app.MapGet("/api/pedidos/acompanhar", async (
+    string numero,
+    string? email,
+    string? documento,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var numeroPedido = (numero ?? string.Empty).Trim();
+    var emailCliente = NormalizeEmail(email);
+    var documentoCliente = NormalizeDocument(documento);
+
+    if (string.IsNullOrWhiteSpace(numeroPedido)
+        || (string.IsNullOrWhiteSpace(emailCliente) && string.IsNullOrWhiteSpace(documentoCliente)))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Informe o numero do pedido e o e-mail ou documento do cliente."));
+    }
+
+    var pedido = await db.Pedidos
+        .Include(item => item.Cliente)
+        .Include(item => item.Pagamentos)
+        .AsNoTracking()
+        .FirstOrDefaultAsync(item => item.NumeroPedido == numeroPedido, ct);
+
+    if (pedido?.Cliente is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Pedido nao encontrado para os dados informados."));
+    }
+
+    var emailConfere = !string.IsNullOrWhiteSpace(emailCliente)
+        && string.Equals(pedido.Cliente.Email, emailCliente, StringComparison.OrdinalIgnoreCase);
+    var documentoPedido = NormalizeDocument(pedido.Cliente.CpfCnpj);
+    var documentoConfere = !string.IsNullOrWhiteSpace(documentoCliente)
+        && !string.IsNullOrWhiteSpace(documentoPedido)
+        && documentoPedido == documentoCliente;
+
+    if (!emailConfere && !documentoConfere)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Pedido nao encontrado para os dados informados."));
+    }
+
+    var pagamentoAtual = pedido.Pagamentos?
+        .OrderByDescending(item => item.CreatedAt)
+        .FirstOrDefault();
+
+    var dto = new PedidoAcompanhamentoDto(
+        pedido.Id,
+        pedido.NumeroPedido,
+        pedido.Cliente.Nome,
+        pedido.Total,
+        FormatStatusPedido(pedido.Status),
+        FormatStatusPagamento(pedido.StatusPagamento),
+        pedido.MeioPagamento,
+        pedido.GatewayPagamento,
+        pedido.FreteMetodo,
+        pedido.FreteTransportadora,
+        pedido.FretePrazoDias,
+        pedido.FreteCodigoRastreio,
+        BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId),
+        pagamentoAtual?.BoletoUrl,
+        pedido.CreatedAt,
+        pedido.UpdatedAt);
+
+    return Results.Ok(ApiResponse<PedidoAcompanhamentoDto>.Ok(dto));
+})
+.AllowAnonymous()
+.WithName("AcompanharPedido")
+;
+
 app.MapPut("/api/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
     int id,
     StatusUpdateRequest request,
@@ -5399,6 +5467,24 @@ public sealed record PedidoLojaDto(
     int Parcelas,
     string? PixQrcode,
     string? PaymentUrl);
+
+public sealed record PedidoAcompanhamentoDto(
+    int Id,
+    string NumeroPedido,
+    string ClienteNome,
+    decimal Total,
+    string Status,
+    string StatusPagamento,
+    string? MeioPagamento,
+    string? GatewayPagamento,
+    string? FreteMetodo,
+    string? FreteTransportadora,
+    int FretePrazoDias,
+    string? FreteCodigoRastreio,
+    string InstrucaoPagamento,
+    string? PaymentUrl,
+    DateTime CreatedAt,
+    DateTime UpdatedAt);
 
 public sealed record IntegracaoStatusDto(
     string Nome,

@@ -16,6 +16,7 @@ import Checkout from './pages/Checkout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import AreaCliente from './pages/AreaCliente';
+import AcompanharPedido from './pages/AcompanharPedido';
 
 function getRouterBasename() {
   const publicUrl = process.env.PUBLIC_URL || '';
@@ -47,6 +48,7 @@ function AppShell() {
         <Route path="/contato" element={<Contato />} />
         <Route path="/carrinho" element={<Carrinho />} />
         <Route path="/checkout" element={<Checkout />} />
+        <Route path="/acompanhar-pedido" element={<AcompanharPedido />} />
         <Route path="/login" element={<Login />} />
         <Route path="/area-cliente" element={<AreaCliente />} />
         <Route path="/dashboard/*" element={<Dashboard />} />

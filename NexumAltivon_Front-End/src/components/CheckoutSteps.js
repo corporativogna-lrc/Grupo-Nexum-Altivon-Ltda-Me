@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { User, MapPin, CreditCard } from 'lucide-react';
 import { getPagamentoLabel } from '../utils/formatters';
 
@@ -416,10 +417,18 @@ export function CheckoutSuccess({ pedido, onContinue }) {
           )}
         </div>
 
-        <button onClick={onContinue}
-          className="rounded-full bg-[#C9A227] px-8 py-3 font-black text-black hover:bg-[#FFD95A]">
-          Voltar para a Loja
-        </button>
+        <div className="flex flex-col justify-center gap-3 sm:flex-row">
+          <Link
+            to={`/acompanhar-pedido?pedido=${encodeURIComponent(pedido.numero_pedido || '')}`}
+            className="rounded-full border border-[#C9A227]/40 px-8 py-3 font-black text-[#E8D5A3] transition hover:border-[#E8D5A3] hover:text-white"
+          >
+            Acompanhar Pedido
+          </Link>
+          <button onClick={onContinue}
+            className="rounded-full bg-[#C9A227] px-8 py-3 font-black text-black hover:bg-[#FFD95A]">
+            Voltar para a Loja
+          </button>
+        </div>
       </div>
     </div>
   );
