@@ -91,13 +91,18 @@ function Start-QuickTunnel {
   Stop-ManagedTunnel
 
   Write-GuardianLog "Abrindo nova ponte publica para $ApiUrl"
-  $process = Start-Process `
-    -FilePath $CloudflaredPath `
-    -ArgumentList @("tunnel", "--protocol", "http2", "--url", $ApiUrl, "--no-autoupdate") `
-    -RedirectStandardOutput $TunnelOutLog `
-    -RedirectStandardError $TunnelErrLog `
-    -WindowStyle Hidden `
-    -PassThru
+  $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+  $startInfo.FileName = $env:ComSpec
+  $startInfo.Arguments = "/c `"`"$CloudflaredPath`" tunnel --protocol http2 --url `"$ApiUrl`" --no-autoupdate 1>`"$TunnelOutLog`" 2>`"$TunnelErrLog`"`""
+  $startInfo.WorkingDirectory = $RunDir
+  $startInfo.UseShellExecute = $false
+  $startInfo.CreateNoWindow = $true
+
+  $process = New-Object System.Diagnostics.Process
+  $process.StartInfo = $startInfo
+  if (-not $process.Start()) {
+    throw "cloudflared nao iniciou."
+  }
 
   Set-Content -Path $TunnelPidPath -Value $process.Id
 

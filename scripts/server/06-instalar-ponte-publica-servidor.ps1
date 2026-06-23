@@ -43,7 +43,7 @@ if (-not (Test-Path $CloudflaredPath)) {
 
 $TaskName = "NexumAltivonPontePublica"
 $PowerShellPath = "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"
-$Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$GuardianScript`" -LocalUrl $LocalUrl -CheckSeconds $CheckSeconds -Branch $Branch -PushUrl `"$PushUrl`""
+$Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$GuardianScript`" -RootDir `"$SourceRoot`" -LocalUrl `"$LocalUrl`" -CheckSeconds $CheckSeconds -Branch `"$Branch`" -PushUrl `"$PushUrl`""
 $GuardianRunDir = Join-Path $SourceRoot ".nexum-runtime\public-api-guardian"
 $GuardianPidPath = Join-Path $GuardianRunDir "guardian.pid"
 $TunnelPidPath = Join-Path $GuardianRunDir "cloudflared.pid"
