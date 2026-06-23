@@ -173,10 +173,10 @@ Register-ScheduledTask `
   -Force | Out-Null
 
 Start-ScheduledTask -TaskName $TaskName
-Start-Sleep -Seconds 8
+Start-Sleep -Seconds 15
 
 $healthy = $false
-for ($attempt = 1; $attempt -le 6; $attempt++) {
+for ($attempt = 1; $attempt -le 18; $attempt++) {
   try {
     $response = Invoke-WebRequest -UseBasicParsing -Uri "$Url/health" -TimeoutSec 8
     if ($response.StatusCode -eq 200) {
@@ -184,7 +184,7 @@ for ($attempt = 1; $attempt -le 6; $attempt++) {
       break
     }
   } catch {
-    Start-Sleep -Seconds 5
+    Start-Sleep -Seconds 6
   }
 }
 

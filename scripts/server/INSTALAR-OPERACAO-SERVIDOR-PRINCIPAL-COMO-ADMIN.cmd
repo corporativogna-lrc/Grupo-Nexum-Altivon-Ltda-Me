@@ -5,7 +5,7 @@ cd /d "%~dp0..\.."
 echo Instalando operacao Nexum no SERVIDOR PRINCIPAL...
 echo.
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%CD%\scripts\server\01-instalar-api-24h-servidor.ps1" -SourceRoot "%CD%" -BaseDirectory "C:\NexumAltivon_API_24H" -Url http://127.0.0.1:5012 -CheckSeconds 20
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%CD%\scripts\server\01-instalar-api-24h-servidor.ps1" -SourceRoot "%CD%" -BaseDirectory "C:\NexumAltivon_API_24H" -Url http://127.0.0.1:5012 -CheckSeconds 20 -StartupGraceSeconds 90
 if errorlevel 1 exit /b %errorlevel%
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%CD%\scripts\server\06-instalar-ponte-publica-servidor.ps1" -SourceRoot "%CD%" -LocalUrl http://127.0.0.1:5012 -CheckSeconds 45
