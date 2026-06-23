@@ -4,7 +4,8 @@ param(
   [string]$ApiDirectory = "",
   [string]$ConfigDirectory = "",
   [string]$Url = "http://127.0.0.1:5012",
-  [int]$CheckSeconds = 20
+  [int]$CheckSeconds = 20,
+  [int]$StartupGraceSeconds = 75
 )
 
 $ErrorActionPreference = "Stop"
@@ -88,6 +89,7 @@ if ($DotnetPath) {
 
 if ($HasPublishedApiPackage) {
   Write-Host "Copiando API ja publicada para pasta local: $ApiDirectory"
+  Get-ChildItem -LiteralPath $ApiDirectory -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
   Get-ChildItem -LiteralPath $SourcePublishedApiDirectory -Force | Copy-Item -Destination $ApiDirectory -Recurse -Force
 } elseif ($CanPublishWithSdk) {
   $BuildBase = Join-Path $env:TEMP ("nexum-api-publish-" + [guid]::NewGuid().ToString("N"))
@@ -147,7 +149,7 @@ if (Test-Path $ConfigTarget) {
 }
 
 $PowerShellPath = "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"
-$Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$RunnerTarget`" -ApiDirectory `"$ApiDirectory`" -ConfigPath `"$ConfigTarget`" -BaseDirectory `"$BaseDirectory`" -Url $Url -CheckSeconds $CheckSeconds"
+$Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$RunnerTarget`" -ApiDirectory `"$ApiDirectory`" -ConfigPath `"$ConfigTarget`" -BaseDirectory `"$BaseDirectory`" -Url $Url -CheckSeconds $CheckSeconds -StartupGraceSeconds $StartupGraceSeconds"
 
 $Action = New-ScheduledTaskAction -Execute $PowerShellPath -Argument $Arguments -WorkingDirectory $BaseDirectory
 $TriggerStartup = New-ScheduledTaskTrigger -AtStartup

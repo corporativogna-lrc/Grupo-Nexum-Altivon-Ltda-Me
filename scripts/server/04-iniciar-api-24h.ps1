@@ -3,7 +3,8 @@ param(
   [string]$ConfigPath = "Y:\NexumAltivon_API_24H\config\api.env.ps1",
   [string]$BaseDirectory = "Y:\NexumAltivon_API_24H",
   [string]$Url = "http://127.0.0.1:5012",
-  [int]$CheckSeconds = 20
+  [int]$CheckSeconds = 20,
+  [int]$StartupGraceSeconds = 75
 )
 
 $ErrorActionPreference = "Stop"
@@ -68,10 +69,7 @@ function Start-NexumApi {
     throw "Publicação da API não encontrada: $ApiDirectory"
   }
 
-  if (Test-Path $ApiExecutable) {
-    $processFile = $ApiExecutable
-    $processArguments = ""
-  } else {
+  if (Test-Path $ApiDll) {
     $dotnetPath = $DotnetPathCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
     if (-not $dotnetPath) {
       $dotnetCommand = Get-Command dotnet -ErrorAction SilentlyContinue
@@ -84,6 +82,9 @@ function Start-NexumApi {
     }
     $processFile = $dotnetPath
     $processArguments = "`"$ApiDll`""
+  } elseif (Test-Path $ApiExecutable) {
+    $processFile = $ApiExecutable
+    $processArguments = ""
   }
 
   Write-NexumLog "Iniciando API 24h em $Url"
@@ -114,7 +115,7 @@ while ($true) {
       Write-NexumLog "API indisponível. Reiniciando."
       Stop-NexumApi
       Start-NexumApi
-      Start-Sleep -Seconds 10
+      Start-Sleep -Seconds $StartupGraceSeconds
     }
   } catch {
     Write-NexumLog "Erro no guardiao da API: $($_.Exception.Message)"

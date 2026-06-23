@@ -21,6 +21,7 @@ using NexumAltivon.API.Services;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
+Console.WriteLine("[NexumStartup] Builder criado.");
 
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
@@ -176,9 +177,24 @@ builder.Services
     .AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(Path.GetTempPath(), "nexum-altivon-api-keys")));
 
+Console.WriteLine("[NexumStartup] Montando aplicacao.");
 var app = builder.Build();
+Console.WriteLine("[NexumStartup] Aplicacao montada.");
 
-await EnsureOperationalSchemaAsync(app.Services, app.Logger);
+app.Lifetime.ApplicationStarted.Register(() =>
+{
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            await EnsureOperationalSchemaAsync(app.Services, app.Logger);
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogWarning(ex, "Operational schema check failed. API will continue running.");
+        }
+    });
+});
 
 app.UseCors("NexumCorsPolicy");
 app.UseStaticFiles();
@@ -5206,6 +5222,7 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
         """.Replace("{", "{{").Replace("}", "}}"));
 }
 
+Console.WriteLine("[NexumStartup] Iniciando servidor HTTP.");
 app.Run();
 
 public sealed record LoginRequest(string Email, string Senha);
