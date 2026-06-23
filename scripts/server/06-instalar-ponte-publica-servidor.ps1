@@ -24,9 +24,21 @@ if (-not (Test-Path $GuardianScript)) {
   throw "Guardiao publico nao encontrado: $GuardianScript"
 }
 
-$CloudflaredPath = "C:\Program Files (x86)\cloudflared\cloudflared.exe"
+$CloudflaredPathCandidates = @(
+  "C:\Cloudflared\cloudflared.exe",
+  "C:\Program Files\cloudflared\cloudflared.exe",
+  "C:\Program Files (x86)\cloudflared\cloudflared.exe"
+)
+$CloudflaredPath = $CloudflaredPathCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not (Test-Path $CloudflaredPath)) {
-  throw "cloudflared nao encontrado no servidor principal: $CloudflaredPath"
+  $CloudflaredPath = "C:\Cloudflared\cloudflared.exe"
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $CloudflaredPath) | Out-Null
+  Write-Host "cloudflared nao encontrado. Baixando para: $CloudflaredPath"
+  Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile $CloudflaredPath -TimeoutSec 120
+}
+
+if (-not (Test-Path $CloudflaredPath)) {
+  throw "cloudflared nao encontrado no servidor principal."
 }
 
 $TaskName = "NexumAltivonPontePublica"
@@ -62,3 +74,4 @@ Write-Host "Ponte publica Nexum instalada no servidor principal."
 Write-Host "Tarefa: $TaskName"
 Write-Host "Origem local: $LocalUrl"
 Write-Host "Script: $GuardianScript"
+Write-Host "Cloudflared: $CloudflaredPath"

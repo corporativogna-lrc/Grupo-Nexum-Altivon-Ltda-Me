@@ -19,7 +19,12 @@ $TunnelErrLog = Join-Path $RunDir "cloudflared.err.log"
 $GuardianLog = Join-Path $LogDir "public-api-guardian.log"
 $RootRuntimeConfig = Join-Path $RootDir "api-runtime.json"
 $PublicRuntimeConfig = Join-Path $RootDir "NexumAltivon_Front-End\public\api-runtime.json"
-$CloudflaredPath = "C:\Program Files (x86)\cloudflared\cloudflared.exe"
+$CloudflaredPathCandidates = @(
+  "C:\Cloudflared\cloudflared.exe",
+  "C:\Program Files\cloudflared\cloudflared.exe",
+  "C:\Program Files (x86)\cloudflared\cloudflared.exe"
+)
+$CloudflaredPath = $CloudflaredPathCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 $GitPathCandidates = @(
   "C:\Program Files\Git\cmd\git.exe",
   "C:\Program Files\Git\bin\git.exe",
