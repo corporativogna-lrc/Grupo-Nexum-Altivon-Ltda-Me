@@ -1,8 +1,9 @@
 {
-  "apiUrl": "https://api.nexumaltivon.com",
-  "apiUrls": [
-    "https://api.nexumaltivon.com"
-  ],
-  "updatedAt": "2026-06-23T13:30:00.0000000Z",
-  "source": "servidor-principal-guardian"
+    "apiUrl":  "https://safer-nature-gdp-maiden.trycloudflare.com",
+    "apiUrls":  [
+                    "https://safer-nature-gdp-maiden.trycloudflare.com",
+                    "https://api.nexumaltivon.com"
+                ],
+    "updatedAt":  "2026-06-23T14:21:19.0717799Z",
+    "source":  "nexum-public-api-guardian"
 }
