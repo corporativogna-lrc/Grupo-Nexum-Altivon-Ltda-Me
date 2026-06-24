@@ -105,7 +105,7 @@ Write-Host ""
 Write-Host "[3.1] Login administrativo"
 if ($localOk) {
   try {
-    $loginBody = @{ email = "admin@nexumaltivon.com"; senha = "1234" } | ConvertTo-Json
+    $loginBody = @{ email = "admin@nexumaltivon.com"; senha = "Admin@123" } | ConvertTo-Json
     $login = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:5012/api/auth/login" -ContentType "application/json" -Body $loginBody -TimeoutSec 20
     $token = $login.dados.token
     if ($token) {
