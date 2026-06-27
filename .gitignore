@@ -65,6 +65,7 @@ NexumAltivon_Back-End/wwwroot/uploads/
 
 # Node.js (futuro front-end)
 node_modules/
+node_modules_quebrado_*/
 NexumAltivon_Front-End/build/
 build/
 dist/

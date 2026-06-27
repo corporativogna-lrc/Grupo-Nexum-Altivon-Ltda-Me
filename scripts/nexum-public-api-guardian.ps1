@@ -2,7 +2,7 @@ param(
   [string]$RootDir = "Y:\Nexum Altivon\NexumAltivon.com",
   [string]$ApiUrl = "http://127.0.0.1:5012",
   [string]$LocalUrl = "",
-  [string]$PublicDomain = "https://api.nexumaltivon.com",
+  [string]$PublicDomain = "https://api.nexumaltivon.com.br",
   [int]$DbPort = 3309,
   [int]$CheckSeconds = 30,
   [string]$Branch = "main",
@@ -44,6 +44,21 @@ New-Item -ItemType Directory -Force -Path $RunDir, $LogDir, (Split-Path -Parent 
 function Write-GuardianLog {
   param([string]$Message)
   Add-Content -Path $GuardianLog -Value "[$(Get-Date -Format s)] $Message"
+}
+
+function Disable-CloudflareOneWarp {
+  $warp = Get-Command "warp-cli.exe" -ErrorAction SilentlyContinue
+  if (-not $warp) { return }
+
+  try {
+    $status = (& $warp.Source status 2>$null | Out-String)
+    if ($status -notmatch "Disconnected") {
+      & $warp.Source disconnect 2>$null | Out-Null
+      Write-GuardianLog "Cloudflare One/WARP desconectado para nao interferir no tunnel."
+    }
+  } catch {
+    Write-GuardianLog "Nao foi possivel validar/desconectar Cloudflare One/WARP: $($_.Exception.Message)"
+  }
 }
 
 function Set-Utf8NoBomText {
@@ -146,6 +161,31 @@ function Get-CurrentRuntimeUrl {
   } catch { return "" }
 }
 
+function Get-RuntimeUrls {
+  if (-not (Test-Path $PublicRuntimeConfig)) { return @() }
+  try {
+    $rawConfig = Get-Content $PublicRuntimeConfig -Raw
+    $config = $rawConfig.TrimStart([char]0xFEFF) | ConvertFrom-Json
+    $urls = @()
+    if ($config.apiUrl) { $urls += [string]$config.apiUrl }
+    if ($config.apiUrls) {
+      foreach ($item in $config.apiUrls) {
+        if ($item) { $urls += [string]$item }
+      }
+    }
+    return @($urls | Where-Object { $_ -and $_ -ne "https://api.trycloudflare.com" } | Select-Object -Unique)
+  } catch {
+    return @()
+  }
+}
+
+function Get-HealthyRuntimeUrl {
+  foreach ($candidate in (Get-RuntimeUrls)) {
+    if (Test-HttpHealth -Url $candidate) { return $candidate }
+  }
+  return ""
+}
+
 function Publish-RuntimeUrl {
   param([string]$Url)
   if ($Url -eq "https://api.trycloudflare.com" -or -not (Test-HttpHealth $Url)) {
@@ -154,18 +194,25 @@ function Publish-RuntimeUrl {
   }
 
   $current = Get-CurrentRuntimeUrl
+  $currentUrls = Get-RuntimeUrls
+  if ($current -eq $PublicDomain -and ($currentUrls -contains $Url)) { return }
   if ($current -eq $Url) { return }
 
+  $apiUrls = @($PublicDomain)
+  if ($Url -and $Url -ne $PublicDomain) {
+    $apiUrls += $Url
+  }
+
   $payload = [ordered]@{
-    apiUrl = $Url
-    apiUrls = @($Url, $PublicDomain)
+    apiUrl = $PublicDomain
+    apiUrls = $apiUrls
     updatedAt = (Get-Date).ToUniversalTime().ToString("o")
     source = "nexum-public-api-guardian"
   } | ConvertTo-Json
 
   Set-Utf8NoBomText -Path $RootRuntimeConfig -Value $payload
   Set-Utf8NoBomText -Path $PublicRuntimeConfig -Value $payload
-  Write-GuardianLog "api-runtime.json atualizado: $Url"
+  Write-GuardianLog "api-runtime.json atualizado. Principal: $PublicDomain. Reserva ativa: $Url"
 
   $gitPath = $GitPathCandidates | Where-Object {
     if ($_ -eq "git") {
@@ -218,6 +265,7 @@ if (Test-Path $PidPath) {
 }
 Set-Content -Path $PidPath -Value $PID
 Write-GuardianLog "Guardiao publico iniciado."
+Disable-CloudflareOneWarp
 
 while ($true) {
   try {
@@ -227,8 +275,8 @@ while ($true) {
       continue
     }
 
-    $url = Get-CurrentRuntimeUrl
-    if ($url -eq "https://api.trycloudflare.com") { $url = $null }
+    Disable-CloudflareOneWarp
+    $url = Get-HealthyRuntimeUrl
 
     if (-not $url -or -not (Test-HttpHealth -Url $url)) {
       Write-GuardianLog "Ponte publica em $url caiu ou nao existe. Recriando..."

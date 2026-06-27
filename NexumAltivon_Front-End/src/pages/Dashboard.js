@@ -415,7 +415,7 @@ const emptySiteConfigForm = {
   home_intro_titulo: 'Uma Nova Era Começa',
   home_intro_texto_1: 'A Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro.',
   home_intro_texto_2: 'Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso.',
-  home_intro_badge: 'www.nexumaltivon.com',
+  home_intro_badge: 'nexumaltivon.com.br',
   home_footer_texto: 'Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas.',
   home_quality_items: '["Curadoria rigorosa de fornecedores","Atendimento humano e especializado","Política de devolução simplificada","Preços justos e acessíveis"]',
   home_partner_cards: '[{"title":"Parceiros de Vendas","text":"Lojas físicas ou online podem ampliar seus horizontes de venda com nossa infraestrutura comercial e operação integrada.","cta":"Quero Vender","href":"https://wa.me/5514996731879?text=Olá! Tenho interesse em ser parceiro de vendas do Grupo Nexum Altivon.","icon":"Store"}]',
@@ -2518,7 +2518,7 @@ export default function Dashboard() {
                                 {siteConfigForm.home_intro_texto_2 || 'Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso.'}
                               </p>
                               <div className="mt-4 inline-flex rounded-full border border-[#C9A227]/30 bg-[#C9A227]/10 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-[#E8D5A3]">
-                                {siteConfigForm.home_intro_badge || 'www.nexumaltivon.com'}
+                                {siteConfigForm.home_intro_badge || 'nexumaltivon.com.br'}
                               </div>
                             </div>
 

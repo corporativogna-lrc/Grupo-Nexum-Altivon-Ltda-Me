@@ -1,7 +1,7 @@
 param(
   [string]$Token = "",
   [string]$LocalUrl = "http://127.0.0.1:5012",
-  [string]$PublicUrl = "https://api.nexumaltivon.com"
+  [string]$PublicUrl = "https://api.nexumaltivon.com.br"
 )
 
 $ErrorActionPreference = "Stop"
@@ -10,6 +10,21 @@ $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
   throw "Abra como Administrador no servidor principal e execute novamente."
+}
+
+function Disable-CloudflareOneWarp {
+  $warp = Get-Command "warp-cli.exe" -ErrorAction SilentlyContinue
+  if (-not $warp) { return }
+
+  try {
+    $status = (& $warp.Source status 2>$null | Out-String)
+    if ($status -notmatch "Disconnected") {
+      & $warp.Source disconnect 2>$null | Out-Null
+      Write-Host "Cloudflare One/WARP desconectado para nao interferir no tunnel."
+    }
+  } catch {
+    Write-Host "Aviso: nao foi possivel validar/desconectar Cloudflare One/WARP: $($_.Exception.Message)"
+  }
 }
 
 $cloudflaredCandidates = @(
@@ -44,6 +59,8 @@ if ($localHealth.StatusCode -ne 200) {
   throw "API local nao esta saudavel em $LocalUrl."
 }
 
+Disable-CloudflareOneWarp
+
 Write-Host "Instalando servico fixo Cloudflare Tunnel..."
 & $cloudflared service uninstall 2>$null
 & $cloudflared service install $Token
@@ -70,7 +87,7 @@ do {
 } while ((Get-Date) -lt $deadline)
 
 if (-not $ok) {
-  throw "Tunnel fixo instalado, mas $PublicUrl ainda nao respondeu. Confira no Cloudflare se o hostname api.nexumaltivon.com aponta para http://127.0.0.1:5012."
+  throw "Tunnel fixo instalado, mas $PublicUrl ainda nao respondeu. Confira no Cloudflare se o hostname api.nexumaltivon.com.br aponta para http://127.0.0.1:5012."
 }
 
 Write-Host "OK - Tunnel fixo Cloudflare ativo: $PublicUrl"

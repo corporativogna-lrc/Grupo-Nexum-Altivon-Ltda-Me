@@ -64,7 +64,7 @@ namespace NexumAltivon.API.Services
                         }
                     },
                     external_reference = pedido.NumeroPedido,
-                    notification_url = "https://api.nexumaltivon.com/api/webhooks/mercadopago"
+                    notification_url = "https://api.nexumaltivon.com.br/api/webhooks/mercadopago"
                 };
 
                 var response = await _httpClient.PostAsJsonAsync("/v1/payments", request);
@@ -140,7 +140,7 @@ namespace NexumAltivon.API.Services
                         identification = new { type = "CPF", number = pedido.Cliente?.Cpf }
                     },
                     external_reference = pedido.NumeroPedido,
-                    notification_url = "https://api.nexumaltivon.com/api/webhooks/mercadopago"
+                    notification_url = "https://api.nexumaltivon.com.br/api/webhooks/mercadopago"
                 };
 
                 var response = await _httpClient.PostAsJsonAsync("/v1/payments", paymentRequest);
@@ -190,7 +190,7 @@ namespace NexumAltivon.API.Services
                         identification = new { type = "CPF", number = pedido.Cliente?.Cpf }
                     },
                     external_reference = pedido.NumeroPedido,
-                    notification_url = "https://api.nexumaltivon.com/api/webhooks/mercadopago"
+                    notification_url = "https://api.nexumaltivon.com.br/api/webhooks/mercadopago"
                 };
 
                 var response = await _httpClient.PostAsJsonAsync("/v1/payments", request);

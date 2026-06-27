@@ -75,8 +75,10 @@ builder.Services.AddCors(options =>
         var origins = apiSettings.GetSection("CorsOrigins").Get<string[]>()
             ?? new[]
             {
-                "https://www.nexumaltivon.com",
-                "https://admin.nexumaltivon.com"
+                "https://nexumaltivon.com.br",
+                "https://www.nexumaltivon.com.br",
+                "https://admin.nexumaltivon.com.br",
+                "https://api.nexumaltivon.com.br"
             };
 
         policy
@@ -1188,6 +1190,11 @@ app.MapGet("/api/clientes/verificar", async (string? email, string? cpf, NexumDb
         return Results.BadRequest(ApiResponse<string>.Erro("Informe email ou CPF/CNPJ para verificar o cadastro."));
     }
 
+    if (!string.IsNullOrWhiteSpace(normalizedDocument) && !IsValidCpfCnpj(normalizedDocument))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("CPF/CNPJ inválido."));
+    }
+
     var cliente = await db.Clientes
         .AsNoTracking()
         .OrderByDescending(item => item.UpdatedAt)
@@ -1221,6 +1228,10 @@ app.MapPost("/api/clientes", async (ClienteRequest request, IConfiguration confi
 
     var email = NormalizeEmail(request.Email)!;
     var cpfCnpj = NormalizeDocument(request.Cpf);
+    if (!string.IsNullOrWhiteSpace(cpfCnpj) && !IsValidCpfCnpj(cpfCnpj))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("CPF/CNPJ inválido."));
+    }
     var clienteExistente = await db.Clientes.FirstOrDefaultAsync(cliente =>
         cliente.Email == email ||
         (!string.IsNullOrWhiteSpace(cpfCnpj) &&
@@ -1250,7 +1261,7 @@ app.MapPost("/api/clientes", async (ClienteRequest request, IConfiguration confi
         {
             clienteExistente.TokenConfirmacaoEmail ??= Guid.NewGuid().ToString("N");
             clienteExistente.Status = StatusCliente.Pendente;
-            var baseUrlExistente = configuration["PublicSite:BaseUrl"]?.TrimEnd('/') ?? "https://www.nexumaltivon.com";
+            var baseUrlExistente = configuration["PublicSite:BaseUrl"]?.TrimEnd('/') ?? "https://nexumaltivon.com.br";
             var linkExistente = $"{baseUrlExistente}/confirmar-cadastro.html?token={Uri.EscapeDataString(clienteExistente.TokenConfirmacaoEmail)}";
             await notificacaoService.EnviarConfirmacaoCadastroAsync(clienteExistente, linkExistente);
         }
@@ -1281,7 +1292,7 @@ app.MapPost("/api/clientes", async (ClienteRequest request, IConfiguration confi
     db.Clientes.Add(cliente);
     await db.SaveChangesAsync(ct);
 
-    var baseUrl = configuration["PublicSite:BaseUrl"]?.TrimEnd('/') ?? "https://www.nexumaltivon.com";
+    var baseUrl = configuration["PublicSite:BaseUrl"]?.TrimEnd('/') ?? "https://nexumaltivon.com.br";
     var linkConfirmacao = $"{baseUrl}/confirmar-cadastro.html?token={Uri.EscapeDataString(cliente.TokenConfirmacaoEmail ?? string.Empty)}";
     await notificacaoService.EnviarConfirmacaoCadastroAsync(cliente, linkConfirmacao);
 
@@ -1372,6 +1383,26 @@ app.MapGet("/api/clientes/portal/me", [Authorize] async (ClaimsPrincipal princip
                 item.CreatedAt))
             .ToListAsync(ct);
 
+    var enderecos = await db.Enderecos
+        .AsNoTracking()
+        .Where(item => item.ClienteId == cliente.Id)
+        .OrderByDescending(item => item.Padrao)
+        .ThenByDescending(item => item.CreatedAt)
+        .Select(item => new ClientePortalEnderecoDto(
+            item.Id,
+            item.Apelido,
+            item.Tipo.ToString(),
+            item.Cep,
+            item.Logradouro,
+            item.Numero,
+            item.Complemento,
+            item.Bairro,
+            item.Cidade,
+            item.Estado,
+            item.Pais,
+            item.Padrao))
+        .ToListAsync(ct);
+
     var totalCompras = pedidos.Sum(item => item.Total);
     var score = cliente.Vip ? "Premium" : cliente.PontosFidelidade >= 500 ? "Gold" : cliente.PontosFidelidade >= 150 ? "Silver" : "Start";
     var portal = new ClientePortalDto(
@@ -1388,6 +1419,7 @@ app.MapGet("/api/clientes/portal/me", [Authorize] async (ClaimsPrincipal princip
         Math.Round(totalCompras / 10m, 2),
         pedidos,
         documentos,
+        enderecos,
         [
             "Canal direto com o Grupo Nexum Altivon.",
             "Pontuação de fidelidade acumulada por compras aprovadas.",
@@ -1397,6 +1429,172 @@ app.MapGet("/api/clientes/portal/me", [Authorize] async (ClaimsPrincipal princip
     return Results.Ok(ApiResponse<ClientePortalDto>.Ok(portal));
 })
 .WithName("ClientePortalMe")
+;
+
+app.MapPost("/api/clientes/portal/enderecos", [Authorize] async (ClientePortalEnderecoRequest request, ClaimsPrincipal principal, NexumDbContext db, CancellationToken ct) =>
+{
+    var cliente = await GetClientePortalAsync(principal, db, ct);
+    if (cliente is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Cliente nao localizado para esta sessao."));
+    }
+
+    var validation = ValidateEnderecoRequest(request);
+    if (validation is not null)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro(validation));
+    }
+
+    var hasEndereco = await db.Enderecos.AnyAsync(item => item.ClienteId == cliente.Id, ct);
+    var definirComoPadrao = request.Padrao || !hasEndereco;
+    if (definirComoPadrao)
+    {
+        await db.Enderecos
+            .Where(item => item.ClienteId == cliente.Id && item.Padrao)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.Padrao, false)
+                .SetProperty(item => item.UpdatedAt, DateTime.UtcNow), ct);
+    }
+
+    var endereco = new Endereco
+    {
+        ClienteId = cliente.Id,
+        Tipo = ParseTipoEndereco(request.Tipo),
+        Apelido = string.IsNullOrWhiteSpace(request.Apelido) ? (definirComoPadrao ? "Principal" : "Auxiliar") : request.Apelido.Trim(),
+        Cep = NormalizeDocument(request.Cep) ?? string.Empty,
+        Logradouro = request.Logradouro!.Trim(),
+        Numero = request.Numero!.Trim(),
+        Complemento = TrimOrNull(request.Complemento),
+        Bairro = TrimOrNull(request.Bairro),
+        Cidade = TrimOrNull(request.Cidade),
+        Estado = TrimOrNull(request.Estado)?.ToUpperInvariant(),
+        Pais = string.IsNullOrWhiteSpace(request.Pais) ? "Brasil" : request.Pais.Trim(),
+        Padrao = definirComoPadrao,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
+    };
+
+    db.Enderecos.Add(endereco);
+    await db.SaveChangesAsync(ct);
+
+    return Results.Ok(ApiResponse<ClientePortalEnderecoDto>.Ok(ToClientePortalEnderecoDto(endereco), "Endereco cadastrado."));
+})
+.WithName("ClientePortalCriarEndereco")
+;
+
+app.MapPut("/api/clientes/portal/enderecos/{id:int}", [Authorize] async (int id, ClientePortalEnderecoRequest request, ClaimsPrincipal principal, NexumDbContext db, CancellationToken ct) =>
+{
+    var cliente = await GetClientePortalAsync(principal, db, ct);
+    if (cliente is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Cliente nao localizado para esta sessao."));
+    }
+
+    var endereco = await db.Enderecos.FirstOrDefaultAsync(item => item.Id == id && item.ClienteId == cliente.Id, ct);
+    if (endereco is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Endereco nao localizado."));
+    }
+
+    var validation = ValidateEnderecoRequest(request);
+    if (validation is not null)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro(validation));
+    }
+
+    if (request.Padrao && !endereco.Padrao)
+    {
+        await db.Enderecos
+            .Where(item => item.ClienteId == cliente.Id && item.Id != endereco.Id && item.Padrao)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.Padrao, false)
+                .SetProperty(item => item.UpdatedAt, DateTime.UtcNow), ct);
+    }
+
+    endereco.Tipo = ParseTipoEndereco(request.Tipo);
+    endereco.Apelido = string.IsNullOrWhiteSpace(request.Apelido) ? endereco.Apelido : request.Apelido.Trim();
+    endereco.Cep = NormalizeDocument(request.Cep) ?? string.Empty;
+    endereco.Logradouro = request.Logradouro!.Trim();
+    endereco.Numero = request.Numero!.Trim();
+    endereco.Complemento = TrimOrNull(request.Complemento);
+    endereco.Bairro = TrimOrNull(request.Bairro);
+    endereco.Cidade = TrimOrNull(request.Cidade);
+    endereco.Estado = TrimOrNull(request.Estado)?.ToUpperInvariant();
+    endereco.Pais = string.IsNullOrWhiteSpace(request.Pais) ? "Brasil" : request.Pais.Trim();
+    endereco.Padrao = request.Padrao || endereco.Padrao;
+    endereco.UpdatedAt = DateTime.UtcNow;
+
+    await db.SaveChangesAsync(ct);
+
+    return Results.Ok(ApiResponse<ClientePortalEnderecoDto>.Ok(ToClientePortalEnderecoDto(endereco), "Endereco atualizado."));
+})
+.WithName("ClientePortalAtualizarEndereco")
+;
+
+app.MapPut("/api/clientes/portal/enderecos/{id:int}/principal", [Authorize] async (int id, ClaimsPrincipal principal, NexumDbContext db, CancellationToken ct) =>
+{
+    var cliente = await GetClientePortalAsync(principal, db, ct);
+    if (cliente is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Cliente nao localizado para esta sessao."));
+    }
+
+    var endereco = await db.Enderecos.FirstOrDefaultAsync(item => item.Id == id && item.ClienteId == cliente.Id, ct);
+    if (endereco is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Endereco nao localizado."));
+    }
+
+    await db.Enderecos
+        .Where(item => item.ClienteId == cliente.Id && item.Id != endereco.Id && item.Padrao)
+        .ExecuteUpdateAsync(setters => setters
+            .SetProperty(item => item.Padrao, false)
+            .SetProperty(item => item.UpdatedAt, DateTime.UtcNow), ct);
+
+    endereco.Padrao = true;
+    endereco.UpdatedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync(ct);
+
+    return Results.Ok(ApiResponse<ClientePortalEnderecoDto>.Ok(ToClientePortalEnderecoDto(endereco), "Endereco principal definido."));
+})
+.WithName("ClientePortalDefinirEnderecoPrincipal")
+;
+
+app.MapDelete("/api/clientes/portal/enderecos/{id:int}", [Authorize] async (int id, ClaimsPrincipal principal, NexumDbContext db, CancellationToken ct) =>
+{
+    var cliente = await GetClientePortalAsync(principal, db, ct);
+    if (cliente is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Cliente nao localizado para esta sessao."));
+    }
+
+    var endereco = await db.Enderecos.FirstOrDefaultAsync(item => item.Id == id && item.ClienteId == cliente.Id, ct);
+    if (endereco is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Endereco nao localizado."));
+    }
+
+    var eraPadrao = endereco.Padrao;
+    db.Enderecos.Remove(endereco);
+    await db.SaveChangesAsync(ct);
+
+    if (eraPadrao)
+    {
+        var novoPadrao = await db.Enderecos
+            .Where(item => item.ClienteId == cliente.Id)
+            .OrderByDescending(item => item.UpdatedAt)
+            .FirstOrDefaultAsync(ct);
+        if (novoPadrao is not null)
+        {
+            novoPadrao.Padrao = true;
+            novoPadrao.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+    }
+
+    return Results.Ok(ApiResponse<string>.Ok("Endereco removido."));
+})
+.WithName("ClientePortalRemoverEndereco")
 ;
 
 app.MapGet("/api/fornecedores", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
@@ -1428,6 +1626,10 @@ app.MapPost("/api/fornecedores", [Authorize(Policy = "Gerente")] async (Forneced
     }
 
     var documento = string.IsNullOrWhiteSpace(request.Documento) ? null : request.Documento.Trim();
+    if (!string.IsNullOrWhiteSpace(documento) && !IsValidCpfCnpj(documento))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("CNPJ/CPF do fornecedor inválido."));
+    }
     var email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim().ToLowerInvariant();
     var fornecedorExistente = await db.Fornecedores.FirstOrDefaultAsync(fornecedor =>
         (!string.IsNullOrWhiteSpace(documento) && fornecedor.Cnpj == documento) ||
@@ -1481,6 +1683,10 @@ app.MapPut("/api/fornecedores/{id:int}", [Authorize(Policy = "Gerente")] async (
     }
 
     var documento = string.IsNullOrWhiteSpace(request.Documento) ? null : request.Documento.Trim();
+    if (!string.IsNullOrWhiteSpace(documento) && !IsValidCpfCnpj(documento))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("CNPJ/CPF do fornecedor inválido."));
+    }
     var email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim().ToLowerInvariant();
     var fornecedorExistente = await db.Fornecedores.FirstOrDefaultAsync(item =>
         item.Id != fornecedor.Id &&
@@ -1867,14 +2073,14 @@ app.MapPost("/api/pedidos", async (
 
     await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
     var produtoSlugs = itensSolicitados.Select(item => item.ProdutoId).ToList();
-    var produtosMap = await db.Produtos
+    var produtosMap = await FiltrarProdutosPublicaveis(db.Produtos)
         .Include(produto => produto.Fornecedor)
-        .Where(produto => produto.Ativo && produtoSlugs.Contains(produto.Slug))
+        .Where(produto => produtoSlugs.Contains(produto.Slug))
         .ToDictionaryAsync(produto => produto.Slug, ct);
 
     if (produtosMap.Count != produtoSlugs.Count)
     {
-        return Results.BadRequest(ApiResponse<string>.Erro("Um ou mais produtos nao estao disponiveis."));
+        return Results.BadRequest(ApiResponse<string>.Erro("Um ou mais produtos nao estao liberados para venda."));
     }
 
     decimal subtotal = 0m;
@@ -3200,6 +3406,83 @@ static string? NormalizeDocument(string? value)
     return digits.Length == 0 ? null : digits;
 }
 
+static bool IsValidCpfCnpj(string? value)
+{
+    var digits = NormalizeDocument(value);
+    if (string.IsNullOrWhiteSpace(digits))
+    {
+        return false;
+    }
+
+    return digits.Length switch
+    {
+        11 => IsValidCpf(digits),
+        14 => IsValidCnpj(digits),
+        _ => false
+    };
+}
+
+static bool IsValidCpf(string cpf)
+{
+    if (cpf.Length != 11 || cpf.Distinct().Count() == 1)
+    {
+        return false;
+    }
+
+    int SumDigit(int length)
+    {
+        var sum = 0;
+        for (var i = 0; i < length; i++)
+        {
+            sum += (cpf[i] - '0') * (length + 1 - i);
+        }
+        return sum;
+    }
+
+    var first = SumDigit(9);
+    var firstDigit = first % 11 < 2 ? 0 : 11 - (first % 11);
+    if (firstDigit != cpf[9] - '0')
+    {
+        return false;
+    }
+
+    var second = SumDigit(10);
+    var secondDigit = second % 11 < 2 ? 0 : 11 - (second % 11);
+    return secondDigit == cpf[10] - '0';
+}
+
+static bool IsValidCnpj(string cnpj)
+{
+    if (cnpj.Length != 14 || cnpj.Distinct().Count() == 1)
+    {
+        return false;
+    }
+
+    int CalculateDigit(int length, int[] weights)
+    {
+        var sum = 0;
+        for (var i = 0; i < length; i++)
+        {
+            sum += (cnpj[i] - '0') * weights[i];
+        }
+
+        var mod = sum % 11;
+        return mod < 2 ? 0 : 11 - mod;
+    }
+
+    var firstWeights = new[] { 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2 };
+    var secondWeights = new[] { 6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2 };
+
+    var firstDigit = CalculateDigit(12, firstWeights);
+    if (firstDigit != cnpj[12] - '0')
+    {
+        return false;
+    }
+
+    var secondDigit = CalculateDigit(13, secondWeights);
+    return secondDigit == cnpj[13] - '0';
+}
+
 static async Task<Cliente?> LoadClienteCheckoutAsync(
     NexumDbContext db,
     int clienteId,
@@ -3579,6 +3862,55 @@ static string? NormalizePhone(string? value)
 
 static string? TrimOrNull(string? value) =>
     string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+static async Task<Cliente?> GetClientePortalAsync(ClaimsPrincipal principal, NexumDbContext db, CancellationToken ct)
+{
+    var email = principal.FindFirstValue(ClaimTypes.Email) ?? principal.FindFirstValue(JwtRegisteredClaimNames.Email);
+    if (string.IsNullOrWhiteSpace(email))
+    {
+        return null;
+    }
+
+    return await db.Clientes.FirstOrDefaultAsync(item => item.Email == email, ct);
+}
+
+static string? ValidateEnderecoRequest(ClientePortalEnderecoRequest request)
+{
+    var cep = NormalizeDocument(request.Cep);
+    if (string.IsNullOrWhiteSpace(request.Logradouro) ||
+        string.IsNullOrWhiteSpace(request.Numero) ||
+        string.IsNullOrWhiteSpace(request.Bairro) ||
+        string.IsNullOrWhiteSpace(request.Cidade) ||
+        string.IsNullOrWhiteSpace(request.Estado))
+    {
+        return "Endereco incompleto.";
+    }
+
+    if (cep is null || cep.Length != 8)
+    {
+        return "CEP invalido.";
+    }
+
+    var estado = request.Estado.Trim();
+    return estado.Length == 2 ? null : "Estado deve ter 2 letras.";
+}
+
+static TipoEndereco ParseTipoEndereco(string? value) =>
+    Enum.TryParse<TipoEndereco>(value, true, out var tipo) ? tipo : TipoEndereco.Entrega;
+
+static ClientePortalEnderecoDto ToClientePortalEnderecoDto(Endereco endereco) => new(
+    endereco.Id,
+    endereco.Apelido,
+    endereco.Tipo.ToString(),
+    endereco.Cep,
+    endereco.Logradouro,
+    endereco.Numero,
+    endereco.Complemento,
+    endereco.Bairro,
+    endereco.Cidade,
+    endereco.Estado,
+    endereco.Pais,
+    endereco.Padrao);
 
 static IQueryable<Produto> FiltrarProdutosPublicaveis(IQueryable<Produto> query) =>
     query.Where(produto =>
@@ -4496,7 +4828,7 @@ static string BuildPublicUrl(HttpContext http, string path)
 
     if (string.IsNullOrWhiteSpace(host) || host.Contains("localhost", StringComparison.OrdinalIgnoreCase))
     {
-        host = "api.nexumaltivon.com";
+        host = "api.nexumaltivon.com.br";
         scheme = "https";
     }
 
@@ -4910,7 +5242,7 @@ static SiteConfiguracaoPublicaDto BuildPublicSiteConfig(IReadOnlyDictionary<stri
 
     return new SiteConfiguracaoPublicaDto(
         GetConfigValue(configMap, "site_nome", "Grupo Nexum Altivon"),
-        GetConfigValue(configMap, "site_url", "https://www.nexumaltivon.com"),
+        GetConfigValue(configMap, "site_url", "https://nexumaltivon.com.br"),
         contactEmail,
         GetConfigValue(configMap, "site_telefone", "(14) 99673-1879"),
         GetConfigValue(configMap, "site_telefone_secundario", "(14) 99634-8409"),
@@ -4922,7 +5254,7 @@ static SiteConfiguracaoPublicaDto BuildPublicSiteConfig(IReadOnlyDictionary<stri
         GetConfigValue(configMap, "home_intro_titulo", "Uma Nova Era Começa"),
         GetConfigValue(configMap, "home_intro_texto_1", "A Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro."),
         GetConfigValue(configMap, "home_intro_texto_2", "Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso."),
-        GetConfigValue(configMap, "home_intro_badge", "www.nexumaltivon.com"),
+        GetConfigValue(configMap, "home_intro_badge", "nexumaltivon.com.br"),
         ParseJsonStringList(GetConfigValue(configMap, "home_quality_items", string.Empty), [
             "Curadoria rigorosa de fornecedores",
             "Atendimento humano e especializado",
@@ -5208,7 +5540,7 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
             ('home_intro_titulo', 'Uma Nova Era Começa', 'Texto', 'Título principal do bloco institucional da home', 'SiteHome', 1),
             ('home_intro_texto_1', 'A Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro.', 'Texto', 'Primeiro texto institucional da home', 'SiteHome', 1),
             ('home_intro_texto_2', 'Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso.', 'Texto', 'Segundo texto institucional da home', 'SiteHome', 1),
-            ('home_intro_badge', 'www.nexumaltivon.com', 'Texto', 'Texto do selo institucional da home', 'SiteHome', 1),
+            ('home_intro_badge', 'nexumaltivon.com.br', 'Texto', 'Texto do selo institucional da home', 'SiteHome', 1),
             ('home_footer_texto', 'Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas.', 'Texto', 'Texto do rodapé público da home', 'SiteHome', 1),
             ('home_quality_items', '["Curadoria rigorosa de fornecedores","Atendimento humano e especializado","Política de devolução simplificada","Preços justos e acessíveis"]', 'JSON', 'Itens do bloco de qualidade da home', 'SiteHome', 1),
             ('home_partner_cards', '[{{"title":"Parceiros de Vendas","text":"Lojas físicas ou online podem ampliar seus horizontes de venda com nossa infraestrutura comercial e operação integrada.","cta":"Quero Vender","href":"https://wa.me/5514996731879?text=Olá! Tenho interesse em ser parceiro de vendas do Grupo Nexum Altivon.","icon":"Store"}},{{"title":"Fornecedores & Distribuidores","text":"Distribuidores e fabricantes encontram um canal de venda em crescimento, com visão de volume, relacionamento e longo prazo.","cta":"Quero Fornecer","href":"https://wa.me/5514996348409?text=Olá! Sou fornecedor/distribuidor e tenho interesse em parceria com o Grupo Nexum Altivon.","icon":"Truck"}},{{"title":"Dropshipping","text":"Integre seu catálogo às nossas lojas ou utilize nossa infraestrutura para conectar produtos, logística e novos canais.","cta":"Quero Fazer Dropship","href":"https://wa.me/5514996731879?text=Olá! Tenho interesse em parceria de dropshipping com o Grupo Nexum Altivon.","icon":"Building2"}}]', 'JSON', 'Cards de parceria da home', 'SiteHome', 1),
@@ -5454,7 +5786,35 @@ public sealed record ClientePortalDto(
     decimal LimiteFuturoEstimado,
     List<ClientePortalPedidoDto> Pedidos,
     List<ClientePortalDocumentoDto> Documentos,
+    List<ClientePortalEnderecoDto> Enderecos,
     List<string> Beneficios);
+
+public sealed record ClientePortalEnderecoDto(
+    int Id,
+    string Apelido,
+    string Tipo,
+    string Cep,
+    string Logradouro,
+    string Numero,
+    string? Complemento,
+    string? Bairro,
+    string? Cidade,
+    string? Estado,
+    string Pais,
+    bool Padrao);
+
+public sealed record ClientePortalEnderecoRequest(
+    string? Apelido,
+    string? Tipo,
+    string? Cep,
+    string? Logradouro,
+    string? Numero,
+    string? Complemento,
+    string? Bairro,
+    string? Cidade,
+    string? Estado,
+    string? Pais,
+    bool Padrao);
 
 public sealed record FornecedorRequest(string Nome, string? Documento, string? Email, string? Telefone, string? Categoria);
 

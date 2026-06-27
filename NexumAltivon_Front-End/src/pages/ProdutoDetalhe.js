@@ -10,16 +10,37 @@ export default function ProdutoDetalhe() {
   const navigate = useNavigate();
   const { addToCart } = useCart();
   const [produto, setProduto] = useState(null);
+  const [sugeridos, setSugeridos] = useState([]);
   const [quantidade, setQuantidade] = useState(1);
   const [loading, setLoading] = useState(true);
 
   const loadProduto = useCallback(async () => {
     try {
       const response = await produtoAPI.getById(id);
-      setProduto(response.data);
+      const payload = response.data?.dados || response.data?.data || response.data;
+      setProduto(payload);
+
+      if (payload?.categoria_id) {
+        try {
+          const relatedResponse = await produtoAPI.getAll({ categoria_id: payload.categoria_id });
+          const relatedPayload = relatedResponse.data?.dados || relatedResponse.data?.data || relatedResponse.data;
+          const relatedList = Array.isArray(relatedPayload) ? relatedPayload : [];
+          setSugeridos(
+            relatedList
+              .filter((item) => String(item.id) !== String(payload.id))
+              .filter((item) => item.ativo !== false)
+              .slice(0, 4),
+          );
+        } catch {
+          setSugeridos([]);
+        }
+      } else {
+        setSugeridos([]);
+      }
     } catch (error) {
       if (process.env.NODE_ENV === 'development') console.error(error);
       setProduto(null);
+      setSugeridos([]);
     } finally {
       setLoading(false);
     }
@@ -56,6 +77,12 @@ export default function ProdutoDetalhe() {
   const finalPrice = produto.preco_promocional || produto.preco;
   const hasDiscount = produto.preco_promocional && produto.preco_promocional < produto.preco;
   const image = produto.imagem_url || produto.imagem || '';
+  const dimensions = [
+    produto.peso ? `${produto.peso} kg` : null,
+    produto.altura ? `${produto.altura} cm de altura` : null,
+    produto.largura ? `${produto.largura} cm de largura` : null,
+    produto.comprimento ? `${produto.comprimento} cm de comprimento` : null,
+  ].filter(Boolean);
 
   return (
     <div className="min-h-screen bg-[#050505] py-8 text-white">
@@ -104,6 +131,25 @@ export default function ProdutoDetalhe() {
               </div>
 
               <p className="mb-7 max-w-2xl leading-7 text-[#C8C8C8]">{produto.descricao}</p>
+
+              <div className="mb-7 grid gap-3 rounded-2xl border border-[#2A2A2A] bg-[#080808] p-4 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#777]">SKU</p>
+                  <p className="mt-1 font-bold text-white">{produto.sku || 'NA'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#777]">Estoque</p>
+                  <p className="mt-1 font-bold text-white">{produto.estoque} unidades</p>
+                </div>
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#777]">Categoria</p>
+                  <p className="mt-1 font-bold text-white">{produto.categoria?.nome || produto.categoria_nome || 'Sem categoria'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#777]">Dimensões</p>
+                  <p className="mt-1 font-bold text-white">{dimensions.length > 0 ? dimensions.join(' · ') : 'Não informadas'}</p>
+                </div>
+              </div>
 
               <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-center">
                 <div>
@@ -154,6 +200,31 @@ export default function ProdutoDetalhe() {
                   </span>
                 ))}
               </div>
+
+              {sugeridos.length > 0 && (
+                <div className="mt-10 border-t border-[#2A2A2A] pt-8">
+                  <h2 className="text-xl font-black text-white">Sugestões semelhantes</h2>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    {sugeridos.map((item) => (
+                      <Link
+                        key={item.id}
+                        to={`/produto/${item.id}`}
+                        className="group rounded-2xl border border-[#2A2A2A] bg-[#080808] p-4 transition hover:border-[#C9A227]"
+                      >
+                        <div className="aspect-[4/3] overflow-hidden rounded-xl bg-[#111111]">
+                          <img
+                            src={item.imagem_url || item.imagem || ''}
+                            alt={item.nome}
+                            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                          />
+                        </div>
+                        <p className="mt-3 text-sm font-black text-white">{item.nome}</p>
+                        <p className="mt-1 text-sm text-[#C9C9C9]">{formatPrice(item.preco_promocional || item.preco || 0)}</p>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

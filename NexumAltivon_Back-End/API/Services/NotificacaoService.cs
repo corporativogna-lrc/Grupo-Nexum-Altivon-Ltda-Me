@@ -73,7 +73,7 @@ h1 {{ color: #C9A227; font-size: 24px; }}
 </div>
 <p>Assim que o pagamento for confirmado, iniciaremos a separaÃ§Ã£o do seu pedido.</p>
 <div class='footer'>
-<p>Grupo Nexum Altivon<br>www.nexumaltivon.com</p>
+<p>Grupo Nexum Altivon<br>nexumaltivon.com.br</p>
 </div>
 </div>
 </body>
@@ -101,7 +101,7 @@ h1 {{ color: #C9A227; }}
 <p>O pagamento do pedido <strong>{pedido.NumeroPedido}</strong> foi confirmado.</p>
 <p><strong>Valor pago:</strong> R$ {pedido.Total:N2}</p>
 <p>Seu pedido agora estÃ¡ em <strong>separaÃ§Ã£o</strong> e em breve serÃ¡ enviado.</p>
-<p>Acompanhe o status pelo site: <a href='https://www.nexumaltivon.com/pedidos/{pedido.NumeroPedido}' style='color:#C9A227'>Meus Pedidos</a></p>
+<p>Acompanhe o status pelo site: <a href='https://nexumaltivon.com.br/pedidos/{pedido.NumeroPedido}' style='color:#C9A227'>Meus Pedidos</a></p>
 </div>
 </body>
 </html>";

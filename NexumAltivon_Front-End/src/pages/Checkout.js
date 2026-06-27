@@ -4,6 +4,7 @@ import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { lojaAPI, clienteAPI, freteAPI, pedidoAPI, unwrapApiData } from '../services/api';
 import { fallbackCategories } from '../data/mockStore';
+import { isValidCpfCnpj, normalizeCep } from '../utils/validation';
 import {
   StepDadosPessoais,
   StepEndereco,
@@ -212,6 +213,13 @@ export default function Checkout() {
     setCheckoutInfo('');
 
     try {
+      if (!dadosCliente.nome.trim() || !dadosCliente.email.trim()) {
+        throw new Error('Preencha nome e e-mail antes de concluir.');
+      }
+      if (dadosCliente.cpf && !isValidCpfCnpj(dadosCliente.cpf)) {
+        throw new Error('CPF/CNPJ inválido.');
+      }
+
       let clienteId = clientePortal?.id;
 
       if (clienteId) {
@@ -283,6 +291,28 @@ export default function Checkout() {
     return <CheckoutSuccess pedido={pedidoCriado} clienteEmail={dadosCliente.email} onContinue={() => navigate('/')} />;
   }
 
+  const nextFromDadosPessoais = () => {
+    if (!dadosCliente.nome.trim() || !dadosCliente.email.trim()) {
+      setError('Preencha nome e e-mail antes de continuar.');
+      return;
+    }
+    if (dadosCliente.cpf && !isValidCpfCnpj(dadosCliente.cpf)) {
+      setError('CPF/CNPJ inválido.');
+      return;
+    }
+    setError('');
+    setStep(2);
+  };
+
+  const nextFromEndereco = () => {
+    if (!normalizeCep(endereco.cep)) {
+      setError('Informe um CEP válido.');
+      return;
+    }
+    setError('');
+    setStep(3);
+  };
+
   return (
     <div className="min-h-screen bg-[#050505] py-12 text-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -317,7 +347,7 @@ export default function Checkout() {
               <StepDadosPessoais
                 dadosCliente={dadosCliente}
                 setDadosCliente={setDadosCliente}
-                onNext={() => setStep(2)}
+                onNext={nextFromDadosPessoais}
               />
             )}
             {step === 2 && (
@@ -325,7 +355,7 @@ export default function Checkout() {
                 endereco={endereco}
                 setEndereco={setEndereco}
                 onBack={() => setStep(1)}
-                onNext={() => setStep(3)}
+                onNext={nextFromEndereco}
               />
             )}
             {step === 3 && (

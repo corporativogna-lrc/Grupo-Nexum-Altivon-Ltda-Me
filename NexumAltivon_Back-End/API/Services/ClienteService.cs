@@ -89,7 +89,7 @@ public class ClienteService : IClienteService
             {
                 clienteExistente.Status = StatusCliente.Pendente;
                 clienteExistente.TokenConfirmacaoEmail ??= Guid.NewGuid().ToString("N");
-                var baseUrlExistente = Environment.GetEnvironmentVariable("NEXUM_PUBLIC_APP_URL")?.Trim().TrimEnd('/') ?? "https://www.nexumaltivon.com";
+                var baseUrlExistente = Environment.GetEnvironmentVariable("NEXUM_PUBLIC_APP_URL")?.Trim().TrimEnd('/') ?? "https://nexumaltivon.com.br";
                 var linkExistente = $"{baseUrlExistente}/confirmar-cadastro.html?token={Uri.EscapeDataString(clienteExistente.TokenConfirmacaoEmail)}";
                 await _notificacao.EnviarConfirmacaoCadastroAsync(clienteExistente, linkExistente);
             }
@@ -115,7 +115,7 @@ public class ClienteService : IClienteService
         _context.Clientes.Add(cliente);
         await _context.SaveChangesAsync();
 
-        var baseUrl = Environment.GetEnvironmentVariable("NEXUM_PUBLIC_APP_URL")?.Trim().TrimEnd('/') ?? "https://www.nexumaltivon.com";
+        var baseUrl = Environment.GetEnvironmentVariable("NEXUM_PUBLIC_APP_URL")?.Trim().TrimEnd('/') ?? "https://nexumaltivon.com.br";
         var linkConfirmacao = $"{baseUrl}/confirmar-cadastro.html?token={Uri.EscapeDataString(cliente.TokenConfirmacaoEmail)}";
         await _notificacao.EnviarConfirmacaoCadastroAsync(cliente, linkConfirmacao);
 

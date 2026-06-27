@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { HTTP_UNAUTHORIZED, STORAGE_KEYS } from '../constants';
 
-const PUBLIC_API_URL = 'https://api.nexumaltivon.com';
+const PUBLIC_API_URL = 'https://api.nexumaltivon.com.br';
 const RUNTIME_API_CONFIG_URL = '/api-runtime.json';
 const RUNTIME_CACHE_KEY = 'nexum_api_runtime_url';
 
@@ -298,6 +298,10 @@ export const clienteAPI = {
   update: (id, data) => api.put(`/clientes/${id}`, data),
   confirmarCadastro: (token) => api.get('/clientes/confirmar', { params: { token } }),
   getPortal: () => api.get('/clientes/portal/me'),
+  criarEndereco: (data) => api.post('/clientes/portal/enderecos', data),
+  atualizarEndereco: (id, data) => api.put(`/clientes/portal/enderecos/${id}`, data),
+  definirEnderecoPrincipal: (id) => api.put(`/clientes/portal/enderecos/${id}/principal`),
+  removerEndereco: (id) => api.delete(`/clientes/portal/enderecos/${id}`),
 };
 
 export const fornecedorAPI = {

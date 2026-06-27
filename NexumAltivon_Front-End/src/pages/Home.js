@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   ArrowRight,
@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
 import { clienteAPI, produtoAPI, siteAPI, unwrapApiData } from '../services/api';
+import { isValidCpfCnpj } from '../utils/validation';
 
 const heroSlides = [
   {
@@ -210,7 +211,7 @@ const mapPublicSiteConfig = (config) => {
 
   return {
     siteName: pickConfigValue(config, ['siteNome', 'SiteNome', 'site_name', 'siteName'], 'Grupo Nexum Altivon'),
-    siteUrl: pickConfigValue(config, ['siteUrl', 'SiteUrl', 'site_url'], 'https://www.nexumaltivon.com'),
+    siteUrl: pickConfigValue(config, ['siteUrl', 'SiteUrl', 'site_url'], 'https://nexumaltivon.com.br'),
     contactEmail: pickConfigValue(config, ['contactEmail', 'ContactEmail', 'site_email_contato', 'siteEmailContato'], 'corporativo.gna@gmail.com'),
     primaryPhone: pickConfigValue(config, ['primaryPhone', 'PrimaryPhone', 'site_telefone', 'siteTelefone'], '(14) 99673-1879'),
     secondaryPhone: pickConfigValue(config, ['secondaryPhone', 'SecondaryPhone', 'site_telefone_secundario', 'siteTelefoneSecundario'], '(14) 99634-8409'),
@@ -222,17 +223,19 @@ const mapPublicSiteConfig = (config) => {
     introTitle: pickConfigValue(config, ['introTitle', 'IntroTitle', 'home_intro_titulo', 'homeIntroTitulo'], 'Uma Nova Era Começa'),
     introText1: pickConfigValue(config, ['introText1', 'IntroText1', 'home_intro_texto_1', 'homeIntroTexto1'], 'A Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro.'),
     introText2: pickConfigValue(config, ['introText2', 'IntroText2', 'home_intro_texto_2', 'homeIntroTexto2'], 'Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso.'),
-    introBadge: pickConfigValue(config, ['introBadge', 'IntroBadge', 'home_intro_badge', 'homeIntroBadge'], 'www.nexumaltivon.com'),
+    introBadge: pickConfigValue(config, ['introBadge', 'IntroBadge', 'home_intro_badge', 'homeIntroBadge'], 'nexumaltivon.com.br'),
     qualityItems: pickConfigValue(config, ['qualityItems', 'QualityItems', 'home_quality_items', 'homeQualityItems'], []),
     partnerCards: pickConfigValue(config, ['partnerCards', 'PartnerCards', 'home_partner_cards', 'homePartnerCards'], []),
     footerText: pickConfigValue(config, ['footerText', 'FooterText', 'home_footer_texto', 'homeFooterTexto'], 'Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas.'),
   };
 };
 export default function Home() {
+  const navigate = useNavigate();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [siteConfig, setSiteConfig] = useState(null);
   const [featuredProducts, setFeaturedProducts] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
+  const [catalogSearch, setCatalogSearch] = useState('');
   const [cadastroForm, setCadastroForm] = useState(emptyCadastro);
   const [cadastroStatus, setCadastroStatus] = useState({ tone: '', message: '' });
   const [loadingCadastro, setLoadingCadastro] = useState(false);
@@ -246,7 +249,7 @@ export default function Home() {
     siteConfig?.introText1 || 'A Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro.';
   const introText2 =
     siteConfig?.introText2 || 'Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso.';
-  const introBadge = siteConfig?.introBadge || 'www.nexumaltivon.com';
+  const introBadge = siteConfig?.introBadge || 'nexumaltivon.com.br';
   const primaryPhone = siteConfig?.primaryPhone || '+55 (14) 99673-1879';
   const secondaryPhone = siteConfig?.secondaryPhone || '+55 (14) 99634-8409';
   const publicContactEmail = siteConfig?.contactEmail || 'corporativo.gna@gmail.com';
@@ -357,8 +360,13 @@ export default function Home() {
       newsletter: Boolean(cadastroForm.newsletter),
     };
 
-    if (!payload.nome || !payload.email || !payload.senha) {
-      setCadastroStatus({ tone: 'error', message: 'Preencha nome, e-mail e uma senha para concluir o auto cadastro e liberar a área do cliente.' });
+      if (!payload.nome || !payload.email || !payload.senha) {
+        setCadastroStatus({ tone: 'error', message: 'Preencha nome, e-mail e uma senha para concluir o auto cadastro e liberar a área do cliente.' });
+        return;
+      }
+
+    if (payload.cpf && !isValidCpfCnpj(payload.cpf)) {
+      setCadastroStatus({ tone: 'error', message: 'CPF/CNPJ inválido. Corrija o documento antes de continuar.' });
       return;
     }
 
@@ -410,6 +418,12 @@ export default function Home() {
     }
   };
 
+  const handleCatalogSearch = (event) => {
+    event.preventDefault();
+    const query = catalogSearch.trim();
+    navigate(query ? `/produtos?busca=${encodeURIComponent(query)}` : '/produtos');
+  };
+
   return (
     <main className="nexum-front-original bg-[#050505] text-[#f5f5f5]">
       <section id="home" className="relative min-h-[84vh] overflow-hidden">
@@ -433,6 +447,23 @@ export default function Home() {
               <span className="block text-[#C9A227]">{activeSlide.highlight}</span>
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-zinc-200 sm:text-xl">{activeSlide.description}</p>
+
+            <form onSubmit={handleCatalogSearch} className="mt-8 flex max-w-2xl gap-3 rounded-2xl border border-white/10 bg-black/40 p-3 backdrop-blur">
+              <input
+                type="search"
+                value={catalogSearch}
+                onChange={(event) => setCatalogSearch(event.target.value)}
+                placeholder="Buscar por nome, SKU ou categoria"
+                className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20"
+                aria-label="Buscar produtos no catálogo"
+              />
+              <button
+                type="submit"
+                className="rounded-xl bg-[#C9A227] px-5 py-3 text-sm font-black text-black transition hover:bg-[#E8D5A3]"
+              >
+                Buscar
+              </button>
+            </form>
 
             <div className="mt-9 flex flex-col gap-3 sm:flex-row">
               <a

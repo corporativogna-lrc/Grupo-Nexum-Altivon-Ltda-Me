@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { User, MapPin, CreditCard } from 'lucide-react';
 import { getPagamentoLabel } from '../utils/formatters';
+import { fetchCepAddress, normalizeCep } from '../utils/validation';
 
 function getLojaPrefix(loja) {
   const valorComparacao = [
@@ -90,6 +91,24 @@ export function StepEndereco({ endereco, setEndereco, onBack, onNext }) {
     endereco.cidade &&
     endereco.estado;
 
+  const handleCepBlur = async () => {
+    const cep = normalizeCep(endereco.cep);
+    if (cep.length !== 8) return;
+
+    try {
+      const autoEndereco = await fetchCepAddress(cep);
+      if (!autoEndereco) return;
+
+      setEndereco((current) => ({
+        ...current,
+        ...autoEndereco,
+        cep: autoEndereco.cep || cep,
+      }));
+    } catch {
+      // Mantém o preenchimento manual se a consulta externa falhar.
+    }
+  };
+
   return (
     <div>
       <h2 className="mb-4 flex items-center text-2xl font-black text-white">
@@ -98,6 +117,7 @@ export function StepEndereco({ endereco, setEndereco, onBack, onNext }) {
       <div className="grid grid-cols-2 gap-4">
         <input type="text" required placeholder="CEP *" value={endereco.cep}
           onChange={(e) => setEndereco({ ...endereco, cep: e.target.value })}
+          onBlur={handleCepBlur}
           className="rounded-xl border border-[#2A2A2A] bg-[#080808] px-4 py-3 text-white placeholder:text-[#777]" />
         <input type="text" required placeholder="Logradouro *" value={endereco.logradouro}
           onChange={(e) => setEndereco({ ...endereco, logradouro: e.target.value })}

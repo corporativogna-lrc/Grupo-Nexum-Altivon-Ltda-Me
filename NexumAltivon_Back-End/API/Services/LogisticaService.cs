@@ -66,8 +66,8 @@ namespace NexumAltivon.API.Services
                 PedidoId = pedidoId,
                 TransportadoraId = transportadora.TransportadoraId,
                 CodigoRastreio = codigoRastreio,
-                UrlEtiquetaPdf = $"https://api.nexumaltivon.com/etiquetas/{pedidoId}.pdf",
-                UrlEtiquetaZpl = $"https://api.nexumaltivon.com/etiquetas/{pedidoId}.zpl",
+                UrlEtiquetaPdf = $"https://api.nexumaltivon.com.br/etiquetas/{pedidoId}.pdf",
+                UrlEtiquetaZpl = $"https://api.nexumaltivon.com.br/etiquetas/{pedidoId}.zpl",
                 Status = "GERADA",
                 GeradaEm = DateTime.UtcNow
             };

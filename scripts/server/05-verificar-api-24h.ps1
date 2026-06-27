@@ -1,6 +1,6 @@
 param(
   [string]$Url = "http://127.0.0.1:5012",
-  [string]$PublicUrl = "https://api.nexumaltivon.com"
+  [string]$PublicUrl = "https://api.nexumaltivon.com.br"
 )
 
 $ErrorActionPreference = "Continue"
@@ -22,7 +22,7 @@ try {
 }
 
 Write-Host "[4/5] DNS público"
-nslookup api.nexumaltivon.com 1.1.1.1
+nslookup api.nexumaltivon.com.br 1.1.1.1
 
 Write-Host "[5/5] Saúde pública"
 try {

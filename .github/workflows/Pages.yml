@@ -48,7 +48,7 @@ jobs:
           PUBLIC_URL: /
 
       - name: Configurar dominio customizado
-        run: echo "www.nexumaltivon.com" > NexumAltivon_Front-End/build/CNAME
+        run: echo "nexumaltivon.com.br" > NexumAltivon_Front-End/build/CNAME
 
       - name: Enviar artefato do Pages
         uses: actions/upload-pages-artifact@v3

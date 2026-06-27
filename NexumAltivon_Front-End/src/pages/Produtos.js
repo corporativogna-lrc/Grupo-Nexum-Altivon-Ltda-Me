@@ -33,7 +33,7 @@ export default function Produtos() {
   const [produtos, setProdutos] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(params.get('busca') || '');
   const [selectedCategory, setSelectedCategory] = useState(params.get('categoria') || '');
   const [sortBy, setSortBy] = useState('destaque');
   const [inStockOnly, setInStockOnly] = useState(true);
@@ -65,12 +65,11 @@ export default function Produtos() {
   }, [loadData]);
 
   useEffect(() => {
-    if (selectedCategory) {
-      setParams({ categoria: selectedCategory });
-    } else {
-      setParams({});
-    }
-  }, [selectedCategory, setParams]);
+    const nextParams = {};
+    if (selectedCategory) nextParams.categoria = selectedCategory;
+    if (searchTerm.trim()) nextParams.busca = searchTerm.trim();
+    setParams(nextParams);
+  }, [selectedCategory, searchTerm, setParams]);
 
   const filteredProdutos = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();

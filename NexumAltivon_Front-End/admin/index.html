@@ -877,7 +877,7 @@
     <script>
         // ===== CONFIGURAÃ‡ÃƒO DA API =====
         const RUNTIME_API_CONFIG_URL = '../api-runtime.json';
-        const PUBLIC_API_URL = 'https://api.nexumaltivon.com';
+        const PUBLIC_API_URL = 'https://api.nexumaltivon.com.br';
         const API_BASE = window.location.protocol === 'file:' || window.location.hostname === 'localhost'
             ? 'http://localhost:5000/api'
             : null;
@@ -892,11 +892,41 @@
             return /^https?:\/\//i.test(url) ? url : '';
         }
 
+        function collectRuntimeApiUrls(config) {
+            const values = [
+                config?.apiUrl,
+                config?.api_url,
+                config?.url,
+                ...(Array.isArray(config?.apiUrls) ? config.apiUrls : []),
+                ...(Array.isArray(config?.api_urls) ? config.api_urls : []),
+                ...(Array.isArray(config?.fallbacks) ? config.fallbacks : [])
+            ];
+
+            return [...new Set(values.map(normalizeApiUrl).filter(Boolean))];
+        }
+
+        async function canUseApiUrl(baseUrl) {
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 4000);
+                const response = await fetch(`${baseUrl}/health?t=${Date.now()}`, {
+                    cache: 'no-store',
+                    headers: { Accept: 'text/plain, application/json' },
+                    signal: controller.signal
+                });
+                clearTimeout(timeout);
+                return response.ok;
+            } catch {
+                return false;
+            }
+        }
+
         async function resolveApiBase() {
             if (API_BASE) return API_BASE;
             if (resolvedApiBasePromise) return resolvedApiBasePromise;
 
             resolvedApiBasePromise = (async () => {
+                const candidates = [];
                 try {
                     const response = await fetch(`${RUNTIME_API_CONFIG_URL}?t=${Date.now()}`, {
                         cache: 'no-store',
@@ -905,11 +935,15 @@
 
                     if (response.ok) {
                         const config = await response.json();
-                        const runtimeUrl = normalizeApiUrl(config.apiUrl || config.api_url || config.url);
-                        if (runtimeUrl) return `${runtimeUrl}/api`;
+                        candidates.push(...collectRuntimeApiUrls(config));
                     }
                 } catch (error) {
                     console.warn('Falha ao carregar api-runtime.json', error);
+                }
+
+                candidates.push(PUBLIC_API_URL);
+                for (const candidate of [...new Set(candidates.filter(Boolean))]) {
+                    if (await canUseApiUrl(candidate)) return `${candidate}/api`;
                 }
 
                 return `${PUBLIC_API_URL}/api`;
