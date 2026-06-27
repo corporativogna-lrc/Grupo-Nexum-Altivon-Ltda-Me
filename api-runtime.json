@@ -1,9 +1,8 @@
 {
-  "apiUrl": "https://mailto-stayed-sources-doc.trycloudflare.com",
+  "apiUrl": "https://api.nexumaltivon.com.br",
   "apiUrls": [
-    "https://mailto-stayed-sources-doc.trycloudflare.com",
     "https://api.nexumaltivon.com.br"
   ],
-  "updatedAt": "2026-06-27T04:58:36.4190818Z",
-  "source": "nexum-operacao-vendas-2026-06-28"
+  "updatedAt": "2026-06-27T08:10:00.0000000Z",
+  "source": "nexum-operacao-oficial-api-fixa"
 }
