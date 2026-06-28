@@ -7,14 +7,16 @@
 (function() {
   'use strict';
 
-  const API_URL = window.location.origin + '/api';
+  const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://localhost:5000/api'
+    : 'https://api.nexumaltivon.com.br/api';
 
   // ============================================================
   // 1. BOTÕES DE ACESSO AO ADMIN
   // ============================================================
   function addAdminAccessButtons() {
     // Top bar: link discreto "Painel Admin"
-    const topBar = document.querySelector('.top-bar, .topbar, [class*="top-bar"]');
+    const topBar = document.querySelector('.top-bar, .topbar, [class*="top-bar"');
     if (topBar && !document.getElementById('nexum-admin-link-topbar')) {
       const link = document.createElement('a');
       link.id = 'nexum-admin-link-topbar';
