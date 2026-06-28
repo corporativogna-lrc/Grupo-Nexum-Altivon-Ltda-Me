@@ -11,7 +11,7 @@ const apiHealthCache = new Map();
 const RUNTIME_URL_TTL_MS = 30 * 1000;
 
 const getDefaultApiUrl = () => {
-  if (typeof window === 'undefined') return 'http://localhost:5000';
+  if (typeof window === 'undefined') return 'http://127.0.0.1:5012';
 
   const { hostname } = window.location;
   const isLocalhost =
@@ -105,7 +105,7 @@ export const getRuntimeApiBaseUrl = async ({ force = false } = {}) => {
         candidates.push(...collectRuntimeApiUrls(config));
       }
     } catch {
-      // Mantém a última ponte funcional em cache quando a configuração pública oscila.
+      // MantÃ©m a Ãºltima ponte funcional em cache quando a configuraÃ§Ã£o pÃºblica oscila.
     }
 
     if (cached) candidates.push(cached);
@@ -356,4 +356,3 @@ export const freteAPI = {
 };
 
 export default api;
-
