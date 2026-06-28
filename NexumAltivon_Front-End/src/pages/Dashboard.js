@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { categoriaAPI, clienteAPI, dashboardAPI, empresaGrupoAPI, fiscalAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI, siteAPI, unwrapApiData } from '../services/api';
-import { fallbackCategories, fallbackLeads, fallbackPedidos, fallbackResumo } from '../data/mockStore';
 import { formatDate, formatPrice, getLeadStatusClass, getPagamentoLabel, getPedidoStatusClass } from '../utils/formatters';
 import {
   Activity,
@@ -449,7 +448,6 @@ const pedidoFilaOptions = [
   { id: 'sem-rastreio', label: 'Sem rastreio' },
 ];
 const leadStatusOptions = ['Novo', 'Contato', 'Qualificado', 'Negociacao', 'Ganho', 'Perdido'];
-const allowDemoData = false;
 const emptyResumo = {
   pedidos_hoje: 0,
   total_clientes: 0,
@@ -698,14 +696,14 @@ export default function Dashboard() {
   const { user, isAuthenticated, loading: authLoading, logout } = useAuth();
   const routeState = useMemo(() => getDashboardRouteState(params['*']), [params]);
   const sophiaHref = 'mailto:corporativo.gna@gmail.com?subject=Sophia%20-%20Apoio%20ERP&body=Ol%C3%A1%20Sophia%2C%20preciso%20de%20apoio%20interno%20na%20opera%C3%A7%C3%A3o%20do%20GenesisGest.Net.';
-  const [resumo, setResumo] = useState(allowDemoData ? fallbackResumo : emptyResumo);
-  const [pedidos, setPedidos] = useState(allowDemoData ? fallbackPedidos : []);
-  const [leads, setLeads] = useState(allowDemoData ? fallbackLeads : []);
+  const [resumo, setResumo] = useState(emptyResumo);
+  const [pedidos, setPedidos] = useState([]);
+  const [leads, setLeads] = useState([]);
   const [produtos, setProdutos] = useState([]);
-  const [categorias, setCategorias] = useState(allowDemoData ? fallbackCategories : []);
-  const [clientes, setClientes] = useState(allowDemoData ? fallbackClientes : []);
-  const [fornecedores, setFornecedores] = useState(allowDemoData ? fallbackFornecedores : []);
-  const [empresasGrupo, setEmpresasGrupo] = useState(allowDemoData ? fallbackEmpresasGrupo : []);
+  const [categorias, setCategorias] = useState([]);
+  const [clientes, setClientes] = useState([]);
+  const [fornecedores, setFornecedores] = useState([]);
+  const [empresasGrupo, setEmpresasGrupo] = useState([]);
   const [produtoEditingId, setProdutoEditingId] = useState('');
   const [clienteEditingId, setClienteEditingId] = useState('');
   const [fornecedorEditingId, setFornecedorEditingId] = useState('');
@@ -782,11 +780,11 @@ export default function Dashboard() {
         fiscalAPI.getPedidos().catch(() => ({ data: [] })),
         integracoesAPI.getDiagnostico()
           .catch(() => integracoesAPI.getStatus())
-          .catch(() => ({ data: fallbackIntegracoes })),
+          .catch(() => ({ data: [] })),
         integracoesAPI.getCredenciaisModelo().catch(() => ({ data: [] })),
         siteAPI.getAll().catch(() => ({ data: [] })),
       ]);
-      if (resumoRes.data) setResumo({ ...fallbackResumo, ...resumoRes.data });
+      if (resumoRes.data) setResumo({ ...emptyResumo, ...resumoRes.data });
       const pedidosData = asArray(pedidosRes.data);
       const leadsData = asArray(leadsRes.data);
       if (pedidosData.length > 0) setPedidos(pedidosData);

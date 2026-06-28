@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { categoriaAPI, produtoAPI, unwrapApiData } from '../services/api';
 import ProductCard from '../components/ProductCard';
-import { fallbackCategories } from '../data/mockStore';
 import { ArrowDownUp, Filter, Search, SlidersHorizontal, X } from 'lucide-react';
 
 const sortOptions = {
@@ -42,7 +41,12 @@ export default function Produtos() {
     setLoading(true);
     try {
       const [produtosRes, categoriasRes] = await Promise.all([
-        produtoAPI.getAll(selectedCategory ? { categoria_id: selectedCategory } : {}),
+        produtoAPI.getAll({
+          pagina: 1,
+          itensPorPagina: 60,
+          busca: searchTerm.trim() || undefined,
+          categoriaId: selectedCategory || undefined,
+        }),
         categoriaAPI.getAll(),
       ]);
       const produtosData = unwrapApiData(produtosRes.data);
@@ -58,7 +62,7 @@ export default function Produtos() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCategory]);
+  }, [searchTerm, selectedCategory]);
 
   useEffect(() => {
     loadData();

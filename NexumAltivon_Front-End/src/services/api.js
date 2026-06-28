@@ -270,7 +270,7 @@ export const siteAPI = {
 
 export const produtoAPI = {
   getAll: (params) => api.get('/produtos', { params }),
-  getDestaques: () => api.get('/produtos/destaques'),
+  getDestaques: (limite = 5) => api.get('/produtos/destaques', { params: { limite } }),
   getById: (id) => api.get(`/produtos/${id}`),
   create: (data) => api.post('/produtos', data),
   update: (id, data) => api.put(`/produtos/${id}`, data),

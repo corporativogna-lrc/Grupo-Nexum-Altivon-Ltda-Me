@@ -1,4 +1,4 @@
-name: Nexum 2026-06-27 - Deploy Operacional Oficial .com.br
+name: Nexum 2026-06-28 - Deploy Operacional Oficial .com.br
 
 run-name: Nexum .com.br oficial | commit ${{ github.sha }} | ${{ github.event_name }}
 
@@ -22,7 +22,7 @@ concurrency:
 env:
   SITE_URL: https://nexumaltivon.com.br
   API_URL: https://api.nexumaltivon.com.br
-  OPERACAO_LABEL: "Nexum Altivon .com.br oficial 2026-06-27"
+  OPERACAO_LABEL: "Nexum Altivon .com.br oficial 2026-06-28"
 
 jobs:
   build:
@@ -66,6 +66,7 @@ jobs:
             echo "- Front oficial: $SITE_URL"
             echo "- API oficial: $API_URL"
             echo "- Runtime permitido: somente \`https://api.nexumaltivon.com.br\`"
+            echo "- Fonte operacional: dados reais da API e banco; mocks de vitrine/admin removidos"
             echo "- Caminhos temporarios \`trycloudflare.com\`: proibidos nesta publicacao"
             echo "- Dominio legado \`.com\`: deve operar apenas como redirecionamento 301 para \`.com.br\`"
           } >> "$GITHUB_STEP_SUMMARY"

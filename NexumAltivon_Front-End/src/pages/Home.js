@@ -288,11 +288,11 @@ export default function Home() {
       setLoadingProducts(true);
 
       try {
-        const destaquesRes = await produtoAPI.getDestaques();
+        const destaquesRes = await produtoAPI.getDestaques(5);
         let produtos = unwrapApiData(destaquesRes.data);
 
         if (!Array.isArray(produtos) || produtos.length === 0) {
-          const todosRes = await produtoAPI.getAll({});
+          const todosRes = await produtoAPI.getAll({ pagina: 1, itensPorPagina: 5 });
           produtos = unwrapApiData(todosRes.data);
         }
 

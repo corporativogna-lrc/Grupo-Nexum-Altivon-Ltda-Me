@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { lojaAPI, clienteAPI, freteAPI, pedidoAPI, unwrapApiData } from '../services/api';
-import { fallbackCategories } from '../data/mockStore';
 import { isValidCpfCnpj, normalizeCep } from '../utils/validation';
 import {
   StepDadosPessoais,
@@ -88,13 +87,9 @@ export default function Checkout() {
       if (lojasApi.length > 0) setLojaId(String(lojasApi[0].id));
     } catch (err) {
       if (process.env.NODE_ENV === 'development') console.error(err);
-      const fallbackLojas = fallbackCategories.map((categoria, index) => ({
-        id: categoria.id,
-        nome: categoria.nome,
-        slug: categoria.id,
-      }));
-      setLojas(fallbackLojas);
-      if (fallbackLojas.length > 0) setLojaId(String(fallbackLojas[0].id));
+      setLojas([]);
+      setLojaId('');
+      setError('Lojas indisponíveis no momento. Verifique a API antes de concluir o pedido.');
     }
   }, []);
 

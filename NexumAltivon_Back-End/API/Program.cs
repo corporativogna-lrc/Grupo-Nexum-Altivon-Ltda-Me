@@ -503,16 +503,20 @@ app.MapGet("/api/auth/me", (ClaimsPrincipal principal) =>
 .RequireAuthorization()
 .WithName("AuthMe");
 
-app.MapGet("/api/admin/dashboard/completo", [Authorize(Policy = "Gerente")] () =>
+app.MapGet("/api/admin/dashboard/completo", [Authorize(Policy = "Gerente")] async (
+    NexumDbContext db,
+    CancellationToken ct) =>
 {
-    var dashboard = DashboardCompletoDto.CreateSample();
+    var dashboard = await BuildAdminDashboardAsync(db, ct);
     return Results.Ok(ApiResponse<DashboardCompletoDto>.Ok(dashboard));
 })
 .WithName("DashboardCompleto")
 ;
 
-app.MapGet("/api/admin/dashboard/kpis", [Authorize(Policy = "Gerente")] () =>
-    Results.Ok(ApiResponse<DashboardKpiDto>.Ok(DashboardCompletoDto.CreateSample().Kpis)))
+app.MapGet("/api/admin/dashboard/kpis", [Authorize(Policy = "Gerente")] async (
+    NexumDbContext db,
+    CancellationToken ct) =>
+    Results.Ok(ApiResponse<DashboardKpiDto>.Ok(await BuildAdminKpisAsync(db, ct))))
     .WithName("DashboardKpis")
     ;
 
@@ -533,11 +537,6 @@ app.MapGet("/api/lojas", async (NexumDbContext db, CancellationToken ct) =>
             loja.Ativa,
             loja.OrdemExibicao))
         .ToListAsync(ct);
-
-    if (lojas.Count == 0)
-    {
-        lojas = DashboardCompletoDto.Lojas;
-    }
 
     return Results.Ok(ApiResponse<List<LojaDto>>.Ok(lojas));
 })
@@ -666,11 +665,6 @@ app.MapGet("/api/categorias", async (NexumDbContext db, CancellationToken ct) =>
             categoria.Ativa))
         .ToListAsync(ct);
 
-    if (categorias.Count == 0)
-    {
-        categorias = StoreData.Categorias;
-    }
-
     return Results.Ok(ApiResponse<List<CategoriaDto>>.Ok(categorias));
 })
 .AllowAnonymous()
@@ -751,15 +745,25 @@ app.MapPost("/api/categorias", [Authorize(Policy = "Gerente")] async (
 .WithName("CriarCategoria")
 ;
 
-app.MapGet("/api/produtos", async (string? categoria_id, NexumDbContext db, CancellationToken ct) =>
+app.MapGet("/api/produtos", async (
+    string? categoria_id,
+    string? categoriaIdFiltro,
+    string? busca,
+    int? pagina,
+    int? itensPorPagina,
+    int? Pagina,
+    int? ItensPorPagina,
+    NexumDbContext db,
+    CancellationToken ct) =>
 {
     IQueryable<Produto> query = FiltrarProdutosPublicaveis(db.Produtos.AsNoTracking());
+    var categoriaFiltro = !string.IsNullOrWhiteSpace(categoria_id) ? categoria_id : categoriaIdFiltro;
 
-    if (!string.IsNullOrWhiteSpace(categoria_id))
+    if (!string.IsNullOrWhiteSpace(categoriaFiltro))
     {
         var categoriaId = await db.Categorias
             .AsNoTracking()
-            .Where(categoria => categoria.Slug == categoria_id)
+            .Where(categoria => categoria.Slug == categoriaFiltro || categoria.Id.ToString() == categoriaFiltro)
             .Select(categoria => (int?)categoria.Id)
             .FirstOrDefaultAsync(ct);
 
@@ -771,25 +775,46 @@ app.MapGet("/api/produtos", async (string? categoria_id, NexumDbContext db, Canc
         query = query.Where(produto => produto.CategoriaId == categoriaId);
     }
 
+    if (!string.IsNullOrWhiteSpace(busca))
+    {
+        var termo = busca.Trim();
+        query = query.Where(produto =>
+            produto.Nome.Contains(termo) ||
+            produto.Sku.Contains(termo) ||
+            (produto.DescricaoCurta != null && produto.DescricaoCurta.Contains(termo)) ||
+            (produto.Categoria != null && produto.Categoria.Nome.Contains(termo)));
+    }
+
+    var paginaAtual = Math.Max(1, pagina ?? Pagina ?? 1);
+    var limite = Math.Clamp(itensPorPagina ?? ItensPorPagina ?? 20, 1, 60);
+    var total = await query.CountAsync(ct);
     var produtos = await query
         .Include(produto => produto.Categoria)
         .OrderByDescending(produto => produto.Destaque)
         .ThenByDescending(produto => produto.UpdatedAt)
+        .Skip((paginaAtual - 1) * limite)
+        .Take(limite)
         .ToListAsync(ct);
 
-    return Results.Ok(ApiResponse<List<ProdutoLojaDto>>.Ok(produtos.Select(MapearProdutoLojaDto).ToList()));
+    var totalPaginas = (int)Math.Ceiling(total / (double)limite);
+    return Results.Ok(ApiResponse<List<ProdutoLojaDto>>.Ok(
+        produtos.Select(MapearProdutoLojaDto).ToList(),
+        total: total,
+        pagina: paginaAtual,
+        totalPaginas: totalPaginas));
 })
 .AllowAnonymous()
 .WithName("Produtos")
 ;
 
-app.MapGet("/api/produtos/destaques", async (NexumDbContext db, CancellationToken ct) =>
+app.MapGet("/api/produtos/destaques", async (int? limite, NexumDbContext db, CancellationToken ct) =>
 {
+    var totalDestaques = Math.Clamp(limite ?? 5, 1, 12);
     var produtos = await FiltrarProdutosPublicaveis(db.Produtos.AsNoTracking())
         .Include(produto => produto.Categoria)
         .Where(produto => produto.Destaque)
         .OrderByDescending(produto => produto.UpdatedAt)
-        .Take(24)
+        .Take(totalDestaques)
         .ToListAsync(ct);
 
     return Results.Ok(ApiResponse<List<ProdutoLojaDto>>.Ok(produtos.Select(MapearProdutoLojaDto).ToList()));
@@ -1136,10 +1161,7 @@ app.MapGet("/api/cupons/{codigo}", async (string codigo, NexumDbContext db, Canc
 
     if (cupom is null)
     {
-        var fallback = StoreData.Cupons.FirstOrDefault(item => string.Equals(item.Codigo, codigo, StringComparison.OrdinalIgnoreCase));
-        return fallback is null
-            ? Results.NotFound(ApiResponse<string>.Erro("Cupom invalido."))
-            : Results.Ok(ApiResponse<CupomDto>.Ok(fallback));
+        return Results.NotFound(ApiResponse<string>.Erro("Cupom invalido."));
     }
 
     if (cupom.ValidoDe.HasValue && cupom.ValidoDe.Value > DateTime.UtcNow)
@@ -5554,6 +5576,214 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
         """.Replace("{", "{{").Replace("}", "}}"));
 }
 
+static IQueryable<Produto> ProdutosPublicaveisDashboard(NexumDbContext db) =>
+    db.Produtos.AsNoTracking().Where(produto =>
+        produto.Ativo &&
+        produto.LojaId > 0 &&
+        produto.CategoriaId.HasValue &&
+        !string.IsNullOrEmpty(produto.Nome) &&
+        !string.IsNullOrEmpty(produto.Sku) &&
+        !string.IsNullOrEmpty(produto.Slug) &&
+        (!string.IsNullOrEmpty(produto.DescricaoCurta) || !string.IsNullOrEmpty(produto.DescricaoLonga)) &&
+        !string.IsNullOrEmpty(produto.ImagemPrincipal) &&
+        produto.Preco > 0 &&
+        produto.Peso > 0 &&
+        produto.Altura > 0 &&
+        produto.Largura > 0 &&
+        produto.Comprimento > 0);
+
+static async Task<DashboardKpiDto> BuildAdminKpisAsync(NexumDbContext db, CancellationToken ct)
+{
+    var hoje = DateTime.UtcNow.Date;
+    var inicioMes = new DateTime(hoje.Year, hoje.Month, 1);
+    var inicioAno = new DateTime(hoje.Year, 1, 1);
+
+    var pedidosValidos = db.Pedidos.AsNoTracking()
+        .Where(pedido => pedido.Status != StatusPedido.Cancelado && pedido.Status != StatusPedido.Reembolsado);
+
+    var faturamentoHoje = await pedidosValidos
+        .Where(pedido => pedido.CreatedAt >= hoje)
+        .SumAsync(pedido => (decimal?)pedido.Total, ct) ?? 0m;
+
+    var faturamentoMes = await pedidosValidos
+        .Where(pedido => pedido.CreatedAt >= inicioMes)
+        .SumAsync(pedido => (decimal?)pedido.Total, ct) ?? 0m;
+
+    var faturamentoAno = await pedidosValidos
+        .Where(pedido => pedido.CreatedAt >= inicioAno)
+        .SumAsync(pedido => (decimal?)pedido.Total, ct) ?? 0m;
+
+    var totalPedidosValidos = await pedidosValidos.CountAsync(ct);
+    var faturamentoTotal = await pedidosValidos.SumAsync(pedido => (decimal?)pedido.Total, ct) ?? 0m;
+    var ticketMedio = totalPedidosValidos > 0 ? Math.Round(faturamentoTotal / totalPedidosValidos, 2) : 0m;
+
+    return new DashboardKpiDto(
+        faturamentoHoje,
+        faturamentoMes,
+        faturamentoAno,
+        await pedidosValidos.CountAsync(pedido => pedido.CreatedAt >= hoje, ct),
+        await pedidosValidos.CountAsync(pedido => pedido.CreatedAt >= inicioMes, ct),
+        await db.Pedidos.AsNoTracking().CountAsync(pedido => pedido.Status == StatusPedido.Pendente, ct),
+        await db.Pedidos.AsNoTracking().CountAsync(pedido => pedido.Status == StatusPedido.Enviado, ct),
+        await db.Pedidos.AsNoTracking().CountAsync(pedido => pedido.Status == StatusPedido.Entregue, ct),
+        await db.Clientes.AsNoTracking().CountAsync(cliente => cliente.CreatedAt >= inicioMes, ct),
+        await db.Clientes.AsNoTracking().CountAsync(cliente => cliente.Status == StatusCliente.Ativo, ct),
+        await db.Clientes.AsNoTracking().CountAsync(ct),
+        ticketMedio,
+        0m,
+        await ProdutosPublicaveisDashboard(db).CountAsync(ct),
+        await ProdutosPublicaveisDashboard(db).CountAsync(produto => produto.EstoqueAtual > 0 && produto.EstoqueAtual <= produto.EstoqueMinimo, ct),
+        await ProdutosPublicaveisDashboard(db).CountAsync(produto => produto.EstoqueAtual == 0, ct),
+        await db.CrmLeads.AsNoTracking().CountAsync(lead => lead.Status == StatusLead.Novo, ct),
+        await db.CrmLeads.AsNoTracking().CountAsync(lead => lead.Status == StatusLead.Convertido, ct),
+        await db.CrmLeads.AsNoTracking().CountAsync(lead => lead.Status == StatusLead.EmAtendimento, ct));
+}
+
+static async Task<DashboardCompletoDto> BuildAdminDashboardAsync(NexumDbContext db, CancellationToken ct)
+{
+    var hoje = DateTime.UtcNow.Date;
+    var pedidosValidos = db.Pedidos.AsNoTracking()
+        .Where(pedido => pedido.Status != StatusPedido.Cancelado && pedido.Status != StatusPedido.Reembolsado);
+
+    var faturamentoSemanal = new List<FaturamentoPorPeriodoDto>();
+    for (var i = 6; i >= 0; i--)
+    {
+        var dia = hoje.AddDays(-i);
+        var fimDia = dia.AddDays(1);
+        var pedidosDia = pedidosValidos.Where(pedido => pedido.CreatedAt >= dia && pedido.CreatedAt < fimDia);
+        faturamentoSemanal.Add(new FaturamentoPorPeriodoDto(
+            dia.ToString("dd/MM", CultureInfo.InvariantCulture),
+            await pedidosDia.SumAsync(pedido => (decimal?)pedido.Total, ct) ?? 0m,
+            await pedidosDia.CountAsync(ct)));
+    }
+
+    var faturamentoMensal = new List<FaturamentoPorPeriodoDto>();
+    for (var i = 11; i >= 0; i--)
+    {
+        var mes = hoje.AddMonths(-i);
+        var inicioMes = new DateTime(mes.Year, mes.Month, 1);
+        var fimMes = inicioMes.AddMonths(1);
+        var pedidosMes = pedidosValidos.Where(pedido => pedido.CreatedAt >= inicioMes && pedido.CreatedAt < fimMes);
+        faturamentoMensal.Add(new FaturamentoPorPeriodoDto(
+            mes.ToString("MMM/yy", CultureInfo.InvariantCulture),
+            await pedidosMes.SumAsync(pedido => (decimal?)pedido.Total, ct) ?? 0m,
+            await pedidosMes.CountAsync(ct)));
+    }
+
+    var dataInicioLojas = hoje.AddMonths(-1);
+    var pedidosPorLoja = await pedidosValidos
+        .Include(pedido => pedido.Loja)
+        .Where(pedido => pedido.CreatedAt >= dataInicioLojas)
+        .ToListAsync(ct);
+    var totalLojas = pedidosPorLoja.Sum(pedido => pedido.Total);
+    var vendasPorLoja = pedidosPorLoja
+        .GroupBy(pedido => new { pedido.LojaId, Nome = pedido.Loja?.Nome ?? "Sem Loja", Slug = pedido.Loja?.Slug ?? "" })
+        .Select(grupo =>
+        {
+            var faturamento = grupo.Sum(pedido => pedido.Total);
+            var pedidos = grupo.Count();
+            return new VendasPorLojaDto(
+                grupo.Key.Nome,
+                grupo.Key.Slug,
+                faturamento,
+                pedidos,
+                pedidos > 0 ? Math.Round(faturamento / pedidos, 2) : 0m,
+                totalLojas > 0 ? Math.Round(faturamento / totalLojas * 100m, 2) : 0m);
+        })
+        .OrderByDescending(item => item.Faturamento)
+        .ToList();
+
+    var itensVendidos = await db.PedidoItens.AsNoTracking()
+        .Include(item => item.Pedido)
+        .Include(item => item.Produto)
+        .ThenInclude(produto => produto!.Loja)
+        .Where(item => item.Pedido != null &&
+            item.Pedido.Status != StatusPedido.Cancelado &&
+            item.Pedido.Status != StatusPedido.Reembolsado)
+        .ToListAsync(ct);
+    var produtosMaisVendidos = itensVendidos
+        .GroupBy(item => new
+        {
+            ProdutoId = item.ProdutoId ?? 0,
+            item.NomeProduto,
+            item.ImagemProduto,
+            LojaNome = item.Produto?.Loja?.Nome ?? "Sem Loja"
+        })
+        .Select(grupo => new ProdutosMaisVendidosDto(
+            grupo.Key.ProdutoId,
+            grupo.Key.NomeProduto,
+            grupo.Key.ImagemProduto,
+            grupo.Key.LojaNome,
+            grupo.Sum(item => item.Quantidade),
+            grupo.Sum(item => item.PrecoTotal)))
+        .OrderByDescending(item => item.QuantidadeVendida)
+        .Take(10)
+        .ToList();
+
+    var clientesBase = await db.Clientes.AsNoTracking()
+        .OrderByDescending(cliente => cliente.CreatedAt)
+        .Take(10)
+        .ToListAsync(ct);
+    var clienteIds = clientesBase.Select(cliente => cliente.Id).ToList();
+    var pedidosClientes = await pedidosValidos
+        .Where(pedido => clienteIds.Contains(pedido.ClienteId))
+        .ToListAsync(ct);
+    var clientesRecentes = clientesBase
+        .Select(cliente =>
+        {
+            var pedidosCliente = pedidosClientes.Where(pedido => pedido.ClienteId == cliente.Id).ToList();
+            return new ClientesRecentesDto(
+                cliente.Id,
+                cliente.Nome,
+                cliente.Email,
+                cliente.Whatsapp,
+                cliente.CreatedAt,
+                pedidosCliente.Count,
+                pedidosCliente.Sum(pedido => pedido.Total));
+        })
+        .ToList();
+
+    var pedidosRecentes = await db.Pedidos.AsNoTracking()
+        .Include(pedido => pedido.Cliente)
+        .Include(pedido => pedido.Loja)
+        .OrderByDescending(pedido => pedido.CreatedAt)
+        .Take(10)
+        .Select(pedido => new PedidosRecentesDto(
+            pedido.Id,
+            pedido.NumeroPedido,
+            pedido.Cliente != null ? pedido.Cliente.Nome : "Cliente nao identificado",
+            pedido.Total,
+            pedido.Status.ToString(),
+            pedido.StatusPagamento.ToString(),
+            pedido.Loja != null ? pedido.Loja.Nome : null,
+            pedido.CreatedAt))
+        .ToListAsync(ct);
+
+    var leadsRecentes = await db.CrmLeads.AsNoTracking()
+        .OrderByDescending(lead => lead.CreatedAt)
+        .Take(10)
+        .Select(lead => new LeadsRecentesDto(
+            lead.Id,
+            lead.Nome,
+            lead.Tipo.ToString(),
+            lead.Status.ToString(),
+            lead.Prioridade.ToString(),
+            lead.Email,
+            lead.Whatsapp,
+            lead.CreatedAt))
+        .ToListAsync(ct);
+
+    return new DashboardCompletoDto(
+        await BuildAdminKpisAsync(db, ct),
+        faturamentoSemanal,
+        faturamentoMensal,
+        vendasPorLoja,
+        produtosMaisVendidos,
+        clientesRecentes,
+        pedidosRecentes,
+        leadsRecentes);
+}
+
 Console.WriteLine("[NexumStartup] Iniciando servidor HTTP.");
 app.Run();
 
@@ -6326,71 +6556,6 @@ public sealed record FiscalManualEmissaoResponseDto(
     List<string> Pendencias,
     DateTime GeradoEm);
 
-public static class StoreData
-{
-    public static readonly List<CategoriaDto> Categorias =
-    [
-        new("automaticos", "Automaticos", "Movimento mecanico com presenca executiva", null, 1, "Automaticos", 1, true),
-        new("dress-watch", "Dress Watch", "Subcategoria para modelos executivos e sociais.", "automaticos", 2, "Automaticos / Dress Watch", 1, true),
-        new("skeleton", "Skeleton", "Subcategoria para mostradores abertos e mecânica aparente.", "automaticos", 2, "Automaticos / Skeleton", 2, true),
-        new("cronografos", "Cronografos", "Performance, precisao e leitura esportiva", null, 1, "Cronografos", 2, true),
-        new("corrida", "Corrida", "Subcategoria para cronógrafos de perfil esportivo.", "cronografos", 2, "Cronografos / Corrida", 1, true),
-        new("aventura", "Aventura", "Subcategoria para peças robustas e outdoor.", "cronografos", 2, "Cronografos / Aventura", 2, true),
-        new("classicos", "Classicos", "Pecas discretas para rotina premium", null, 1, "Classicos", 3, true),
-        new("social", "Social", "Subcategoria para linha formal e corporativa.", "classicos", 2, "Classicos / Social", 1, true),
-        new("minimalista", "Minimalista", "Subcategoria para peças leves e design limpo.", "classicos", 2, "Classicos / Minimalista", 2, true),
-        new("smart-luxo", "Smart Luxo", "Tecnologia conectada com acabamento refinado", null, 1, "Smart Luxo", 4, true),
-        new("fitness-premium", "Fitness Premium", "Subcategoria para wearables esportivos premium.", "smart-luxo", 2, "Smart Luxo / Fitness Premium", 1, true),
-        new("executivo-connect", "Executivo Connect", "Subcategoria para smartwatches de perfil executivo.", "smart-luxo", 2, "Smart Luxo / Executivo Connect", 2, true)
-    ];
-
-    public static readonly List<ProdutoLojaDto> Produtos =
-    [
-        new("na-atlas-chrono", "Atlas Chronograph Black", "Cronografo em aco escovado, safira antirrisco e pulseira intercambiavel para uso executivo.", "Cronografo executivo premium", 4890, 4290, "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85", 8, 2, 0, true, "NA-ATL-BLK", "cronografos", 4.9m, 3150, 0.450m, 4.5m, 11m, 25m, "Proprio", null, "Nexum Altivon", "cronografo,aco,premium", "Atlas Chronograph Black", "Relógio cronógrafo premium Nexum Altivon", "relogio,cronografo,premium", null),
-        new("na-orion-gold", "Orion Gold Reserve", "Relogio automatico dourado com mostrador sunray, reserva de marcha e acabamento premium.", "Automático dourado premium", 6990, 6490, "https://images.unsplash.com/photo-1547996160-81dfa63595aa?auto=format&fit=crop&w=900&q=85", 12, 2, 0, true, "NA-ORI-GLD", "automaticos", 4.8m, 4520, 0.520m, 5m, 12m, 26m, "Proprio", null, "Nexum Altivon", "automatico,dourado,reserva", "Orion Gold Reserve", "Relógio automático dourado com reserva de marcha", "automatico,dourado,relogio", null),
-        new("na-heritage-silver", "Heritage Silver 40mm", "Design classico em caixa fina, pulseira em couro italiano e resistencia a agua para o dia a dia.", "Clássico prata 40mm", 2990, null, "https://images.unsplash.com/photo-1539874754764-5a96559165b0?auto=format&fit=crop&w=900&q=85", 24, 4, 0, true, "NA-HER-SLV", "classicos", 4.7m, 1890, 0.380m, 4m, 10m, 24m, "Proprio", null, "Nexum Altivon", "classico,prata,couro", "Heritage Silver 40mm", "Relógio clássico prata com pulseira em couro italiano", "classico,prata,couro", null),
-        new("na-venture-carbon", "Venture Carbon Pro", "Caixa em carbono, pulseira esportiva premium e leitura de alta visibilidade para jornadas intensas.", "Carbono esportivo premium", 5290, 4990, "https://images.unsplash.com/photo-1434056886845-dac89ffe9b56?auto=format&fit=crop&w=900&q=85", 5, 2, 0, false, "NA-VEN-CBN", "cronografos", 4.6m, 3380, 0.490m, 5m, 12m, 27m, "Dropshipping", null, "Nexum Altivon", "carbono,esportivo,aventura", "Venture Carbon Pro", "Relógio em carbono com leitura esportiva premium", "carbono,esportivo,relogio", null),
-        new("na-lumina-smart", "Lumina Smart Luxe", "Tela AMOLED, monitoramento completo e corpo metalico com acabamento de relojoaria.", "Smartwatch luxo AMOLED", 3890, null, "https://images.unsplash.com/photo-1508685096489-7aacd43bd3b1?auto=format&fit=crop&w=900&q=85", 18, 3, 0, false, "NA-LUM-SMT", "smart-luxo", 4.8m, 2470, 0.310m, 4m, 10m, 23m, "Marketplace", null, "Nexum Altivon", "smartwatch,amoled,luxo", "Lumina Smart Luxe", "Smartwatch premium com acabamento de relojoaria", "smartwatch,amoled,luxo", null),
-        new("na-minimal-rose", "Minimal Rose Mesh", "Perfil ultrafino, malha milanesa rose e mostrador minimalista para composicoes sofisticadas.", "Rose mesh minimalista", 2590, 2290, "https://images.unsplash.com/photo-1524592094714-0f0654e20314?auto=format&fit=crop&w=900&q=85", 31, 5, 0, false, "NA-MIN-RSE", "classicos", 4.7m, 1620, 0.280m, 3.8m, 9m, 22m, "Afiliado", null, "Nexum Altivon", "rose,minimalista,mesh", "Minimal Rose Mesh", "Relógio ultrafino rose com malha milanesa", "rose,minimalista,mesh", null)
-    ];
-
-    public static readonly List<CupomDto> Cupons =
-    [
-        new("NEXUM10", 10, null, 500),
-        new("FRETEGRATIS", null, 89, 1000)
-    ];
-
-    public static readonly List<ClienteLojaDto> Clientes =
-    [
-        new(1, "Ana Carolina Silva", "ana.silva@email.com", "(14) 99876-5432"),
-        new(2, "Bruno Oliveira", "bruno.oliveira@email.com", "(14) 99765-4321"),
-        new(3, "Carla Mendes", "carla.mendes@email.com", "(14) 99654-3210")
-    ];
-
-    public static readonly List<FornecedorDto> Fornecedores =
-    [
-        new(1, "Chronos Imports", "12.345.678/0001-90", "comercial@chronosimports.com", "(11) 3030-1122", "Relogios", DateTime.UtcNow.AddDays(-9)),
-        new(2, "Luxury Cases Brasil", "98.765.432/0001-10", "vendas@luxurycases.com", "(21) 4040-2211", "Acessorios", DateTime.UtcNow.AddDays(-5)),
-        new(3, "Embalagens Prime", "45.111.222/0001-33", "atendimento@embalagensprime.com", "(31) 3333-9191", "Operacional", DateTime.UtcNow.AddDays(-2))
-    ];
-
-    public static readonly DashboardResumoDto Resumo = new(38, 1248, 286420, 64, 7, 7.8m, 3280);
-
-    public static readonly List<PedidoLojaDto> Pedidos =
-    [
-        new(1029, "NA-1029", 6490, "Processando", DateTime.UtcNow.AddHours(-2), "Aguardando pagamento", "pix", "ConfiguracaoPendente", null, 0, "Retirada / combinar entrega", "Nexum Altivon", 0, null, "Pedido reservado. Configure o gateway para cobrança real e confirmação automática.", 1, "QR-CODE-PIX-DEMO", null),
-        new(1028, "NA-1028", 4290, "Enviado", DateTime.UtcNow.AddHours(-5), "Pagamento aprovado", "cartao", "MercadoPago", "demo-1028", 29.9m, "Entrega padrão", "Correios / Melhor Envio", 7, "BR-DEMO-1028", "Pagamento confirmado. Pedido pronto para separação e logística.", 6, null, "https://pagamento.nexumaltivon.com/demo-1028"),
-        new(1027, "NA-1027", 7580, "Entregue", DateTime.UtcNow.AddDays(-1), "Pagamento aprovado", "boleto", "MercadoPago", "demo-1027", 49.9m, "Entrega expressa", "Transportadora parceira", 3, "BR-DEMO-1027", "Pagamento confirmado. Pedido pronto para separação e logística.", 1, null, "https://pagamento.nexumaltivon.com/demo-1027")
-    ];
-
-    public static readonly List<LeadLojaDto> Leads =
-    [
-        new(210, "Marina Alves", "marina.alves@email.com", "(11) 98221-4400", "Qualificado", DateTime.UtcNow.AddHours(-3), "Marina Atelier", "Site", "Lead de demonstração qualificado."),
-        new(209, "Rafael Monteiro", "rafael.m@email.com", "(21) 99774-1030", "Negociacao", DateTime.UtcNow.AddHours(-8), "RM Distribuição", "WhatsApp", "Contato comercial em andamento."),
-        new(208, "Bianca Torres", "bianca.t@email.com", "(31) 98812-5511", "Novo", DateTime.UtcNow.AddDays(-1), "BT Boutique", "Site", "Solicitou retorno comercial.")
-    ];
-}
-
 public sealed record DashboardCompletoDto(
     DashboardKpiDto Kpis,
     List<FaturamentoPorPeriodoDto> FaturamentoSemanal,
@@ -6399,28 +6564,4 @@ public sealed record DashboardCompletoDto(
     List<ProdutosMaisVendidosDto> ProdutosMaisVendidos,
     List<ClientesRecentesDto> ClientesRecentes,
     List<PedidosRecentesDto> PedidosRecentes,
-    List<LeadsRecentesDto> LeadsRecentes)
-{
-    public static readonly List<LojaDto> Lojas =
-    [
-        new(1, "Geracao Top+", "geracao-top", "Tecnologia", "Eletronicos e acessorios", "#C9A227", "#0A0A0A", true, 1),
-        new(2, "Moda Mim", "moda-mim", "Moda", "Moda feminina e lifestyle", "#D81B60", "#0A0A0A", true, 2),
-        new(3, "Chronos", "chronos", "Relogios", "Relogios e presentes", "#C9A227", "#1E3A5F", true, 3),
-        new(4, "Grann-Tur", "grann-tur", "Viagens", "Turismo e malas", "#1E88E5", "#0A0A0A", true, 4),
-        new(5, "Estruturaline", "estruturaline", "Construcao", "Materiais e solucoes estruturais", "#546E7A", "#0A0A0A", true, 5),
-        new(6, "Gran-fest-festas", "gran-fest", "Festas", "Artigos para eventos", "#8E24AA", "#0A0A0A", true, 6)
-    ];
-
-    public static DashboardCompletoDto CreateSample()
-    {
-        return new DashboardCompletoDto(
-            new DashboardKpiDto(0m, 0m, 0m, 0, 0, 0, 0, 0, 0, 0, 0, 0m, 0m, 0, 0, 0, 0, 0, 0),
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            []);
-    }
-}
+    List<LeadsRecentesDto> LeadsRecentes);
