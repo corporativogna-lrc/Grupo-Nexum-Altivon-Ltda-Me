@@ -1,11 +1,13 @@
-﻿/**
+/**
  * Nexum Altivon - IntegraÃ§Ã£o COMPLETA do Painel Admin
  * Todos os botÃµes, comandos, cadastros e seÃ§Ãµes operacionais
  */
 (function() {
   'use strict';
 
-  const API_URL = window.location.origin + '/api';
+  const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://localhost:5000/api'
+    : 'https://api.nexumaltivon.com.br/api';
   const STORAGE_TOKEN = 'nexum_admin_token';
   const STORAGE_USER = 'nexum_admin_user';
 
@@ -395,10 +397,10 @@
     const resumo = await apiGet('/dashboard/resumo');
     if (!resumo) return;
     const findKPI = (label) => {
-      const cards = document.querySelectorAll('.stats-cards .stat-card, .kpi-card, [class*="stat"]');
+      const cards = document.querySelectorAll('.stats-cards .stat-card, .kpi-card, [class*="stat"');
       for (const card of cards) {
         if (card.textContent.toUpperCase().includes(label.toUpperCase())) {
-          const v = card.querySelector('h2, h3, .stat-value, .kpi-value, [class*="value"]');
+          const v = card.querySelector('h2, h3, .stat-value, .kpi-value, [class*="value"');
           if (v) return v;
         }
       }
@@ -576,7 +578,7 @@
       { nome: 'Vinicius', email: 'corporativo.gna@gmail.com', role: 'Admin', ativo: true }
     ];
     const rows = usuarios.map(u => [
-      `<strong>${u.nome}${u.email === user.email ? ' <span style=\"color:#C9A227;\">(vocÃª)</span>' : ''}</strong>`,
+      `<strong>${u.nome}${u.email === user.email ? ' <span style="color:#C9A227;">(vocÃª)</span>' : ''}</strong>`,
       u.email, badge(u.role, '#C9A227'),
       statusBadge(u.ativo ? 'Ativo' : 'Inativo')
     ]);
@@ -726,7 +728,7 @@
     const userStr = localStorage.getItem(STORAGE_USER);
     if (!userStr) return;
     const user = JSON.parse(userStr);
-    document.querySelectorAll('.user-name, [class*="user"] span').forEach(el => {
+    document.querySelectorAll('.user-name, [class*="user"'] span').forEach(el => {
       if (el.children.length === 0 && el.textContent.trim().toLowerCase().includes('admin')) el.textContent = user.nome;
     });
     if (!document.getElementById('nexum-logout-btn')) {
@@ -759,4 +761,3 @@
     } else createLoginOverlay();
   });
 })();
-
