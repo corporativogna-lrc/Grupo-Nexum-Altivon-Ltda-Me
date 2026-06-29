@@ -1,3 +1,10 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
 using Microsoft.EntityFrameworkCore;
 using NexumAltivon.API.Data;
 using NexumAltivon.API.DTOs.Admin;
@@ -97,8 +104,7 @@ public class AdminDashboardService : IAdminDashboardService
             .CountAsync();
 
         var ticketMedio = todosPedidos.Any() ? todosPedidos.Average(p => p.Total) : 0;
-        var totalVisitas = 1000; // Placeholder - integrar com analytics futuramente
-        var taxaConversao = totalVisitas > 0 ? (decimal)todosPedidos.Count / totalVisitas * 100 : 0;
+        var taxaConversao = 0m;
 
         return new DashboardKpiDto
         {

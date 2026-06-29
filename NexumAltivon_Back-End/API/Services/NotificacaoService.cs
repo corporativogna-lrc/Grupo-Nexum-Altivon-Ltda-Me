@@ -1,4 +1,11 @@
 ﻿using System;
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text;
@@ -43,7 +50,7 @@ namespace NexumAltivon.API.Services
             _fromEmail = _config["Integracoes:SendGrid:FromEmail"] ?? "corporativo.gna@gmail.com";
             _fromName = _config["Integracoes:SendGrid:FromName"] ?? "Grupo Nexum Altivon";
             _salesAdminEmail = _config["Alertas:VendaEmailAdmin"] ?? "corporativo.gna@gmail.com";
-            _whatsappAtivo = bool.Parse(_config["Integracoes:WhatsApp:Ativo"] ?? "false");
+            _whatsappAtivo = bool.TryParse(_config["Integracoes:WhatsApp:Ativo"], out var whatsappAtivo) && whatsappAtivo;
             _whatsappApiUrl = _config["Integracoes:WhatsApp:ApiUrl"];
             _whatsappApiKey = _config["Integracoes:WhatsApp:ApiKey"];
         }
@@ -172,6 +179,11 @@ h1 {{ color: #C9A227; }}
         public async Task EnviarNotificacaoWhatsAppAsync(string? telefone, string mensagem)
         {
             if (!_whatsappAtivo || string.IsNullOrEmpty(telefone)) return;
+            if (string.IsNullOrWhiteSpace(_whatsappApiUrl))
+            {
+                _logger.LogWarning("WhatsApp ativo, mas sem URL configurada. Envio real pendente para {Telefone}.", telefone);
+                return;
+            }
 
             try
             {
@@ -184,9 +196,16 @@ h1 {{ color: #C9A227; }}
                     text = mensagem
                 };
 
-                // Stub para API genÃ©rica de WhatsApp (ex: Evolution API, WPPConnect, etc.)
-                // Em produÃ§Ã£o, substituir pela URL real do gateway WhatsApp
-                var response = await _httpClient.PostAsJsonAsync(_whatsappApiUrl, request);
+                using var httpRequest = new HttpRequestMessage(HttpMethod.Post, _whatsappApiUrl)
+                {
+                    Content = JsonContent.Create(request)
+                };
+                if (!string.IsNullOrWhiteSpace(_whatsappApiKey))
+                {
+                    httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _whatsappApiKey);
+                }
+
+                var response = await _httpClient.SendAsync(httpRequest);
                 if (!response.IsSuccessStatusCode)
                     _logger.LogWarning("Falha ao enviar WhatsApp: {Status}", response.StatusCode);
             }
@@ -208,7 +227,7 @@ h1 {{ color: #C9A227; }}
 
                 if (string.IsNullOrEmpty(_sendGridKey))
                 {
-                    _logger.LogWarning("SendGrid nÃ£o configurado. E-mail simulado para {Email}: {Assunto}", destinatario, assunto);
+                    _logger.LogWarning("SendGrid nao configurado. Envio real pendente para {Email}: {Assunto}", destinatario, assunto);
                     return;
                 }
 

@@ -1,3 +1,10 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -31,9 +38,11 @@ namespace NexumAltivon.API.Controllers
         public async Task<ActionResult<ReembolsoDto>> SolicitarReembolso([FromBody] ReembolsoRequest request)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
-            // Buscar transacaoId pelo pedido
-            // Simplificado: assumindo que o frontend envia transacaoId futuramente ou buscamos no service
-            return Ok(new ReembolsoDto { Sucesso = true, Mensagem = "Use o endpoint de reembolso via transacaoId diretamente." });
+            return BadRequest(new ReembolsoDto
+            {
+                Sucesso = false,
+                Mensagem = "Reembolso exige transacaoId real. Use /api/pagamento/reembolso/{transacaoId}."
+            });
         }
 
         [HttpPost("reembolso/{transacaoId}")]

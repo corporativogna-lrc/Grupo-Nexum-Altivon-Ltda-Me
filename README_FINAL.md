@@ -1,3 +1,10 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ -->
 # PROJETO GRUPO NEXUM ALTIVON — DOCUMENTACAO COMPLETA
 ## Grupo Nexum Altivon ME | www.nexumaltivon.com
 ### Versao: 1.0.00.2600 | Stack: ASP.NET Core 8 + MySQL + Docker + CI/CD
@@ -39,9 +46,10 @@ Este documento consolida todas as 6 fases do projeto de e-commerce e ERP/CRM do 
 - Menu lateral com 16 secoes: Dashboard, Pedidos, Produtos, Clientes, Lojas, Financeiro, Fiscal, Logistica, CRM, Cupons, Marketing, Marketplaces, Dropshipping, Usuarios, Configuracoes, Auditoria
 
 ### Como aplicar
-1. Copiar admin/index.html para NexumAltivon_Front-End/admin/
-2. O painel consome a API via AJAX nos endpoints /api/admin/dashboard/*
-3. Acesso restrito a perfis: Gerente, Admin, SuperAdmin
+1. Usar o painel oficial em `NexumAltivon_Front-End/src/pages/Dashboard.js`
+2. Publicar pelo workflow `Nexum 2026-06-28 - Deploy Operacional Oficial .com.br`
+3. O painel consome a API oficial `https://api.nexumaltivon.com.br`
+4. Acesso restrito a perfis: Gerente, Admin, SuperAdmin
 
 ---
 

@@ -1,3 +1,10 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ -->
 # NEXUM ALTIVON COMMERCE PLATFORM
 ## FASE 2 — Painel Administrativo, Dashboard, Gestao Completa
 
@@ -33,7 +40,8 @@
 
 | Arquivo | Descricao |
 |---|---|
-| `NexumAltivon_Front-End/admin/index.html` | Painel admin completo com Chart.js |
+| `NexumAltivon_Front-End/src/pages/Dashboard.js` | Painel administrativo operacional integrado a API oficial |
+| `Arquivos_Mortos/frontend-legado-20260629/admin-index-mock-legado.html` | Painel HTML antigo arquivado, fora da publicacao |
 
 #### Funcionalidades do Painel
 
@@ -56,16 +64,16 @@
 4. **Clientes** — Base completa com perfis
 5. **Lojas** — Cards das 6 lojas com metricas
 6. **Financeiro** — KPIs financeiros
-7. **Fiscal** — (placeholder para FASE 3+)
-8. **Logistica** — (placeholder para FASE 4)
+7. **Fiscal** — pendente de credenciais fiscais/certificado digital para emissao real
+8. **Logistica** — em integracao real por transportadoras e regras de envio
 9. **CRM** — Tabela de leads completa
-10. **Cupons** — (placeholder)
-11. **Marketing** — (placeholder)
-12. **Marketplaces** — (placeholder para FASE 4)
-13. **Dropshipping** — (placeholder para FASE 4)
-14. **Usuarios** — (placeholder)
+10. **Cupons** — fluxo operacional vinculado a regras comerciais
+11. **Marketing** — fluxo operacional vinculado a leads e notificacoes
+12. **Marketplaces** — aguardando tokens reais para ativacao plena
+13. **Dropshipping** — aguardando credenciais de fornecedores para ativacao plena
+14. **Usuarios** — fluxo operacional por perfis administrativos
 15. **Configuracoes** — Painel de configuracoes editaveis
-16. **Auditoria** — (placeholder)
+16. **Auditoria** — trilha operacional para eventos e alteracoes criticas
 
 ---
 

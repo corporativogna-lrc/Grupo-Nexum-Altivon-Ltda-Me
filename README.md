@@ -1,3 +1,10 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ -->
 # NEXUM ALTIVON COMMERCE PLATFORM
 ## FASE 1 — Estrutura Base, Banco, API e Autenticação
 
@@ -28,7 +35,12 @@ NexumAltivon.com
 |   |-- NexumAltivon.API.csproj → Dependencias NuGet
 |
 |-- NexumAltivon_Front-End/
-|   |-- index.html                → Home Page original (preservada)
+|   |-- public/index.html         → Template oficial React/GitHub Pages
+|   |-- public/api-runtime.json   → API oficial publicada
+|   |-- src/                      → Aplicacao operacional React
+|
+|-- Arquivos_Mortos/
+|   |-- frontend-legado-20260629/ → HTMLs antigos retirados da operacao
 |
 |-- NexumAltivon_ERP/
     |-- Controllers/
@@ -137,7 +149,13 @@ dotnet run
 ```
 
 ### 3. Front-End
-Abrir NexumAltivon_Front-End/index.html em qualquer navegador.
+Fonte oficial: `NexumAltivon_Front-End/src` com build publicado pelo workflow `Nexum 2026-06-28 - Deploy Operacional Oficial .com.br`.
+
+Ambientes oficiais:
+- Site: https://nexumaltivon.com.br
+- API: https://api.nexumaltivon.com.br
+
+Arquivos HTML antigos que continham informacoes incompletas ou dados fixos foram movidos para `Arquivos_Mortos/frontend-legado-20260629` e nao devem voltar para a publicacao.
 
 ---
 
