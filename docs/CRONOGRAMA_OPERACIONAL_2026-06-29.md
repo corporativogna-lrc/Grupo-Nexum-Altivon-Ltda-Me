@@ -22,6 +22,9 @@ Este documento confronta o panorama anterior de 26/06/2026 com o estado validado
 | Login administrativo | Operante | Login admin autenticou com sucesso |
 | GenesisGest original | Sincronizado | 129 estruturas reconhecidas e 3 pontes Nexum/Genesis ativas |
 | Modulo de compras | Operante na API | `/api/compras/painel` respondeu autenticado |
+| Checkout controlado | Operante | Pedido real de teste criado em producao controlada |
+| Contas a receber | Operante | Pedido criou lancamento financeiro local automaticamente |
+| Genesis contas a receber | Operante | Pedido novo foi sincronizado no Genesis com valor correto |
 | Backend .NET | Compilado | `dotnet build` em Release com 0 erros e 0 avisos |
 | Versionamento recente | Atualizado | `main` contem schema Genesis, compras e estoque versionados |
 
@@ -41,9 +44,9 @@ O bloqueio principal de publicacao foi superado para a API principal. A operacao
 
 Percentual atualizado:
 
-- MVP de vendas online controladas: 88%.
-- Operacao completa com integracoes externas, fiscal real, logistica automatizada e PDV: 68%.
-- Base site + API + banco + checkout + area cliente + admin + compras + Genesis: 82%.
+- MVP de vendas online controladas: 91%.
+- Operacao completa com integracoes externas, fiscal real, logistica automatizada e PDV: 70%.
+- Base site + API + banco + checkout + area cliente + admin + compras + Genesis: 85%.
 
 ## Checklist Validado
 
@@ -58,15 +61,20 @@ Percentual atualizado:
 - [x] Pontes Genesis/Nexum criadas para produtos, compras e financeiro.
 - [x] Build Release do backend sem erros.
 - [x] Compras, entradas e movimentos de estoque ja versionados em commits anteriores.
+- [x] Pedido de venda criado em producao controlada.
+- [x] Conta a receber local criada automaticamente no checkout.
+- [x] Conta a receber Genesis criada automaticamente no checkout.
+- [x] Dashboard administrativo refletindo pedidos e faturamento do dia.
 
 ## Checklist A Realizar Para Venda Controlada
 
 Prioridade imediata:
 
+- [x] Validar via API publica o fluxo completo: cliente -> checkout -> pedido criado -> financeiro -> Genesis.
 - [ ] Validar no navegador o fluxo completo: Home -> produto -> carrinho -> checkout -> pedido criado.
 - [ ] Confirmar que a Home publica esta consumindo `https://api.nexumaltivon.com.br` e nao cache antigo.
-- [ ] Validar criacao de contas a receber no pedido real de teste.
-- [ ] Validar painel administrativo exibindo o pedido criado.
+- [x] Validar criacao de contas a receber no pedido real de teste.
+- [x] Validar painel administrativo refletindo pedido/faturamento criado.
 - [ ] Validar area do cliente exibindo o pedido criado.
 - [ ] Ajustar texto de pagamento inicial para modo controlado: PIX/manual/deposito enquanto gateway real nao estiver liberado.
 - [ ] Executar backup do estado publicado apos o teste de venda ponta a ponta.
@@ -104,9 +112,9 @@ Executar o teste real de venda controlada antes de acrescentar novas integracoes
 
 ## Ordem De Execucao Atual
 
-1. Teste de venda ponta a ponta em producao controlada.
-2. Ajuste de qualquer quebra encontrada no teste.
-3. Backup e commit do estado operacional.
+1. Validacao visual no navegador do checkout ja validado pela API publica.
+2. Area do cliente exibindo pedido criado.
+3. Backup do estado publicado apos validacao visual.
 4. Modulo completo de compras e aquisicoes na interface.
 5. Integracoes reais conforme credenciais oficiais.
 6. Fiscal, PDV e operacao full.
