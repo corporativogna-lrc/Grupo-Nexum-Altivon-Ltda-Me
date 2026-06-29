@@ -125,6 +125,8 @@ Operacao interna:
 
 - [x] Finalizar backend operacional de compras, cotacoes, pedidos de compra e entrada fiscal/fisica.
 - [x] Finalizar validacao visual dos formularios administrativos de compras no navegador.
+- [ ] Mapear todos os campos operacionais das tabelas atuais para formularios, detalhes, listagens, auditoria, relatorios ou integracoes.
+- [ ] Incluir nos formularios existentes os novos campos criados nas tabelas, mantendo campos internos apenas em auditoria ou leitura tecnica.
 - [ ] Expandir auditoria corporativa `sys_*`.
 - [ ] Consolidar multitenancy e trilha de alteracoes por usuario.
 - [ ] Validar reinicio do servidor com API, guardian e Cloudflare retornando sem intervencao.
@@ -132,12 +134,13 @@ Operacao interna:
 
 ## Proxima Frente Recomendada
 
-Atacar integracoes reais conforme credenciais oficiais. O modulo de aquisicao ja alimenta estoque, financeiro local e Genesis por API e pelo painel administrativo.
+Atacar a transformacao das tabelas disponiveis em ferramentas operacionais completas, incluindo todos os campos de negocio nos formularios existentes e nos novos formularios. O modulo de aquisicao ja alimenta estoque, financeiro local e Genesis por API e pelo painel administrativo.
 
 ## Ordem De Execucao Atual
 
 1. Envio final do checkout pelo navegador em pedido controlado.
-2. Backup do estado publicado apos validacao visual.
-3. Integracoes reais conforme credenciais oficiais.
-4. Fiscal, PDV e operacao full.
-5. Backup operacional do estado publicado validado.
+2. Mapeamento campo a campo dos formularios por grupo de tabelas.
+3. Backup do estado publicado apos validacao visual.
+4. Integracoes reais conforme credenciais oficiais.
+5. Fiscal, PDV e operacao full.
+6. Backup operacional do estado publicado validado.
