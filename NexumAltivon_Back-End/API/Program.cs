@@ -20,6 +20,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using NexumAltivon.API.Data;
@@ -1875,7 +1876,7 @@ app.MapPost("/api/compras/cotacoes", [Authorize(Policy = "Gerente")] async (Comp
             ({produtoIdCotacao}, {produtoNome}, {request.Quantidade}, {finalidade}, {origem}, {"Cotado"}, {prioridade}, {observacoesCotacao}, {now}, {now});
         """, ct);
 
-    var solicitacaoId = await db.Database.SqlQueryRaw<int>("SELECT LAST_INSERT_ID()").SingleAsync(ct);
+    var solicitacaoId = await ExecuteScalarAsync<int>(db, "SELECT LAST_INSERT_ID();", ct);
 
     await db.Database.ExecuteSqlInterpolatedAsync($"""
         INSERT INTO compras_cotacoes
@@ -1943,7 +1944,7 @@ app.MapPost("/api/compras/pedidos", [Authorize(Policy = "Gerente")] async (Compr
             ({numeroPedido}, {request.FornecedorId}, {request.SolicitacaoId}, {origem}, {finalidade}, {"Aberto"}, {"Pendente"}, {total}, {request.DataPrevistaEntrega}, {TrimOrNull(request.Observacoes)}, {now}, {now});
         """, ct);
 
-    var compraPedidoId = await db.Database.SqlQueryRaw<int>("SELECT LAST_INSERT_ID()").SingleAsync(ct);
+    var compraPedidoId = await ExecuteScalarAsync<int>(db, "SELECT LAST_INSERT_ID();", ct);
 
     foreach (var item in request.Itens)
     {
@@ -2027,7 +2028,7 @@ app.MapPost("/api/compras/pedidos/{id:int}/entradas", [Authorize(Policy = "Geren
             ({id}, {pedido.FornecedorId}, {documento}, {chaveNfe}, {NormalizeCompraOrigem(request.TipoEntrada ?? pedido.Origem)}, {(!string.IsNullOrWhiteSpace(chaveNfe) ? "NFeInformada" : "FiscalPendente")}, 0, {TrimOrNull(request.RecebidoPor) ?? "Operacao"}, {TrimOrNull(request.Observacoes)}, {now}, {now});
         """, ct);
 
-    var entradaId = await db.Database.SqlQueryRaw<int>("SELECT LAST_INSERT_ID()").SingleAsync(ct);
+    var entradaId = await ExecuteScalarAsync<int>(db, "SELECT LAST_INSERT_ID();", ct);
     var todosRecebidos = true;
 
     foreach (var item in itens)
@@ -6481,8 +6482,17 @@ static async Task EnsureGenesisSharedSchemaAsync(IServiceProvider services, ILog
         await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar ADD COLUMN IF NOT EXISTS data_pagamento DATETIME NULL;");
         await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar ADD COLUMN IF NOT EXISTS forma_pagamento VARCHAR(50) NULL;");
         await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar ADD COLUMN IF NOT EXISTS numero_boleto VARCHAR(100) NULL;");
+        await DropForeignKeyIfExistsAsync(genesisDb, "erp_contas_pagar", "FK_erp_contas_pagar_erp_centros_custo_CentroCustoId");
+        await DropForeignKeyIfExistsAsync(genesisDb, "erp_contas_pagar", "FK_erp_contas_pagar_erp_fornecedores_FornecedorId");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar ADD COLUMN IF NOT EXISTS CentroCustoId INT NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar ADD COLUMN IF NOT EXISTS FornecedorId INT NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("UPDATE erp_contas_pagar SET CentroCustoId = NULL WHERE CentroCustoId IS NOT NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("UPDATE erp_contas_pagar SET FornecedorId = NULL WHERE FornecedorId IS NOT NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar MODIFY COLUMN CentroCustoId INT NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar MODIFY COLUMN FornecedorId INT NULL;");
 
         await SyncGenesisReceivablesFromNexumAsync(services, genesisDb);
+        await SyncGenesisPayablesFromNexumAsync(services, genesisDb);
     }
     catch (Exception ex)
     {
@@ -6530,6 +6540,65 @@ static async Task SyncGenesisReceivablesFromNexumAsync(IServiceProvider services
             Status = "PENDENTE",
             FormaRecebimento = TrimOrNull(pedido.MeioPagamento) ?? "A DEFINIR",
             NumeroPedidoReferencia = pedido.NumeroPedido
+        });
+    }
+
+    await genesisDb.SaveChangesAsync();
+}
+
+static async Task SyncGenesisPayablesFromNexumAsync(IServiceProvider services, GenesisDbContext genesisDb)
+{
+    var nexumDb = services.GetService<NexumDbContext>();
+    if (nexumDb is null)
+    {
+        return;
+    }
+
+    var compras = await nexumDb.Database.SqlQueryRaw<CompraPedidoResumoRow>(
+        """
+        SELECT
+            p.id AS Id,
+            p.numero AS Numero,
+            p.fornecedor_id AS FornecedorId,
+            COALESCE(NULLIF(f.nome_fantasia, ''), f.razao_social, 'Fornecedor Nexum') AS FornecedorNome,
+            p.origem AS Origem,
+            p.finalidade AS Finalidade,
+            p.status AS Status,
+            p.status_fiscal AS StatusFiscal,
+            p.valor_total AS ValorTotal,
+            p.data_prevista_entrega AS DataPrevistaEntrega,
+            p.created_at AS CreatedAt
+        FROM compras_pedidos p
+        LEFT JOIN fornecedores f ON f.id = p.fornecedor_id
+        WHERE p.valor_total > 0
+        ORDER BY p.created_at DESC
+        LIMIT 200
+        """)
+        .ToListAsync();
+
+    foreach (var compra in compras)
+    {
+        var existe = await genesisDb.ContasPagar.AnyAsync(item => item.NumeroDocumento == compra.Numero);
+        if (existe)
+        {
+            continue;
+        }
+
+        genesisDb.ContasPagar.Add(new GenesisContaPagar
+        {
+            NumeroDocumento = compra.Numero,
+            FornecedorId = compra.FornecedorId,
+            Descricao = $"Compra de mercadorias - {compra.FornecedorNome ?? "Fornecedor Nexum"}",
+            ValorOriginal = compra.ValorTotal,
+            ValorPago = 0,
+            ValorMulta = 0,
+            ValorJuros = 0,
+            ValorDesconto = 0,
+            DataEmissao = compra.CreatedAt,
+            DataVencimento = compra.DataPrevistaEntrega ?? compra.CreatedAt.AddDays(7),
+            Status = compra.Status == "Recebido" ? "ABERTO" : "PENDENTE",
+            FormaPagamento = "A DEFINIR",
+            NumeroBoleto = null
         });
     }
 
@@ -6821,6 +6890,50 @@ static async Task ExecuteSqlStatementDirectAsync(NexumDbContext db, string state
     await command.ExecuteNonQueryAsync();
 }
 
+static async Task<T> ExecuteScalarAsync<T>(DbContext db, string statement, CancellationToken ct, params (string Name, object? Value)[] parameters)
+{
+    var connection = db.Database.GetDbConnection();
+    var shouldClose = connection.State != ConnectionState.Open;
+    if (shouldClose)
+    {
+        await connection.OpenAsync(ct);
+    }
+
+    try
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = statement;
+        command.CommandTimeout = 60;
+        if (db.Database.CurrentTransaction is not null)
+        {
+            command.Transaction = db.Database.CurrentTransaction.GetDbTransaction();
+        }
+
+        foreach (var (name, value) in parameters)
+        {
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = name;
+            parameter.Value = value ?? DBNull.Value;
+            command.Parameters.Add(parameter);
+        }
+
+        var result = await command.ExecuteScalarAsync(ct);
+        if (result is null || result == DBNull.Value)
+        {
+            return default!;
+        }
+
+        return (T)Convert.ChangeType(result, typeof(T), CultureInfo.InvariantCulture);
+    }
+    finally
+    {
+        if (shouldClose)
+        {
+            await connection.CloseAsync();
+        }
+    }
+}
+
 static string StripSqlComments(string sql)
 {
     var result = new StringBuilder(sql.Length);
@@ -6957,19 +7070,21 @@ static async Task<GenesisGestSchemaStatusDto> BuildGenesisGestSchemaStatusAsync(
 
     foreach (var (prefix, name) in modules)
     {
-        var count = await db.Database.SqlQueryRaw<int>(
-                "SELECT COUNT(*) AS Value FROM information_schema.tables WHERE table_schema = DATABASE() AND LEFT(table_name, {0}) = {1}",
-                prefix.Length + 1,
-                $"{prefix}_")
-            .SingleAsync(ct);
+        var count = await ExecuteScalarAsync<int>(
+            db,
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND LEFT(table_name, @prefixLength) = @prefix",
+            ct,
+            ("@prefixLength", prefix.Length + 1),
+            ("@prefix", $"{prefix}_"));
 
         status.Add(new GenesisGestModuloStatusDto(prefix, name, count, count > 0));
     }
 
     var total = status.Sum(module => module.EstruturasDisponiveis);
-    var bridges = await db.Database.SqlQueryRaw<int>(
-            "SELECT COUNT(*) AS Value FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name LIKE 'vw_nexum_genesis_%'")
-        .SingleAsync(ct);
+    var bridges = await ExecuteScalarAsync<int>(
+        db,
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name LIKE 'vw_nexum_genesis_%'",
+        ct);
 
     return new GenesisGestSchemaStatusDto(
         GenesisOriginalEstruturasEsperadas: 125,
@@ -7124,22 +7239,26 @@ static async Task<ComprasPainelDto> BuildComprasPainelAsync(NexumDbContext db, C
 {
     var inicioMes = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
 
-    var solicitacoesAbertas = await db.Database.SqlQueryRaw<int>(
-        "SELECT COUNT(*) AS Value FROM compras_solicitacoes WHERE status IN ('Aberta', 'Cotado')")
-        .SingleAsync(ct);
+    var solicitacoesAbertas = await ExecuteScalarAsync<int>(
+        db,
+        "SELECT COUNT(*) FROM compras_solicitacoes WHERE status IN ('Aberta', 'Cotado')",
+        ct);
 
-    var pedidosAbertos = await db.Database.SqlQueryRaw<int>(
-        "SELECT COUNT(*) AS Value FROM compras_pedidos WHERE status IN ('Aberto', 'RecebidoParcial')")
-        .SingleAsync(ct);
+    var pedidosAbertos = await ExecuteScalarAsync<int>(
+        db,
+        "SELECT COUNT(*) FROM compras_pedidos WHERE status IN ('Aberto', 'RecebidoParcial')",
+        ct);
 
-    var entradasMes = await db.Database.SqlQueryRaw<int>(
-        "SELECT COUNT(*) AS Value FROM compras_entradas WHERE created_at >= {0}",
-        inicioMes)
-        .SingleAsync(ct);
+    var entradasMes = await ExecuteScalarAsync<int>(
+        db,
+        "SELECT COUNT(*) FROM compras_entradas WHERE created_at >= @inicioMes",
+        ct,
+        ("@inicioMes", inicioMes));
 
-    var valorComprasAbertas = await db.Database.SqlQueryRaw<decimal>(
-        "SELECT COALESCE(SUM(valor_total), 0) AS Value FROM compras_pedidos WHERE status IN ('Aberto', 'RecebidoParcial')")
-        .SingleAsync(ct);
+    var valorComprasAbertas = await ExecuteScalarAsync<decimal>(
+        db,
+        "SELECT COALESCE(SUM(valor_total), 0) FROM compras_pedidos WHERE status IN ('Aberto', 'RecebidoParcial')",
+        ct);
 
     var contasAPagarCompras = await db.Financeiros.AsNoTracking()
         .CountAsync(item => item.Tipo == TipoLancamento.Despesa &&

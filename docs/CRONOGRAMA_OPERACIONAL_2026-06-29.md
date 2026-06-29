@@ -27,6 +27,9 @@ Este documento confronta o panorama anterior de 26/06/2026 com o estado validado
 | Genesis contas a receber | Operante | Pedido novo foi sincronizado no Genesis com valor correto |
 | Fluxo visual de compra | Operante ate checkout | Home, produto, carrinho e tela de checkout validados no site publicado |
 | Area do cliente | Operante | Cliente de teste logou e visualizou pedido, total e endereco |
+| Compras e aquisicoes | Operante pela API publica | Cotacao, pedido de compra, entrada, estoque, financeiro local e Genesis validados |
+| Estoque por entrada | Operante | Entrada de compra atualizou saldo, codigo de barras, QR code e identificacao de estoque |
+| Contas a pagar | Operante | Pedido de compra criou despesa local e conta a pagar no Genesis |
 | Backend .NET | Compilado | `dotnet build` em Release com 0 erros e 0 avisos |
 | Versionamento recente | Atualizado | `main` contem schema Genesis, compras e estoque versionados |
 
@@ -46,9 +49,9 @@ O bloqueio principal de publicacao foi superado para a API principal. A operacao
 
 Percentual atualizado:
 
-- MVP de vendas online controladas: 91%.
-- Operacao completa com integracoes externas, fiscal real, logistica automatizada e PDV: 70%.
-- Base site + API + banco + checkout + area cliente + admin + compras + Genesis: 85%.
+- MVP de vendas online controladas: 92%.
+- Operacao completa com integracoes externas, fiscal real, logistica automatizada e PDV: 72%.
+- Base site + API + banco + checkout + area cliente + admin + compras + Genesis: 88%.
 
 ## Checklist Validado
 
@@ -71,6 +74,13 @@ Percentual atualizado:
 - [x] Carrinho visual adicionando item e recalculando total.
 - [x] Checkout visual abrindo com dados pessoais e resumo do pedido.
 - [x] Area do cliente exibindo pedido criado, total comprado e endereco.
+- [x] Cotacao de compra criada pela API publica.
+- [x] Pedido de compra criado pela API publica.
+- [x] Entrada de mercadoria registrada pela API publica.
+- [x] Estoque atualizado pela entrada de mercadoria.
+- [x] Codigo de barras, QR code e identificacao de estoque gerados no item recebido.
+- [x] Conta a pagar local criada para pedido de compra.
+- [x] Conta a pagar Genesis criada para pedido de compra.
 
 ## Checklist A Realizar Para Venda Controlada
 
@@ -85,6 +95,7 @@ Prioridade imediata:
 - [x] Validar area do cliente exibindo o pedido criado.
 - [ ] Ajustar texto de pagamento inicial para modo controlado: PIX/manual/deposito enquanto gateway real nao estiver liberado.
 - [ ] Executar backup do estado publicado apos o teste de venda ponta a ponta.
+- [ ] Validar visualmente no painel admin os formularios de cotacao, pedido de compra e entrada apos correcao da API.
 
 ## Checklist A Realizar Para Operacao Full
 
@@ -107,7 +118,8 @@ Fiscal e financeiro:
 
 Operacao interna:
 
-- [ ] Finalizar formulários completos de compras, cotacoes, pedidos de compra e entrada fiscal/fisica.
+- [x] Finalizar backend operacional de compras, cotacoes, pedidos de compra e entrada fiscal/fisica.
+- [ ] Finalizar validacao visual dos formularios administrativos de compras no navegador.
 - [ ] Expandir auditoria corporativa `sys_*`.
 - [ ] Consolidar multitenancy e trilha de alteracoes por usuario.
 - [ ] Validar reinicio do servidor com API, guardian e Cloudflare retornando sem intervencao.
@@ -115,12 +127,12 @@ Operacao interna:
 
 ## Proxima Frente Recomendada
 
-Executar o teste real de venda controlada antes de acrescentar novas integracoes. Se o pedido real fechar ponta a ponta, a proxima frente deve ser integracoes de aquisicao e entrada de mercadorias, porque ela alimenta estoque, financeiro, fiscal, fornecedores e compras.
+Executar a validacao visual dos formularios administrativos de compras e, em seguida, atacar integracoes reais conforme credenciais oficiais. O backend de aquisicao ja alimenta estoque, financeiro local e Genesis.
 
 ## Ordem De Execucao Atual
 
 1. Envio final do checkout pelo navegador em pedido controlado.
 2. Backup do estado publicado apos validacao visual.
-3. Modulo completo de compras e aquisicoes na interface.
+3. Validacao visual do modulo de compras e aquisicoes no painel administrativo.
 4. Integracoes reais conforme credenciais oficiais.
 5. Fiscal, PDV e operacao full.
