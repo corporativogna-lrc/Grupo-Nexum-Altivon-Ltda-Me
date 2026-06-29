@@ -60,6 +60,7 @@ artifacts/
 # Runtime local
 .codex/
 .nexum-runtime/
+_publish_runtime_main/
 runtime-logs/
 NexumAltivon_Back-End/wwwroot/uploads/
 
