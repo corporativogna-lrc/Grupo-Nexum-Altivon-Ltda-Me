@@ -25,6 +25,8 @@ Este documento confronta o panorama anterior de 26/06/2026 com o estado validado
 | Checkout controlado | Operante | Pedido real de teste criado em producao controlada |
 | Contas a receber | Operante | Pedido criou lancamento financeiro local automaticamente |
 | Genesis contas a receber | Operante | Pedido novo foi sincronizado no Genesis com valor correto |
+| Fluxo visual de compra | Operante ate checkout | Home, produto, carrinho e tela de checkout validados no site publicado |
+| Area do cliente | Operante | Cliente de teste logou e visualizou pedido, total e endereco |
 | Backend .NET | Compilado | `dotnet build` em Release com 0 erros e 0 avisos |
 | Versionamento recente | Atualizado | `main` contem schema Genesis, compras e estoque versionados |
 
@@ -65,17 +67,22 @@ Percentual atualizado:
 - [x] Conta a receber local criada automaticamente no checkout.
 - [x] Conta a receber Genesis criada automaticamente no checkout.
 - [x] Dashboard administrativo refletindo pedidos e faturamento do dia.
+- [x] Home publicada exibindo produtos reais da API.
+- [x] Carrinho visual adicionando item e recalculando total.
+- [x] Checkout visual abrindo com dados pessoais e resumo do pedido.
+- [x] Area do cliente exibindo pedido criado, total comprado e endereco.
 
 ## Checklist A Realizar Para Venda Controlada
 
 Prioridade imediata:
 
 - [x] Validar via API publica o fluxo completo: cliente -> checkout -> pedido criado -> financeiro -> Genesis.
-- [ ] Validar no navegador o fluxo completo: Home -> produto -> carrinho -> checkout -> pedido criado.
+- [x] Validar no navegador o fluxo: Home -> produto -> carrinho -> checkout.
+- [ ] Validar no navegador o envio final do pedido criado.
 - [ ] Confirmar que a Home publica esta consumindo `https://api.nexumaltivon.com.br` e nao cache antigo.
 - [x] Validar criacao de contas a receber no pedido real de teste.
 - [x] Validar painel administrativo refletindo pedido/faturamento criado.
-- [ ] Validar area do cliente exibindo o pedido criado.
+- [x] Validar area do cliente exibindo o pedido criado.
 - [ ] Ajustar texto de pagamento inicial para modo controlado: PIX/manual/deposito enquanto gateway real nao estiver liberado.
 - [ ] Executar backup do estado publicado apos o teste de venda ponta a ponta.
 
@@ -112,9 +119,8 @@ Executar o teste real de venda controlada antes de acrescentar novas integracoes
 
 ## Ordem De Execucao Atual
 
-1. Validacao visual no navegador do checkout ja validado pela API publica.
-2. Area do cliente exibindo pedido criado.
-3. Backup do estado publicado apos validacao visual.
-4. Modulo completo de compras e aquisicoes na interface.
-5. Integracoes reais conforme credenciais oficiais.
-6. Fiscal, PDV e operacao full.
+1. Envio final do checkout pelo navegador em pedido controlado.
+2. Backup do estado publicado apos validacao visual.
+3. Modulo completo de compras e aquisicoes na interface.
+4. Integracoes reais conforme credenciais oficiais.
+5. Fiscal, PDV e operacao full.
