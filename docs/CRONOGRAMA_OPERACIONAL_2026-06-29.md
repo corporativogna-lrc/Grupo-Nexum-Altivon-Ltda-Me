@@ -28,6 +28,7 @@ Este documento confronta o panorama anterior de 26/06/2026 com o estado validado
 | Fluxo visual de compra | Operante ate checkout | Home, produto, carrinho e tela de checkout validados no site publicado |
 | Area do cliente | Operante | Cliente de teste logou e visualizou pedido, total e endereco |
 | Compras e aquisicoes | Operante pela API publica | Cotacao, pedido de compra, entrada, estoque, financeiro local e Genesis validados |
+| Compras no painel admin | Operante visualmente | Formularios de cotacao, pedido de compra e entrada executaram sem erro no navegador |
 | Estoque por entrada | Operante | Entrada de compra atualizou saldo, codigo de barras, QR code e identificacao de estoque |
 | Contas a pagar | Operante | Pedido de compra criou despesa local e conta a pagar no Genesis |
 | Backend .NET | Compilado | `dotnet build` em Release com 0 erros e 0 avisos |
@@ -50,8 +51,8 @@ O bloqueio principal de publicacao foi superado para a API principal. A operacao
 Percentual atualizado:
 
 - MVP de vendas online controladas: 92%.
-- Operacao completa com integracoes externas, fiscal real, logistica automatizada e PDV: 72%.
-- Base site + API + banco + checkout + area cliente + admin + compras + Genesis: 88%.
+- Operacao completa com integracoes externas, fiscal real, logistica automatizada e PDV: 73%.
+- Base site + API + banco + checkout + area cliente + admin + compras + Genesis: 89%.
 
 ## Checklist Validado
 
@@ -81,6 +82,10 @@ Percentual atualizado:
 - [x] Codigo de barras, QR code e identificacao de estoque gerados no item recebido.
 - [x] Conta a pagar local criada para pedido de compra.
 - [x] Conta a pagar Genesis criada para pedido de compra.
+- [x] Formulario visual de cotacao executado no painel admin.
+- [x] Formulario visual de pedido de compra executado no painel admin.
+- [x] Formulario visual de entrada de mercadoria executado no painel admin.
+- [x] Pedido visual `COMP-20260629144221` criou financeiro local, Genesis e atualizou estoque.
 
 ## Checklist A Realizar Para Venda Controlada
 
@@ -95,7 +100,7 @@ Prioridade imediata:
 - [x] Validar area do cliente exibindo o pedido criado.
 - [ ] Ajustar texto de pagamento inicial para modo controlado: PIX/manual/deposito enquanto gateway real nao estiver liberado.
 - [ ] Executar backup do estado publicado apos o teste de venda ponta a ponta.
-- [ ] Validar visualmente no painel admin os formularios de cotacao, pedido de compra e entrada apos correcao da API.
+- [x] Validar visualmente no painel admin os formularios de cotacao, pedido de compra e entrada apos correcao da API.
 
 ## Checklist A Realizar Para Operacao Full
 
@@ -119,7 +124,7 @@ Fiscal e financeiro:
 Operacao interna:
 
 - [x] Finalizar backend operacional de compras, cotacoes, pedidos de compra e entrada fiscal/fisica.
-- [ ] Finalizar validacao visual dos formularios administrativos de compras no navegador.
+- [x] Finalizar validacao visual dos formularios administrativos de compras no navegador.
 - [ ] Expandir auditoria corporativa `sys_*`.
 - [ ] Consolidar multitenancy e trilha de alteracoes por usuario.
 - [ ] Validar reinicio do servidor com API, guardian e Cloudflare retornando sem intervencao.
@@ -127,12 +132,12 @@ Operacao interna:
 
 ## Proxima Frente Recomendada
 
-Executar a validacao visual dos formularios administrativos de compras e, em seguida, atacar integracoes reais conforme credenciais oficiais. O backend de aquisicao ja alimenta estoque, financeiro local e Genesis.
+Atacar integracoes reais conforme credenciais oficiais. O modulo de aquisicao ja alimenta estoque, financeiro local e Genesis por API e pelo painel administrativo.
 
 ## Ordem De Execucao Atual
 
 1. Envio final do checkout pelo navegador em pedido controlado.
 2. Backup do estado publicado apos validacao visual.
-3. Validacao visual do modulo de compras e aquisicoes no painel administrativo.
-4. Integracoes reais conforme credenciais oficiais.
-5. Fiscal, PDV e operacao full.
+3. Integracoes reais conforme credenciais oficiais.
+4. Fiscal, PDV e operacao full.
+5. Backup operacional do estado publicado validado.
