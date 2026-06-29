@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { categoriaAPI, clienteAPI, dashboardAPI, empresaGrupoAPI, fiscalAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI, siteAPI, unwrapApiData } from '../services/api';
+import { categoriaAPI, clienteAPI, comprasAPI, dashboardAPI, empresaGrupoAPI, fiscalAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI, siteAPI, unwrapApiData } from '../services/api';
 import { formatDate, formatPrice, getLeadStatusClass, getPagamentoLabel, getPedidoStatusClass } from '../utils/formatters';
 import {
   Activity,
@@ -708,6 +708,7 @@ export default function Dashboard() {
   const [clienteEditingId, setClienteEditingId] = useState('');
   const [fornecedorEditingId, setFornecedorEditingId] = useState('');
   const [fiscalPedidos, setFiscalPedidos] = useState([]);
+  const [comprasPainel, setComprasPainel] = useState(null);
   const [integracoes, setIntegracoes] = useState(fallbackIntegracoes);
   const [credenciaisModelo, setCredenciaisModelo] = useState([]);
   const [siteConfigItems, setSiteConfigItems] = useState([]);
@@ -768,7 +769,7 @@ export default function Dashboard() {
 
   const loadData = useCallback(async () => {
     try {
-      const [resumoRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, empresasGrupoRes, fiscalPedidosRes, integracoesRes, credenciaisRes, siteConfigRes] = await Promise.all([
+      const [resumoRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, empresasGrupoRes, fiscalPedidosRes, comprasPainelRes, integracoesRes, credenciaisRes, siteConfigRes] = await Promise.all([
         dashboardAPI.getResumo(),
         pedidoAPI.getAll(),
         leadAPI.getAll(),
@@ -778,6 +779,7 @@ export default function Dashboard() {
         fornecedorAPI.getAll(),
         empresaGrupoAPI.getAll().catch(() => ({ data: [] })),
         fiscalAPI.getPedidos().catch(() => ({ data: [] })),
+        comprasAPI.getPainel().catch(() => ({ data: null })),
         integracoesAPI.getDiagnostico()
           .catch(() => integracoesAPI.getStatus())
           .catch(() => ({ data: [] })),
@@ -795,12 +797,14 @@ export default function Dashboard() {
       const fornecedoresData = asArray(fornecedoresRes.data);
       const empresasGrupoData = asArray(empresasGrupoRes.data);
       const fiscalPedidosData = asArray(fiscalPedidosRes.data);
+      const comprasPainelData = unwrapApiData(comprasPainelRes.data);
       if (produtosData.length > 0) setProdutos(produtosData);
       if (categoriasData.length > 0) setCategorias(categoriasData);
       if (clientesData.length > 0) setClientes(clientesData);
       if (fornecedoresData.length > 0) setFornecedores(fornecedoresData);
       if (empresasGrupoData.length > 0) setEmpresasGrupo(empresasGrupoData);
       if (fiscalPedidosData.length > 0) setFiscalPedidos(fiscalPedidosData);
+      if (comprasPainelData && typeof comprasPainelData === 'object') setComprasPainel(comprasPainelData);
       const integracoesData = asArray(integracoesRes.data);
       const credenciaisData = asArray(credenciaisRes.data);
       const siteConfigData = asArray(siteConfigRes.data);
@@ -2324,8 +2328,8 @@ export default function Dashboard() {
                   <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
                   <ErpModuleHero
                     eyebrow="Compras e suprimentos"
-                    title="Fornecedores, reposição e estratégia de custo"
-                    description="Tela dedicada para compras, reposição e tomada de decisão entre fornecedores, dropshipping e parceiros."
+                    title="Aquisição, entradas e reposição conectadas ao estoque"
+                    description="Compras diretas, dropshipping, parcerias e encomendas alimentam estoque, fiscal, financeiro e visão empresarial pelo banco."
                   />
                   <ModuleActionGrid
                     title="Acessos de compras"
@@ -2336,15 +2340,47 @@ export default function Dashboard() {
                       { label: 'Logística e estoque', detail: 'Conferir necessidade de reposição e despacho.', onClick: () => openMainTab('erp-logistica') },
                     ]}
                   />
+                  <div className="grid gap-4 md:grid-cols-4">
+                    <StatMiniCard label="Solicitações abertas" value={comprasPainel?.kpis?.solicitacoesAbertas ?? 0} />
+                    <StatMiniCard label="Pedidos de compra" value={comprasPainel?.kpis?.pedidosAbertos ?? 0} />
+                    <StatMiniCard label="Entradas no mês" value={comprasPainel?.kpis?.entradasMes ?? 0} />
+                    <StatMiniCard label="Valor em aberto" value={formatPrice(comprasPainel?.kpis?.valorComprasAbertas ?? 0)} />
+                  </div>
+                  {(comprasPainel?.alertas || []).length > 0 && (
+                    <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                      <p className="text-xs font-black uppercase tracking-[0.2em] text-amber-700">Alertas de suprimentos</p>
+                      <div className="mt-3 grid gap-2">
+                        {comprasPainel.alertas.map((alerta) => (
+                          <p key={alerta} className="rounded-xl bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-sm">{alerta}</p>
+                        ))}
+                      </div>
+                    </section>
+                  )}
                   <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-                    <CompactList title="Fornecedores mapeados" items={fornecedores} fields={['nome', 'categoria', 'email', 'telefone']} />
+                    <CompactList
+                      title="Pedidos de compra em acompanhamento"
+                      items={comprasPainel?.pedidos || []}
+                      fields={['numero', 'fornecedorNome', 'status', 'statusFiscal']}
+                    />
+                    <CompactList
+                      title="Produtos para reposição ou dropshipping"
+                      items={comprasPainel?.produtosReposicao || []}
+                      fields={['produtoNome', 'sku', 'tipoProduto', 'estoqueAtual']}
+                    />
+                  </div>
+                  <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                    <CompactList
+                      title="Entradas de mercadoria"
+                      items={comprasPainel?.entradas || []}
+                      fields={['pedidoNumero', 'fornecedorNome', 'tipoEntrada', 'statusFiscal']}
+                    />
                     <ErpChecklistCard
-                      title="Critérios de compra"
+                      title="Fluxo operacional aplicado"
                       items={[
-                        'Menor custo com maior margem líquida.',
-                        'Comparação entre fornecedor próprio, parceiro e drop.',
-                        'Relação direta com estoque mínimo e reservado.',
-                        'Base pronta para aprovação de compras e contratos.',
+                        'Cotação registra fornecedor, origem, finalidade, quantidade e custo.',
+                        'Pedido de compra gera conta a pagar no financeiro e no Genesis quando disponível.',
+                        'Entrada atualiza estoque físico e cria movimento rastreável.',
+                        'Documento fiscal ou NF-e de entrada fica sinalizado para conferência.',
                       ]}
                     />
                   </div>
@@ -3115,12 +3151,12 @@ function CompactList({ title, items, fields, onEdit }) {
         <p className="mt-1 text-xs text-slate-500 sm:text-sm">{items.length} registros</p>
       </div>
       <div className="max-h-72 divide-y divide-slate-100 overflow-auto sm:max-h-96">
-        {items.slice(0, 12).map((item) => (
-          <div key={item.id || item.sku || item.email} className="px-3 py-2 sm:px-5 sm:py-4">
+        {items.slice(0, 12).map((item, index) => (
+          <div key={item.id || item.produtoId || item.numero || item.sku || item.email || index} className="px-3 py-2 sm:px-5 sm:py-4">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-black text-slate-950 sm:text-base">{item[fields[0]] || '-'}</p>
-                <p className="mt-1 text-[11px] font-semibold leading-4 text-slate-500 sm:text-sm">{fields.slice(1).map((field) => item[field] || '-').join(' · ')}</p>
+                <p className="text-xs font-black text-slate-950 sm:text-base">{item[fields[0]] ?? '-'}</p>
+                <p className="mt-1 text-[11px] font-semibold leading-4 text-slate-500 sm:text-sm">{fields.slice(1).map((field) => item[field] ?? '-').join(' · ')}</p>
               </div>
               {onEdit && (
                 <button

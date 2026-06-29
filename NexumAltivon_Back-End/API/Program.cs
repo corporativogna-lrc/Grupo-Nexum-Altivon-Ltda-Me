@@ -1803,6 +1803,305 @@ app.MapPut("/api/fornecedores/{id:int}", [Authorize(Policy = "Gerente")] async (
 .WithName("AtualizarFornecedor")
 ;
 
+app.MapGet("/api/compras/painel", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var painel = await BuildComprasPainelAsync(db, ct);
+    return Results.Ok(ApiResponse<ComprasPainelDto>.Ok(painel, "Fluxo de compras e entradas carregado."));
+})
+.WithName("ComprasPainel")
+;
+
+app.MapPost("/api/compras/cotacoes", [Authorize(Policy = "Gerente")] async (CompraCotacaoRequest request, NexumDbContext db, CancellationToken ct) =>
+{
+    if (request.FornecedorId <= 0)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Fornecedor obrigatorio para cotacao."));
+    }
+
+    if (request.Quantidade <= 0 || request.CustoUnitario <= 0)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Quantidade e custo unitario devem ser maiores que zero."));
+    }
+
+    var fornecedor = await db.Fornecedores.AsNoTracking().FirstOrDefaultAsync(item => item.Id == request.FornecedorId, ct);
+    if (fornecedor is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Fornecedor nao encontrado."));
+    }
+
+    Produto? produto = null;
+    if (request.ProdutoId.HasValue)
+    {
+        produto = await db.Produtos.FirstOrDefaultAsync(item => item.Id == request.ProdutoId.Value, ct);
+        if (produto is null)
+        {
+            return Results.NotFound(ApiResponse<string>.Erro("Produto nao encontrado."));
+        }
+    }
+
+    var produtoNome = produto?.Nome ?? TrimOrNull(request.ProdutoNome);
+    if (string.IsNullOrWhiteSpace(produtoNome))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Informe o produto ou a descricao do item cotado."));
+    }
+
+    var now = DateTime.UtcNow;
+    var total = request.Quantidade * request.CustoUnitario;
+    var origem = NormalizeCompraOrigem(request.Origem);
+    var finalidade = TrimOrNull(request.Finalidade) ?? "Reposicao/operacao";
+    int? produtoIdCotacao = produto?.Id;
+    var prioridade = TrimOrNull(request.Prioridade) ?? "Normal";
+    var observacoesCotacao = TrimOrNull(request.Observacoes);
+    var prazoEntrega = request.PrazoEntregaDias ?? fornecedor.PrazoEntregaDias;
+
+    await db.Database.ExecuteSqlInterpolatedAsync($"""
+        INSERT INTO compras_solicitacoes
+            (produto_id, produto_nome, quantidade_solicitada, finalidade, origem, status, prioridade, observacoes, created_at, updated_at)
+        VALUES
+            ({produtoIdCotacao}, {produtoNome}, {request.Quantidade}, {finalidade}, {origem}, {"Cotado"}, {prioridade}, {observacoesCotacao}, {now}, {now});
+        """, ct);
+
+    var solicitacaoId = await db.Database.SqlQueryRaw<int>("SELECT LAST_INSERT_ID()").SingleAsync(ct);
+
+    await db.Database.ExecuteSqlInterpolatedAsync($"""
+        INSERT INTO compras_cotacoes
+            (solicitacao_id, fornecedor_id, produto_id, produto_nome, quantidade, custo_unitario, valor_total, prazo_entrega_dias, origem, status, observacoes, created_at, updated_at)
+        VALUES
+            ({solicitacaoId}, {request.FornecedorId}, {produtoIdCotacao}, {produtoNome}, {request.Quantidade}, {request.CustoUnitario}, {total}, {prazoEntrega}, {origem}, {"Selecionada"}, {observacoesCotacao}, {now}, {now});
+        """, ct);
+
+    var painel = await BuildComprasPainelAsync(db, ct);
+    return Results.Created($"/api/compras/cotacoes/{solicitacaoId}", ApiResponse<ComprasPainelDto>.Ok(painel, "Cotacao registrada e disponivel para pedido de compra."));
+})
+.WithName("RegistrarCompraCotacao")
+;
+
+app.MapPost("/api/compras/pedidos", [Authorize(Policy = "Gerente")] async (CompraPedidoRequest request, NexumDbContext db, IServiceProvider services, CancellationToken ct) =>
+{
+    if (request.FornecedorId <= 0)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Fornecedor obrigatorio para pedido de compra."));
+    }
+
+    if (request.Itens is null || request.Itens.Count == 0)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Inclua ao menos um item no pedido de compra."));
+    }
+
+    if (request.Itens.Any(item => item.Quantidade <= 0 || item.CustoUnitario <= 0))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Todos os itens devem ter quantidade e custo validos."));
+    }
+
+    var fornecedor = await db.Fornecedores.AsNoTracking().FirstOrDefaultAsync(item => item.Id == request.FornecedorId, ct);
+    if (fornecedor is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Fornecedor nao encontrado."));
+    }
+
+    var produtoIds = request.Itens
+        .Where(item => item.ProdutoId.HasValue)
+        .Select(item => item.ProdutoId!.Value)
+        .Distinct()
+        .ToList();
+    var produtos = await db.Produtos
+        .Where(item => produtoIds.Contains(item.Id))
+        .ToDictionaryAsync(item => item.Id, ct);
+
+    if (produtoIds.Count != produtos.Count)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Um ou mais produtos informados nao existem."));
+    }
+
+    var now = DateTime.UtcNow;
+    var numeroPedido = $"COMP-{now:yyyyMMddHHmmss}";
+    var origem = NormalizeCompraOrigem(request.Origem);
+    var finalidade = TrimOrNull(request.Finalidade) ?? "Reposicao/operacao";
+    var vencimento = request.DataVencimento ?? now.Date.AddDays(7);
+    var total = request.Itens.Sum(item => item.Quantidade * item.CustoUnitario);
+
+    await using var transaction = await db.Database.BeginTransactionAsync(ct);
+
+    await db.Database.ExecuteSqlInterpolatedAsync($"""
+        INSERT INTO compras_pedidos
+            (numero, fornecedor_id, solicitacao_id, origem, finalidade, status, status_fiscal, valor_total, data_prevista_entrega, observacoes, created_at, updated_at)
+        VALUES
+            ({numeroPedido}, {request.FornecedorId}, {request.SolicitacaoId}, {origem}, {finalidade}, {"Aberto"}, {"Pendente"}, {total}, {request.DataPrevistaEntrega}, {TrimOrNull(request.Observacoes)}, {now}, {now});
+        """, ct);
+
+    var compraPedidoId = await db.Database.SqlQueryRaw<int>("SELECT LAST_INSERT_ID()").SingleAsync(ct);
+
+    foreach (var item in request.Itens)
+    {
+        var produto = item.ProdutoId.HasValue ? produtos[item.ProdutoId.Value] : null;
+        var produtoNome = produto?.Nome ?? TrimOrNull(item.ProdutoNome);
+        int? itemProdutoId = produto?.Id;
+        var itemSku = produto?.Sku ?? TrimOrNull(item.Sku);
+        if (string.IsNullOrWhiteSpace(produtoNome))
+        {
+            await transaction.RollbackAsync(ct);
+            return Results.BadRequest(ApiResponse<string>.Erro("Todo item sem produto vinculado precisa de descricao."));
+        }
+
+        var itemTotal = item.Quantidade * item.CustoUnitario;
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO compras_pedido_itens
+                (compra_pedido_id, produto_id, produto_nome, sku, quantidade, quantidade_recebida, custo_unitario, valor_total, origem, finalidade, created_at, updated_at)
+            VALUES
+                ({compraPedidoId}, {itemProdutoId}, {produtoNome}, {itemSku}, {item.Quantidade}, 0, {item.CustoUnitario}, {itemTotal}, {origem}, {finalidade}, {now}, {now});
+            """, ct);
+    }
+
+    db.Financeiros.Add(new Financeiro
+    {
+        Tipo = TipoLancamento.Despesa,
+        Categoria = "Compras de mercadorias",
+        Descricao = $"Pedido de compra {numeroPedido} - {fornecedor.RazaoSocial}",
+        Valor = total,
+        DataVencimento = vencimento,
+        Status = StatusLancamento.Pendente,
+        MeioPagamento = TrimOrNull(request.MeioPagamento) ?? "A definir",
+        Observacoes = $"CompraId={compraPedidoId}; origem={origem}; finalidade={finalidade}",
+        CreatedAt = now,
+        UpdatedAt = now
+    });
+
+    await db.SaveChangesAsync(ct);
+    await TryCreateGenesisContaPagarCompraAsync(services, numeroPedido, fornecedor.Id, fornecedor.RazaoSocial, total, now, vencimento, request.MeioPagamento, ct);
+    await transaction.CommitAsync(ct);
+
+    var painel = await BuildComprasPainelAsync(db, ct);
+    return Results.Created($"/api/compras/pedidos/{compraPedidoId}", ApiResponse<ComprasPainelDto>.Ok(painel, "Pedido de compra gerado com conta a pagar."));
+})
+.WithName("CriarCompraPedido")
+;
+
+app.MapPost("/api/compras/pedidos/{id:int}/entradas", [Authorize(Policy = "Gerente")] async (int id, CompraEntradaRequest request, NexumDbContext db, CancellationToken ct) =>
+{
+    var pedido = await db.Database.SqlQueryRaw<CompraPedidoLookupRow>(
+        "SELECT id AS Id, numero AS Numero, status AS Status, origem AS Origem, fornecedor_id AS FornecedorId FROM compras_pedidos WHERE id = {0} LIMIT 1",
+        id)
+        .FirstOrDefaultAsync(ct);
+
+    if (pedido is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Pedido de compra nao encontrado."));
+    }
+
+    var itens = await db.Database.SqlQueryRaw<CompraPedidoItemLookupRow>(
+        "SELECT id AS Id, produto_id AS ProdutoId, produto_nome AS ProdutoNome, quantidade AS Quantidade, quantidade_recebida AS QuantidadeRecebida, custo_unitario AS CustoUnitario FROM compras_pedido_itens WHERE compra_pedido_id = {0}",
+        id)
+        .ToListAsync(ct);
+
+    if (itens.Count == 0)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Pedido de compra sem itens para entrada."));
+    }
+
+    var quantidades = request.Itens?.ToDictionary(item => item.ItemId, item => item.QuantidadeRecebida) ?? [];
+    var now = DateTime.UtcNow;
+    var documento = TrimOrNull(request.NumeroDocumento);
+    var chaveNfe = TrimOrNull(request.ChaveNfeEntrada);
+    var totalEntrada = 0m;
+
+    await using var transaction = await db.Database.BeginTransactionAsync(ct);
+
+    await db.Database.ExecuteSqlInterpolatedAsync($"""
+        INSERT INTO compras_entradas
+            (compra_pedido_id, fornecedor_id, numero_documento, chave_nfe_entrada, tipo_entrada, status_fiscal, valor_total, recebido_por, observacoes, created_at, updated_at)
+        VALUES
+            ({id}, {pedido.FornecedorId}, {documento}, {chaveNfe}, {NormalizeCompraOrigem(request.TipoEntrada ?? pedido.Origem)}, {(!string.IsNullOrWhiteSpace(chaveNfe) ? "NFeInformada" : "FiscalPendente")}, 0, {TrimOrNull(request.RecebidoPor) ?? "Operacao"}, {TrimOrNull(request.Observacoes)}, {now}, {now});
+        """, ct);
+
+    var entradaId = await db.Database.SqlQueryRaw<int>("SELECT LAST_INSERT_ID()").SingleAsync(ct);
+    var todosRecebidos = true;
+
+    foreach (var item in itens)
+    {
+        var pendente = Math.Max(0, item.Quantidade - item.QuantidadeRecebida);
+        var recebidaAgora = quantidades.TryGetValue(item.Id, out var quantidadeInformada)
+            ? quantidadeInformada
+            : pendente;
+        recebidaAgora = Math.Min(Math.Max(0, recebidaAgora), pendente);
+
+        if (recebidaAgora <= 0)
+        {
+            if (pendente > 0)
+            {
+                todosRecebidos = false;
+            }
+            continue;
+        }
+
+        var valorItem = recebidaAgora * item.CustoUnitario;
+        totalEntrada += valorItem;
+        var novaQuantidadeRecebida = item.QuantidadeRecebida + recebidaAgora;
+        if (novaQuantidadeRecebida < item.Quantidade)
+        {
+            todosRecebidos = false;
+        }
+
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO compras_entrada_itens
+                (compra_entrada_id, compra_pedido_item_id, produto_id, produto_nome, quantidade_recebida, custo_unitario, valor_total, created_at, updated_at)
+            VALUES
+                ({entradaId}, {item.Id}, {item.ProdutoId}, {item.ProdutoNome}, {recebidaAgora}, {item.CustoUnitario}, {valorItem}, {now}, {now});
+            """, ct);
+
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE compras_pedido_itens
+            SET quantidade_recebida = {novaQuantidadeRecebida}, updated_at = {now}
+            WHERE id = {item.Id};
+            """, ct);
+
+        if (item.ProdutoId.HasValue)
+        {
+            var produto = await db.Produtos.FirstOrDefaultAsync(produto => produto.Id == item.ProdutoId.Value, ct);
+            if (produto is not null)
+            {
+                produto.EstoqueAtual += recebidaAgora;
+                produto.Custo = item.CustoUnitario;
+                produto.UpdatedAt = now;
+
+                await db.Database.ExecuteSqlInterpolatedAsync($"""
+                    INSERT INTO estoque_movimentos
+                        (produto_id, compra_entrada_id, tipo, quantidade, saldo_resultante, custo_unitario, origem, documento, observacoes, created_at)
+                    VALUES
+                        ({produto.Id}, {entradaId}, {"EntradaCompra"}, {recebidaAgora}, {produto.EstoqueAtual}, {item.CustoUnitario}, {pedido.Origem}, {documento ?? chaveNfe}, {TrimOrNull(request.Observacoes)}, {now});
+                    """, ct);
+            }
+        }
+    }
+
+    if (totalEntrada <= 0)
+    {
+        await transaction.RollbackAsync(ct);
+        return Results.BadRequest(ApiResponse<string>.Erro("Nenhuma quantidade pendente foi recebida."));
+    }
+
+    await db.Database.ExecuteSqlInterpolatedAsync($"""
+        UPDATE compras_entradas
+        SET valor_total = {totalEntrada}, updated_at = {now}
+        WHERE id = {entradaId};
+        """, ct);
+
+    await db.Database.ExecuteSqlInterpolatedAsync($"""
+        UPDATE compras_pedidos
+        SET status = {(todosRecebidos ? "Recebido" : "RecebidoParcial")},
+            status_fiscal = {(!string.IsNullOrWhiteSpace(chaveNfe) ? "NFeEntradaInformada" : "FiscalPendente")},
+            updated_at = {now}
+        WHERE id = {id};
+        """, ct);
+
+    await db.SaveChangesAsync(ct);
+    await transaction.CommitAsync(ct);
+
+    var painel = await BuildComprasPainelAsync(db, ct);
+    return Results.Ok(ApiResponse<ComprasPainelDto>.Ok(painel, "Entrada registrada, estoque atualizado e fiscal sinalizado."));
+})
+.WithName("RegistrarCompraEntrada")
+;
+
 app.MapGet("/api/pedidos", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
 {
     var pedidos = await db.Pedidos
@@ -3950,6 +4249,69 @@ static string? NormalizePhone(string? value)
 static string? TrimOrNull(string? value) =>
     string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
+static string NormalizeCompraOrigem(string? value)
+{
+    var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+    return normalized switch
+    {
+        "dropshipping" or "drop" => "Dropshipping",
+        "parceria" or "parceiro" or "marketplace" => "Parceria",
+        "encomenda" or "pedido_cliente" or "cliente" => "Encomenda",
+        "estoque" or "estoque_fisico" or "compra_direta" or "direta" => "EstoqueFisico",
+        _ => "EstoqueFisico"
+    };
+}
+
+static async Task TryCreateGenesisContaPagarCompraAsync(
+    IServiceProvider services,
+    string numeroPedido,
+    int fornecedorId,
+    string fornecedorNome,
+    decimal valor,
+    DateTime emissao,
+    DateTime vencimento,
+    string? formaPagamento,
+    CancellationToken ct)
+{
+    try
+    {
+        var genesisDb = services.GetService<GenesisDbContext>();
+        if (genesisDb is null || !await genesisDb.Database.CanConnectAsync(ct))
+        {
+            return;
+        }
+
+        var existe = await genesisDb.ContasPagar.AnyAsync(item => item.NumeroDocumento == numeroPedido, ct);
+        if (existe)
+        {
+            return;
+        }
+
+        genesisDb.ContasPagar.Add(new GenesisContaPagar
+        {
+            NumeroDocumento = numeroPedido,
+            FornecedorId = fornecedorId,
+            Descricao = $"Compra de mercadorias - {fornecedorNome}",
+            ValorOriginal = valor,
+            ValorPago = 0,
+            ValorMulta = 0,
+            ValorJuros = 0,
+            ValorDesconto = 0,
+            DataEmissao = emissao,
+            DataVencimento = vencimento,
+            Status = "ABERTO",
+            FormaPagamento = TrimOrNull(formaPagamento) ?? "A DEFINIR",
+            NumeroBoleto = null
+        });
+
+        await genesisDb.SaveChangesAsync(ct);
+    }
+    catch
+    {
+        // A compra no banco principal continua sendo a fonte oficial caso o Genesis esteja indisponivel.
+    }
+}
+
 static async Task<Cliente?> GetClientePortalAsync(ClaimsPrincipal principal, NexumDbContext db, CancellationToken ct)
 {
     var email = principal.FindFirstValue(ClaimTypes.Email) ?? principal.FindFirstValue(JwtRegisteredClaimNames.Email);
@@ -5644,7 +6006,166 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
             updated_at = CURRENT_TIMESTAMP;
         """.Replace("{", "{{").Replace("}", "}}"));
 
+    await EnsureComprasSchemaAsync(db);
     await EnsureValidationTokensAsync(db);
+}
+
+static async Task EnsureComprasSchemaAsync(NexumDbContext db)
+{
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        CREATE TABLE IF NOT EXISTS compras_solicitacoes (
+            id INT NOT NULL AUTO_INCREMENT,
+            produto_id INT NULL,
+            produto_nome VARCHAR(200) NOT NULL,
+            quantidade_solicitada INT NOT NULL,
+            finalidade VARCHAR(120) NOT NULL,
+            origem VARCHAR(40) NOT NULL,
+            status VARCHAR(40) NOT NULL DEFAULT 'Aberta',
+            prioridade VARCHAR(30) NOT NULL DEFAULT 'Normal',
+            observacoes TEXT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY ix_compras_solicitacoes_produto_id (produto_id),
+            KEY ix_compras_solicitacoes_status (status),
+            KEY ix_compras_solicitacoes_origem (origem)
+        );
+        """);
+
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        CREATE TABLE IF NOT EXISTS compras_cotacoes (
+            id INT NOT NULL AUTO_INCREMENT,
+            solicitacao_id INT NULL,
+            fornecedor_id INT NOT NULL,
+            produto_id INT NULL,
+            produto_nome VARCHAR(200) NOT NULL,
+            quantidade INT NOT NULL,
+            custo_unitario DECIMAL(10,2) NOT NULL,
+            valor_total DECIMAL(10,2) NOT NULL,
+            prazo_entrega_dias INT NULL,
+            origem VARCHAR(40) NOT NULL,
+            status VARCHAR(40) NOT NULL DEFAULT 'Recebida',
+            observacoes TEXT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY ix_compras_cotacoes_solicitacao_id (solicitacao_id),
+            KEY ix_compras_cotacoes_fornecedor_id (fornecedor_id),
+            KEY ix_compras_cotacoes_produto_id (produto_id),
+            KEY ix_compras_cotacoes_status (status)
+        );
+        """);
+
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        CREATE TABLE IF NOT EXISTS compras_pedidos (
+            id INT NOT NULL AUTO_INCREMENT,
+            numero VARCHAR(40) NOT NULL,
+            fornecedor_id INT NOT NULL,
+            solicitacao_id INT NULL,
+            origem VARCHAR(40) NOT NULL,
+            finalidade VARCHAR(120) NOT NULL,
+            status VARCHAR(40) NOT NULL DEFAULT 'Aberto',
+            status_fiscal VARCHAR(40) NOT NULL DEFAULT 'Pendente',
+            valor_total DECIMAL(10,2) NOT NULL DEFAULT 0,
+            data_prevista_entrega DATETIME NULL,
+            observacoes TEXT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY ux_compras_pedidos_numero (numero),
+            KEY ix_compras_pedidos_fornecedor_id (fornecedor_id),
+            KEY ix_compras_pedidos_status (status),
+            KEY ix_compras_pedidos_origem (origem)
+        );
+        """);
+
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        CREATE TABLE IF NOT EXISTS compras_pedido_itens (
+            id INT NOT NULL AUTO_INCREMENT,
+            compra_pedido_id INT NOT NULL,
+            produto_id INT NULL,
+            produto_nome VARCHAR(200) NOT NULL,
+            sku VARCHAR(80) NULL,
+            quantidade INT NOT NULL,
+            quantidade_recebida INT NOT NULL DEFAULT 0,
+            custo_unitario DECIMAL(10,2) NOT NULL,
+            valor_total DECIMAL(10,2) NOT NULL,
+            origem VARCHAR(40) NOT NULL,
+            finalidade VARCHAR(120) NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY ix_compras_pedido_itens_pedido_id (compra_pedido_id),
+            KEY ix_compras_pedido_itens_produto_id (produto_id)
+        );
+        """);
+
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        CREATE TABLE IF NOT EXISTS compras_entradas (
+            id INT NOT NULL AUTO_INCREMENT,
+            compra_pedido_id INT NOT NULL,
+            fornecedor_id INT NOT NULL,
+            numero_documento VARCHAR(80) NULL,
+            chave_nfe_entrada VARCHAR(60) NULL,
+            tipo_entrada VARCHAR(40) NOT NULL,
+            status_fiscal VARCHAR(40) NOT NULL DEFAULT 'FiscalPendente',
+            valor_total DECIMAL(10,2) NOT NULL DEFAULT 0,
+            recebido_por VARCHAR(120) NULL,
+            observacoes TEXT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY ix_compras_entradas_pedido_id (compra_pedido_id),
+            KEY ix_compras_entradas_fornecedor_id (fornecedor_id),
+            KEY ix_compras_entradas_status_fiscal (status_fiscal)
+        );
+        """);
+
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        CREATE TABLE IF NOT EXISTS compras_entrada_itens (
+            id INT NOT NULL AUTO_INCREMENT,
+            compra_entrada_id INT NOT NULL,
+            compra_pedido_item_id INT NOT NULL,
+            produto_id INT NULL,
+            produto_nome VARCHAR(200) NOT NULL,
+            quantidade_recebida INT NOT NULL,
+            custo_unitario DECIMAL(10,2) NOT NULL,
+            valor_total DECIMAL(10,2) NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY ix_compras_entrada_itens_entrada_id (compra_entrada_id),
+            KEY ix_compras_entrada_itens_produto_id (produto_id)
+        );
+        """);
+
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        CREATE TABLE IF NOT EXISTS estoque_movimentos (
+            id INT NOT NULL AUTO_INCREMENT,
+            produto_id INT NOT NULL,
+            compra_entrada_id INT NULL,
+            pedido_id INT NULL,
+            tipo VARCHAR(40) NOT NULL,
+            quantidade INT NOT NULL,
+            saldo_resultante INT NOT NULL,
+            custo_unitario DECIMAL(10,2) NULL,
+            origem VARCHAR(40) NULL,
+            documento VARCHAR(120) NULL,
+            observacoes TEXT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY ix_estoque_movimentos_produto_id (produto_id),
+            KEY ix_estoque_movimentos_compra_entrada_id (compra_entrada_id),
+            KEY ix_estoque_movimentos_tipo (tipo)
+        );
+        """);
 }
 
 static async Task EnsureUsuariosSchemaAsync(NexumDbContext db)
@@ -5787,6 +6308,186 @@ static IQueryable<Produto> ProdutosPublicaveisDashboard(NexumDbContext db) =>
         produto.Altura > 0 &&
         produto.Largura > 0 &&
         produto.Comprimento > 0);
+
+static async Task<ComprasPainelDto> BuildComprasPainelAsync(NexumDbContext db, CancellationToken ct)
+{
+    var inicioMes = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+
+    var solicitacoesAbertas = await db.Database.SqlQueryRaw<int>(
+        "SELECT COUNT(*) AS Value FROM compras_solicitacoes WHERE status IN ('Aberta', 'Cotado')")
+        .SingleAsync(ct);
+
+    var pedidosAbertos = await db.Database.SqlQueryRaw<int>(
+        "SELECT COUNT(*) AS Value FROM compras_pedidos WHERE status IN ('Aberto', 'RecebidoParcial')")
+        .SingleAsync(ct);
+
+    var entradasMes = await db.Database.SqlQueryRaw<int>(
+        "SELECT COUNT(*) AS Value FROM compras_entradas WHERE created_at >= {0}",
+        inicioMes)
+        .SingleAsync(ct);
+
+    var valorComprasAbertas = await db.Database.SqlQueryRaw<decimal>(
+        "SELECT COALESCE(SUM(valor_total), 0) AS Value FROM compras_pedidos WHERE status IN ('Aberto', 'RecebidoParcial')")
+        .SingleAsync(ct);
+
+    var contasAPagarCompras = await db.Financeiros.AsNoTracking()
+        .CountAsync(item => item.Tipo == TipoLancamento.Despesa &&
+            item.Status == StatusLancamento.Pendente &&
+            item.Categoria == "Compras de mercadorias", ct);
+
+    var fornecedoresAtivos = await db.Fornecedores.AsNoTracking()
+        .CountAsync(item => item.Status == StatusFornecedor.Ativo, ct);
+
+    var produtosReposicao = await db.Produtos.AsNoTracking()
+        .Where(produto => produto.Ativo &&
+            (produto.EstoqueAtual <= produto.EstoqueMinimo || produto.TipoProduto == TipoProduto.Dropshipping || produto.TipoProduto == TipoProduto.Marketplace))
+        .OrderBy(produto => produto.EstoqueAtual - produto.EstoqueMinimo)
+        .ThenBy(produto => produto.Nome)
+        .Take(60)
+        .Select(produto => new CompraProdutoReposicaoDto(
+            produto.Id,
+            produto.Nome,
+            produto.Sku,
+            produto.EstoqueAtual,
+            produto.EstoqueMinimo,
+            produto.TipoProduto.ToString(),
+            produto.FornecedorId,
+            produto.Custo))
+        .ToListAsync(ct);
+
+    var fornecedores = await db.Fornecedores.AsNoTracking()
+        .Where(fornecedor => fornecedor.Status == StatusFornecedor.Ativo)
+        .OrderBy(fornecedor => fornecedor.RazaoSocial)
+        .Take(100)
+        .Select(fornecedor => new CompraFornecedorResumoDto(
+            fornecedor.Id,
+            string.IsNullOrWhiteSpace(fornecedor.NomeFantasia) ? fornecedor.RazaoSocial : fornecedor.NomeFantasia,
+            fornecedor.Cnpj,
+            fornecedor.Segmento,
+            fornecedor.PrazoEntregaDias,
+            7))
+        .ToListAsync(ct);
+
+    var solicitacoes = await db.Database.SqlQueryRaw<CompraSolicitacaoRow>(
+        """
+        SELECT
+            s.id AS Id,
+            s.produto_id AS ProdutoId,
+            s.produto_nome AS ProdutoNome,
+            s.quantidade_solicitada AS Quantidade,
+            s.finalidade AS Finalidade,
+            s.origem AS Origem,
+            s.status AS Status,
+            s.prioridade AS Prioridade,
+            s.created_at AS CreatedAt
+        FROM compras_solicitacoes s
+        ORDER BY s.created_at DESC
+        LIMIT 50
+        """)
+        .ToListAsync(ct);
+
+    var pedidos = await db.Database.SqlQueryRaw<CompraPedidoResumoRow>(
+        """
+        SELECT
+            p.id AS Id,
+            p.numero AS Numero,
+            p.fornecedor_id AS FornecedorId,
+            COALESCE(NULLIF(f.nome_fantasia, ''), f.razao_social) AS FornecedorNome,
+            p.origem AS Origem,
+            p.finalidade AS Finalidade,
+            p.status AS Status,
+            p.status_fiscal AS StatusFiscal,
+            p.valor_total AS ValorTotal,
+            p.data_prevista_entrega AS DataPrevistaEntrega,
+            p.created_at AS CreatedAt
+        FROM compras_pedidos p
+        LEFT JOIN fornecedores f ON f.id = p.fornecedor_id
+        ORDER BY p.created_at DESC
+        LIMIT 50
+        """)
+        .ToListAsync(ct);
+
+    var entradas = await db.Database.SqlQueryRaw<CompraEntradaResumoRow>(
+        """
+        SELECT
+            e.id AS Id,
+            e.compra_pedido_id AS CompraPedidoId,
+            p.numero AS PedidoNumero,
+            COALESCE(NULLIF(f.nome_fantasia, ''), f.razao_social) AS FornecedorNome,
+            e.numero_documento AS NumeroDocumento,
+            e.chave_nfe_entrada AS ChaveNfeEntrada,
+            e.tipo_entrada AS TipoEntrada,
+            e.status_fiscal AS StatusFiscal,
+            e.valor_total AS ValorTotal,
+            e.created_at AS CreatedAt
+        FROM compras_entradas e
+        LEFT JOIN compras_pedidos p ON p.id = e.compra_pedido_id
+        LEFT JOIN fornecedores f ON f.id = e.fornecedor_id
+        ORDER BY e.created_at DESC
+        LIMIT 50
+        """)
+        .ToListAsync(ct);
+
+    var alertas = new List<string>();
+    if (produtosReposicao.Count > 0)
+    {
+        alertas.Add($"{produtosReposicao.Count} produto(s) exigem reposicao, vinculo de fornecedor ou controle de dropshipping.");
+    }
+    if (fornecedoresAtivos == 0)
+    {
+        alertas.Add("Nenhum fornecedor ativo cadastrado para compras.");
+    }
+    if (contasAPagarCompras > 0)
+    {
+        alertas.Add($"{contasAPagarCompras} conta(s) a pagar geradas por compras aguardam baixa.");
+    }
+
+    return new ComprasPainelDto(
+        new ComprasKpiDto(
+            solicitacoesAbertas,
+            pedidosAbertos,
+            entradasMes,
+            valorComprasAbertas,
+            contasAPagarCompras,
+            fornecedoresAtivos,
+            produtosReposicao.Count),
+        alertas,
+        solicitacoes.Select(item => new CompraSolicitacaoDto(
+            item.Id,
+            item.ProdutoId,
+            item.ProdutoNome,
+            item.Quantidade,
+            item.Finalidade,
+            item.Origem,
+            item.Status,
+            item.Prioridade,
+            item.CreatedAt)).ToList(),
+        pedidos.Select(item => new CompraPedidoResumoDto(
+            item.Id,
+            item.Numero,
+            item.FornecedorId,
+            item.FornecedorNome ?? "Fornecedor nao identificado",
+            item.Origem,
+            item.Finalidade,
+            item.Status,
+            item.StatusFiscal,
+            item.ValorTotal,
+            item.DataPrevistaEntrega,
+            item.CreatedAt)).ToList(),
+        entradas.Select(item => new CompraEntradaResumoDto(
+            item.Id,
+            item.CompraPedidoId,
+            item.PedidoNumero ?? string.Empty,
+            item.FornecedorNome ?? "Fornecedor nao identificado",
+            item.NumeroDocumento,
+            item.ChaveNfeEntrada,
+            item.TipoEntrada,
+            item.StatusFiscal,
+            item.ValorTotal,
+            item.CreatedAt)).ToList(),
+        produtosReposicao,
+        fornecedores);
+}
 
 static async Task<DashboardKpiDto> BuildAdminKpisAsync(NexumDbContext db, CancellationToken ct)
 {
@@ -6257,6 +6958,179 @@ public sealed record ClientePortalEnderecoRequest(
 public sealed record FornecedorRequest(string Nome, string? Documento, string? Email, string? Telefone, string? Categoria);
 
 public sealed record FornecedorDto(int Id, string Nome, string Documento, string Email, string Telefone, string Categoria, DateTime CreatedAt);
+
+public sealed record CompraCotacaoRequest(
+    int FornecedorId,
+    int? ProdutoId,
+    string? ProdutoNome,
+    int Quantidade,
+    decimal CustoUnitario,
+    string? Origem,
+    string? Finalidade,
+    string? Prioridade,
+    int? PrazoEntregaDias,
+    string? Observacoes);
+
+public sealed record CompraPedidoRequest(
+    int FornecedorId,
+    int? SolicitacaoId,
+    string? Origem,
+    string? Finalidade,
+    DateTime? DataPrevistaEntrega,
+    DateTime? DataVencimento,
+    string? MeioPagamento,
+    string? Observacoes,
+    List<CompraPedidoItemRequest> Itens);
+
+public sealed record CompraPedidoItemRequest(
+    int? ProdutoId,
+    string? ProdutoNome,
+    string? Sku,
+    int Quantidade,
+    decimal CustoUnitario);
+
+public sealed record CompraEntradaRequest(
+    string? NumeroDocumento,
+    string? ChaveNfeEntrada,
+    string? TipoEntrada,
+    string? RecebidoPor,
+    string? Observacoes,
+    List<CompraEntradaItemRequest>? Itens);
+
+public sealed record CompraEntradaItemRequest(int ItemId, int QuantidadeRecebida);
+
+public sealed record ComprasPainelDto(
+    ComprasKpiDto Kpis,
+    List<string> Alertas,
+    List<CompraSolicitacaoDto> Solicitacoes,
+    List<CompraPedidoResumoDto> Pedidos,
+    List<CompraEntradaResumoDto> Entradas,
+    List<CompraProdutoReposicaoDto> ProdutosReposicao,
+    List<CompraFornecedorResumoDto> Fornecedores);
+
+public sealed record ComprasKpiDto(
+    int SolicitacoesAbertas,
+    int PedidosAbertos,
+    int EntradasMes,
+    decimal ValorComprasAbertas,
+    int ContasAPagarCompras,
+    int FornecedoresAtivos,
+    int ProdutosReposicao);
+
+public sealed record CompraSolicitacaoDto(
+    int Id,
+    int? ProdutoId,
+    string ProdutoNome,
+    int Quantidade,
+    string Finalidade,
+    string Origem,
+    string Status,
+    string Prioridade,
+    DateTime CreatedAt);
+
+public sealed record CompraPedidoResumoDto(
+    int Id,
+    string Numero,
+    int FornecedorId,
+    string FornecedorNome,
+    string Origem,
+    string Finalidade,
+    string Status,
+    string StatusFiscal,
+    decimal ValorTotal,
+    DateTime? DataPrevistaEntrega,
+    DateTime CreatedAt);
+
+public sealed record CompraEntradaResumoDto(
+    int Id,
+    int CompraPedidoId,
+    string PedidoNumero,
+    string FornecedorNome,
+    string? NumeroDocumento,
+    string? ChaveNfeEntrada,
+    string TipoEntrada,
+    string StatusFiscal,
+    decimal ValorTotal,
+    DateTime CreatedAt);
+
+public sealed record CompraProdutoReposicaoDto(
+    int ProdutoId,
+    string ProdutoNome,
+    string Sku,
+    int EstoqueAtual,
+    int EstoqueMinimo,
+    string TipoProduto,
+    int? FornecedorId,
+    decimal CustoAtual);
+
+public sealed record CompraFornecedorResumoDto(
+    int Id,
+    string Nome,
+    string? Documento,
+    string? Segmento,
+    int PrazoEntregaDias,
+    int PrazoPagamentoDias);
+
+public sealed class CompraSolicitacaoRow
+{
+    public int Id { get; set; }
+    public int? ProdutoId { get; set; }
+    public string ProdutoNome { get; set; } = string.Empty;
+    public int Quantidade { get; set; }
+    public string Finalidade { get; set; } = string.Empty;
+    public string Origem { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string Prioridade { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+}
+
+public sealed class CompraPedidoResumoRow
+{
+    public int Id { get; set; }
+    public string Numero { get; set; } = string.Empty;
+    public int FornecedorId { get; set; }
+    public string? FornecedorNome { get; set; }
+    public string Origem { get; set; } = string.Empty;
+    public string Finalidade { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string StatusFiscal { get; set; } = string.Empty;
+    public decimal ValorTotal { get; set; }
+    public DateTime? DataPrevistaEntrega { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public sealed class CompraEntradaResumoRow
+{
+    public int Id { get; set; }
+    public int CompraPedidoId { get; set; }
+    public string? PedidoNumero { get; set; }
+    public string? FornecedorNome { get; set; }
+    public string? NumeroDocumento { get; set; }
+    public string? ChaveNfeEntrada { get; set; }
+    public string TipoEntrada { get; set; } = string.Empty;
+    public string StatusFiscal { get; set; } = string.Empty;
+    public decimal ValorTotal { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public sealed class CompraPedidoLookupRow
+{
+    public int Id { get; set; }
+    public string Numero { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string Origem { get; set; } = string.Empty;
+    public int FornecedorId { get; set; }
+}
+
+public sealed class CompraPedidoItemLookupRow
+{
+    public int Id { get; set; }
+    public int? ProdutoId { get; set; }
+    public string ProdutoNome { get; set; } = string.Empty;
+    public int Quantidade { get; set; }
+    public int QuantidadeRecebida { get; set; }
+    public decimal CustoUnitario { get; set; }
+}
 
 public sealed record StatusUpdateRequest(
     [property: JsonPropertyName("novo_status")] string NovoStatus,

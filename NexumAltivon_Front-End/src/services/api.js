@@ -310,6 +310,13 @@ export const fornecedorAPI = {
   update: (id, data) => api.put(`/fornecedores/${id}`, data),
 };
 
+export const comprasAPI = {
+  getPainel: () => api.get('/compras/painel'),
+  registrarCotacao: (data) => api.post('/compras/cotacoes', data),
+  criarPedido: (data) => api.post('/compras/pedidos', data),
+  registrarEntrada: (id, data) => api.post(`/compras/pedidos/${id}/entradas`, data),
+};
+
 export const empresaGrupoAPI = {
   getAll: () => api.get('/erp/empresas'),
   create: (data) => api.post('/erp/empresas', data),
