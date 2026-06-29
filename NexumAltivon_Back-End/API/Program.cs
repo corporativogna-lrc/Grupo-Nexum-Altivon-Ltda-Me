@@ -3,6 +3,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Data;
 using System.Text;
 using System.Text.Json;
@@ -416,24 +417,6 @@ app.MapPost("/api/auth/login", async (
     NexumDbContext db,
     CancellationToken ct) =>
 {
-    var admin = configuration.GetSection("AdminUser");
-    var configuredEmail = admin["Email"] ?? "admin@nexumaltivon.com";
-    var configuredPassword = admin["Password"];
-    var configuredName = admin["Name"] ?? "Administrador Nexum";
-    var configuredRole = admin["Role"] ?? "Gerente";
-
-    if (string.IsNullOrWhiteSpace(configuredPassword))
-    {
-        if (environment.IsProduction())
-        {
-            return Results.Problem(
-                "AdminUser:Password nao configurada para producao.",
-                statusCode: StatusCodes.Status500InternalServerError);
-        }
-
-        configuredPassword = "Admin@123";
-    }
-
     var normalizedEmail = NormalizeEmail(request.Email);
     if (string.IsNullOrWhiteSpace(normalizedEmail))
     {
@@ -442,22 +425,39 @@ app.MapPost("/api/auth/login", async (
 
     var expirationHours = configuration.GetValue("JwtSettings:ExpirationHours", 24);
 
-    if (string.Equals(normalizedEmail, configuredEmail, StringComparison.OrdinalIgnoreCase)
-        && request.Senha == configuredPassword)
-    {
-        var adminResponse = CreateLoginResponse(1, configuredName, configuredEmail, configuredRole, issuer, audience, signingKey, expirationHours);
-        return Results.Ok(ApiResponse<LoginResponse>.Ok(adminResponse, "Login administrativo realizado com sucesso."));
-    }
-
     var usuario = await db.Usuarios
-        .AsNoTracking()
         .FirstOrDefaultAsync(item => item.Email == normalizedEmail && item.Ativo, ct);
 
     if (usuario is not null && BCrypt.Net.BCrypt.Verify(request.Senha, usuario.SenhaHash))
     {
+        usuario.UltimoLogin = DateTime.UtcNow;
+        usuario.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+
         var perfil = usuario.Perfil.ToString();
         var usuarioResponse = CreateLoginResponse(usuario.Id, usuario.Nome, usuario.Email, perfil, issuer, audience, signingKey, expirationHours);
         return Results.Ok(ApiResponse<LoginResponse>.Ok(usuarioResponse, "Login realizado com sucesso."));
+    }
+
+    if (!environment.IsProduction())
+    {
+        var admin = configuration.GetSection("AdminUser");
+        var configuredEmail = NormalizeEmail(admin["Email"] ?? "admin@nexumaltivon.com");
+        var configuredPassword = admin["Password"];
+        var configuredName = admin["Name"] ?? "Administrador Nexum";
+        var configuredRole = admin["Role"] ?? "Gerente";
+
+        if (!IsConfiguredSecret(configuredPassword))
+        {
+            configuredPassword = "Admin@123";
+        }
+
+        if (string.Equals(normalizedEmail, configuredEmail, StringComparison.OrdinalIgnoreCase)
+            && request.Senha == configuredPassword)
+        {
+            var adminResponse = CreateLoginResponse(1, configuredName, configuredEmail!, configuredRole, issuer, audience, signingKey, expirationHours);
+            return Results.Ok(ApiResponse<LoginResponse>.Ok(adminResponse, "Login administrativo de desenvolvimento realizado com sucesso."));
+        }
     }
 
     var cliente = await db.Clientes
@@ -482,6 +482,65 @@ app.MapPost("/api/auth/login", async (
 })
 .AllowAnonymous()
 .WithName("Login");
+
+app.MapPost("/api/sistema/validar-token", async (
+    ValidacaoTokenRequest request,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var token = TrimOrNull(request.Token);
+    if (string.IsNullOrWhiteSpace(token))
+    {
+        return Results.Unauthorized();
+    }
+
+    var tokenHash = ComputeSha256Hash(token);
+    var credencial = await db.ConfiguracoesSistema
+        .AsNoTracking()
+        .Where(item => item.Grupo == "Credenciais" && item.Chave.StartsWith("validacao_token_"))
+        .FirstOrDefaultAsync(item => item.Valor == tokenHash, ct);
+
+    if (credencial is null)
+    {
+        return Results.Unauthorized();
+    }
+
+    var response = new ValidacaoTokenResponse(credencial.Chave.ToUpperInvariant(), credencial.Descricao ?? "Token de validacao ativo");
+    return Results.Ok(ApiResponse<ValidacaoTokenResponse>.Ok(response, "Token validado com sucesso."));
+})
+.AllowAnonymous()
+.WithName("ValidarTokenSistema");
+
+app.MapGet("/api/sistema/credenciais/status", [Authorize(Policy = "Admin")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var tokens = await db.ConfiguracoesSistema
+        .AsNoTracking()
+        .Where(item => item.Grupo == "Credenciais" && item.Chave.StartsWith("validacao_token_"))
+        .OrderBy(item => item.Chave)
+        .Select(item => new CredencialSistemaStatusDto(
+            item.Chave.ToUpperInvariant(),
+            !string.IsNullOrWhiteSpace(item.Valor),
+            item.Descricao,
+            item.UpdatedAt))
+        .ToListAsync(ct);
+
+    var perfisAtivos = await db.Usuarios
+        .AsNoTracking()
+        .Where(item => item.Ativo)
+        .Select(item => item.Perfil)
+        .ToListAsync(ct);
+
+    var usuarios = perfisAtivos
+        .GroupBy(perfil => perfil)
+        .Select(group => new UsuarioPerfilStatusDto(group.Key.ToString(), group.Count()))
+        .OrderBy(item => item.Perfil)
+        .ToList();
+
+    return Results.Ok(ApiResponse<CredenciaisSistemaStatusDto>.Ok(
+        new CredenciaisSistemaStatusDto(tokens, usuarios),
+        "Credenciais operacionais cadastradas sem exposicao de valores sensiveis."));
+})
+.WithName("CredenciaisSistemaStatus");
 
 app.MapGet("/api/auth/me", (ClaimsPrincipal principal) =>
 {
@@ -3417,6 +3476,12 @@ static string? NormalizeEmail(string? value) =>
         ? null
         : value.Trim().ToLowerInvariant();
 
+static string ComputeSha256Hash(string value)
+{
+    var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(value));
+    return Convert.ToHexString(bytes).ToLowerInvariant();
+}
+
 static string? NormalizeDocument(string? value)
 {
     if (string.IsNullOrWhiteSpace(value))
@@ -5357,12 +5422,16 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
 {
     using var scope = services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<NexumDbContext>();
+    var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
 
     if (!await db.Database.CanConnectAsync())
     {
         logger.LogWarning("Banco indisponível durante a verificação de esquema operacional.");
         return;
     }
+
+    await EnsureUsuariosSchemaAsync(db);
+    await EnsureSystemAdminUsersAsync(db, configuration, logger);
 
     await db.Database.ExecuteSqlRawAsync(
         """
@@ -5574,6 +5643,133 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
             editavel = VALUES(editavel),
             updated_at = CURRENT_TIMESTAMP;
         """.Replace("{", "{{").Replace("}", "}}"));
+
+    await EnsureValidationTokensAsync(db);
+}
+
+static async Task EnsureUsuariosSchemaAsync(NexumDbContext db)
+{
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id INT NOT NULL AUTO_INCREMENT,
+            nome VARCHAR(150) NOT NULL,
+            email VARCHAR(150) NOT NULL,
+            senha_hash VARCHAR(255) NOT NULL,
+            perfil VARCHAR(30) NOT NULL DEFAULT 'Vendedor',
+            avatar VARCHAR(255) NULL,
+            telefone VARCHAR(20) NULL,
+            ativo TINYINT(1) NOT NULL DEFAULT 1,
+            ultimo_login DATETIME NULL,
+            token_refresh VARCHAR(255) NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY ux_usuarios_email (email)
+        );
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS senha_hash VARCHAR(255) NOT NULL DEFAULT '';");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perfil VARCHAR(30) NOT NULL DEFAULT 'Vendedor';");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ativo TINYINT(1) NOT NULL DEFAULT 1;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ultimo_login DATETIME NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS token_refresh VARCHAR(255) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;");
+}
+
+static async Task EnsureSystemAdminUsersAsync(NexumDbContext db, IConfiguration configuration, ILogger logger)
+{
+    var admin = configuration.GetSection("AdminUser");
+    var email = NormalizeEmail(admin["Email"] ?? "admin@nexumaltivon.com");
+    var password = admin["Password"];
+    var name = TrimOrNull(admin["Name"]) ?? "Administrador Nexum";
+    var roleRaw = TrimOrNull(admin["Role"]) ?? "Gerente";
+
+    if (string.IsNullOrWhiteSpace(email) || !IsConfiguredSecret(password))
+    {
+        logger.LogWarning("AdminUser nao foi gravado no banco porque email ou senha de ambiente nao estao configurados.");
+        return;
+    }
+
+    var role = Enum.TryParse<PerfilUsuario>(roleRaw, true, out var parsedRole)
+        ? parsedRole
+        : PerfilUsuario.Gerente;
+
+    if (string.Equals(email, "admin@nexumaltivon.com", StringComparison.OrdinalIgnoreCase)
+        && role is not PerfilUsuario.Admin
+        && role is not PerfilUsuario.SuperAdmin)
+    {
+        role = PerfilUsuario.Admin;
+    }
+
+    var usuario = await db.Usuarios.FirstOrDefaultAsync(item => item.Email == email);
+    if (usuario is null)
+    {
+        db.Usuarios.Add(new Usuario
+        {
+            Nome = name,
+            Email = email,
+            SenhaHash = BCrypt.Net.BCrypt.HashPassword(password, 12),
+            Perfil = role,
+            Ativo = true,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        });
+    }
+    else
+    {
+        usuario.Nome = name;
+        usuario.Perfil = role;
+        usuario.Ativo = true;
+        usuario.UpdatedAt = DateTime.UtcNow;
+
+        if (string.IsNullOrWhiteSpace(usuario.SenhaHash) || !BCrypt.Net.BCrypt.Verify(password, usuario.SenhaHash))
+        {
+            usuario.SenhaHash = BCrypt.Net.BCrypt.HashPassword(password, 12);
+        }
+    }
+
+    await db.SaveChangesAsync();
+}
+
+static async Task EnsureValidationTokensAsync(NexumDbContext db)
+{
+    var tokens = new (string Key, string Hash, string Description)[]
+    {
+        ("validacao_token_01", "6135f83d946d18267f24118fee932fe807554f55da6cee693b4a8db131662297", "TOKEN01 - Gabriel/Rafael/Miguel/Castiel"),
+        ("validacao_token_02", "512cddda6828e66ba75f47b0f64f3433a2267b61faaa5685270154adba3ecc8a", "TOKEN02 - Yara/Rodrigo/Vinicius/Sophia"),
+        ("validacao_token_03", "d72000837011904c56211687ac8ac1e72004de9c29338ddbf379f9e63f91facd", "TOKEN03 - Nexum/Chronnus/Estruturaline/Altivon")
+    };
+
+    foreach (var token in tokens)
+    {
+        var config = await db.ConfiguracoesSistema.FirstOrDefaultAsync(item => item.Chave == token.Key);
+        if (config is null)
+        {
+            db.ConfiguracoesSistema.Add(new ConfiguracaoSistema
+            {
+                Chave = token.Key,
+                Valor = token.Hash,
+                Tipo = TipoConfiguracao.Senha,
+                Descricao = token.Description,
+                Grupo = "Credenciais",
+                Editavel = false,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            });
+        }
+        else
+        {
+            config.Valor = token.Hash;
+            config.Tipo = TipoConfiguracao.Senha;
+            config.Descricao = token.Description;
+            config.Grupo = "Credenciais";
+            config.Editavel = false;
+            config.UpdatedAt = DateTime.UtcNow;
+        }
+    }
+
+    await db.SaveChangesAsync();
 }
 
 static IQueryable<Produto> ProdutosPublicaveisDashboard(NexumDbContext db) =>
@@ -5792,6 +5988,18 @@ public sealed record LoginRequest(string Email, string Senha);
 public sealed record LoginResponse(string Token, string RefreshToken, DateTime ExpiraEm, UsuarioDto Usuario);
 
 public sealed record UsuarioDto(int Id, string Nome, string Email, string Perfil);
+
+public sealed record ValidacaoTokenRequest(string Token);
+
+public sealed record ValidacaoTokenResponse(string Codigo, string Descricao);
+
+public sealed record CredencialSistemaStatusDto(string Codigo, bool Configurada, string? Descricao, DateTime UpdatedAt);
+
+public sealed record UsuarioPerfilStatusDto(string Perfil, int UsuariosAtivos);
+
+public sealed record CredenciaisSistemaStatusDto(
+    List<CredencialSistemaStatusDto> TokensValidacao,
+    List<UsuarioPerfilStatusDto> UsuariosPorPerfil);
 
 public sealed record ApiResponse<T>(
     bool Sucesso,
