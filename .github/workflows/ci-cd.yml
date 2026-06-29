@@ -199,9 +199,24 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
     name: Deploy Staging
     environment: staging
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
 
     steps:
+      - name: Check staging SSH configuration
+        id: deploy_config
+        run: |
+          if [ -n "$STAGING_HOST" ] && [ -n "$STAGING_USER" ] && [ -n "$STAGING_SSH_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "STAGING_HOST/STAGING_USER/STAGING_SSH_KEY não configurados. Deploy externo ignorado."
+          fi
+
       - name: Deploy to staging server
+        if: steps.deploy_config.outputs.enabled == 'true'
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.STAGING_HOST }}
@@ -221,9 +236,24 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     name: Deploy Production
     environment: production
+    env:
+      PROD_HOST: ${{ secrets.PROD_HOST }}
+      PROD_USER: ${{ secrets.PROD_USER }}
+      PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
 
     steps:
+      - name: Check production SSH configuration
+        id: deploy_config
+        run: |
+          if [ -n "$PROD_HOST" ] && [ -n "$PROD_USER" ] && [ -n "$PROD_SSH_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "PROD_HOST/PROD_USER/PROD_SSH_KEY não configurados. Deploy externo ignorado."
+          fi
+
       - name: Deploy to production server
+        if: steps.deploy_config.outputs.enabled == 'true'
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.PROD_HOST }}
