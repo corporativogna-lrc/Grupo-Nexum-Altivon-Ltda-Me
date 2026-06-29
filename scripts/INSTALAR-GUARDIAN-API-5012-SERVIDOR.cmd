@@ -2,9 +2,11 @@
 setlocal DisableDelayedExpansion
 title Nexum Altivon - Instalar Guardian API 5012 no Servidor
 
-set "PROJECT=Y:\Nexum Altivon\NexumAltivon.com"
-set "GUARDIAN=%PROJECT%\.nexum-runtime\start-api-guardian.cmd"
-set "TASK=NexumAltivon-API-5012-Guardian"
+set "BASE=C:\NexumAltivon_API_24H"
+set "GUARDIAN=%BASE%\NEXUM-GUARDIAN-CMD-5012.cmd"
+set "CLOUDFLARE_START=%BASE%\START-SERVICE-TUNNEL-CLOUDFLARE.cmd"
+set "TASK=NexumAltivon-API-Cloudflare-Guardian"
+set "TASK_CF=NexumAltivon-Cloudflare-Service"
 
 echo == Nexum Altivon - Instalar Guardian API 5012 no Servidor ==
 
@@ -16,14 +18,22 @@ if not exist "%GUARDIAN%" (
 echo Removendo tarefa antiga, se existir...
 schtasks.exe /Delete /TN "%TASK%" /F >nul 2>&1
 
-echo Criando tarefa automatica no boot e no logon...
-schtasks.exe /Create /TN "%TASK%" /SC ONSTART /RL HIGHEST /TR "\"%GUARDIAN%\"" /F
+if not exist "%CLOUDFLARE_START%" (
+  echo ERRO: inicializador Cloudflare nao encontrado em "%CLOUDFLARE_START%".
+  exit /b 1
+)
+
+schtasks.exe /Delete /TN "%TASK_CF%" /F >nul 2>&1
+
+echo Criando tarefa automatica no boot como SYSTEM...
+schtasks.exe /Create /TN "%TASK_CF%" /SC ONSTART /RU SYSTEM /RL HIGHEST /TR "\"%CLOUDFLARE_START%\"" /F
 if errorlevel 1 exit /b 1
 
-schtasks.exe /Create /TN "%TASK%-Logon" /SC ONLOGON /RL HIGHEST /TR "\"%GUARDIAN%\"" /F
+schtasks.exe /Create /TN "%TASK%" /SC ONSTART /RU SYSTEM /RL HIGHEST /TR "\"%GUARDIAN%\"" /F
 if errorlevel 1 exit /b 1
 
 echo Iniciando guardian agora...
+schtasks.exe /Run /TN "%TASK_CF%" >nul 2>&1
 schtasks.exe /Run /TN "%TASK%" >nul 2>&1
 
 echo Aguardando API local...
