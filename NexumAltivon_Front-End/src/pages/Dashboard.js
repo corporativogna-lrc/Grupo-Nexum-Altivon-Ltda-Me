@@ -314,6 +314,7 @@ const emptyProduto = {
   categoriaId: 'classicos',
   subcategoriaId: '',
   tipoProduto: 'Proprio',
+  empresaAquisicaoCodigo: '',
   fornecedorId: '',
   marca: '',
   tags: '',
@@ -333,6 +334,40 @@ const emptyCategoria = {
 const emptyCliente = { nome: '', email: '', telefone: '', cpf: '' };
 const emptyFornecedor = { nome: '', documento: '', email: '', telefone: '', categoria: 'Geral' };
 const emptyLead = { nome: '', email: '', telefone: '', status: 'Novo', origem: 'Site', observacao: '' };
+const emptyCompraCotacao = {
+  fornecedorId: '',
+  produtoId: '',
+  produtoNome: '',
+  quantidade: '1',
+  custoUnitario: '',
+  origem: 'EstoqueFisico',
+  finalidade: 'Reposicao/operacao',
+  prioridade: 'Normal',
+  prazoEntregaDias: '7',
+  observacoes: '',
+};
+const emptyCompraPedido = {
+  fornecedorId: '',
+  produtoId: '',
+  produtoNome: '',
+  sku: '',
+  quantidade: '1',
+  custoUnitario: '',
+  origem: 'EstoqueFisico',
+  finalidade: 'Reposicao/operacao',
+  dataPrevistaEntrega: '',
+  dataVencimento: '',
+  meioPagamento: 'A definir',
+  observacoes: '',
+};
+const emptyCompraEntrada = {
+  pedidoId: '',
+  numeroDocumento: '',
+  chaveNfeEntrada: '',
+  tipoEntrada: 'EstoqueFisico',
+  recebidoPor: 'Operacao',
+  observacoes: '',
+};
 const emptyEmpresaGrupo = {
   tipoCadastro: 'GrupoSocietario',
   razaoSocial: '',
@@ -526,25 +561,42 @@ const getDashboardPath = (tabId, cadastroId = 'produtos') => {
   return `/dashboard/${tabId}`;
 };
 
-const getProdutoPrefixoInterno = (tipoProduto, fornecedorId) => {
-  const valorComparacao = `${tipoProduto ?? ''} ${fornecedorId ? 'fornecedor' : ''}`.toLowerCase();
-
-  if (valorComparacao.includes('drop')) return 'Ds';
-  if (valorComparacao.includes('marketplace')) return 'Ec';
-  if (fornecedorId) return 'Fo';
-  return 'Ec';
-};
-
-const normalizarSkuInterno = (form) => {
-  const prefixo = getProdutoPrefixoInterno(form.tipoProduto, form.fornecedorId);
-  const bruto = String(form.sku || form.id || form.nome || '').trim();
-  const semPrefixo = bruto.replace(/^(fo|ds|ec|cl|fu|lj|pr)[\s\-_]*/i, '');
-  const corpo = semPrefixo
-    .replace(/[^a-z0-9]+/gi, '-')
-    .replace(/^-+|-+$/g, '')
+const normalizarCodigoSku = (value, fallback = 'NEXUM') => {
+  const normalized = String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/gi, '')
     .toUpperCase();
 
-  return corpo ? `${prefixo.toUpperCase()}-${corpo}` : `${prefixo.toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+  return (normalized || fallback).slice(0, 10);
+};
+
+const getProdutoPrefixoAquisicao = (tipoProduto, fornecedorId) => {
+  const valorComparacao = `${tipoProduto ?? ''} ${fornecedorId ? 'fornecedor' : ''}`.toLowerCase();
+
+  if (valorComparacao.includes('drop')) return 'DROP';
+  if (valorComparacao.includes('marketplace') || valorComparacao.includes('afiliado')) return 'ECOM';
+  if (fornecedorId) return 'DIST';
+  return 'ECOM';
+};
+
+const normalizarSkuInterno = (form, empresasGrupo = []) => {
+  const empresaSelecionada = empresasGrupo.find((empresa) => String(empresa.id ?? empresa.Id ?? '') === String(form.empresaAquisicaoCodigo || ''));
+  const empresaCodigo = normalizarCodigoSku(
+    empresaSelecionada?.codigoEmpresa
+    || empresaSelecionada?.nomeFantasia
+    || empresaSelecionada?.razaoSocial
+    || form.empresaAquisicaoCodigo
+    || 'NEXUM',
+  );
+  const prefixo = getProdutoPrefixoAquisicao(form.tipoProduto, form.fornecedorId);
+  const bruto = String(form.sku || form.id || form.nome || '').trim();
+  const semPrefixo = bruto.replace(/^[a-z0-9]{2,10}[\s\-_]+(ecom|drop|dist)[\s\-_]+/i, '');
+  const corpo = semPrefixo
+    .replace(/\D+/g, '');
+  const sequencial = corpo ? corpo.slice(-6).padStart(6, '0') : Date.now().toString().slice(-6);
+
+  return `${empresaCodigo}-${prefixo}-${sequencial}`;
 };
 
 const fileToDataUrl = (file) =>
@@ -725,6 +777,9 @@ export default function Dashboard() {
   const [clienteForm, setClienteForm] = useState(emptyCliente);
   const [fornecedorForm, setFornecedorForm] = useState(emptyFornecedor);
   const [leadForm, setLeadForm] = useState(emptyLead);
+  const [compraCotacaoForm, setCompraCotacaoForm] = useState(emptyCompraCotacao);
+  const [compraPedidoForm, setCompraPedidoForm] = useState(emptyCompraPedido);
+  const [compraEntradaForm, setCompraEntradaForm] = useState(emptyCompraEntrada);
   const [empresaGrupoForm, setEmpresaGrupoForm] = useState(emptyEmpresaGrupo);
   const [formStatus, setFormStatus] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -910,7 +965,7 @@ export default function Dashboard() {
 
     const payload = {
       ...produtoForm,
-      sku: normalizarSkuInterno(produtoForm),
+      sku: normalizarSkuInterno(produtoForm, empresasGrupo),
       preco: Number(produtoForm.preco),
       precoPromocional: produtoForm.precoPromocional ? Number(produtoForm.precoPromocional) : null,
       custo: produtoForm.custo ? Number(produtoForm.custo) : null,
@@ -1073,6 +1128,115 @@ export default function Dashboard() {
     setFormStatus(fornecedorEditingId ? 'Fornecedor atualizado no painel.' : 'Fornecedor cadastrado no painel.');
   };
 
+  const refreshComprasPainel = async () => {
+    const response = await comprasAPI.getPainel();
+    setComprasPainel(response.data);
+    return response.data;
+  };
+
+  const getCompraProdutoSelecionado = (produtoId) =>
+    (comprasPainel?.produtosReposicao || []).find((produto) => String(produto.produtoId ?? produto.id ?? '') === String(produtoId ?? ''))
+    || produtos.find((produto) => String(produto.produtoId ?? produto.id ?? '') === String(produtoId ?? ''));
+
+  const getCompraProdutoNome = (produto) => produto?.produtoNome || produto?.nome || produto?.Nome || '';
+
+  const getCompraProdutoSku = (produto) => produto?.sku || produto?.Sku || '';
+
+  const submitCompraCotacao = async (event) => {
+    event.preventDefault();
+    setFormStatus('');
+
+    if (!compraCotacaoForm.fornecedorId || Number(compraCotacaoForm.quantidade) <= 0 || Number(compraCotacaoForm.custoUnitario) <= 0) {
+      setFormStatus('Informe fornecedor, quantidade e custo unitário para registrar a cotação.');
+      return;
+    }
+
+    const produtoSelecionado = getCompraProdutoSelecionado(compraCotacaoForm.produtoId);
+    if (!produtoSelecionado && !String(compraCotacaoForm.produtoNome || '').trim()) {
+      setFormStatus('Selecione um produto ou informe a descrição do item cotado.');
+      return;
+    }
+
+    const response = await comprasAPI.registrarCotacao({
+      fornecedorId: Number(compraCotacaoForm.fornecedorId),
+      produtoId: compraCotacaoForm.produtoId ? Number(compraCotacaoForm.produtoId) : null,
+      produtoNome: getCompraProdutoNome(produtoSelecionado) || compraCotacaoForm.produtoNome || null,
+      quantidade: Number(compraCotacaoForm.quantidade),
+      custoUnitario: Number(compraCotacaoForm.custoUnitario),
+      origem: compraCotacaoForm.origem,
+      finalidade: compraCotacaoForm.finalidade,
+      prioridade: compraCotacaoForm.prioridade,
+      prazoEntregaDias: compraCotacaoForm.prazoEntregaDias ? Number(compraCotacaoForm.prazoEntregaDias) : null,
+      observacoes: compraCotacaoForm.observacoes || null,
+    });
+
+    setComprasPainel(response.data);
+    setCompraCotacaoForm(emptyCompraCotacao);
+    setFormStatus('Cotação registrada e refletida no painel de compras.');
+  };
+
+  const submitCompraPedido = async (event) => {
+    event.preventDefault();
+    setFormStatus('');
+
+    if (!compraPedidoForm.fornecedorId || Number(compraPedidoForm.quantidade) <= 0 || Number(compraPedidoForm.custoUnitario) <= 0) {
+      setFormStatus('Informe fornecedor, quantidade e custo unitário para gerar o pedido de compra.');
+      return;
+    }
+
+    const produtoSelecionado = getCompraProdutoSelecionado(compraPedidoForm.produtoId);
+    if (!produtoSelecionado && !String(compraPedidoForm.produtoNome || '').trim()) {
+      setFormStatus('Selecione um produto ou informe a descrição do item comprado.');
+      return;
+    }
+
+    const response = await comprasAPI.criarPedido({
+      fornecedorId: Number(compraPedidoForm.fornecedorId),
+      solicitacaoId: null,
+      origem: compraPedidoForm.origem,
+      finalidade: compraPedidoForm.finalidade,
+      dataPrevistaEntrega: compraPedidoForm.dataPrevistaEntrega || null,
+      dataVencimento: compraPedidoForm.dataVencimento || null,
+      meioPagamento: compraPedidoForm.meioPagamento || null,
+      observacoes: compraPedidoForm.observacoes || null,
+      itens: [{
+        produtoId: compraPedidoForm.produtoId ? Number(compraPedidoForm.produtoId) : null,
+        produtoNome: getCompraProdutoNome(produtoSelecionado) || compraPedidoForm.produtoNome || null,
+        sku: getCompraProdutoSku(produtoSelecionado) || compraPedidoForm.sku || null,
+        quantidade: Number(compraPedidoForm.quantidade),
+        custoUnitario: Number(compraPedidoForm.custoUnitario),
+      }],
+    });
+
+    setComprasPainel(response.data);
+    setCompraPedidoForm(emptyCompraPedido);
+    setFormStatus('Pedido de compra gerado com conta a pagar e visão empresarial atualizada.');
+  };
+
+  const submitCompraEntrada = async (event) => {
+    event.preventDefault();
+    setFormStatus('');
+
+    if (!compraEntradaForm.pedidoId) {
+      setFormStatus('Selecione um pedido de compra para registrar a entrada.');
+      return;
+    }
+
+    const response = await comprasAPI.registrarEntrada(Number(compraEntradaForm.pedidoId), {
+      numeroDocumento: compraEntradaForm.numeroDocumento || null,
+      chaveNfeEntrada: compraEntradaForm.chaveNfeEntrada || null,
+      tipoEntrada: compraEntradaForm.tipoEntrada,
+      recebidoPor: compraEntradaForm.recebidoPor || 'Operacao',
+      observacoes: compraEntradaForm.observacoes || null,
+      itens: null,
+    });
+
+    setComprasPainel(response.data);
+    setCompraEntradaForm(emptyCompraEntrada);
+    await refreshComprasPainel();
+    setFormStatus('Entrada registrada, estoque atualizado e fiscal sinalizado.');
+  };
+
   const submitLead = async (event) => {
     event.preventDefault();
     setFormStatus('');
@@ -1210,6 +1374,37 @@ export default function Dashboard() {
   const clienteDuplicateMessage = useMemo(() => getClienteDuplicateMessage(clienteForm, clientes, clienteEditingId), [clienteForm, clientes, clienteEditingId]);
   const fornecedorDuplicateMessage = useMemo(() => getFornecedorDuplicateMessage(fornecedorForm, fornecedores, fornecedorEditingId), [fornecedorForm, fornecedores, fornecedorEditingId]);
   const empresaGrupoDuplicateMessage = useMemo(() => getEmpresaGrupoDuplicateMessage(empresaGrupoForm, empresasGrupo), [empresaGrupoForm, empresasGrupo]);
+  const compraFornecedorOptions = useMemo(() => {
+    const fornecedoresMap = new Map();
+    [...(comprasPainel?.fornecedores || []), ...fornecedores].forEach((fornecedor) => {
+      const id = fornecedor?.id ?? fornecedor?.Id;
+      const nome = fornecedor?.nome || fornecedor?.Nome || fornecedor?.razaoSocial || fornecedor?.razao_social || fornecedor?.RazaoSocial;
+      if (id && nome) fornecedoresMap.set(String(id), nome);
+    });
+    return Array.from(fornecedoresMap, ([value, label]) => ({ value, label }));
+  }, [comprasPainel, fornecedores]);
+  const compraProdutoOptions = useMemo(() => {
+    const produtosMap = new Map();
+    [...(comprasPainel?.produtosReposicao || []), ...produtos].forEach((produto) => {
+      const id = produto?.produtoId ?? produto?.id ?? produto?.Id;
+      const nome = produto?.produtoNome || produto?.nome || produto?.Nome;
+      if (!id || Number.isNaN(Number(id)) || !nome) return;
+      const sku = produto?.sku || produto?.Sku || 'sem SKU';
+      const estoque = produto?.estoqueAtual ?? produto?.estoque_atual ?? produto?.estoque ?? produto?.EstoqueAtual ?? 0;
+      produtosMap.set(String(id), {
+        value: String(id),
+        label: `${nome} · ${sku} · estoque ${estoque}`,
+        produto,
+      });
+    });
+    return Array.from(produtosMap.values());
+  }, [comprasPainel, produtos]);
+  const compraPedidoEntradaOptions = useMemo(() => (comprasPainel?.pedidos || [])
+    .filter((pedido) => !['recebido', 'cancelado'].includes(String(pedido.status || '').toLowerCase()))
+    .map((pedido) => ({
+      value: String(pedido.id),
+      label: `${pedido.numero || `Pedido ${pedido.id}`} · ${pedido.fornecedorNome || 'Fornecedor'} · ${formatPrice(pedido.valorTotal || 0)}`,
+    })), [comprasPainel]);
   const selectedCadastro = cadastroTabs.find((item) => item.id === activeCadastroTab) || cadastroTabs[0];
   const cadastroCounts = {
     produtos: produtos.length,
@@ -1256,6 +1451,7 @@ export default function Dashboard() {
       categoriaId: String(produto.categoria_id ?? produto.categoriaId ?? produto.CategoriaId ?? 'classicos'),
       subcategoriaId: String(produto.subcategoria_id ?? produto.subcategoriaId ?? produto.SubcategoriaId ?? ''),
       tipoProduto: produto.tipo_produto ?? produto.tipoProduto ?? produto.TipoProduto ?? 'Proprio',
+      empresaAquisicaoCodigo: produto.empresaAquisicaoCodigo ?? produto.EmpresaAquisicaoCodigo ?? '',
       fornecedorId: String(produto.fornecedor_id ?? produto.fornecedorId ?? produto.FornecedorId ?? ''),
       marca: produto.marca ?? produto.Marca ?? '',
       tags: produto.tags ?? produto.Tags ?? '',
@@ -1649,8 +1845,26 @@ export default function Dashboard() {
                         <div className="mt-5 grid gap-4 md:grid-cols-2">
                           <Field label="Slug público / ID do produto" value={produtoForm.id} onChange={(value) => setProdutoForm((form) => ({ ...form, id: value }))} />
                           <Field label="Nome" value={produtoForm.nome} onChange={(value) => setProdutoForm((form) => ({ ...form, nome: value }))} required />
-                          <Field label="SKU / Código interno" value={produtoForm.sku} onChange={(value) => setProdutoForm((form) => ({ ...form, sku: value }))} />
-                          <SelectField label="Tipo do produto" value={produtoForm.tipoProduto} onChange={(value) => setProdutoForm((form) => ({ ...form, tipoProduto: value }))} options={['Proprio', 'Dropshipping', 'Marketplace', 'Afiliado']} />
+                          <label className="block text-sm font-bold text-slate-700">
+                            Empresa compradora para o código
+                            <select
+                              value={produtoForm.empresaAquisicaoCodigo}
+                              onChange={(event) => setProdutoForm((form) => ({ ...form, empresaAquisicaoCodigo: event.target.value }))}
+                              className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+                            >
+                              <option value="">Nexum Altivon / padrão</option>
+                              {empresasGrupo.map((empresa) => (
+                                <option key={empresa.id} value={empresa.id}>
+                                  {empresa.codigoEmpresa || empresa.nomeFantasia || empresa.razaoSocial}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <SelectField label="Formato de aquisição" value={produtoForm.tipoProduto} onChange={(value) => setProdutoForm((form) => ({ ...form, tipoProduto: value }))} options={['Proprio', 'Dropshipping', 'Marketplace', 'Afiliado']} />
+                          <Field label="Sequência / código interno" value={produtoForm.sku} onChange={(value) => setProdutoForm((form) => ({ ...form, sku: value }))} />
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-700">
+                            Código final: {normalizarSkuInterno(produtoForm, empresasGrupo)}
+                          </div>
                           <Field label="Preço" type="number" value={produtoForm.preco} onChange={(value) => setProdutoForm((form) => ({ ...form, preco: value }))} required />
                           <Field label="Preço promocional" type="number" value={produtoForm.precoPromocional} onChange={(value) => setProdutoForm((form) => ({ ...form, precoPromocional: value }))} />
                           <Field label="Custo interno" type="number" value={produtoForm.custo} onChange={(value) => setProdutoForm((form) => ({ ...form, custo: value }))} />
@@ -2356,6 +2570,121 @@ export default function Dashboard() {
                       </div>
                     </section>
                   )}
+                  <div className="grid gap-6 xl:grid-cols-3">
+                    <SimpleForm
+                      title="Registrar cotação"
+                      subtitle="Primeira etapa de compra: fornecedor, item, custo, origem e finalidade."
+                      onSubmit={submitCompraCotacao}
+                      buttonLabel="Salvar cotação"
+                      disabled={compraFornecedorOptions.length === 0}
+                      alertMessage={compraFornecedorOptions.length === 0 ? 'Cadastre ao menos um fornecedor real antes de cotar compras.' : ''}
+                    >
+                      <OptionSelectField
+                        label="Fornecedor"
+                        value={compraCotacaoForm.fornecedorId}
+                        onChange={(value) => setCompraCotacaoForm((current) => ({ ...current, fornecedorId: value }))}
+                        options={compraFornecedorOptions}
+                      />
+                      <OptionSelectField
+                        label="Produto do estoque"
+                        value={compraCotacaoForm.produtoId}
+                        onChange={(value) => {
+                          const option = compraProdutoOptions.find((item) => item.value === value);
+                          const produto = option?.produto;
+                          setCompraCotacaoForm((current) => ({
+                            ...current,
+                            produtoId: value,
+                            produtoNome: getCompraProdutoNome(produto) || current.produtoNome,
+                            custoUnitario: produto?.custoAtual || produto?.custo || produto?.Custo ? String(produto.custoAtual ?? produto.custo ?? produto.Custo) : current.custoUnitario,
+                          }));
+                        }}
+                        options={compraProdutoOptions}
+                        placeholder="Selecione ou descreva abaixo"
+                      />
+                      <Field label="Item livre, parceria ou encomenda" value={compraCotacaoForm.produtoNome} onChange={(value) => setCompraCotacaoForm((current) => ({ ...current, produtoNome: value }))} />
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <Field label="Quantidade" type="number" value={compraCotacaoForm.quantidade} onChange={(value) => setCompraCotacaoForm((current) => ({ ...current, quantidade: value }))} />
+                        <Field label="Custo unitário" type="number" value={compraCotacaoForm.custoUnitario} onChange={(value) => setCompraCotacaoForm((current) => ({ ...current, custoUnitario: value }))} />
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <SelectField label="Origem" value={compraCotacaoForm.origem} onChange={(value) => setCompraCotacaoForm((current) => ({ ...current, origem: value }))} options={['EstoqueFisico', 'Dropshipping', 'FornecedorDireto', 'Parceria', 'Encomenda']} />
+                        <SelectField label="Prioridade" value={compraCotacaoForm.prioridade} onChange={(value) => setCompraCotacaoForm((current) => ({ ...current, prioridade: value }))} options={['Baixa', 'Normal', 'Alta', 'Urgente']} />
+                      </div>
+                      <Field label="Finalidade" value={compraCotacaoForm.finalidade} onChange={(value) => setCompraCotacaoForm((current) => ({ ...current, finalidade: value }))} />
+                      <Field label="Prazo previsto em dias" type="number" value={compraCotacaoForm.prazoEntregaDias} onChange={(value) => setCompraCotacaoForm((current) => ({ ...current, prazoEntregaDias: value }))} />
+                      <TextAreaField label="Observações da cotação" rows={3} value={compraCotacaoForm.observacoes} onChange={(value) => setCompraCotacaoForm((current) => ({ ...current, observacoes: value }))} />
+                    </SimpleForm>
+
+                    <SimpleForm
+                      title="Gerar pedido de compra"
+                      subtitle="Cria pedido, conta a pagar e vínculo para entrada posterior."
+                      onSubmit={submitCompraPedido}
+                      buttonLabel="Criar pedido"
+                      disabled={compraFornecedorOptions.length === 0}
+                      alertMessage={compraFornecedorOptions.length === 0 ? 'Cadastre ao menos um fornecedor real antes de abrir pedido.' : ''}
+                    >
+                      <OptionSelectField
+                        label="Fornecedor"
+                        value={compraPedidoForm.fornecedorId}
+                        onChange={(value) => setCompraPedidoForm((current) => ({ ...current, fornecedorId: value }))}
+                        options={compraFornecedorOptions}
+                      />
+                      <OptionSelectField
+                        label="Produto do estoque"
+                        value={compraPedidoForm.produtoId}
+                        onChange={(value) => {
+                          const option = compraProdutoOptions.find((item) => item.value === value);
+                          const produto = option?.produto;
+                          setCompraPedidoForm((current) => ({
+                            ...current,
+                            produtoId: value,
+                            produtoNome: getCompraProdutoNome(produto) || current.produtoNome,
+                            sku: getCompraProdutoSku(produto) || current.sku,
+                            custoUnitario: produto?.custoAtual || produto?.custo || produto?.Custo ? String(produto.custoAtual ?? produto.custo ?? produto.Custo) : current.custoUnitario,
+                          }));
+                        }}
+                        options={compraProdutoOptions}
+                        placeholder="Selecione ou descreva abaixo"
+                      />
+                      <Field label="Item livre, parceria ou encomenda" value={compraPedidoForm.produtoNome} onChange={(value) => setCompraPedidoForm((current) => ({ ...current, produtoNome: value }))} />
+                      <Field label="SKU ou referência" value={compraPedidoForm.sku} onChange={(value) => setCompraPedidoForm((current) => ({ ...current, sku: value }))} />
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <Field label="Quantidade" type="number" value={compraPedidoForm.quantidade} onChange={(value) => setCompraPedidoForm((current) => ({ ...current, quantidade: value }))} />
+                        <Field label="Custo unitário" type="number" value={compraPedidoForm.custoUnitario} onChange={(value) => setCompraPedidoForm((current) => ({ ...current, custoUnitario: value }))} />
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <SelectField label="Origem" value={compraPedidoForm.origem} onChange={(value) => setCompraPedidoForm((current) => ({ ...current, origem: value }))} options={['EstoqueFisico', 'Dropshipping', 'FornecedorDireto', 'Parceria', 'Encomenda']} />
+                        <Field label="Meio de pagamento" value={compraPedidoForm.meioPagamento} onChange={(value) => setCompraPedidoForm((current) => ({ ...current, meioPagamento: value }))} />
+                      </div>
+                      <Field label="Finalidade" value={compraPedidoForm.finalidade} onChange={(value) => setCompraPedidoForm((current) => ({ ...current, finalidade: value }))} />
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <Field label="Entrega prevista" type="date" value={compraPedidoForm.dataPrevistaEntrega} onChange={(value) => setCompraPedidoForm((current) => ({ ...current, dataPrevistaEntrega: value }))} />
+                        <Field label="Vencimento financeiro" type="date" value={compraPedidoForm.dataVencimento} onChange={(value) => setCompraPedidoForm((current) => ({ ...current, dataVencimento: value }))} />
+                      </div>
+                      <TextAreaField label="Observações do pedido" rows={3} value={compraPedidoForm.observacoes} onChange={(value) => setCompraPedidoForm((current) => ({ ...current, observacoes: value }))} />
+                    </SimpleForm>
+
+                    <SimpleForm
+                      title="Entrada de mercadoria"
+                      subtitle="Conclui o recebimento, atualiza estoque e marca a conferência fiscal."
+                      onSubmit={submitCompraEntrada}
+                      buttonLabel="Registrar entrada"
+                      disabled={compraPedidoEntradaOptions.length === 0}
+                      alertMessage={compraPedidoEntradaOptions.length === 0 ? 'Abra um pedido de compra antes de lançar entrada de mercadoria.' : ''}
+                    >
+                      <OptionSelectField
+                        label="Pedido de compra"
+                        value={compraEntradaForm.pedidoId}
+                        onChange={(value) => setCompraEntradaForm((current) => ({ ...current, pedidoId: value }))}
+                        options={compraPedidoEntradaOptions}
+                      />
+                      <SelectField label="Tipo de entrada" value={compraEntradaForm.tipoEntrada} onChange={(value) => setCompraEntradaForm((current) => ({ ...current, tipoEntrada: value }))} options={['EstoqueFisico', 'Dropshipping', 'FornecedorDireto', 'Parceria', 'Encomenda']} />
+                      <Field label="Documento de entrada" value={compraEntradaForm.numeroDocumento} onChange={(value) => setCompraEntradaForm((current) => ({ ...current, numeroDocumento: value }))} />
+                      <Field label="Chave NF-e de entrada" value={compraEntradaForm.chaveNfeEntrada} onChange={(value) => setCompraEntradaForm((current) => ({ ...current, chaveNfeEntrada: value }))} />
+                      <Field label="Recebido por" value={compraEntradaForm.recebidoPor} onChange={(value) => setCompraEntradaForm((current) => ({ ...current, recebidoPor: value }))} />
+                      <TextAreaField label="Observações do recebimento" rows={3} value={compraEntradaForm.observacoes} onChange={(value) => setCompraEntradaForm((current) => ({ ...current, observacoes: value }))} />
+                    </SimpleForm>
+                  </div>
                   <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
                     <CompactList
                       title="Pedidos de compra em acompanhamento"
@@ -3361,6 +3690,24 @@ function SelectField({ label, value, onChange, options, className = '' }) {
       >
         {options.map((option) => (
           <option key={option} value={option}>{option}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function OptionSelectField({ label, value, onChange, options, placeholder = 'Selecione', className = '' }) {
+  return (
+    <label className={`block text-sm font-bold text-slate-700 ${className}`}>
+      {label}
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none transition focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+      >
+        <option value="">{placeholder}</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
         ))}
       </select>
     </label>

@@ -996,14 +996,8 @@ app.MapPost("/api/produtos", [Authorize(Policy = "Gerente")] async (
         return Results.Conflict(ApiResponse<string>.Erro("Produto ja existe."));
     }
 
-    var sku = string.IsNullOrWhiteSpace(request.Sku)
-        ? $"NA-{Math.Abs(HashCode.Combine(request.Nome, request.Preco)):000000}"
-        : request.Sku.Trim();
-
-    if (await db.Produtos.AnyAsync(produto => produto.Sku == sku, ct))
-    {
-        sku = $"{sku}-{Random.Shared.Next(10, 99)}";
-    }
+    var empresaAquisicao = await ObterEmpresaAquisicaoAsync(db, request.EmpresaAquisicaoCodigo, ct);
+    var sku = await GerarSkuProdutoAsync(db, request, empresaAquisicao, null, ct);
 
     var lojaId = await db.Lojas
         .AsNoTracking()
@@ -1058,6 +1052,9 @@ app.MapPost("/api/produtos", [Authorize(Policy = "Gerente")] async (
         SeoTitulo = TrimOrNull(request.SeoTitulo),
         SeoDescricao = TrimOrNull(request.SeoDescricao),
         SeoKeywords = TrimOrNull(request.SeoKeywords),
+        CodigoBarras = GerarCodigoBarrasProdutoPorSku(sku),
+        QrCode = GerarQrCodeProdutoCadastro(sku, request.Nome, request.TipoProduto, request.FornecedorId),
+        IdentificacaoEstoque = GerarIdentificacaoEstoqueCadastro(sku, request.Nome, request.TipoProduto, request.FornecedorId),
         Destaque = request.Destaque,
         Ativo = true,
         CreatedAt = DateTime.UtcNow,
@@ -1094,7 +1091,10 @@ app.MapPost("/api/produtos", [Authorize(Policy = "Gerente")] async (
         produto.SeoTitulo,
         produto.SeoDescricao,
         produto.SeoKeywords,
-        produto.ImagensGaleria);
+        produto.ImagensGaleria,
+        produto.CodigoBarras,
+        produto.QrCode,
+        produto.IdentificacaoEstoque);
 
     return Results.Created($"/api/produtos/{produto.Slug}", ApiResponse<ProdutoLojaDto>.Ok(dto, "Produto cadastrado."));
 })
@@ -1125,17 +1125,8 @@ app.MapPut("/api/produtos/{id}", [Authorize(Policy = "Gerente")] async (
         return Results.NotFound(ApiResponse<string>.Erro("Produto nao encontrado."));
     }
 
-    if (!string.IsNullOrWhiteSpace(request.Sku) && !string.Equals(produto.Sku, request.Sku.Trim(), StringComparison.OrdinalIgnoreCase))
-    {
-        var sku = request.Sku.Trim();
-        var conflict = await db.Produtos.AnyAsync(item => item.Sku == sku && item.Id != produto.Id, ct);
-        if (conflict)
-        {
-            return Results.Conflict(ApiResponse<string>.Erro("SKU ja em uso."));
-        }
-
-        produto.Sku = sku;
-    }
+    var empresaAquisicao = await ObterEmpresaAquisicaoAsync(db, request.EmpresaAquisicaoCodigo, ct);
+    produto.Sku = await GerarSkuProdutoAsync(db, request, empresaAquisicao, produto.Id, ct);
 
     produto.Nome = request.Nome;
     produto.DescricaoCurta = TrimOrNull(request.DescricaoCurta) ?? TrimOrNull(request.Descricao);
@@ -1159,6 +1150,9 @@ app.MapPut("/api/produtos/{id}", [Authorize(Policy = "Gerente")] async (
     produto.SeoTitulo = TrimOrNull(request.SeoTitulo);
     produto.SeoDescricao = TrimOrNull(request.SeoDescricao);
     produto.SeoKeywords = TrimOrNull(request.SeoKeywords);
+    produto.CodigoBarras = GerarCodigoBarrasProdutoPorSku(produto.Sku);
+    produto.QrCode = GerarQrCodeProdutoCadastro(produto.Sku, request.Nome, request.TipoProduto, request.FornecedorId);
+    produto.IdentificacaoEstoque = GerarIdentificacaoEstoqueCadastro(produto.Sku, request.Nome, request.TipoProduto, request.FornecedorId);
     produto.Destaque = request.Destaque;
     produto.UpdatedAt = DateTime.UtcNow;
 
@@ -1205,7 +1199,10 @@ app.MapPut("/api/produtos/{id}", [Authorize(Policy = "Gerente")] async (
         produto.SeoTitulo,
         produto.SeoDescricao,
         produto.SeoKeywords,
-        produto.ImagensGaleria);
+        produto.ImagensGaleria,
+        produto.CodigoBarras,
+        produto.QrCode,
+        produto.IdentificacaoEstoque);
 
     return Results.Ok(ApiResponse<ProdutoLojaDto>.Ok(dto, "Produto atualizado."));
 })
@@ -2061,6 +2058,9 @@ app.MapPost("/api/compras/pedidos/{id:int}/entradas", [Authorize(Policy = "Geren
             {
                 produto.EstoqueAtual += recebidaAgora;
                 produto.Custo = item.CustoUnitario;
+                produto.CodigoBarras ??= GerarCodigoBarrasProduto(produto);
+                produto.QrCode = GerarQrCodeProduto(produto, pedido, entradaId, documento ?? chaveNfe);
+                produto.IdentificacaoEstoque = GerarIdentificacaoEstoqueProduto(produto, pedido, entradaId, recebidaAgora, item.CustoUnitario, documento ?? chaveNfe);
                 produto.UpdatedAt = now;
 
                 await db.Database.ExecuteSqlInterpolatedAsync($"""
@@ -3770,6 +3770,213 @@ static string? Slugify(string? value)
     return slug.Length == 0 ? null : slug;
 }
 
+static async Task<EmpresaGrupo?> ObterEmpresaAquisicaoAsync(NexumDbContext db, string? empresaReferencia, CancellationToken ct)
+{
+    var referencia = TrimOrNull(empresaReferencia);
+    if (!string.IsNullOrWhiteSpace(referencia) && int.TryParse(referencia, out var empresaId))
+    {
+        var empresaPorId = await db.EmpresasGrupo.AsNoTracking().FirstOrDefaultAsync(item => item.Id == empresaId && item.Ativa, ct);
+        if (empresaPorId is not null)
+        {
+            return empresaPorId;
+        }
+    }
+
+    if (!string.IsNullOrWhiteSpace(referencia))
+    {
+        var codigo = referencia.Trim();
+        var empresaPorCodigo = await db.EmpresasGrupo
+            .AsNoTracking()
+            .FirstOrDefaultAsync(item =>
+                item.Ativa &&
+                (item.CodigoEmpresa == codigo || item.NomeFantasia == codigo || item.RazaoSocial == codigo), ct);
+        if (empresaPorCodigo is not null)
+        {
+            return empresaPorCodigo;
+        }
+    }
+
+    return await db.EmpresasGrupo
+        .AsNoTracking()
+        .Where(item => item.Ativa)
+        .OrderByDescending(item => item.EmitentePreferencial)
+        .ThenBy(item => item.PrioridadeFiscal)
+        .ThenBy(item => item.Id)
+        .FirstOrDefaultAsync(ct);
+}
+
+static async Task<string> GerarSkuProdutoAsync(NexumDbContext db, ProdutoRequest request, EmpresaGrupo? empresa, int? produtoIdIgnorado, CancellationToken ct)
+{
+    var empresaCodigo = NormalizarCodigoAlfa(
+        empresa?.CodigoEmpresa
+        ?? empresa?.NomeFantasia
+        ?? empresa?.RazaoSocial
+        ?? request.EmpresaAquisicaoCodigo
+        ?? "NEXUM",
+        "NEXUM");
+    var aquisicaoCodigo = ObterCodigoAquisicao(request.TipoProduto, request.FornecedorId);
+    var prefixo = $"{empresaCodigo}-{aquisicaoCodigo}";
+    var sequencialInformado = ExtrairSequencialSku(request.Sku);
+    var sequencial = sequencialInformado ?? await ObterProximoSequencialSkuAsync(db, prefixo, produtoIdIgnorado, ct);
+    var sku = $"{prefixo}-{sequencial:000000}";
+
+    while (await db.Produtos.AnyAsync(item => item.Sku == sku && (!produtoIdIgnorado.HasValue || item.Id != produtoIdIgnorado.Value), ct))
+    {
+        sequencial++;
+        sku = $"{prefixo}-{sequencial:000000}";
+    }
+
+    return sku;
+}
+
+static async Task<int> ObterProximoSequencialSkuAsync(NexumDbContext db, string prefixo, int? produtoIdIgnorado, CancellationToken ct)
+{
+    var prefixoCompleto = $"{prefixo}-";
+    var skus = await db.Produtos
+        .AsNoTracking()
+        .Where(item => item.Sku.StartsWith(prefixoCompleto) && (!produtoIdIgnorado.HasValue || item.Id != produtoIdIgnorado.Value))
+        .Select(item => item.Sku)
+        .ToListAsync(ct);
+
+    var maior = 0;
+    foreach (var sku in skus)
+    {
+        var sequencial = ExtrairSequencialSku(sku);
+        if (sequencial.HasValue && sequencial.Value > maior)
+        {
+            maior = sequencial.Value;
+        }
+    }
+
+    return maior + 1;
+}
+
+static int? ExtrairSequencialSku(string? sku)
+{
+    if (string.IsNullOrWhiteSpace(sku))
+    {
+        return null;
+    }
+
+    var digits = new string(sku.Where(char.IsDigit).ToArray());
+    if (digits.Length == 0)
+    {
+        return null;
+    }
+
+    var sequencialTexto = digits.Length > 6 ? digits[^6..] : digits;
+    return int.TryParse(sequencialTexto, out var sequencial) && sequencial > 0 ? sequencial : null;
+}
+
+static string ObterCodigoAquisicao(string? tipoProduto, int? fornecedorId)
+{
+    var valor = $"{tipoProduto ?? string.Empty} {(fornecedorId.HasValue ? "fornecedor" : string.Empty)}".ToLowerInvariant();
+    if (valor.Contains("drop"))
+    {
+        return "DROP";
+    }
+
+    if (valor.Contains("fornecedor") || valor.Contains("dist"))
+    {
+        return "DIST";
+    }
+
+    return "ECOM";
+}
+
+static string NormalizarCodigoAlfa(string? value, string fallback)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return fallback;
+    }
+
+    var normalized = value.Trim().Normalize(NormalizationForm.FormD);
+    var builder = new StringBuilder(normalized.Length);
+    foreach (var c in normalized)
+    {
+        if (CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.NonSpacingMark)
+        {
+            continue;
+        }
+
+        if (char.IsLetterOrDigit(c))
+        {
+            builder.Append(char.ToUpperInvariant(c));
+        }
+    }
+
+    var codigo = builder.ToString();
+    if (string.IsNullOrWhiteSpace(codigo))
+    {
+        return fallback;
+    }
+
+    return codigo.Length > 10 ? codigo[..10] : codigo;
+}
+
+static string GerarCodigoBarrasProduto(Produto produto) => GerarCodigoBarrasProdutoPorSku(produto.Sku);
+
+static string GerarCodigoBarrasProdutoPorSku(string sku)
+{
+    var digits = new string((sku ?? string.Empty).Where(char.IsDigit).ToArray());
+    var seed = digits.Length > 0
+        ? digits
+        : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sku ?? string.Empty))).Where(char.IsDigit).DefaultIfEmpty('0').Aggregate(new StringBuilder(), (builder, value) => builder.Append(value)).ToString();
+    var baseCode = $"789{seed.PadLeft(9, '0')[^9..]}";
+    var sum = 0;
+    for (var index = 0; index < baseCode.Length; index++)
+    {
+        var digit = baseCode[index] - '0';
+        sum += index % 2 == 0 ? digit : digit * 3;
+    }
+
+    var checkDigit = (10 - (sum % 10)) % 10;
+    return $"{baseCode}{checkDigit}";
+}
+
+static string GerarQrCodeProdutoCadastro(string sku, string nome, string? tipoProduto, int? fornecedorId)
+{
+    var payload = new
+    {
+        tipo = "PRODUTO",
+        sku,
+        nome,
+        aquisicao = ObterCodigoAquisicao(tipoProduto, fornecedorId),
+        fornecedorId,
+        criadoEm = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture)
+    };
+
+    return JsonSerializer.Serialize(payload);
+}
+
+static string GerarIdentificacaoEstoqueCadastro(string sku, string nome, string? tipoProduto, int? fornecedorId) =>
+    $"SKU={sku};ITEM={nome};AQUISICAO={ObterCodigoAquisicao(tipoProduto, fornecedorId)};FORNECEDOR={fornecedorId?.ToString(CultureInfo.InvariantCulture) ?? "NAO_VINCULADO"}";
+
+static string GerarQrCodeProduto(Produto produto, CompraPedidoLookupRow pedido, int entradaId, string? documento)
+{
+    var payload = new
+    {
+        tipo = "ESTOQUE_ENTRADA",
+        sku = produto.Sku,
+        produtoId = produto.Id,
+        produto = produto.Nome,
+        pedidoId = pedido.Id,
+        pedido = pedido.Numero,
+        entradaId,
+        origem = pedido.Origem,
+        fornecedorId = pedido.FornecedorId,
+        documento,
+        estoque = produto.EstoqueAtual,
+        atualizadoEm = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture)
+    };
+
+    return JsonSerializer.Serialize(payload);
+}
+
+static string GerarIdentificacaoEstoqueProduto(Produto produto, CompraPedidoLookupRow pedido, int entradaId, int quantidadeRecebida, decimal custoUnitario, string? documento) =>
+    $"SKU={produto.Sku};ITEM={produto.Nome};ORIGEM={pedido.Origem};PEDIDO={pedido.Numero};ENTRADA={entradaId};QTD={quantidadeRecebida};CUSTO={custoUnitario.ToString("0.00", CultureInfo.InvariantCulture)};FORNECEDOR={pedido.FornecedorId};DOC={documento ?? "PENDENTE"}";
+
 static string? NormalizeEmail(string? value) =>
     string.IsNullOrWhiteSpace(value)
         ? null
@@ -4404,7 +4611,10 @@ static ProdutoLojaDto MapearProdutoLojaDto(Produto produto) => new(
     produto.SeoTitulo,
     produto.SeoDescricao,
     produto.SeoKeywords,
-    produto.ImagensGaleria);
+    produto.ImagensGaleria,
+    produto.CodigoBarras,
+    produto.QrCode,
+    produto.IdentificacaoEstoque);
 
 static string FormatStatusPedido(StatusPedido status) =>
     status switch
@@ -5883,6 +6093,33 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS perfil_tributacao VARCHAR(40) NULL;");
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS usa_st_legado TINYINT(1) NOT NULL DEFAULT 0;");
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS destaca_icms_st_separado TINYINT(1) NOT NULL DEFAULT 0;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE produtos ADD COLUMN IF NOT EXISTS codigo_barras VARCHAR(64) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE produtos ADD COLUMN IF NOT EXISTS qr_code VARCHAR(500) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE produtos ADD COLUMN IF NOT EXISTS identificacao_estoque VARCHAR(500) NULL;");
+
+    var produtosSemIdentificacao = await db.Produtos
+        .Where(produto => string.IsNullOrEmpty(produto.CodigoBarras) || string.IsNullOrEmpty(produto.QrCode) || string.IsNullOrEmpty(produto.IdentificacaoEstoque))
+        .Take(500)
+        .ToListAsync();
+
+    foreach (var produto in produtosSemIdentificacao)
+    {
+        produto.CodigoBarras = string.IsNullOrWhiteSpace(produto.CodigoBarras)
+            ? GerarCodigoBarrasProduto(produto)
+            : produto.CodigoBarras;
+        produto.QrCode = string.IsNullOrWhiteSpace(produto.QrCode)
+            ? GerarQrCodeProdutoCadastro(produto.Sku, produto.Nome, produto.TipoProduto.ToString(), produto.FornecedorId)
+            : produto.QrCode;
+        produto.IdentificacaoEstoque = string.IsNullOrWhiteSpace(produto.IdentificacaoEstoque)
+            ? GerarIdentificacaoEstoqueCadastro(produto.Sku, produto.Nome, produto.TipoProduto.ToString(), produto.FornecedorId)
+            : produto.IdentificacaoEstoque;
+        produto.UpdatedAt = DateTime.UtcNow;
+    }
+
+    if (produtosSemIdentificacao.Count > 0)
+    {
+        await db.SaveChangesAsync();
+    }
 
     await db.Database.ExecuteSqlRawAsync(
         """
@@ -6799,7 +7036,10 @@ public sealed record ProdutoLojaDto(
     string? SeoTitulo,
     string? SeoDescricao,
     string? SeoKeywords,
-    string? ImagensGaleria);
+    string? ImagensGaleria,
+    string? CodigoBarras = null,
+    string? QrCode = null,
+    string? IdentificacaoEstoque = null);
 
 public sealed record ProdutoRequest(
     string? Id,
@@ -6829,7 +7069,8 @@ public sealed record ProdutoRequest(
     string? SeoTitulo,
     string? SeoDescricao,
     string? SeoKeywords,
-    string? ImagensGaleria)
+    string? ImagensGaleria,
+    string? EmpresaAquisicaoCodigo = null)
 {
     public ProdutoLojaDto ToProduto(string? id = null)
     {

@@ -167,29 +167,10 @@ public class ProdutoService : IProdutoService
 
     private static string NormalizarSkuInterno(CriarProdutoDto dto)
     {
-        var prefixo = ObterPrefixoOrigem(dto.TipoProduto, dto.FornecedorId);
-        var baseSku = RemoverPrefixoConhecido(dto.Sku);
+        var prefixo = $"NEXUM-{ObterPrefixoOrigem(dto.TipoProduto, dto.FornecedorId)}";
+        var sequencial = ExtrairSequencialSku(dto.Sku) ?? ExtrairSequencialSku(dto.Slug) ?? ExtrairSequencialSku(dto.Nome) ?? int.Parse(DateTime.UtcNow.ToString("HHmmss"));
 
-        if (string.IsNullOrWhiteSpace(baseSku))
-        {
-            baseSku = dto.Slug;
-        }
-
-        if (string.IsNullOrWhiteSpace(baseSku))
-        {
-            baseSku = dto.Nome;
-        }
-
-        var corpo = Regex.Replace(baseSku ?? string.Empty, @"[^a-zA-Z0-9]+", "-")
-            .Trim('-')
-            .ToUpperInvariant();
-
-        if (string.IsNullOrWhiteSpace(corpo))
-        {
-            corpo = DateTime.UtcNow.ToString("yyMMddHHmmss");
-        }
-
-        return $"{prefixo.ToUpperInvariant()}-{corpo}";
+        return $"{prefixo}-{sequencial:000000}";
     }
 
     private static string ObterPrefixoOrigem(string? tipoProduto, int? fornecedorId)
@@ -197,33 +178,27 @@ public class ProdutoService : IProdutoService
         var valorComparacao = $"{tipoProduto ?? string.Empty} {(fornecedorId.HasValue ? "fornecedor" : string.Empty)}".ToLowerInvariant();
 
         if (valorComparacao.Contains("drop"))
-            return "Ds";
+            return "DROP";
 
-        if (valorComparacao.Contains("marketplace"))
-            return "Ec";
+        if (valorComparacao.Contains("marketplace") || valorComparacao.Contains("afiliado"))
+            return "ECOM";
 
         if (fornecedorId.HasValue)
-            return "Fo";
+            return "DIST";
 
-        return "Ec";
+        return "ECOM";
     }
 
-    private static string? RemoverPrefixoConhecido(string? sku)
+    private static int? ExtrairSequencialSku(string? sku)
     {
         if (string.IsNullOrWhiteSpace(sku))
             return null;
 
-        var valor = sku.Trim();
-        var normalizado = Regex.Replace(valor, @"\s+", "");
+        var digits = new string(sku.Where(char.IsDigit).ToArray());
+        if (digits.Length == 0)
+            return null;
 
-        foreach (var prefixo in new[] { "Fo", "Ds", "Ec", "Cl", "Fu", "Lj", "Pr" })
-        {
-            if (normalizado.StartsWith(prefixo, StringComparison.OrdinalIgnoreCase))
-            {
-                return normalizado[prefixo.Length..].TrimStart('-', '_', ' ');
-            }
-        }
-
-        return valor;
+        var sequencial = digits.Length > 6 ? digits[^6..] : digits;
+        return int.TryParse(sequencial, out var value) && value > 0 ? value : null;
     }
 }

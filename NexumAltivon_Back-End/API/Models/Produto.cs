@@ -111,6 +111,18 @@ public class Produto
     [MaxLength(255)]
     public string? SeoKeywords { get; set; }
 
+    [Column("codigo_barras")]
+    [MaxLength(64)]
+    public string? CodigoBarras { get; set; }
+
+    [Column("qr_code")]
+    [MaxLength(500)]
+    public string? QrCode { get; set; }
+
+    [Column("identificacao_estoque")]
+    [MaxLength(500)]
+    public string? IdentificacaoEstoque { get; set; }
+
     [Column("destaque")]
     public bool Destaque { get; set; } = false;
 
