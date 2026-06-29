@@ -1,3 +1,11 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
+
 using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Headers;
@@ -577,6 +585,15 @@ app.MapGet("/api/admin/dashboard/kpis", [Authorize(Policy = "Gerente")] async (
     CancellationToken ct) =>
     Results.Ok(ApiResponse<DashboardKpiDto>.Ok(await BuildAdminKpisAsync(db, ct))))
     .WithName("DashboardKpis")
+    ;
+
+app.MapGet("/api/admin/genesisgest/schema-status", [Authorize(Policy = "Gerente")] async (
+    NexumDbContext db,
+    CancellationToken ct) =>
+    Results.Ok(ApiResponse<GenesisGestSchemaStatusDto>.Ok(
+        await BuildGenesisGestSchemaStatusAsync(db, ct),
+        "Estrutura GenesisGest.Net verificada.")))
+    .WithName("GenesisGestSchemaStatus")
     ;
 
 app.MapGet("/api/lojas", async (NexumDbContext db, CancellationToken ct) =>
@@ -6004,6 +6021,7 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
 
     await EnsureUsuariosSchemaAsync(db);
     await EnsureSystemAdminUsersAsync(db, configuration, logger);
+    await EnsureGenesisGestOriginalSchemaAsync(db, logger);
 
     await db.Database.ExecuteSqlRawAsync(
         """
@@ -6403,6 +6421,212 @@ static async Task EnsureComprasSchemaAsync(NexumDbContext db)
             KEY ix_estoque_movimentos_tipo (tipo)
         );
         """);
+}
+
+static async Task EnsureGenesisGestOriginalSchemaAsync(NexumDbContext db, ILogger logger)
+{
+    var candidatePaths = new[]
+    {
+        Path.Combine(AppContext.BaseDirectory, "Database", "2026-06-29-genesisgest-original-schema.sql"),
+        Path.Combine(AppContext.BaseDirectory, "API", "Database", "2026-06-29-genesisgest-original-schema.sql"),
+        Path.Combine(Directory.GetCurrentDirectory(), "API", "Database", "2026-06-29-genesisgest-original-schema.sql"),
+        Path.Combine(Directory.GetCurrentDirectory(), "NexumAltivon_Back-End", "API", "Database", "2026-06-29-genesisgest-original-schema.sql")
+    };
+
+    var schemaPath = candidatePaths.FirstOrDefault(File.Exists);
+    if (schemaPath is null)
+    {
+        logger.LogWarning("Schema GenesisGest.Net original nao encontrado para carga incremental.");
+        return;
+    }
+
+    var sql = StripSqlComments(await File.ReadAllTextAsync(schemaPath, Encoding.UTF8));
+    var applied = 0;
+
+    foreach (var statement in SplitSqlStatements(sql))
+    {
+        if (string.IsNullOrWhiteSpace(statement))
+        {
+            continue;
+        }
+
+        await ExecuteSqlStatementDirectAsync(db, statement);
+        applied++;
+    }
+
+    logger.LogInformation("Schema GenesisGest.Net original sincronizado com {StatementCount} comandos seguros.", applied);
+}
+
+static async Task ExecuteSqlStatementDirectAsync(NexumDbContext db, string statement)
+{
+    var connection = db.Database.GetDbConnection();
+    if (connection.State != ConnectionState.Open)
+    {
+        await db.Database.OpenConnectionAsync();
+    }
+
+    await using var command = connection.CreateCommand();
+    command.CommandText = statement;
+    command.CommandTimeout = 180;
+    await command.ExecuteNonQueryAsync();
+}
+
+static string StripSqlComments(string sql)
+{
+    var result = new StringBuilder(sql.Length);
+    var inSingleQuote = false;
+    var inDoubleQuote = false;
+    var inBacktick = false;
+    var inBlockComment = false;
+    var inLineComment = false;
+
+    for (var i = 0; i < sql.Length; i++)
+    {
+        var current = sql[i];
+        var next = i + 1 < sql.Length ? sql[i + 1] : '\0';
+
+        if (inBlockComment)
+        {
+            if (current == '*' && next == '/')
+            {
+                inBlockComment = false;
+                i++;
+            }
+            continue;
+        }
+
+        if (inLineComment)
+        {
+            if (current is '\r' or '\n')
+            {
+                inLineComment = false;
+                result.Append(current);
+            }
+            continue;
+        }
+
+        if (!inSingleQuote && !inDoubleQuote && !inBacktick && current == '/' && next == '*')
+        {
+            inBlockComment = true;
+            i++;
+            continue;
+        }
+
+        if (!inSingleQuote && !inDoubleQuote && !inBacktick && current == '-' && next == '-')
+        {
+            inLineComment = true;
+            i++;
+            continue;
+        }
+
+        if (current == '\'' && !inDoubleQuote && !inBacktick)
+        {
+            inSingleQuote = !inSingleQuote;
+        }
+        else if (current == '"' && !inSingleQuote && !inBacktick)
+        {
+            inDoubleQuote = !inDoubleQuote;
+        }
+        else if (current == '`' && !inSingleQuote && !inDoubleQuote)
+        {
+            inBacktick = !inBacktick;
+        }
+
+        result.Append(current);
+    }
+
+    return result.ToString();
+}
+
+static IEnumerable<string> SplitSqlStatements(string sql)
+{
+    var builder = new StringBuilder();
+    var inSingleQuote = false;
+    var inDoubleQuote = false;
+    var inBacktick = false;
+
+    foreach (var current in sql)
+    {
+        if (current == '\'' && !inDoubleQuote && !inBacktick)
+        {
+            inSingleQuote = !inSingleQuote;
+        }
+        else if (current == '"' && !inSingleQuote && !inBacktick)
+        {
+            inDoubleQuote = !inDoubleQuote;
+        }
+        else if (current == '`' && !inSingleQuote && !inDoubleQuote)
+        {
+            inBacktick = !inBacktick;
+        }
+
+        if (current == ';' && !inSingleQuote && !inDoubleQuote && !inBacktick)
+        {
+            var statement = builder.ToString().Trim();
+            builder.Clear();
+
+            if (!string.IsNullOrWhiteSpace(statement))
+            {
+                yield return statement;
+            }
+
+            continue;
+        }
+
+        builder.Append(current);
+    }
+
+    var trailingStatement = builder.ToString().Trim();
+    if (!string.IsNullOrWhiteSpace(trailingStatement))
+    {
+        yield return trailingStatement;
+    }
+}
+
+static async Task<GenesisGestSchemaStatusDto> BuildGenesisGestSchemaStatusAsync(NexumDbContext db, CancellationToken ct)
+{
+    var modules = new[]
+    {
+        ("adm", "Administrativo"),
+        ("bi", "Cockpit e BI"),
+        ("cfg", "Configuracoes"),
+        ("cmp", "Compras e suprimentos"),
+        ("cnt", "Contabilidade"),
+        ("est", "Estoque e WMS"),
+        ("fin", "Financeiro"),
+        ("fis", "Fiscal"),
+        ("jur", "Juridico"),
+        ("log", "Logistica"),
+        ("pcp", "Producao"),
+        ("rh", "Recursos humanos"),
+        ("vnd", "Vendas e CRM"),
+        ("vw", "Visoes integradas")
+    };
+
+    var status = new List<GenesisGestModuloStatusDto>();
+
+    foreach (var (prefix, name) in modules)
+    {
+        var count = await db.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS Value FROM information_schema.tables WHERE table_schema = DATABASE() AND LEFT(table_name, {0}) = {1}",
+                prefix.Length + 1,
+                $"{prefix}_")
+            .SingleAsync(ct);
+
+        status.Add(new GenesisGestModuloStatusDto(prefix, name, count, count > 0));
+    }
+
+    var total = status.Sum(module => module.EstruturasDisponiveis);
+    var bridges = await db.Database.SqlQueryRaw<int>(
+            "SELECT COUNT(*) AS Value FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name LIKE 'vw_nexum_genesis_%'")
+        .SingleAsync(ct);
+
+    return new GenesisGestSchemaStatusDto(
+        GenesisOriginalEstruturasEsperadas: 125,
+        EstruturasGenesisDisponiveis: total,
+        PontesNexumGenesisDisponiveis: bridges,
+        Sincronizado: total >= 125 && bridges >= 3,
+        Modulos: status);
 }
 
 static async Task EnsureUsuariosSchemaAsync(NexumDbContext db)
@@ -7888,3 +8112,16 @@ public sealed record DashboardCompletoDto(
     List<ClientesRecentesDto> ClientesRecentes,
     List<PedidosRecentesDto> PedidosRecentes,
     List<LeadsRecentesDto> LeadsRecentes);
+
+public sealed record GenesisGestSchemaStatusDto(
+    int GenesisOriginalEstruturasEsperadas,
+    int EstruturasGenesisDisponiveis,
+    int PontesNexumGenesisDisponiveis,
+    bool Sincronizado,
+    List<GenesisGestModuloStatusDto> Modulos);
+
+public sealed record GenesisGestModuloStatusDto(
+    string Prefixo,
+    string Nome,
+    int EstruturasDisponiveis,
+    bool Disponivel);
