@@ -2160,6 +2160,58 @@ app.MapGet("/api/pedidos", [Authorize(Policy = "Gerente")] async (NexumDbContext
 .WithName("Pedidos")
 ;
 
+app.MapGet("/api/financeiro/lancamentos", [Authorize(Policy = "Financeiro")] async (
+    int? pedidoId,
+    string? tipo,
+    string? status,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var query = db.Financeiros
+        .AsNoTracking()
+        .Include(item => item.Pedido)
+        .AsQueryable();
+
+    if (pedidoId is > 0)
+    {
+        query = query.Where(item => item.PedidoId == pedidoId.Value);
+    }
+
+    if (!string.IsNullOrWhiteSpace(tipo) && Enum.TryParse<TipoLancamento>(tipo, true, out var tipoLancamento))
+    {
+        query = query.Where(item => item.Tipo == tipoLancamento);
+    }
+
+    if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<StatusLancamento>(status, true, out var statusLancamento))
+    {
+        query = query.Where(item => item.Status == statusLancamento);
+    }
+
+    var lancamentos = await query
+        .OrderByDescending(item => item.CreatedAt)
+        .Take(500)
+        .Select(item => new FinanceiroLancamentoDto(
+            item.Id,
+            item.PedidoId,
+            item.Pedido != null ? item.Pedido.NumeroPedido : null,
+            item.Tipo.ToString(),
+            item.Status.ToString(),
+            item.Categoria,
+            item.Descricao,
+            item.Valor,
+            item.DataVencimento,
+            item.DataPagamento,
+            item.MeioPagamento,
+            item.ContaBancaria,
+            item.Observacoes,
+            item.CreatedAt))
+        .ToListAsync(ct);
+
+    return Results.Ok(ApiResponse<List<FinanceiroLancamentoDto>>.Ok(lancamentos));
+})
+.WithName("FinanceiroLancamentos")
+;
+
 app.MapGet("/api/pedidos/acompanhar", async (
     string numero,
     string? email,
@@ -2438,6 +2490,7 @@ app.MapPost("/api/pedidos", async (
     IFiscalRoutingEngine fiscalRoutingEngine,
     INotificacaoService notificacaoService,
     IHttpClientFactory httpClientFactory,
+    IServiceProvider services,
     HttpContext http,
     CancellationToken ct) =>
 {
@@ -2647,6 +2700,7 @@ app.MapPost("/api/pedidos", async (
     };
 
     db.Pedidos.Add(pedido);
+    db.Financeiros.Add(BuildFinanceiroReceitaPedido(pedido));
     await db.SaveChangesAsync(ct);
     await transaction.CommitAsync(ct);
 
@@ -2660,6 +2714,7 @@ app.MapPost("/api/pedidos", async (
         // A automacao fiscal nao pode derrubar a venda: o pedido ja foi gravado e commitado.
     }
 
+    await TryCreateGenesisContaReceberPedidoAsync(services, pedido, cliente, ct);
     await notificacaoService.EnviarConfirmacaoPedidoAsync(cliente, pedido);
     var metodoPagamento = (request.MetodoPagamento ?? string.Empty).Trim().ToLowerInvariant();
     var gatewayResult = metodoPagamento switch
@@ -4536,6 +4591,72 @@ static async Task TryCreateGenesisContaPagarCompraAsync(
     }
 }
 
+static Financeiro BuildFinanceiroReceitaPedido(Pedido pedido)
+{
+    var now = DateTime.UtcNow;
+    return new Financeiro
+    {
+        Pedido = pedido,
+        Tipo = TipoLancamento.Receita,
+        Categoria = "Vendas online",
+        Descricao = $"Conta a receber do pedido {pedido.NumeroPedido}",
+        Valor = pedido.Total,
+        DataVencimento = now.AddDays(1),
+        Status = StatusLancamento.Pendente,
+        MeioPagamento = TrimOrNull(pedido.MeioPagamento) ?? "A definir",
+        ContaBancaria = "A definir",
+        Observacoes = $"Gerado automaticamente no checkout; origem={pedido.Origem}; gateway={pedido.GatewayPagamento}",
+        CreatedAt = now,
+        UpdatedAt = now
+    };
+}
+
+static async Task TryCreateGenesisContaReceberPedidoAsync(
+    IServiceProvider services,
+    Pedido pedido,
+    Cliente cliente,
+    CancellationToken ct)
+{
+    try
+    {
+        var genesisDb = services.GetService<GenesisDbContext>();
+        if (genesisDb is null || !await genesisDb.Database.CanConnectAsync(ct))
+        {
+            return;
+        }
+
+        var existe = await genesisDb.ContasReceber
+            .AnyAsync(item => item.NumeroPedidoReferencia == pedido.NumeroPedido || item.NumeroDocumento == pedido.NumeroPedido, ct);
+        if (existe)
+        {
+            return;
+        }
+
+        genesisDb.ContasReceber.Add(new GenesisContaReceber
+        {
+            NumeroDocumento = pedido.NumeroPedido,
+            ClienteId = null,
+            Descricao = $"Venda online - {cliente.Nome}",
+            ValorOriginal = pedido.Total,
+            ValorRecebido = 0,
+            ValorMulta = 0,
+            ValorJuros = 0,
+            ValorDesconto = pedido.Desconto,
+            DataEmissao = pedido.CreatedAt,
+            DataVencimento = pedido.CreatedAt.AddDays(1),
+            Status = "PENDENTE",
+            FormaRecebimento = TrimOrNull(pedido.MeioPagamento) ?? "A DEFINIR",
+            NumeroPedidoReferencia = pedido.NumeroPedido
+        });
+
+        await genesisDb.SaveChangesAsync(ct);
+    }
+    catch
+    {
+        // O pedido e o financeiro local permanecem como fonte oficial caso o banco Genesis esteja indisponivel.
+    }
+}
+
 static async Task<Cliente?> GetClientePortalAsync(ClaimsPrincipal principal, NexumDbContext db, CancellationToken ct)
 {
     var email = principal.FindFirstValue(ClaimTypes.Email) ?? principal.FindFirstValue(JwtRegisteredClaimNames.Email);
@@ -6263,6 +6384,235 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
 
     await EnsureComprasSchemaAsync(db);
     await EnsureValidationTokensAsync(db);
+    await EnsurePedidosReceberAsync(db);
+    await EnsureGenesisSharedSchemaAsync(scope.ServiceProvider, logger);
+}
+
+static async Task EnsureGenesisSharedSchemaAsync(IServiceProvider services, ILogger logger)
+{
+    var genesisDb = services.GetService<GenesisDbContext>();
+    if (genesisDb is null)
+    {
+        return;
+    }
+
+    try
+    {
+        if (!await genesisDb.Database.CanConnectAsync())
+        {
+            logger.LogWarning("Banco GenesisGest.Net indisponivel durante a verificacao de schema compartilhado.");
+            return;
+        }
+
+        await genesisDb.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS erp_contas_receber (
+                id INT NOT NULL AUTO_INCREMENT,
+                numero_documento VARCHAR(40) NULL,
+                cliente_id INT NULL,
+                descricao VARCHAR(200) NULL,
+                valor_original DECIMAL(18,2) NOT NULL DEFAULT 0,
+                valor_recebido DECIMAL(18,2) NOT NULL DEFAULT 0,
+                valor_multa DECIMAL(18,2) NOT NULL DEFAULT 0,
+                valor_juros DECIMAL(18,2) NOT NULL DEFAULT 0,
+                valor_desconto DECIMAL(18,2) NOT NULL DEFAULT 0,
+                data_emissao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                status VARCHAR(50) NULL,
+                data_vencimento DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                data_recebimento DATETIME NULL,
+                forma_recebimento VARCHAR(50) NULL,
+                numero_pedido_referencia VARCHAR(100) NULL,
+                PRIMARY KEY (id)
+            );
+            """);
+
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_receber ADD COLUMN IF NOT EXISTS numero_documento VARCHAR(40) NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_receber ADD COLUMN IF NOT EXISTS cliente_id INT NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_receber ADD COLUMN IF NOT EXISTS descricao VARCHAR(200) NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_receber ADD COLUMN IF NOT EXISTS valor_original DECIMAL(18,2) NOT NULL DEFAULT 0;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_receber ADD COLUMN IF NOT EXISTS valor_recebido DECIMAL(18,2) NOT NULL DEFAULT 0;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_receber ADD COLUMN IF NOT EXISTS valor_multa DECIMAL(18,2) NOT NULL DEFAULT 0;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_receber ADD COLUMN IF NOT EXISTS valor_juros DECIMAL(18,2) NOT NULL DEFAULT 0;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_receber ADD COLUMN IF NOT EXISTS valor_desconto DECIMAL(18,2) NOT NULL DEFAULT 0;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_receber ADD COLUMN IF NOT EXISTS data_emissao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_receber ADD COLUMN IF NOT EXISTS status VARCHAR(50) NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_receber ADD COLUMN IF NOT EXISTS data_vencimento DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_receber ADD COLUMN IF NOT EXISTS data_recebimento DATETIME NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_receber ADD COLUMN IF NOT EXISTS forma_recebimento VARCHAR(50) NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_receber ADD COLUMN IF NOT EXISTS numero_pedido_referencia VARCHAR(100) NULL;");
+        await DropForeignKeyIfExistsAsync(genesisDb, "erp_contas_receber", "FK_erp_contas_receber_Clientes_ClienteId");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_receber ADD COLUMN IF NOT EXISTS ClienteId INT NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("UPDATE erp_contas_receber SET ClienteId = NULL WHERE ClienteId IS NOT NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_receber MODIFY COLUMN ClienteId INT NULL;");
+
+        await genesisDb.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS erp_contas_pagar (
+                id INT NOT NULL AUTO_INCREMENT,
+                numero_documento VARCHAR(40) NULL,
+                fornecedor_id INT NULL,
+                descricao VARCHAR(200) NULL,
+                valor_original DECIMAL(18,2) NOT NULL DEFAULT 0,
+                valor_pago DECIMAL(18,2) NOT NULL DEFAULT 0,
+                valor_multa DECIMAL(18,2) NOT NULL DEFAULT 0,
+                valor_juros DECIMAL(18,2) NOT NULL DEFAULT 0,
+                valor_desconto DECIMAL(18,2) NOT NULL DEFAULT 0,
+                data_emissao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                status VARCHAR(50) NULL,
+                data_vencimento DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                data_pagamento DATETIME NULL,
+                forma_pagamento VARCHAR(50) NULL,
+                numero_boleto VARCHAR(100) NULL,
+                PRIMARY KEY (id)
+            );
+            """);
+
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar ADD COLUMN IF NOT EXISTS numero_documento VARCHAR(40) NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar ADD COLUMN IF NOT EXISTS fornecedor_id INT NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar ADD COLUMN IF NOT EXISTS descricao VARCHAR(200) NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar ADD COLUMN IF NOT EXISTS valor_original DECIMAL(18,2) NOT NULL DEFAULT 0;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar ADD COLUMN IF NOT EXISTS valor_pago DECIMAL(18,2) NOT NULL DEFAULT 0;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar ADD COLUMN IF NOT EXISTS valor_multa DECIMAL(18,2) NOT NULL DEFAULT 0;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar ADD COLUMN IF NOT EXISTS valor_juros DECIMAL(18,2) NOT NULL DEFAULT 0;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar ADD COLUMN IF NOT EXISTS valor_desconto DECIMAL(18,2) NOT NULL DEFAULT 0;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar ADD COLUMN IF NOT EXISTS data_emissao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar ADD COLUMN IF NOT EXISTS status VARCHAR(50) NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar ADD COLUMN IF NOT EXISTS data_vencimento DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar ADD COLUMN IF NOT EXISTS data_pagamento DATETIME NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar ADD COLUMN IF NOT EXISTS forma_pagamento VARCHAR(50) NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar ADD COLUMN IF NOT EXISTS numero_boleto VARCHAR(100) NULL;");
+
+        await SyncGenesisReceivablesFromNexumAsync(services, genesisDb);
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Falha ao ajustar schema financeiro compartilhado GenesisGest.Net.");
+    }
+}
+
+static async Task SyncGenesisReceivablesFromNexumAsync(IServiceProvider services, GenesisDbContext genesisDb)
+{
+    var nexumDb = services.GetService<NexumDbContext>();
+    if (nexumDb is null)
+    {
+        return;
+    }
+
+    var pedidos = await nexumDb.Pedidos
+        .AsNoTracking()
+        .Include(item => item.Cliente)
+        .Where(item => item.Total > 0)
+        .OrderByDescending(item => item.CreatedAt)
+        .Take(200)
+        .ToListAsync();
+
+    foreach (var pedido in pedidos)
+    {
+        var existe = await genesisDb.ContasReceber
+            .AnyAsync(item => item.NumeroPedidoReferencia == pedido.NumeroPedido || item.NumeroDocumento == pedido.NumeroPedido);
+        if (existe)
+        {
+            continue;
+        }
+
+        genesisDb.ContasReceber.Add(new GenesisContaReceber
+        {
+            NumeroDocumento = pedido.NumeroPedido,
+            ClienteId = null,
+            Descricao = $"Venda online - {pedido.Cliente?.Nome ?? "Cliente Nexum"}",
+            ValorOriginal = pedido.Total,
+            ValorRecebido = 0,
+            ValorMulta = 0,
+            ValorJuros = 0,
+            ValorDesconto = pedido.Desconto,
+            DataEmissao = pedido.CreatedAt,
+            DataVencimento = pedido.CreatedAt.AddDays(1),
+            Status = "PENDENTE",
+            FormaRecebimento = TrimOrNull(pedido.MeioPagamento) ?? "A DEFINIR",
+            NumeroPedidoReferencia = pedido.NumeroPedido
+        });
+    }
+
+    await genesisDb.SaveChangesAsync();
+}
+
+static async Task DropForeignKeyIfExistsAsync(DbContext db, string tableName, string foreignKeyName)
+{
+    var connection = db.Database.GetDbConnection();
+    var shouldClose = connection.State != ConnectionState.Open;
+    if (shouldClose)
+    {
+        await connection.OpenAsync();
+    }
+
+    try
+    {
+        await using var checkCommand = connection.CreateCommand();
+        checkCommand.CommandText = """
+            SELECT COUNT(*)
+            FROM information_schema.TABLE_CONSTRAINTS
+            WHERE CONSTRAINT_SCHEMA = DATABASE()
+              AND TABLE_NAME = @tableName
+              AND CONSTRAINT_NAME = @foreignKeyName
+              AND CONSTRAINT_TYPE = 'FOREIGN KEY';
+            """;
+
+        var tableParam = checkCommand.CreateParameter();
+        tableParam.ParameterName = "@tableName";
+        tableParam.Value = tableName;
+        checkCommand.Parameters.Add(tableParam);
+
+        var keyParam = checkCommand.CreateParameter();
+        keyParam.ParameterName = "@foreignKeyName";
+        keyParam.Value = foreignKeyName;
+        checkCommand.Parameters.Add(keyParam);
+
+        var count = Convert.ToInt32(await checkCommand.ExecuteScalarAsync());
+        if (count == 0)
+        {
+            return;
+        }
+
+        await using var dropCommand = connection.CreateCommand();
+        dropCommand.CommandText = $"ALTER TABLE `{tableName}` DROP FOREIGN KEY `{foreignKeyName}`;";
+        await dropCommand.ExecuteNonQueryAsync();
+    }
+    finally
+    {
+        if (shouldClose)
+        {
+            await connection.CloseAsync();
+        }
+    }
+}
+
+static async Task EnsurePedidosReceberAsync(NexumDbContext db)
+{
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        INSERT INTO financeiro
+            (pedido_id, tipo, categoria, descricao, valor, data_vencimento, status, meio_pagamento, observacoes, created_at, updated_at)
+        SELECT
+            p.id,
+            'Receita',
+            'Vendas online',
+            CONCAT('Conta a receber do pedido ', p.numero_pedido),
+            p.total,
+            DATE_ADD(COALESCE(p.created_at, UTC_TIMESTAMP()), INTERVAL 1 DAY),
+            'Pendente',
+            COALESCE(p.meio_pagamento, 'A definir'),
+            CONCAT('Gerado automaticamente por reconciliação operacional; pedido=', p.numero_pedido),
+            UTC_TIMESTAMP(),
+            UTC_TIMESTAMP()
+        FROM pedidos p
+        WHERE p.total > 0
+          AND NOT EXISTS (
+              SELECT 1
+              FROM financeiro f
+              WHERE f.pedido_id = p.id
+                AND f.tipo = 'Receita'
+          );
+        """);
 }
 
 static async Task EnsureComprasSchemaAsync(NexumDbContext db)
@@ -7220,6 +7570,22 @@ public sealed record ProdutosMaisVendidosDto(int ProdutoId, string Nome, string?
 public sealed record ClientesRecentesDto(int Id, string Nome, string Email, string? Whatsapp, DateTime DataCadastro, int TotalPedidos, decimal TotalGasto);
 
 public sealed record PedidosRecentesDto(int Id, string NumeroPedido, string ClienteNome, decimal Total, string Status, string StatusPagamento, string? LojaNome, DateTime DataPedido);
+
+public sealed record FinanceiroLancamentoDto(
+    int Id,
+    int? PedidoId,
+    string? NumeroPedido,
+    string Tipo,
+    string Status,
+    string? Categoria,
+    string? Descricao,
+    decimal Valor,
+    DateTime? DataVencimento,
+    DateTime? DataPagamento,
+    string? MeioPagamento,
+    string? ContaBancaria,
+    string? Observacoes,
+    DateTime CreatedAt);
 
 public sealed record LeadsRecentesDto(int Id, string Nome, string Tipo, string Status, string Prioridade, string? Email, string? Whatsapp, DateTime DataCriacao);
 
