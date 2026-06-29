@@ -125,6 +125,7 @@ Operacao interna:
 
 - [x] Finalizar backend operacional de compras, cotacoes, pedidos de compra e entrada fiscal/fisica.
 - [x] Finalizar validacao visual dos formularios administrativos de compras no navegador.
+- [x] Aplicar no painel de compras a regra de campos operacionais: solicitacao vinculada no pedido e listagens completas de solicitacoes, pedidos, produtos e entradas.
 - [ ] Mapear todos os campos operacionais das tabelas atuais para formularios, detalhes, listagens, auditoria, relatorios ou integracoes.
 - [ ] Incluir nos formularios existentes os novos campos criados nas tabelas, mantendo campos internos apenas em auditoria ou leitura tecnica.
 - [ ] Expandir auditoria corporativa `sys_*`.

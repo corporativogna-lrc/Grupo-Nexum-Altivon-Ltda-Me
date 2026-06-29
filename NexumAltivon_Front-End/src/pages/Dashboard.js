@@ -1,3 +1,11 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
+
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -348,6 +356,7 @@ const emptyCompraCotacao = {
 };
 const emptyCompraPedido = {
   fornecedorId: '',
+  solicitacaoId: '',
   produtoId: '',
   produtoNome: '',
   sku: '',
@@ -1192,7 +1201,7 @@ export default function Dashboard() {
 
     const response = await comprasAPI.criarPedido({
       fornecedorId: Number(compraPedidoForm.fornecedorId),
-      solicitacaoId: null,
+      solicitacaoId: compraPedidoForm.solicitacaoId ? Number(compraPedidoForm.solicitacaoId) : null,
       origem: compraPedidoForm.origem,
       finalidade: compraPedidoForm.finalidade,
       dataPrevistaEntrega: compraPedidoForm.dataPrevistaEntrega || null,
@@ -1404,6 +1413,13 @@ export default function Dashboard() {
     .map((pedido) => ({
       value: String(pedido.id),
       label: `${pedido.numero || `Pedido ${pedido.id}`} · ${pedido.fornecedorNome || 'Fornecedor'} · ${formatPrice(pedido.valorTotal || 0)}`,
+    })), [comprasPainel]);
+  const compraSolicitacaoOptions = useMemo(() => (comprasPainel?.solicitacoes || [])
+    .filter((solicitacao) => !['cancelada', 'atendida', 'fechada'].includes(String(solicitacao.status || '').toLowerCase()))
+    .map((solicitacao) => ({
+      value: String(solicitacao.id),
+      label: `${solicitacao.produtoNome || `Solicitação ${solicitacao.id}`} · ${solicitacao.quantidade || 0} un · ${solicitacao.origem || 'Origem'}`,
+      solicitacao,
     })), [comprasPainel]);
   const selectedCadastro = cadastroTabs.find((item) => item.id === activeCadastroTab) || cadastroTabs[0];
   const cadastroCounts = {
@@ -2630,6 +2646,25 @@ export default function Dashboard() {
                         options={compraFornecedorOptions}
                       />
                       <OptionSelectField
+                        label="Solicitação vinculada"
+                        value={compraPedidoForm.solicitacaoId}
+                        onChange={(value) => {
+                          const option = compraSolicitacaoOptions.find((item) => item.value === value);
+                          const solicitacao = option?.solicitacao;
+                          setCompraPedidoForm((current) => ({
+                            ...current,
+                            solicitacaoId: value,
+                            produtoId: solicitacao?.produtoId ? String(solicitacao.produtoId) : current.produtoId,
+                            produtoNome: solicitacao?.produtoNome || current.produtoNome,
+                            quantidade: solicitacao?.quantidade ? String(solicitacao.quantidade) : current.quantidade,
+                            origem: solicitacao?.origem || current.origem,
+                            finalidade: solicitacao?.finalidade || current.finalidade,
+                          }));
+                        }}
+                        options={compraSolicitacaoOptions}
+                        placeholder="Opcional: vincular cotação/solicitação"
+                      />
+                      <OptionSelectField
                         label="Produto do estoque"
                         value={compraPedidoForm.produtoId}
                         onChange={(value) => {
@@ -2687,21 +2722,61 @@ export default function Dashboard() {
                   </div>
                   <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
                     <CompactList
-                      title="Pedidos de compra em acompanhamento"
-                      items={comprasPainel?.pedidos || []}
-                      fields={['numero', 'fornecedorNome', 'status', 'statusFiscal']}
+                      title="Solicitações e cotações"
+                      items={comprasPainel?.solicitacoes || []}
+                      fields={[
+                        { key: 'produtoNome', label: 'Item' },
+                        { key: 'quantidade', label: 'Qtd.' },
+                        { key: 'finalidade', label: 'Finalidade' },
+                        { key: 'origem', label: 'Origem' },
+                        { key: 'status', label: 'Status' },
+                        { key: 'prioridade', label: 'Prioridade' },
+                        { key: 'createdAt', label: 'Criado em', type: 'date' },
+                      ]}
                     />
                     <CompactList
-                      title="Produtos para reposição ou dropshipping"
-                      items={comprasPainel?.produtosReposicao || []}
-                      fields={['produtoNome', 'sku', 'tipoProduto', 'estoqueAtual']}
+                      title="Pedidos de compra em acompanhamento"
+                      items={comprasPainel?.pedidos || []}
+                      fields={[
+                        { key: 'numero', label: 'Pedido' },
+                        { key: 'fornecedorNome', label: 'Fornecedor' },
+                        { key: 'origem', label: 'Origem' },
+                        { key: 'finalidade', label: 'Finalidade' },
+                        { key: 'status', label: 'Status' },
+                        { key: 'statusFiscal', label: 'Fiscal' },
+                        { key: 'valorTotal', label: 'Valor', type: 'money' },
+                        { key: 'dataPrevistaEntrega', label: 'Entrega', type: 'date' },
+                        { key: 'createdAt', label: 'Criado em', type: 'date' },
+                      ]}
                     />
                   </div>
                   <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
                     <CompactList
+                      title="Produtos para reposição ou dropshipping"
+                      items={comprasPainel?.produtosReposicao || []}
+                      fields={[
+                        { key: 'produtoNome', label: 'Produto' },
+                        { key: 'sku', label: 'SKU' },
+                        { key: 'tipoProduto', label: 'Tipo' },
+                        { key: 'estoqueAtual', label: 'Estoque' },
+                        { key: 'estoqueMinimo', label: 'Mínimo' },
+                        { key: 'fornecedorId', label: 'Fornecedor' },
+                        { key: 'custoAtual', label: 'Custo', type: 'money' },
+                      ]}
+                    />
+                    <CompactList
                       title="Entradas de mercadoria"
                       items={comprasPainel?.entradas || []}
-                      fields={['pedidoNumero', 'fornecedorNome', 'tipoEntrada', 'statusFiscal']}
+                      fields={[
+                        { key: 'pedidoNumero', label: 'Pedido' },
+                        { key: 'fornecedorNome', label: 'Fornecedor' },
+                        { key: 'numeroDocumento', label: 'Documento' },
+                        { key: 'chaveNfeEntrada', label: 'NF-e' },
+                        { key: 'tipoEntrada', label: 'Tipo' },
+                        { key: 'statusFiscal', label: 'Fiscal' },
+                        { key: 'valorTotal', label: 'Valor', type: 'money' },
+                        { key: 'createdAt', label: 'Criado em', type: 'date' },
+                      ]}
                     />
                     <ErpChecklistCard
                       title="Fluxo operacional aplicado"
@@ -3472,7 +3547,21 @@ function SimpleForm({ title, subtitle, onSubmit, buttonLabel, children, alertMes
   );
 }
 
+function getCompactFieldConfig(field) {
+  return typeof field === 'string' ? { key: field, label: field, type: 'text' } : field;
+}
+
+function formatCompactValue(value, type) {
+  if (value === null || value === undefined || value === '') return '-';
+  if (type === 'money') return formatPrice(Number(value) || 0);
+  if (type === 'date') return formatDate(value);
+  return String(value);
+}
+
 function CompactList({ title, items, fields, onEdit }) {
+  const primaryField = getCompactFieldConfig(fields[0]);
+  const detailFields = fields.slice(1).map(getCompactFieldConfig);
+
   return (
     <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-200 px-4 py-4 sm:px-5">
@@ -3484,8 +3573,10 @@ function CompactList({ title, items, fields, onEdit }) {
           <div key={item.id || item.produtoId || item.numero || item.sku || item.email || index} className="px-3 py-2 sm:px-5 sm:py-4">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-black text-slate-950 sm:text-base">{item[fields[0]] ?? '-'}</p>
-                <p className="mt-1 text-[11px] font-semibold leading-4 text-slate-500 sm:text-sm">{fields.slice(1).map((field) => item[field] ?? '-').join(' · ')}</p>
+                <p className="text-xs font-black text-slate-950 sm:text-base">{formatCompactValue(item[primaryField.key], primaryField.type)}</p>
+                <p className="mt-1 text-[11px] font-semibold leading-4 text-slate-500 sm:text-sm">
+                  {detailFields.map((field) => `${field.label}: ${formatCompactValue(item[field.key], field.type)}`).join(' · ')}
+                </p>
               </div>
               {onEdit && (
                 <button
