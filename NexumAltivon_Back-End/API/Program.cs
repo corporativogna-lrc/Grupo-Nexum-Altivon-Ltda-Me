@@ -2681,6 +2681,91 @@ app.MapPut("/api/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
 .WithName("AtualizarStatusPedido")
 ;
 
+app.MapPost("/api/pedidos/{id}/fluxo-operacional", [Authorize(Policy = "Gerente")] async (
+    int id,
+    NexumDbContext db,
+    IFiscalRoutingEngine fiscalRoutingEngine,
+    INotificacaoService notificacaoService,
+    CancellationToken ct) =>
+{
+    await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+    var pedido = await db.Pedidos
+        .Include(item => item.Itens)
+        .Include(item => item.Pagamentos)
+        .Include(item => item.Cliente)
+        .Include(item => item.EnderecoEntrega)
+        .FirstOrDefaultAsync(item => item.Id == id, ct);
+
+    if (pedido is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Pedido nao encontrado."));
+    }
+
+    if (!TryGetNextOperationalStatus(pedido.Status, out var proximoStatus))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Pedido ja esta em etapa final ou nao permite avanco automatico."));
+    }
+
+    var statusAnterior = pedido.Status;
+    var statusPagamentoAnterior = pedido.StatusPagamento;
+    var erroEstoque = await ApplyPedidoStatusTransitionAsync(pedido, proximoStatus, db, ct);
+    if (!string.IsNullOrWhiteSpace(erroEstoque))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro(erroEstoque));
+    }
+
+    await SyncFinanceiroPedidoOperacionalAsync(pedido, db, ct);
+
+    if (pedido.Cliente is not null)
+    {
+        await EnsurePedidoFiscalAutomationAsync(
+            pedido,
+            pedido.Cliente,
+            BuildPedidoRequestFromPedido(pedido),
+            db,
+            fiscalRoutingEngine,
+            ct);
+    }
+
+    var fiscal = await db.Fiscais.FirstOrDefaultAsync(item => item.PedidoId == pedido.Id, ct);
+    if (fiscal is not null)
+    {
+        fiscal.StatusAutomacao = proximoStatus switch
+        {
+            StatusPedido.Pago => "Pagamento confirmado; pré-emissão fiscal pronta para conferência.",
+            StatusPedido.EmSeparacao => "Pedido em separação; NF-e pendente de emissão/autorização.",
+            StatusPedido.Enviado => "Pedido enviado; conferir emissão/autorização fiscal antes da baixa final.",
+            StatusPedido.Entregue => "Entrega concluída; fiscal permanece disponível para auditoria.",
+            _ => fiscal.StatusAutomacao
+        };
+        fiscal.UpdatedAt = DateTime.UtcNow;
+    }
+
+    pedido.ObservacoesInternas = AppendOperationalObservation(
+        pedido.ObservacoesInternas,
+        $"Fluxo operacional avançou de {statusAnterior} para {proximoStatus} em {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC.");
+
+    await db.SaveChangesAsync(ct);
+    await transaction.CommitAsync(ct);
+
+    if (pedido.Cliente is not null)
+    {
+        if (statusPagamentoAnterior != pedido.StatusPagamento && pedido.StatusPagamento == StatusPagamento.Aprovado)
+        {
+            await notificacaoService.EnviarConfirmacaoPagamentoAsync(pedido.Cliente, pedido);
+        }
+
+        if (proximoStatus is StatusPedido.EmSeparacao or StatusPedido.Enviado or StatusPedido.Entregue)
+        {
+            await notificacaoService.EnviarStatusPedidoAsync(pedido.Cliente, pedido, BuildMensagemAtualizacaoPedido(pedido));
+        }
+    }
+
+    return Results.Ok(ApiResponse<PedidoLojaDto>.Ok(BuildPedidoLojaDto(pedido), $"Fluxo operacional avançado para {FormatStatusPedido(pedido.Status)}."));
+})
+.WithName("AvancarFluxoOperacionalPedido")
+;
+
 app.MapPut("/api/pedidos/{id}/logistica", [Authorize(Policy = "Gerente")] async (
     int id,
     PedidoLogisticaRequest request,
@@ -5003,6 +5088,220 @@ static Financeiro BuildFinanceiroReceitaPedido(Pedido pedido)
         CreatedAt = now,
         UpdatedAt = now
     };
+}
+
+static bool TryGetNextOperationalStatus(StatusPedido statusAtual, out StatusPedido proximoStatus)
+{
+    proximoStatus = statusAtual switch
+    {
+        StatusPedido.Pendente => StatusPedido.Pago,
+        StatusPedido.Pago => StatusPedido.EmSeparacao,
+        StatusPedido.EmSeparacao => StatusPedido.Enviado,
+        StatusPedido.Enviado => StatusPedido.Entregue,
+        _ => statusAtual
+    };
+
+    return proximoStatus != statusAtual;
+}
+
+static async Task<string?> ApplyPedidoStatusTransitionAsync(Pedido pedido, StatusPedido novoStatus, NexumDbContext db, CancellationToken ct)
+{
+    var statusAnterior = pedido.Status;
+    var statusAnteriorConfirmaEstoque = statusAnterior is StatusPedido.Pago or StatusPedido.EmSeparacao or StatusPedido.Enviado or StatusPedido.Entregue;
+    var novoStatusConfirmaEstoque = novoStatus is StatusPedido.Pago or StatusPedido.EmSeparacao or StatusPedido.Enviado or StatusPedido.Entregue;
+    var novoStatusCancelaEstoque = novoStatus is StatusPedido.Cancelado or StatusPedido.Devolvido or StatusPedido.Reembolsado;
+
+    if (pedido.Itens is { Count: > 0 } && statusAnterior != novoStatus)
+    {
+        var produtoIds = pedido.Itens
+            .Where(item => item.ProdutoId.HasValue)
+            .Select(item => item.ProdutoId!.Value)
+            .Distinct()
+            .ToList();
+        var produtos = await db.Produtos
+            .Where(produto => produtoIds.Contains(produto.Id))
+            .ToDictionaryAsync(produto => produto.Id, ct);
+
+        foreach (var item in pedido.Itens)
+        {
+            if (!item.ProdutoId.HasValue || !produtos.TryGetValue(item.ProdutoId.Value, out var produto))
+            {
+                return $"Produto do pedido nao encontrado: {item.NomeProduto}.";
+            }
+
+            if (!statusAnteriorConfirmaEstoque && novoStatusConfirmaEstoque)
+            {
+                if (produto.EstoqueAtual < item.Quantidade)
+                {
+                    return $"Estoque insuficiente para confirmar {item.NomeProduto}.";
+                }
+
+                produto.EstoqueReservado = Math.Max(0, produto.EstoqueReservado - item.Quantidade);
+                produto.EstoqueAtual -= item.Quantidade;
+            }
+            else if (!statusAnteriorConfirmaEstoque && novoStatusCancelaEstoque)
+            {
+                produto.EstoqueReservado = Math.Max(0, produto.EstoqueReservado - item.Quantidade);
+            }
+            else if (statusAnteriorConfirmaEstoque && novoStatusCancelaEstoque)
+            {
+                produto.EstoqueAtual += item.Quantidade;
+            }
+
+            item.StatusItem = novoStatus switch
+            {
+                StatusPedido.EmSeparacao => StatusItemPedido.Separado,
+                StatusPedido.Enviado => StatusItemPedido.Enviado,
+                StatusPedido.Entregue => StatusItemPedido.Entregue,
+                StatusPedido.Cancelado or StatusPedido.Devolvido or StatusPedido.Reembolsado => StatusItemPedido.Cancelado,
+                _ => item.StatusItem
+            };
+            produto.UpdatedAt = DateTime.UtcNow;
+        }
+    }
+
+    pedido.Status = novoStatus;
+    pedido.UpdatedAt = DateTime.UtcNow;
+
+    if (novoStatusConfirmaEstoque && pedido.StatusPagamento == StatusPagamento.Aguardando)
+    {
+        pedido.StatusPagamento = StatusPagamento.Aprovado;
+        pedido.DataPagamento ??= DateTime.UtcNow;
+    }
+
+    if (novoStatus == StatusPedido.Enviado)
+    {
+        pedido.DataEnvio ??= DateTime.UtcNow;
+        pedido.FreteTransportadora = TrimOrNull(pedido.FreteTransportadora) ?? "Operação Nexum";
+        pedido.FreteMetodo = TrimOrNull(pedido.FreteMetodo) ?? "roteamento-interno";
+        pedido.FreteCodigoRastreio = TrimOrNull(pedido.FreteCodigoRastreio) ?? $"NX-{pedido.NumeroPedido}";
+        pedido.FretePrazoDias = pedido.FretePrazoDias <= 0 ? 3 : pedido.FretePrazoDias;
+    }
+
+    if (novoStatus == StatusPedido.Entregue)
+    {
+        pedido.DataEntrega ??= DateTime.UtcNow;
+    }
+
+    if (pedido.Pagamentos is { Count: > 0 })
+    {
+        foreach (var pagamento in pedido.Pagamentos)
+        {
+            pagamento.Status = pedido.StatusPagamento switch
+            {
+                StatusPagamento.Aprovado => StatusPagamentoDetalhado.Aprovado,
+                StatusPagamento.Recusado => StatusPagamentoDetalhado.Recusado,
+                StatusPagamento.Estornado => StatusPagamentoDetalhado.Estornado,
+                StatusPagamento.Cancelado => StatusPagamentoDetalhado.Cancelado,
+                _ => pagamento.Status
+            };
+            pagamento.DataProcessamento ??= pedido.DataPagamento;
+            pagamento.UpdatedAt = DateTime.UtcNow;
+        }
+    }
+
+    return null;
+}
+
+static async Task SyncFinanceiroPedidoOperacionalAsync(Pedido pedido, NexumDbContext db, CancellationToken ct)
+{
+    var financeiro = await db.Financeiros
+        .FirstOrDefaultAsync(item => item.PedidoId == pedido.Id && item.Tipo == TipoLancamento.Receita, ct);
+
+    if (financeiro is null)
+    {
+        financeiro = BuildFinanceiroReceitaPedido(pedido);
+        db.Financeiros.Add(financeiro);
+    }
+
+    if (pedido.StatusPagamento == StatusPagamento.Aprovado)
+    {
+        financeiro.Status = StatusLancamento.Pago;
+        financeiro.DataPagamento ??= pedido.DataPagamento ?? DateTime.UtcNow;
+        financeiro.ContaBancaria = string.IsNullOrWhiteSpace(financeiro.ContaBancaria) || financeiro.ContaBancaria == "A definir"
+            ? "Conta operacional a conciliar"
+            : financeiro.ContaBancaria;
+    }
+
+    if (pedido.Status is StatusPedido.Cancelado or StatusPedido.Reembolsado)
+    {
+        financeiro.Status = pedido.Status == StatusPedido.Reembolsado ? StatusLancamento.Estornado : StatusLancamento.Cancelado;
+    }
+
+    financeiro.Valor = pedido.Total;
+    financeiro.MeioPagamento = TrimOrNull(pedido.MeioPagamento) ?? financeiro.MeioPagamento ?? "A definir";
+    financeiro.Observacoes = AppendOperationalObservation(
+        financeiro.Observacoes,
+        $"Sincronizado pelo fluxo operacional do pedido {pedido.NumeroPedido} em {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC.");
+    financeiro.UpdatedAt = DateTime.UtcNow;
+}
+
+static PedidoRequest BuildPedidoRequestFromPedido(Pedido pedido)
+{
+    var endereco = pedido.EnderecoEntrega is null
+        ? null
+        : new EnderecoEntregaRequest(
+            pedido.EnderecoEntrega.Cep,
+            pedido.EnderecoEntrega.Logradouro,
+            pedido.EnderecoEntrega.Numero,
+            pedido.EnderecoEntrega.Complemento,
+            pedido.EnderecoEntrega.Bairro,
+            pedido.EnderecoEntrega.Cidade,
+            pedido.EnderecoEntrega.Estado);
+
+    var itens = pedido.Itens?
+        .Select(item => new PedidoItemRequest(item.ProdutoId?.ToString(CultureInfo.InvariantCulture) ?? item.SkuProduto ?? item.NomeProduto, item.Quantidade))
+        .ToList() ?? [];
+
+    return new PedidoRequest(
+        pedido.ClienteId,
+        pedido.LojaId?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+        itens,
+        pedido.CupomCodigo,
+        endereco,
+        pedido.MeioPagamento,
+        pedido.Parcelas,
+        pedido.GatewayPagamento,
+        null,
+        pedido.FreteValor,
+        pedido.FreteMetodo,
+        pedido.FreteTransportadora,
+        pedido.FretePrazoDias);
+}
+
+static PedidoLojaDto BuildPedidoLojaDto(Pedido pedido)
+{
+    var pagamentoAtual = pedido.Pagamentos?
+        .OrderByDescending(item => item.CreatedAt)
+        .FirstOrDefault();
+
+    return new PedidoLojaDto(
+        pedido.Id,
+        pedido.NumeroPedido,
+        pedido.Total,
+        FormatStatusPedido(pedido.Status),
+        pedido.CreatedAt,
+        FormatStatusPagamento(pedido.StatusPagamento),
+        pedido.MeioPagamento,
+        pedido.GatewayPagamento,
+        pedido.GatewayTransacaoId,
+        pedido.FreteValor,
+        pedido.FreteMetodo,
+        pedido.FreteTransportadora,
+        pedido.FretePrazoDias,
+        pedido.FreteCodigoRastreio,
+        BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId),
+        pagamentoAtual?.Parcelas ?? pedido.Parcelas,
+        pagamentoAtual?.PixQrcode,
+        pagamentoAtual?.BoletoUrl);
+}
+
+static string AppendOperationalObservation(string? current, string note)
+{
+    var normalized = TrimOrNull(current);
+    return string.IsNullOrWhiteSpace(normalized)
+        ? note
+        : $"{normalized}{Environment.NewLine}{note}";
 }
 
 static async Task TryCreateGenesisContaReceberPedidoAsync(

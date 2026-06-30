@@ -1680,6 +1680,12 @@ export default function Dashboard() {
     setPedidos((current) => current.map((pedido) => (pedido.id === id ? response.data : pedido)));
   };
 
+  const avancarPedidoFluxo = async (id) => {
+    const response = await pedidoAPI.avancarFluxo(id);
+    setPedidos((current) => current.map((pedido) => (pedido.id === id ? response.data : pedido)));
+    setFormStatus('Fluxo do pedido avançado com financeiro, fiscal e logística sincronizados.');
+  };
+
   const updatePedidoLogistica = async (pedido) => {
     const transportadora = window.prompt('Transportadora ou forma de entrega:', pedido.frete_transportadora || 'Nexum Altivon');
     if (transportadora === null) return;
@@ -2150,7 +2156,7 @@ export default function Dashboard() {
                         <ChevronRight size={16} />
                       </button>
                     </div>
-                    <OrdersTable pedidos={pedidos.slice(0, 5)} onStatusChange={updatePedidoStatus} onLogisticaChange={updatePedidoLogistica} />
+                    <OrdersTable pedidos={pedidos.slice(0, 5)} onStatusChange={updatePedidoStatus} onAdvanceFlow={avancarPedidoFluxo} onLogisticaChange={updatePedidoLogistica} />
                   </section>
                 </div>
               )}
@@ -2440,7 +2446,7 @@ export default function Dashboard() {
                       ))}
                     </div>
                   </div>
-                  <OrdersTable pedidos={filteredPedidos} onStatusChange={updatePedidoStatus} onLogisticaChange={updatePedidoLogistica} />
+                  <OrdersTable pedidos={filteredPedidos} onStatusChange={updatePedidoStatus} onAdvanceFlow={avancarPedidoFluxo} onLogisticaChange={updatePedidoLogistica} />
                 </section>
               )}
 
@@ -4429,7 +4435,7 @@ function getPedidoActionFlow(pedido) {
   return actions;
 }
 
-function OrdersTable({ pedidos, onStatusChange, onLogisticaChange }) {
+function OrdersTable({ pedidos, onStatusChange, onAdvanceFlow, onLogisticaChange }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[1040px]">
@@ -4498,6 +4504,13 @@ function OrdersTable({ pedidos, onStatusChange, onLogisticaChange }) {
                       ))}
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onAdvanceFlow?.(pedido.id)}
+                        className="h-9 rounded-lg bg-[#C9A227] px-3 text-xs font-black uppercase tracking-[0.12em] text-slate-950 transition hover:bg-[#b08d20]"
+                      >
+                        Avançar fluxo
+                      </button>
                       <select
                         value={pedido.status}
                         onChange={(event) => onStatusChange?.(pedido.id, event.target.value)}

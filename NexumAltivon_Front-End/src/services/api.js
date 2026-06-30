@@ -295,6 +295,7 @@ export const pedidoAPI = {
   create: (data) => api.post('/pedidos', data),
   acompanhar: (params) => api.get('/pedidos/acompanhar', { params }),
   updateStatus: (id, status) => api.put(`/pedidos/${id}/status`, { novo_status: status }),
+  avancarFluxo: (id) => api.post(`/pedidos/${id}/fluxo-operacional`),
   updateLogistica: (id, data) => api.put(`/pedidos/${id}/logistica`, data),
 };
 
