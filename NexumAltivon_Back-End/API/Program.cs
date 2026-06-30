@@ -1826,6 +1826,49 @@ app.MapGet("/api/compras/painel", [Authorize(Policy = "Gerente")] async (NexumDb
 .WithName("ComprasPainel")
 ;
 
+app.MapPost("/api/compras/solicitacoes", [Authorize(Policy = "Gerente")] async (CompraSolicitacaoRequest request, NexumDbContext db, CancellationToken ct) =>
+{
+    if (request.Quantidade <= 0)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Quantidade solicitada deve ser maior que zero."));
+    }
+
+    Produto? produto = null;
+    if (request.ProdutoId.HasValue)
+    {
+        produto = await db.Produtos.FirstOrDefaultAsync(item => item.Id == request.ProdutoId.Value, ct);
+        if (produto is null)
+        {
+            return Results.NotFound(ApiResponse<string>.Erro("Produto nao encontrado."));
+        }
+    }
+
+    var produtoNome = produto?.Nome ?? TrimOrNull(request.ProdutoNome);
+    if (string.IsNullOrWhiteSpace(produtoNome))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Informe o produto ou a descricao do item solicitado."));
+    }
+
+    var now = DateTime.UtcNow;
+    var origem = NormalizeCompraOrigem(request.Origem);
+    var finalidade = TrimOrNull(request.Finalidade) ?? "Reposicao/operacao";
+    var prioridade = TrimOrNull(request.Prioridade) ?? "Normal";
+    var observacoes = TrimOrNull(request.Observacoes);
+
+    await db.Database.ExecuteSqlInterpolatedAsync($"""
+        INSERT INTO compras_solicitacoes
+            (produto_id, produto_nome, quantidade_solicitada, finalidade, origem, status, prioridade, observacoes, created_at, updated_at)
+        VALUES
+            ({produto?.Id}, {produtoNome}, {request.Quantidade}, {finalidade}, {origem}, {"Aberta"}, {prioridade}, {observacoes}, {now}, {now});
+        """, ct);
+
+    var solicitacaoId = await ExecuteScalarAsync<int>(db, "SELECT LAST_INSERT_ID();", ct);
+    var painel = await BuildComprasPainelAsync(db, ct);
+    return Results.Created($"/api/compras/solicitacoes/{solicitacaoId}", ApiResponse<ComprasPainelDto>.Ok(painel, "Solicitacao de compra registrada para cotacao."));
+})
+.WithName("RegistrarCompraSolicitacao")
+;
+
 app.MapPost("/api/compras/cotacoes", [Authorize(Policy = "Gerente")] async (CompraCotacaoRequest request, NexumDbContext db, CancellationToken ct) =>
 {
     if (request.FornecedorId <= 0)
@@ -7908,6 +7951,15 @@ public sealed record ClientePortalEnderecoRequest(
 public sealed record FornecedorRequest(string Nome, string? Documento, string? Email, string? Telefone, string? Categoria);
 
 public sealed record FornecedorDto(int Id, string Nome, string Documento, string Email, string Telefone, string Categoria, DateTime CreatedAt);
+
+public sealed record CompraSolicitacaoRequest(
+    int? ProdutoId,
+    string? ProdutoNome,
+    int Quantidade,
+    string? Origem,
+    string? Finalidade,
+    string? Prioridade,
+    string? Observacoes);
 
 public sealed record CompraCotacaoRequest(
     int FornecedorId,

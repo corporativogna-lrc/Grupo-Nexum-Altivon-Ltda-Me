@@ -342,6 +342,15 @@ const emptyCategoria = {
 const emptyCliente = { nome: '', email: '', telefone: '', cpf: '' };
 const emptyFornecedor = { nome: '', documento: '', email: '', telefone: '', categoria: 'Geral' };
 const emptyLead = { nome: '', email: '', telefone: '', status: 'Novo', origem: 'Site', observacao: '' };
+const emptyCompraSolicitacao = {
+  produtoId: '',
+  produtoNome: '',
+  quantidade: '1',
+  origem: 'EstoqueFisico',
+  finalidade: 'Reposicao/operacao',
+  prioridade: 'Normal',
+  observacoes: '',
+};
 const emptyCompraCotacao = {
   fornecedorId: '',
   produtoId: '',
@@ -786,6 +795,7 @@ export default function Dashboard() {
   const [clienteForm, setClienteForm] = useState(emptyCliente);
   const [fornecedorForm, setFornecedorForm] = useState(emptyFornecedor);
   const [leadForm, setLeadForm] = useState(emptyLead);
+  const [compraSolicitacaoForm, setCompraSolicitacaoForm] = useState(emptyCompraSolicitacao);
   const [compraCotacaoForm, setCompraCotacaoForm] = useState(emptyCompraCotacao);
   const [compraPedidoForm, setCompraPedidoForm] = useState(emptyCompraPedido);
   const [compraEntradaForm, setCompraEntradaForm] = useState(emptyCompraEntrada);
@@ -1150,6 +1160,36 @@ export default function Dashboard() {
   const getCompraProdutoNome = (produto) => produto?.produtoNome || produto?.nome || produto?.Nome || '';
 
   const getCompraProdutoSku = (produto) => produto?.sku || produto?.Sku || '';
+
+  const submitCompraSolicitacao = async (event) => {
+    event.preventDefault();
+    setFormStatus('');
+
+    if (Number(compraSolicitacaoForm.quantidade) <= 0) {
+      setFormStatus('Informe uma quantidade válida para abrir a solicitação.');
+      return;
+    }
+
+    const produtoSelecionado = getCompraProdutoSelecionado(compraSolicitacaoForm.produtoId);
+    if (!produtoSelecionado && !String(compraSolicitacaoForm.produtoNome || '').trim()) {
+      setFormStatus('Selecione um produto ou informe a descrição do item solicitado.');
+      return;
+    }
+
+    const response = await comprasAPI.registrarSolicitacao({
+      produtoId: compraSolicitacaoForm.produtoId ? Number(compraSolicitacaoForm.produtoId) : null,
+      produtoNome: getCompraProdutoNome(produtoSelecionado) || compraSolicitacaoForm.produtoNome || null,
+      quantidade: Number(compraSolicitacaoForm.quantidade),
+      origem: compraSolicitacaoForm.origem,
+      finalidade: compraSolicitacaoForm.finalidade,
+      prioridade: compraSolicitacaoForm.prioridade,
+      observacoes: compraSolicitacaoForm.observacoes || null,
+    });
+
+    setComprasPainel(response.data);
+    setCompraSolicitacaoForm(emptyCompraSolicitacao);
+    setFormStatus('Solicitação de compra aberta e disponível para cotação.');
+  };
 
   const submitCompraCotacao = async (event) => {
     event.preventDefault();
@@ -2586,7 +2626,38 @@ export default function Dashboard() {
                       </div>
                     </section>
                   )}
-                  <div className="grid gap-6 xl:grid-cols-3">
+                  <div className="grid gap-6 xl:grid-cols-2 2xl:grid-cols-4">
+                    <SimpleForm
+                      title="Abrir solicitação"
+                      subtitle="Ponto inicial da aquisição: necessidade, origem, prioridade e finalidade."
+                      onSubmit={submitCompraSolicitacao}
+                      buttonLabel="Salvar solicitação"
+                    >
+                      <OptionSelectField
+                        label="Produto do estoque"
+                        value={compraSolicitacaoForm.produtoId}
+                        onChange={(value) => {
+                          const option = compraProdutoOptions.find((item) => item.value === value);
+                          const produto = option?.produto;
+                          setCompraSolicitacaoForm((current) => ({
+                            ...current,
+                            produtoId: value,
+                            produtoNome: getCompraProdutoNome(produto) || current.produtoNome,
+                          }));
+                        }}
+                        options={compraProdutoOptions}
+                        placeholder="Selecione ou descreva abaixo"
+                      />
+                      <Field label="Item livre, parceria ou encomenda" value={compraSolicitacaoForm.produtoNome} onChange={(value) => setCompraSolicitacaoForm((current) => ({ ...current, produtoNome: value }))} />
+                      <Field label="Quantidade solicitada" type="number" value={compraSolicitacaoForm.quantidade} onChange={(value) => setCompraSolicitacaoForm((current) => ({ ...current, quantidade: value }))} />
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <SelectField label="Origem" value={compraSolicitacaoForm.origem} onChange={(value) => setCompraSolicitacaoForm((current) => ({ ...current, origem: value }))} options={['EstoqueFisico', 'Dropshipping', 'FornecedorDireto', 'Parceria', 'Encomenda']} />
+                        <SelectField label="Prioridade" value={compraSolicitacaoForm.prioridade} onChange={(value) => setCompraSolicitacaoForm((current) => ({ ...current, prioridade: value }))} options={['Baixa', 'Normal', 'Alta', 'Urgente']} />
+                      </div>
+                      <Field label="Finalidade" value={compraSolicitacaoForm.finalidade} onChange={(value) => setCompraSolicitacaoForm((current) => ({ ...current, finalidade: value }))} />
+                      <TextAreaField label="Observações da necessidade" rows={3} value={compraSolicitacaoForm.observacoes} onChange={(value) => setCompraSolicitacaoForm((current) => ({ ...current, observacoes: value }))} />
+                    </SimpleForm>
+
                     <SimpleForm
                       title="Registrar cotação"
                       subtitle="Primeira etapa de compra: fornecedor, item, custo, origem e finalidade."

@@ -1,3 +1,10 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
 import axios from 'axios';
 import { HTTP_UNAUTHORIZED, STORAGE_KEYS } from '../constants';
 
@@ -312,6 +319,7 @@ export const fornecedorAPI = {
 
 export const comprasAPI = {
   getPainel: () => api.get('/compras/painel'),
+  registrarSolicitacao: (data) => api.post('/compras/solicitacoes', data),
   registrarCotacao: (data) => api.post('/compras/cotacoes', data),
   criarPedido: (data) => api.post('/compras/pedidos', data),
   registrarEntrada: (id, data) => api.post(`/compras/pedidos/${id}/entradas`, data),
