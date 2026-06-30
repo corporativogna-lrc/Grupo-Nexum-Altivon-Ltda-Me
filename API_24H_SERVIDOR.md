@@ -72,12 +72,12 @@ Use `scripts\server\api.env.example.ps1` apenas como modelo.
 
 Com a Wix ainda mantendo os nameservers, o DNS público deve continuar sendo ajustado na Wix até a transferência total do domínio.
 
-Para `api.nexumaltivon.com`, o caminho temporário mais seguro é:
+Para `api.nexumaltivon.com.br`, o caminho operacional oficial é:
 
-- API rodando em `http://127.0.0.1:5010` no servidor;
+- API rodando em `http://127.0.0.1:5012` no servidor;
 - Cloudflared rodando no mesmo servidor;
-- rota pública do túnel apontando `api.nexumaltivon.com` para `http://127.0.0.1:5010`;
-- CNAME da Wix para o destino `*.cfargotunnel.com` correto do túnel nomeado.
+- rota pública do túnel apontando `api.nexumaltivon.com.br` para `http://127.0.0.1:5012`;
+- CNAME/DNS do Cloudflare para o destino `*.cfargotunnel.com` correto do túnel nomeado.
 
 ## Verificação
 
@@ -90,10 +90,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\server\verificar
 Critérios mínimos de aceite:
 
 - tarefa `NexumAltivonApi24h` existe;
-- porta local `5010` responde;
-- `http://127.0.0.1:5010/health` retorna saudável;
-- `https://api.nexumaltivon.com/health` responde publicamente;
-- login do painel funciona em `https://www.nexumaltivon.com/login`.
+- porta local `5012` responde;
+- `http://127.0.0.1:5012/health` retorna saudável;
+- `https://api.nexumaltivon.com.br/health` responde publicamente;
+- login do painel funciona em `https://nexumaltivon.com.br/login`.
 
 ## Plano definitivo
 

@@ -13,7 +13,7 @@ namespace NexumAltivon.Desktop;
 public partial class MainWindow : Window, INotifyPropertyChanged
 {
     private const string PortalUrl = "http://127.0.0.1:3000/dashboard";
-    private const string ApiBaseUrl = "http://127.0.0.1:5011";
+    private const string ApiBaseUrl = "http://192.168.1.72:5012";
 
     private string _environmentStatus = "Aguardando conexao";
     private string _environmentDetail = "Os blocos de gestao local e integrações estao preparados para receber as chaves.";
