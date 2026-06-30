@@ -1,18 +1,66 @@
-name: Desktop PDV - Manual
+# /*
+#  * Propriedade intelectual: Luís Rodrigo da Costa
+#  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+#  * Sistema de gestão: GenesisGest.Net
+#  * Ano Início: 04/2024 Publicado e operacional: 05/2026
+#  * Versão: 1.1.5
+#  */
+
+name: GenesisGest.Net Desktop WPF PDV
 
 on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'NexumAltivon.Desktop/**'
+      - 'NexumAltivon.ERP.csproj'
+      - '.github/workflows/dotnet-desktop.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'NexumAltivon.Desktop/**'
+      - 'NexumAltivon.ERP.csproj'
+      - '.github/workflows/dotnet-desktop.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+env:
+  DOTNET_VERSION: '8.0.x'
+  DESKTOP_PROJECT: 'NexumAltivon.Desktop/NexumAltivon.Desktop.csproj'
+
 jobs:
-  status:
+  desktop-wpf-build:
     runs-on: windows-latest
-    name: Desktop PDV ainda nao publicado
+    name: Compilar Desktop WPF PDV
+
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore Desktop dependencies
+        run: dotnet restore ${{ env.DESKTOP_PROJECT }}
+
+      - name: Build Desktop WPF PDV
+        run: dotnet build ${{ env.DESKTOP_PROJECT }} --configuration Release --no-restore
+
+      - name: Publish Desktop WPF PDV artifact
+        run: dotnet publish ${{ env.DESKTOP_PROJECT }} --configuration Release --output ./publish-desktop --no-build
+
+      - name: Upload Desktop artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: genesisgest-desktop-pdv
+          path: ./publish-desktop
+
       - name: Registrar status operacional
         shell: pwsh
         run: |
-          "O Desktop/PDV ainda nao possui projeto oficial publicado neste repositorio." >> $env:GITHUB_STEP_SUMMARY
-          "Este workflow permanece manual para nao gerar falhas falsas durante as publicacoes do site e da API." >> $env:GITHUB_STEP_SUMMARY
+          "Desktop WPF/PDV compilado com sucesso." >> $env:GITHUB_STEP_SUMMARY
+          "Artefato: genesisgest-desktop-pdv." >> $env:GITHUB_STEP_SUMMARY
