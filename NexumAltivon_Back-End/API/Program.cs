@@ -358,6 +358,31 @@ app.MapPost("/api/erp/genesis/financeiro/referencias", async (GenesisDbContext d
 })
 .RequireAuthorization("Financeiro");
 
+app.MapGet("/api/erp/genesis/pdv/vendas", async (GenesisDbContext genesisDb, int? limite, CancellationToken ct) =>
+{
+    var vendas = await GenesisPdvService.ListarVendasRecentesAsync(genesisDb, limite ?? 50, ct);
+    return Results.Ok(vendas);
+})
+.RequireAuthorization("Gerente");
+
+app.MapPost("/api/erp/genesis/pdv/vendas", async (
+    GenesisPdvVendaRequest request,
+    GenesisDbContext genesisDb,
+    NexumDbContext nexumDb,
+    CancellationToken ct) =>
+{
+    try
+    {
+        var venda = await GenesisPdvService.RegistrarVendaAsync(genesisDb, nexumDb, request, ct);
+        return Results.Created($"/api/erp/genesis/pdv/vendas/{venda.Id}", venda);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { erro = ex.Message });
+    }
+})
+.RequireAuthorization("Gerente");
+
 app.MapGet("/api/erp/genesis/rh/resumo", async (GenesisDbContext db, CancellationToken ct) =>
 {
     var resumo = await GenesisRhService.GetResumoAsync(db, ct);
