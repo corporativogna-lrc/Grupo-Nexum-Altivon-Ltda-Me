@@ -13,7 +13,9 @@
     <Compile Remove="bin\**\*.cs" />
     <Compile Remove="obj\**\*.cs" />
     <Compile Remove="NexumAltivon_Back-End\**\*.cs" />
+    <Compile Remove="NexumAltivon.Desktop\**\*.cs" />
     <Compile Remove="NexumAltivon_Front-End\**\*.cs" />
+    <Compile Remove="Arquivos_Mortos\**\*.cs" />
     <Compile Remove="Data\ErpDbContext.cs" />
     <Compile Remove="Data\NexumDbContext_ERP.cs" />
     <Compile Remove="DTOs\ErpDtos.cs" />

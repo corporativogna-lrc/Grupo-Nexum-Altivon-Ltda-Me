@@ -309,6 +309,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         SelectedModuleTitle = action.Title;
         SelectedModuleDetail = $"{action.Detail} Rota interna: {action.Route}.";
+
+        if (action.Route is "pdv-venda" or "pdv-pagamento" or "pdv-caixa-abertura" or "pdv-caixa-fechamento")
+        {
+            var window = new PdvSaleWindow(Terminal)
+            {
+                Owner = this
+            };
+
+            window.ShowDialog();
+            return;
+        }
+
+        if (action.Route is "pdv-fiscal")
+        {
+            OpenManualNfe_Click(sender, e);
+        }
     }
 
     private static OrganizationNode CreateFilial(string name, string domain, string role)

@@ -1,0 +1,240 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ -->
+<Window x:Class="NexumAltivon.Desktop.PdvSaleWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GenesisGest.Net - Venda PDV"
+        Width="1480"
+        Height="900"
+        MinWidth="1180"
+        MinHeight="760"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource ShellBackground}"
+        FontFamily="Segoe UI">
+    <Window.Resources>
+        <Style TargetType="TextBox">
+            <Setter Property="Padding" Value="11" />
+            <Setter Property="Background" Value="#0C1729" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Padding" Value="9" />
+            <Setter Property="Background" Value="#0C1729" />
+            <Setter Property="Foreground" Value="#0C1729" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+        </Style>
+        <Style x:Key="PanelCard" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackground}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="18" />
+            <Setter Property="Padding" Value="18" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="22">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="14" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="14" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Style="{StaticResource PanelCard}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="Venda balcão / PDV físico" Foreground="{StaticResource AccentBlue}" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding CodigoVenda}" Foreground="{StaticResource TextPrimary}" FontSize="28" FontWeight="Bold" Margin="0,4,0,0" />
+                    <TextBlock Text="{Binding ContextoOperacional}" Foreground="{StaticResource TextSecondary}" Margin="0,6,0,0" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="Nova venda" Padding="18,10" Margin="0,0,10,0" Click="NovaVenda_Click" />
+                    <Button Content="Salvar local" Padding="18,10" Margin="0,0,10,0" Click="SalvarLocal_Click" />
+                    <Button Content="Finalizar venda" Padding="18,10" Background="{StaticResource AccentGreen}" Foreground="#08111F" FontWeight="SemiBold" BorderThickness="0" Click="FinalizarVenda_Click" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.1*" />
+                <ColumnDefinition Width="14" />
+                <ColumnDefinition Width="0.9*" />
+            </Grid.ColumnDefinitions>
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="14" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Border Style="{StaticResource PanelCard}">
+                    <StackPanel>
+                        <TextBlock Text="Cliente e operação" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                        <UniformGrid Columns="3" Margin="0,14,0,0">
+                            <StackPanel Margin="0,0,12,0">
+                                <TextBlock Text="Cliente" Foreground="{StaticResource TextSecondary}" />
+                                <TextBox Text="{Binding ClienteNome, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Margin="0,0,12,0">
+                                <TextBlock Text="CPF/CNPJ" Foreground="{StaticResource TextSecondary}" />
+                                <TextBox Text="{Binding ClienteDocumento, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock Text="Empresa emissora" Foreground="{StaticResource TextSecondary}" />
+                                <ComboBox SelectedItem="{Binding EmpresaEmissora}">
+                                    <ComboBoxItem Content="Seleção automática - menor custo" />
+                                    <ComboBoxItem Content="Grupo Nexum Altivon" />
+                                    <ComboBoxItem Content="Geração Top Mais" />
+                                    <ComboBoxItem Content="Chronnus Relojoaria" />
+                                    <ComboBoxItem Content="Gran Festas" />
+                                </ComboBox>
+                            </StackPanel>
+                        </UniformGrid>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Row="2" Style="{StaticResource PanelCard}">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Top">
+                            <TextBlock Text="Itens da venda" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                            <UniformGrid Columns="6" Margin="0,14,0,14">
+                                <StackPanel Margin="0,0,8,0">
+                                    <TextBlock Text="Código/SKU" Foreground="{StaticResource TextSecondary}" />
+                                    <TextBox Text="{Binding NovoItemCodigo, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,8,0">
+                                    <TextBlock Text="Descrição" Foreground="{StaticResource TextSecondary}" />
+                                    <TextBox Text="{Binding NovoItemDescricao, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,8,0">
+                                    <TextBlock Text="Qtd." Foreground="{StaticResource TextSecondary}" />
+                                    <TextBox Text="{Binding NovoItemQuantidade, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,8,0">
+                                    <TextBlock Text="Unitário" Foreground="{StaticResource TextSecondary}" />
+                                    <TextBox Text="{Binding NovoItemValorUnitario, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,8,0">
+                                    <TextBlock Text="Custo" Foreground="{StaticResource TextSecondary}" />
+                                    <TextBox Text="{Binding NovoItemCustoEstimado, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Text="Origem" Foreground="{StaticResource TextSecondary}" />
+                                    <ComboBox SelectedItem="{Binding NovoItemOrigem}">
+                                        <ComboBoxItem Content="ECOM" />
+                                        <ComboBoxItem Content="DROP" />
+                                        <ComboBoxItem Content="DIST" />
+                                        <ComboBoxItem Content="LOJA" />
+                                    </ComboBox>
+                                </StackPanel>
+                            </UniformGrid>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                <Button Content="Adicionar item" Padding="16,9" Margin="0,0,10,0" Click="AdicionarItem_Click" />
+                                <Button Content="Remover selecionado" Padding="16,9" Click="RemoverItem_Click" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <DataGrid ItemsSource="{Binding Itens}" SelectedItem="{Binding ItemSelecionado}" AutoGenerateColumns="False" CanUserAddRows="False" Background="#0C1729" Foreground="{StaticResource TextPrimary}" RowBackground="#0C1729" AlternatingRowBackground="#101B30" GridLinesVisibility="Horizontal" BorderBrush="{StaticResource PanelBorder}">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Código" Binding="{Binding Codigo}" Width="120" />
+                                <DataGridTextColumn Header="Descrição" Binding="{Binding Descricao}" Width="*" />
+                                <DataGridTextColumn Header="Origem" Binding="{Binding OrigemAquisicao}" Width="90" />
+                                <DataGridTextColumn Header="Qtd." Binding="{Binding Quantidade}" Width="80" />
+                                <DataGridTextColumn Header="Unitário" Binding="{Binding ValorUnitario, StringFormat=N2}" Width="100" />
+                                <DataGridTextColumn Header="Desconto" Binding="{Binding Desconto, StringFormat=N2}" Width="100" />
+                                <DataGridTextColumn Header="Total" Binding="{Binding Total, StringFormat=N2}" Width="110" />
+                                <DataGridTextColumn Header="Margem" Binding="{Binding MargemEstimada, StringFormat=N2}" Width="110" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </Border>
+            </Grid>
+
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="14" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Border Style="{StaticResource PanelCard}">
+                    <StackPanel>
+                        <TextBlock Text="Pagamento" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                        <UniformGrid Columns="3" Margin="0,14,0,12">
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="Forma" Foreground="{StaticResource TextSecondary}" />
+                                <ComboBox SelectedItem="{Binding FormaPagamento}">
+                                    <ComboBoxItem Content="PIX" />
+                                    <ComboBoxItem Content="Dinheiro" />
+                                    <ComboBoxItem Content="Cartão crédito" />
+                                    <ComboBoxItem Content="Cartão débito" />
+                                    <ComboBoxItem Content="Voucher" />
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="Valor" Foreground="{StaticResource TextSecondary}" />
+                                <TextBox Text="{Binding ValorPagamento, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock Text="Autorização" Foreground="{StaticResource TextSecondary}" />
+                                <TextBox Text="{Binding AutorizacaoPagamento, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                        </UniformGrid>
+                        <Button Content="Registrar pagamento" Padding="16,9" Click="RegistrarPagamento_Click" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Row="2" Style="{StaticResource PanelCard}">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Top">
+                            <TextBlock Text="Resumo fiscal, financeiro e logístico" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                            <TextBlock Text="{Binding StatusOperacional}" Foreground="{StaticResource AccentAmber}" TextWrapping="Wrap" Margin="0,8,0,14" />
+                        </StackPanel>
+                        <StackPanel DockPanel.Dock="Bottom">
+                            <TextBlock Text="{Binding UltimoArquivoLocal}" Foreground="{StaticResource AccentBlue}" TextWrapping="Wrap" Margin="0,14,0,0" />
+                        </StackPanel>
+                        <StackPanel>
+                            <TextBlock Text="{Binding SubtotalLabel}" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,8" />
+                            <TextBlock Text="{Binding DescontoLabel}" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,8" />
+                            <TextBlock Text="{Binding TotalLabel}" Foreground="{StaticResource TextPrimary}" FontSize="30" FontWeight="Bold" Margin="0,0,0,8" />
+                            <TextBlock Text="{Binding PagoLabel}" Foreground="{StaticResource AccentGreen}" FontWeight="SemiBold" Margin="0,0,0,8" />
+                            <TextBlock Text="{Binding TrocoLabel}" Foreground="{StaticResource AccentBlue}" FontWeight="SemiBold" Margin="0,0,0,8" />
+                            <TextBlock Text="{Binding MargemLabel}" Foreground="{StaticResource AccentAmber}" FontWeight="SemiBold" Margin="0,0,0,16" />
+                            <ItemsControl ItemsSource="{Binding Pagamentos}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#0C1729" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12" Padding="10" Margin="0,0,0,8">
+                                            <TextBlock Foreground="{StaticResource TextPrimary}">
+                                                <Run Text="{Binding Forma}" />
+                                                <Run Text=" - R$ " />
+                                                <Run Text="{Binding Valor, StringFormat=N2}" />
+                                            </TextBlock>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <Border Grid.Row="4" Style="{StaticResource PanelCard}">
+            <TextBlock Text="Ao finalizar, a venda fica gravada localmente em fila real de sincronização. Quando os endpoints de venda/fiscal estiverem fechados, o mesmo registro será enviado ao servidor principal, abatendo estoque, gerando financeiro e acionando emissão fiscal." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" />
+        </Border>
+    </Grid>
+</Window>
