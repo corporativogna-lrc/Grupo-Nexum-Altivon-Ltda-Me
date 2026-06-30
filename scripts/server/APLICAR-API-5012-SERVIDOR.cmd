@@ -17,6 +17,14 @@ echo == Nexum Altivon - Aplicar API 5012 no Servidor ==
 echo Origem: %PUBLISH_SOURCE%
 echo Destino: %API_DIR%
 
+ipconfig | findstr /C:"192.168.1.72" >nul 2>&1
+if errorlevel 1 (
+  echo ERRO: este aplicador deve rodar no SERVIDOR PRINCIPAL 192.168.1.72.
+  echo Maquina atual: %COMPUTERNAME%
+  echo Nao apliquei nada para evitar atualizar o computador errado.
+  exit /b 1
+)
+
 if not exist "%PUBLISH_SOURCE%\NexumAltivon.API.dll" (
   echo ERRO: publicacao nova nao encontrada.
   exit /b 1
@@ -62,5 +70,13 @@ exit /b 1
 echo OK: API local ativa em 5012.
 curl.exe -i http://127.0.0.1:5012/health --max-time 15
 curl.exe -i http://127.0.0.1:5012/api/pdv/cockpit --max-time 15
+echo Validando rota corporativa nova...
+curl.exe -i http://127.0.0.1:5012/api/gestao-corporativa/dicionario-dados --max-time 15 | findstr /C:"401" /C:"200" >nul
+if errorlevel 1 (
+  echo ERRO: API subiu, mas a rota nova ainda nao entrou no runtime do servidor.
+  echo Verifique se o script foi executado como Administrador no servidor 192.168.1.72.
+  exit /b 1
+)
+echo OK: rota nova carregada no servidor.
 echo == CONCLUIDO ==
 exit /b 0
