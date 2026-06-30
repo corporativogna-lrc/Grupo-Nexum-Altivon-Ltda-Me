@@ -4096,10 +4096,37 @@ function CompactList({ title, items, fields, onEdit, renderActions }) {
   );
 }
 
+function getPedidoActionFlow(pedido) {
+  const status = String(pedido.status || '').toLowerCase();
+  const actions = [];
+
+  if (status.includes('pendente')) {
+    actions.push({ label: 'Aprovar', status: 'Pago', tone: 'emerald' });
+  }
+
+  if (status.includes('pago')) {
+    actions.push({ label: 'Separar', status: 'Em Separacao', tone: 'amber' });
+  }
+
+  if (status.includes('separ')) {
+    actions.push({ label: 'Enviar', status: 'Enviado', tone: 'indigo' });
+  }
+
+  if (status.includes('enviado')) {
+    actions.push({ label: 'Entregar', status: 'Entregue', tone: 'emerald' });
+  }
+
+  if (!['entregue', 'cancelado', 'devolvido', 'reembolsado'].some((finalStatus) => status.includes(finalStatus))) {
+    actions.push({ label: 'Cancelar', status: 'Cancelado', tone: 'danger' });
+  }
+
+  return actions;
+}
+
 function OrdersTable({ pedidos, onStatusChange, onLogisticaChange }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[920px]">
+      <table className="w-full min-w-[1040px]">
         <thead className="bg-slate-50">
           <tr>
             <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Pedido</th>
@@ -4114,46 +4141,76 @@ function OrdersTable({ pedidos, onStatusChange, onLogisticaChange }) {
           {pedidos.length === 0 ? (
             <tr><td colSpan="6" className="px-6 py-8 text-center text-slate-500">Nenhum pedido encontrado</td></tr>
           ) : (
-            pedidos.map((pedido) => (
-              <tr key={pedido.id} className="hover:bg-slate-50" data-testid={`pedido-${pedido.id}`}>
-                <td className="px-6 py-4 font-mono text-sm font-black text-slate-950">{pedido.numero_pedido}</td>
-                <td className="px-6 py-4 font-black text-slate-950">{formatPrice(pedido.total)}</td>
-                <td className="px-6 py-4">
-                  <span className={`rounded-full px-3 py-1 text-xs font-black ${getPedidoStatusClass(pedido.status)}`}>
-                    {pedido.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-sm">
-                  <p className="font-black text-slate-950">{pedido.status_pagamento || 'Aguardando pagamento'}</p>
-                  <p className="mt-1 font-semibold text-slate-500">
-                    {getPagamentoLabel(pedido.meio_pagamento || '')} · {pedido.gateway_pagamento || 'Gateway pendente'}
-                  </p>
-                  <p className="mt-1 text-xs font-semibold text-slate-400">
-                    {pedido.frete_metodo || 'Frete a combinar'} · {pedido.frete_transportadora || 'Nexum Altivon'}
-                  </p>
-                  <p className="mt-1 text-xs font-black text-slate-500">
-                    Rastreio: {pedido.frete_codigo_rastreio || 'pendente'}
-                  </p>
-                </td>
-                <td className="px-6 py-4 text-sm font-semibold text-slate-500">{formatDate(pedido.created_at)}</td>
-                <td className="px-6 py-4">
-                  <select
-                    value={pedido.status}
-                    onChange={(event) => onStatusChange?.(pedido.id, event.target.value)}
-                    className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 outline-none focus:border-slate-950"
-                  >
-                    {pedidoStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => onLogisticaChange?.(pedido)}
-                    className="mt-2 h-9 rounded-lg border border-slate-200 bg-slate-950 px-3 text-xs font-black text-white transition hover:bg-[#C9A227] hover:text-black"
-                  >
-                    Logistica
-                  </button>
-                </td>
-              </tr>
-            ))
+            pedidos.map((pedido) => {
+              const quickActions = getPedidoActionFlow(pedido);
+
+              return (
+                <tr key={pedido.id} className="hover:bg-slate-50" data-testid={`pedido-${pedido.id}`}>
+                  <td className="px-6 py-4">
+                    <p className="font-mono text-sm font-black text-slate-950">{pedido.numero_pedido}</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">Pedido #{pedido.id}</p>
+                  </td>
+                  <td className="px-6 py-4 font-black text-slate-950">{formatPrice(pedido.total)}</td>
+                  <td className="px-6 py-4">
+                    <span className={`rounded-full px-3 py-1 text-xs font-black ${getPedidoStatusClass(pedido.status)}`}>
+                      {pedido.status}
+                    </span>
+                    <p className="mt-2 text-xs font-black uppercase tracking-[0.12em] text-slate-400">
+                      {pedido.status_pagamento || 'Pagamento pendente'}
+                    </p>
+                  </td>
+                  <td className="px-6 py-4 text-sm">
+                    <p className="font-black text-slate-950">{getPagamentoLabel(pedido.meio_pagamento || '')}</p>
+                    <p className="mt-1 font-semibold text-slate-500">{pedido.gateway_pagamento || 'Gateway pendente'}</p>
+                    <p className="mt-2 text-xs font-semibold text-slate-400">
+                      {pedido.frete_metodo || 'Frete a combinar'} · {pedido.frete_transportadora || 'Nexum Altivon'}
+                    </p>
+                    <p className="mt-1 text-xs font-black text-slate-500">
+                      Rastreio: {pedido.frete_codigo_rastreio || 'pendente'} · Prazo: {pedido.frete_prazo_dias || '-'} dias
+                    </p>
+                  </td>
+                  <td className="px-6 py-4 text-sm font-semibold text-slate-500">{formatDate(pedido.created_at)}</td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-wrap gap-2">
+                      {quickActions.map((action) => (
+                        <button
+                          key={action.status}
+                          type="button"
+                          onClick={() => onStatusChange?.(pedido.id, action.status)}
+                          className={`h-9 rounded-lg px-3 text-xs font-black uppercase tracking-[0.12em] transition ${
+                            action.tone === 'emerald'
+                              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                              : action.tone === 'amber'
+                                ? 'bg-[#C9A227] text-slate-950 hover:bg-[#b08d20]'
+                                : action.tone === 'indigo'
+                                  ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                                  : 'border border-rose-200 bg-white text-rose-700 hover:bg-rose-50'
+                          }`}
+                        >
+                          {action.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <select
+                        value={pedido.status}
+                        onChange={(event) => onStatusChange?.(pedido.id, event.target.value)}
+                        className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 outline-none focus:border-slate-950"
+                      >
+                        {pedidoStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => onLogisticaChange?.(pedido)}
+                        className="h-9 rounded-lg border border-slate-200 bg-slate-950 px-3 text-xs font-black text-white transition hover:bg-[#C9A227] hover:text-black"
+                      >
+                        Logistica
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })
           )}
         </tbody>
       </table>
