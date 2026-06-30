@@ -2163,6 +2163,101 @@ app.MapPost("/api/compras/pedidos/{id:int}/entradas", [Authorize(Policy = "Geren
 .WithName("RegistrarCompraEntrada")
 ;
 
+app.MapPatch("/api/compras/solicitacoes/{id:int}/status", [Authorize(Policy = "Gerente")] async (int id, CompraStatusRequest request, NexumDbContext db, CancellationToken ct) =>
+{
+    var novoStatus = NormalizeCompraSolicitacaoStatus(request.Status ?? request.NovoStatus);
+    if (novoStatus is null)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Status de solicitacao invalido."));
+    }
+
+    var atual = await db.Database.SqlQueryRaw<string>(
+        "SELECT status AS Value FROM compras_solicitacoes WHERE id = {0} LIMIT 1",
+        id)
+        .FirstOrDefaultAsync(ct);
+
+    if (string.IsNullOrWhiteSpace(atual))
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Solicitacao de compra nao encontrada."));
+    }
+
+    var now = DateTime.UtcNow;
+    var observacao = TrimOrNull(request.Observacoes);
+    if (observacao is null)
+    {
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE compras_solicitacoes
+            SET status = {novoStatus}, updated_at = {now}
+            WHERE id = {id};
+            """, ct);
+    }
+    else
+    {
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE compras_solicitacoes
+            SET status = {novoStatus},
+                observacoes = CONCAT_WS('\n', NULLIF(observacoes, ''), {observacao}),
+                updated_at = {now}
+            WHERE id = {id};
+            """, ct);
+    }
+
+    var painel = await BuildComprasPainelAsync(db, ct);
+    return Results.Ok(ApiResponse<ComprasPainelDto>.Ok(painel, "Status da solicitacao atualizado."));
+})
+.WithName("AtualizarCompraSolicitacaoStatus")
+;
+
+app.MapPatch("/api/compras/pedidos/{id:int}/status", [Authorize(Policy = "Gerente")] async (int id, CompraStatusRequest request, NexumDbContext db, CancellationToken ct) =>
+{
+    var novoStatus = NormalizeCompraPedidoStatus(request.Status ?? request.NovoStatus);
+    if (novoStatus is null)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Status de pedido de compra invalido."));
+    }
+
+    var atual = await db.Database.SqlQueryRaw<string>(
+        "SELECT status AS Value FROM compras_pedidos WHERE id = {0} LIMIT 1",
+        id)
+        .FirstOrDefaultAsync(ct);
+
+    if (string.IsNullOrWhiteSpace(atual))
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Pedido de compra nao encontrado."));
+    }
+
+    if (atual.Equals("Recebido", StringComparison.OrdinalIgnoreCase) && novoStatus == "Cancelado")
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Pedido ja recebido nao pode ser cancelado."));
+    }
+
+    var now = DateTime.UtcNow;
+    var observacao = TrimOrNull(request.Observacoes);
+    if (observacao is null)
+    {
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE compras_pedidos
+            SET status = {novoStatus}, updated_at = {now}
+            WHERE id = {id};
+            """, ct);
+    }
+    else
+    {
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE compras_pedidos
+            SET status = {novoStatus},
+                observacoes = CONCAT_WS('\n', NULLIF(observacoes, ''), {observacao}),
+                updated_at = {now}
+            WHERE id = {id};
+            """, ct);
+    }
+
+    var painel = await BuildComprasPainelAsync(db, ct);
+    return Results.Ok(ApiResponse<ComprasPainelDto>.Ok(painel, "Status do pedido de compra atualizado."));
+})
+.WithName("AtualizarCompraPedidoStatus")
+;
+
 app.MapGet("/api/pedidos", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
 {
     var pedidos = await db.Pedidos
@@ -4582,6 +4677,36 @@ static string NormalizeCompraOrigem(string? value)
         "encomenda" or "pedido_cliente" or "cliente" => "Encomenda",
         "estoque" or "estoque_fisico" or "compra_direta" or "direta" => "EstoqueFisico",
         _ => "EstoqueFisico"
+    };
+}
+
+static string? NormalizeCompraSolicitacaoStatus(string? value)
+{
+    var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+    return normalized switch
+    {
+        "aberta" or "aberto" => "Aberta",
+        "cotado" or "cotada" or "cotacao" => "Cotado",
+        "aprovado" or "aprovada" => "Aprovada",
+        "atendido" or "atendida" => "Atendida",
+        "cancelado" or "cancelada" => "Cancelada",
+        "fechado" or "fechada" => "Fechada",
+        _ => null
+    };
+}
+
+static string? NormalizeCompraPedidoStatus(string? value)
+{
+    var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+    return normalized switch
+    {
+        "aberto" or "aberta" => "Aberto",
+        "aprovado" or "aprovada" => "Aprovado",
+        "recebidoparcial" or "recebido_parcial" or "recebido parcial" or "parcial" => "RecebidoParcial",
+        "recebido" or "recebida" => "Recebido",
+        "cancelado" or "cancelada" => "Cancelado",
+        "fechado" or "fechada" => "Fechado",
+        _ => null
     };
 }
 
@@ -7380,6 +7505,44 @@ static async Task<ComprasPainelDto> BuildComprasPainelAsync(NexumDbContext db, C
         """)
         .ToListAsync(ct);
 
+    var pedidoItens = await db.Database.SqlQueryRaw<CompraPedidoItemResumoRow>(
+        """
+        SELECT
+            i.compra_pedido_id AS CompraPedidoId,
+            i.id AS Id,
+            i.produto_id AS ProdutoId,
+            i.produto_nome AS ProdutoNome,
+            i.sku AS Sku,
+            i.quantidade AS Quantidade,
+            i.quantidade_recebida AS QuantidadeRecebida,
+            i.custo_unitario AS CustoUnitario,
+            i.valor_total AS ValorTotal,
+            i.origem AS Origem,
+            i.finalidade AS Finalidade
+        FROM compras_pedido_itens i
+        INNER JOIN compras_pedidos p ON p.id = i.compra_pedido_id
+        ORDER BY p.created_at DESC, i.id ASC
+        LIMIT 250
+        """)
+        .ToListAsync(ct);
+
+    var itensPorPedido = pedidoItens
+        .GroupBy(item => item.CompraPedidoId)
+        .ToDictionary(
+            grupo => grupo.Key,
+            grupo => grupo.Select(item => new CompraPedidoItemResumoDto(
+                item.Id,
+                item.ProdutoId,
+                item.ProdutoNome,
+                item.Sku,
+                item.Quantidade,
+                item.QuantidadeRecebida,
+                Math.Max(0, item.Quantidade - item.QuantidadeRecebida),
+                item.CustoUnitario,
+                item.ValorTotal,
+                item.Origem,
+                item.Finalidade)).ToList());
+
     var entradas = await db.Database.SqlQueryRaw<CompraEntradaResumoRow>(
         """
         SELECT
@@ -7446,7 +7609,8 @@ static async Task<ComprasPainelDto> BuildComprasPainelAsync(NexumDbContext db, C
             item.StatusFiscal,
             item.ValorTotal,
             item.DataPrevistaEntrega,
-            item.CreatedAt)).ToList(),
+            item.CreatedAt,
+            itensPorPedido.TryGetValue(item.Id, out var itens) ? itens : [])).ToList(),
         entradas.Select(item => new CompraEntradaResumoDto(
             item.Id,
             item.CompraPedidoId,
@@ -8001,6 +8165,16 @@ public sealed record CompraEntradaRequest(
 
 public sealed record CompraEntradaItemRequest(int ItemId, int QuantidadeRecebida);
 
+public sealed class CompraStatusRequest
+{
+    public string? Status { get; set; }
+
+    [JsonPropertyName("novo_status")]
+    public string? NovoStatus { get; set; }
+
+    public string? Observacoes { get; set; }
+}
+
 public sealed record ComprasPainelDto(
     ComprasKpiDto Kpis,
     List<string> Alertas,
@@ -8041,7 +8215,21 @@ public sealed record CompraPedidoResumoDto(
     string StatusFiscal,
     decimal ValorTotal,
     DateTime? DataPrevistaEntrega,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    List<CompraPedidoItemResumoDto> Itens);
+
+public sealed record CompraPedidoItemResumoDto(
+    int Id,
+    int? ProdutoId,
+    string ProdutoNome,
+    string? Sku,
+    int Quantidade,
+    int QuantidadeRecebida,
+    int QuantidadePendente,
+    decimal CustoUnitario,
+    decimal ValorTotal,
+    string Origem,
+    string Finalidade);
 
 public sealed record CompraEntradaResumoDto(
     int Id,
@@ -8099,6 +8287,21 @@ public sealed class CompraPedidoResumoRow
     public decimal ValorTotal { get; set; }
     public DateTime? DataPrevistaEntrega { get; set; }
     public DateTime CreatedAt { get; set; }
+}
+
+public sealed class CompraPedidoItemResumoRow
+{
+    public int CompraPedidoId { get; set; }
+    public int Id { get; set; }
+    public int? ProdutoId { get; set; }
+    public string ProdutoNome { get; set; } = string.Empty;
+    public string? Sku { get; set; }
+    public int Quantidade { get; set; }
+    public int QuantidadeRecebida { get; set; }
+    public decimal CustoUnitario { get; set; }
+    public decimal ValorTotal { get; set; }
+    public string Origem { get; set; } = string.Empty;
+    public string Finalidade { get; set; } = string.Empty;
 }
 
 public sealed class CompraEntradaResumoRow

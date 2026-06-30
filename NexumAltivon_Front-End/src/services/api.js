@@ -320,8 +320,10 @@ export const fornecedorAPI = {
 export const comprasAPI = {
   getPainel: () => api.get('/compras/painel'),
   registrarSolicitacao: (data) => api.post('/compras/solicitacoes', data),
+  atualizarSolicitacaoStatus: (id, data) => api.patch(`/compras/solicitacoes/${id}/status`, data),
   registrarCotacao: (data) => api.post('/compras/cotacoes', data),
   criarPedido: (data) => api.post('/compras/pedidos', data),
+  atualizarPedidoStatus: (id, data) => api.patch(`/compras/pedidos/${id}/status`, data),
   registrarEntrada: (id, data) => api.post(`/compras/pedidos/${id}/entradas`, data),
 };
 

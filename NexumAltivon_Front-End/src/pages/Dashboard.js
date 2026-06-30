@@ -385,7 +385,10 @@ const emptyCompraEntrada = {
   tipoEntrada: 'EstoqueFisico',
   recebidoPor: 'Operacao',
   observacoes: '',
+  itens: {},
 };
+const compraSolicitacaoStatusOptions = ['Aberta', 'Cotado', 'Aprovada', 'Atendida', 'Cancelada', 'Fechada'];
+const compraPedidoStatusOptions = ['Aberto', 'Aprovado', 'RecebidoParcial', 'Recebido', 'Cancelado', 'Fechado'];
 const emptyEmpresaGrupo = {
   tipoCadastro: 'GrupoSocietario',
   razaoSocial: '',
@@ -1271,19 +1274,54 @@ export default function Dashboard() {
       return;
     }
 
+    const itensEntrada = (selectedCompraEntradaPedido?.itens || [])
+      .map((item) => ({
+        itemId: Number(item.id),
+        quantidadeRecebida: Number(compraEntradaForm.itens?.[String(item.id)] ?? item.quantidadePendente ?? 0),
+      }))
+      .filter((item) => item.itemId > 0 && item.quantidadeRecebida > 0);
+
     const response = await comprasAPI.registrarEntrada(Number(compraEntradaForm.pedidoId), {
       numeroDocumento: compraEntradaForm.numeroDocumento || null,
       chaveNfeEntrada: compraEntradaForm.chaveNfeEntrada || null,
       tipoEntrada: compraEntradaForm.tipoEntrada,
       recebidoPor: compraEntradaForm.recebidoPor || 'Operacao',
       observacoes: compraEntradaForm.observacoes || null,
-      itens: null,
+      itens: itensEntrada.length > 0 ? itensEntrada : null,
     });
 
     setComprasPainel(response.data);
     setCompraEntradaForm(emptyCompraEntrada);
     await refreshComprasPainel();
     setFormStatus('Entrada registrada, estoque atualizado e fiscal sinalizado.');
+  };
+
+  const updateCompraSolicitacaoStatus = async (solicitacao, status) => {
+    try {
+      const observacoes = ['Cancelada', 'Fechada'].includes(status)
+        ? window.prompt('Observação para registrar no histórico da solicitação:', '') || ''
+        : '';
+      const response = await comprasAPI.atualizarSolicitacaoStatus(solicitacao.id, { status, observacoes });
+      setComprasPainel(response.data);
+      await refreshComprasPainel();
+      setFormStatus(`Solicitação ${solicitacao.id} atualizada para ${status}.`);
+    } catch (error) {
+      setFormStatus(error?.response?.data?.mensagem || 'Não foi possível atualizar a solicitação de compra.');
+    }
+  };
+
+  const updateCompraPedidoStatus = async (pedido, status) => {
+    try {
+      const observacoes = ['Cancelado', 'Fechado'].includes(status)
+        ? window.prompt('Observação para registrar no histórico do pedido de compra:', '') || ''
+        : '';
+      const response = await comprasAPI.atualizarPedidoStatus(pedido.id, { status, observacoes });
+      setComprasPainel(response.data);
+      await refreshComprasPainel();
+      setFormStatus(`Pedido ${pedido.numero || pedido.id} atualizado para ${status}.`);
+    } catch (error) {
+      setFormStatus(error?.response?.data?.mensagem || 'Não foi possível atualizar o pedido de compra.');
+    }
   };
 
   const submitLead = async (event) => {
@@ -1453,7 +1491,12 @@ export default function Dashboard() {
     .map((pedido) => ({
       value: String(pedido.id),
       label: `${pedido.numero || `Pedido ${pedido.id}`} · ${pedido.fornecedorNome || 'Fornecedor'} · ${formatPrice(pedido.valorTotal || 0)}`,
+      pedido,
     })), [comprasPainel]);
+  const selectedCompraEntradaPedido = useMemo(
+    () => compraPedidoEntradaOptions.find((item) => item.value === compraEntradaForm.pedidoId)?.pedido || null,
+    [compraEntradaForm.pedidoId, compraPedidoEntradaOptions]
+  );
   const compraSolicitacaoOptions = useMemo(() => (comprasPainel?.solicitacoes || [])
     .filter((solicitacao) => !['cancelada', 'atendida', 'fechada'].includes(String(solicitacao.status || '').toLowerCase()))
     .map((solicitacao) => ({
@@ -2781,9 +2824,42 @@ export default function Dashboard() {
                       <OptionSelectField
                         label="Pedido de compra"
                         value={compraEntradaForm.pedidoId}
-                        onChange={(value) => setCompraEntradaForm((current) => ({ ...current, pedidoId: value }))}
+                        onChange={(value) => {
+                          const pedido = compraPedidoEntradaOptions.find((item) => item.value === value)?.pedido;
+                          const itens = {};
+                          (pedido?.itens || []).forEach((item) => {
+                            itens[String(item.id)] = String(item.quantidadePendente ?? Math.max(0, (item.quantidade || 0) - (item.quantidadeRecebida || 0)));
+                          });
+                          setCompraEntradaForm((current) => ({ ...current, pedidoId: value, itens }));
+                        }}
                         options={compraPedidoEntradaOptions}
                       />
+                      {(selectedCompraEntradaPedido?.itens || []).length > 0 && (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                          <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Itens para recebimento</p>
+                          <div className="mt-3 grid gap-3">
+                            {selectedCompraEntradaPedido.itens.map((item) => (
+                              <div key={item.id} className="grid gap-2 rounded-xl bg-white p-3 shadow-sm md:grid-cols-[minmax(0,1fr)_120px]">
+                                <div>
+                                  <p className="text-sm font-black text-slate-950">{item.produtoNome}</p>
+                                  <p className="mt-1 text-xs font-semibold text-slate-500">
+                                    Pedido: {item.quantidade} · Recebido: {item.quantidadeRecebida || 0} · Pendente: {item.quantidadePendente || 0}
+                                  </p>
+                                </div>
+                                <Field
+                                  label="Receber"
+                                  type="number"
+                                  value={compraEntradaForm.itens?.[String(item.id)] ?? ''}
+                                  onChange={(value) => setCompraEntradaForm((current) => ({
+                                    ...current,
+                                    itens: { ...(current.itens || {}), [String(item.id)]: value },
+                                  }))}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       <SelectField label="Tipo de entrada" value={compraEntradaForm.tipoEntrada} onChange={(value) => setCompraEntradaForm((current) => ({ ...current, tipoEntrada: value }))} options={['EstoqueFisico', 'Dropshipping', 'FornecedorDireto', 'Parceria', 'Encomenda']} />
                       <Field label="Documento de entrada" value={compraEntradaForm.numeroDocumento} onChange={(value) => setCompraEntradaForm((current) => ({ ...current, numeroDocumento: value }))} />
                       <Field label="Chave NF-e de entrada" value={compraEntradaForm.chaveNfeEntrada} onChange={(value) => setCompraEntradaForm((current) => ({ ...current, chaveNfeEntrada: value }))} />
@@ -2804,6 +2880,17 @@ export default function Dashboard() {
                         { key: 'prioridade', label: 'Prioridade' },
                         { key: 'createdAt', label: 'Criado em', type: 'date' },
                       ]}
+                      renderActions={(solicitacao) => (
+                        <select
+                          value={solicitacao.status || 'Aberta'}
+                          onChange={(event) => updateCompraSolicitacaoStatus(solicitacao, event.target.value)}
+                          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-black text-slate-700"
+                        >
+                          {compraSolicitacaoStatusOptions.map((status) => (
+                            <option key={status} value={status}>{status}</option>
+                          ))}
+                        </select>
+                      )}
                     />
                     <CompactList
                       title="Pedidos de compra em acompanhamento"
@@ -2819,6 +2906,17 @@ export default function Dashboard() {
                         { key: 'dataPrevistaEntrega', label: 'Entrega', type: 'date' },
                         { key: 'createdAt', label: 'Criado em', type: 'date' },
                       ]}
+                      renderActions={(pedido) => (
+                        <select
+                          value={pedido.status || 'Aberto'}
+                          onChange={(event) => updateCompraPedidoStatus(pedido, event.target.value)}
+                          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-black text-slate-700"
+                        >
+                          {compraPedidoStatusOptions.map((status) => (
+                            <option key={status} value={status}>{status}</option>
+                          ))}
+                        </select>
+                      )}
                     />
                   </div>
                   <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
@@ -3629,7 +3727,7 @@ function formatCompactValue(value, type) {
   return String(value);
 }
 
-function CompactList({ title, items, fields, onEdit }) {
+function CompactList({ title, items, fields, onEdit, renderActions }) {
   const primaryField = getCompactFieldConfig(fields[0]);
   const detailFields = fields.slice(1).map(getCompactFieldConfig);
 
@@ -3649,15 +3747,18 @@ function CompactList({ title, items, fields, onEdit }) {
                   {detailFields.map((field) => `${field.label}: ${formatCompactValue(item[field.key], field.type)}`).join(' · ')}
                 </p>
               </div>
-              {onEdit && (
-                <button
-                  type="button"
-                  onClick={() => onEdit(item)}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-700 hover:border-[#C9A227] hover:text-[#8E6A12]"
-                >
-                  Editar
-                </button>
-              )}
+              <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                {onEdit && (
+                  <button
+                    type="button"
+                    onClick={() => onEdit(item)}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-700 hover:border-[#C9A227] hover:text-[#8E6A12]"
+                  >
+                    Editar
+                  </button>
+                )}
+                {renderActions?.(item)}
+              </div>
             </div>
           </div>
         ))}
