@@ -58,6 +58,7 @@ const tabs = [
   { id: 'erp-logistica', label: 'Logística', icon: Truck, section: 'Gestão', badge: 'estoque' },
   { id: 'erp-rh', label: 'RH', icon: UserRound, section: 'Gestão', badge: 'equipe' },
   { id: 'erp-compras', label: 'Compras', icon: ShoppingBag, section: 'Gestão', badge: 'fornec' },
+  { id: 'erp-dados', label: 'Mapa de Dados', icon: Database, section: 'Gestão', badge: 'sql' },
   { id: 'erp-relatorios', label: 'Relatórios', icon: TrendingUp, section: 'Gestão', badge: 'kpi' },
   { id: 'integracoes', label: 'Integrações', icon: Globe2, section: 'Integrações', badge: 'paralelo' },
   { id: 'configuracoes-site', label: 'Site & Banners', icon: Cog, section: 'Sistema', badge: 'home' },
@@ -177,6 +178,7 @@ const erpWorkspaceNavItems = [
   { id: 'erp-logistica', label: 'Logística', short: 'estoque', signal: 'Expedição' },
   { id: 'erp-empresas', label: 'Empresas', short: 'grupo', signal: 'Matriz / filiais' },
   { id: 'erp-compras', label: 'Compras', short: 'supr.', signal: 'Reposição' },
+  { id: 'erp-dados', label: 'Dados', short: 'sql', signal: 'Tabelas e campos' },
   { id: 'erp-relatorios', label: 'Relatórios', short: 'kpi', signal: 'Gestão' },
   { id: 'erp-rh', label: 'RH', short: 'equipe', signal: 'Equipe' },
 ];
@@ -188,6 +190,7 @@ const erpCockpitActions = [
   { id: 'erp-logistica', label: 'Expedição / Estoque', detail: 'Separação, despacho e rastreio' },
   { id: 'erp-empresas', label: 'Cadastro societário', detail: 'Grupo, filiais e regras tributárias' },
   { id: 'erp-compras', label: 'Compras e custo', detail: 'Reposição, margem e fornecedores' },
+  { id: 'erp-dados', label: 'Mapa de dados', detail: 'Tabelas, colunas, relações e cobertura de formulários' },
 ];
 
 const fallbackIntegracoes = [
@@ -1081,6 +1084,152 @@ function CorporateBindingPanel({ painel, onOpen }) {
   );
 }
 
+function DataDictionaryPanel({ dicionario, onOpen }) {
+  const resumo = dicionario?.resumo || {};
+  const modulos = asArray(dicionario?.modulos);
+  const tabelas = asArray(dicionario?.tabelas);
+  const tabelasPendentes = tabelas
+    .filter((tabela) => Number(tabela.colunasPendentes ?? tabela.colunas_pendentes ?? 0) > 0)
+    .sort((a, b) => Number(b.colunasPendentes ?? b.colunas_pendentes ?? 0) - Number(a.colunasPendentes ?? a.colunas_pendentes ?? 0))
+    .slice(0, 18);
+
+  const statusClass = (status) => {
+    const normalized = String(status || '').toLowerCase();
+    if (normalized === 'ok') return 'border-emerald-200 bg-emerald-50 text-emerald-800';
+    if (normalized === 'critico') return 'border-rose-200 bg-rose-50 text-rose-800';
+    return 'border-amber-200 bg-amber-50 text-amber-800';
+  };
+
+  const openModule = (moduleName) => {
+    const normalized = String(moduleName || '').toLowerCase();
+    const route = {
+      produtos: 'cadastro-produtos',
+      compras: 'erp-compras',
+      vendas: 'pedidos',
+      financeiro: 'erp-financeiro',
+      fiscal: 'erp-fiscal',
+      logistica: 'erp-logistica',
+      empresas: 'erp-empresas',
+      crm: 'crm',
+      site: 'configuracoes-site',
+      rh: 'erp-rh',
+      nucleo: 'erp',
+    }[normalized];
+    if (route) onOpen(route);
+  };
+
+  return (
+    <section className="space-y-6">
+      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#C9A227]">Dicionário corporativo</p>
+            <h2 className="mt-2 text-2xl font-black text-slate-950">Tabelas, colunas, relações e cobertura por formulário</h2>
+            <p className="mt-2 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+              Este painel lê a estrutura real dos bancos e aponta quais campos já estão atendidos por telas operacionais e quais ainda precisam virar formulário, regra, relatório ou vínculo.
+            </p>
+          </div>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-slate-500">
+            {dicionario?.atualizadoEm || dicionario?.atualizado_em ? `Atualizado ${formatDate(dicionario.atualizadoEm || dicionario.atualizado_em)}` : 'Aguardando API'}
+          </span>
+        </div>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+          <StatMiniCard label="Bancos" value={resumo.bancos ?? 0} />
+          <StatMiniCard label="Tabelas" value={resumo.tabelas ?? 0} />
+          <StatMiniCard label="Colunas" value={resumo.colunas ?? 0} />
+          <StatMiniCard label="Relações" value={resumo.relacionamentos ?? 0} />
+          <StatMiniCard label="Tabelas pendentes" value={resumo.tabelasComPendencias ?? resumo.tabelas_com_pendencias ?? 0} />
+          <StatMiniCard label="Campos pendentes" value={resumo.colunasPendentes ?? resumo.colunas_pendentes ?? 0} />
+        </div>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Módulos</p>
+              <h3 className="mt-2 text-xl font-black text-slate-950">Cobertura por frente empresarial</h3>
+            </div>
+            <Database size={22} className="text-[#C9A227]" />
+          </div>
+          <div className="mt-5 grid gap-3">
+            {modulos.length > 0 ? modulos.map((modulo) => (
+              <button
+                key={modulo.nome}
+                type="button"
+                onClick={() => openModule(modulo.nome)}
+                className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-left transition hover:-translate-y-0.5 hover:border-[#C9A227] hover:bg-white"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-slate-950">{modulo.nome}</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">
+                      {modulo.tabelas} tabelas · {modulo.colunas} colunas · {modulo.relacionamentos} vínculos
+                    </p>
+                  </div>
+                  <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase ${statusClass(modulo.status)}`}>
+                    {modulo.status}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm font-bold text-slate-700">{modulo.colunasPendentes ?? modulo.colunas_pendentes ?? 0} campos ainda precisam de tela/regra.</p>
+              </button>
+            )) : (
+              <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-5 text-sm font-semibold text-slate-500">
+                Dicionário ainda não retornou módulos. Verifique autenticação e API.
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-lg border border-slate-200 bg-slate-950 p-6 text-white shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Fila objetiva</p>
+              <h3 className="mt-2 text-xl font-black">Campos existentes no banco ainda fora das telas</h3>
+            </div>
+            <Activity size={22} className="text-[#C9A227]" />
+          </div>
+          <div className="mt-5 max-h-[620px] space-y-3 overflow-auto pr-2">
+            {tabelasPendentes.length > 0 ? tabelasPendentes.map((tabela) => {
+              const campos = asArray(tabela.camposPendentes || tabela.campos_pendentes).slice(0, 10);
+              return (
+                <article key={`${tabela.banco}-${tabela.tabela}`} className="rounded-lg border border-white/10 bg-white/5 p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p className="text-sm font-black">{tabela.tabela}</p>
+                      <p className="mt-1 text-xs font-semibold text-slate-300">
+                        {tabela.banco} · {tabela.modulo} · {tabela.formularioDestino || tabela.formulario_destino}
+                      </p>
+                    </div>
+                    <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase ${statusClass(tabela.status)}`}>
+                      {tabela.colunasPendentes ?? tabela.colunas_pendentes} pendentes
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {campos.map((campo) => (
+                      <span key={`${tabela.tabela}-${campo}`} className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] font-bold text-slate-200">
+                        {campo}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-xs font-semibold text-slate-400">
+                    {tabela.totalRelacionamentos ?? tabela.total_relacionamentos ?? 0} relacionamentos encontrados; preservar vínculos antes de ampliar tela.
+                  </p>
+                </article>
+              );
+            }) : (
+              <div className="rounded-lg border border-white/10 bg-white/5 p-5 text-sm font-semibold text-slate-300">
+                Nenhuma coluna pendente retornada no inventário atual.
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+    </section>
+  );
+}
+
 function PdvCockpitPanel({ cockpit, onOpen }) {
   const indicadores = asArray(cockpit?.indicadores);
   const pendencias = asArray(cockpit?.pendencias);
@@ -1213,6 +1362,7 @@ export default function Dashboard() {
   const [empresasGrupo, setEmpresasGrupo] = useState([]);
   const [financeiroLancamentos, setFinanceiroLancamentos] = useState([]);
   const [corporativoPainel, setCorporativoPainel] = useState(null);
+  const [dicionarioDados, setDicionarioDados] = useState(null);
   const [pdvCockpit, setPdvCockpit] = useState(null);
   const [produtoEditingId, setProdutoEditingId] = useState('');
   const [clienteEditingId, setClienteEditingId] = useState('');
@@ -1300,9 +1450,10 @@ export default function Dashboard() {
 
   const loadData = useCallback(async () => {
     try {
-      const [resumoRes, corporativoPainelRes, pdvCockpitRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, empresasGrupoRes, fiscalPedidosRes, comprasPainelRes, integracoesRes, credenciaisRes, financeiroLancamentosRes, siteConfigRes] = await Promise.all([
+      const [resumoRes, corporativoPainelRes, dicionarioDadosRes, pdvCockpitRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, empresasGrupoRes, fiscalPedidosRes, comprasPainelRes, integracoesRes, credenciaisRes, financeiroLancamentosRes, siteConfigRes] = await Promise.all([
         dashboardAPI.getResumo(),
         dashboardAPI.getCorporativoPainel().catch(() => ({ data: null })),
+        dashboardAPI.getDicionarioDados().catch(() => ({ data: null })),
         pdvAPI.getCockpit().catch(() => ({ data: null })),
         pedidoAPI.getAll(),
         leadAPI.getAll(),
@@ -1332,6 +1483,7 @@ export default function Dashboard() {
       const empresasGrupoData = asArray(empresasGrupoRes.data);
       const fiscalPedidosData = asArray(fiscalPedidosRes.data);
       const corporativoPainelData = unwrapApiData(corporativoPainelRes.data);
+      const dicionarioDadosData = unwrapApiData(dicionarioDadosRes.data);
       const pdvCockpitData = unwrapApiData(pdvCockpitRes.data);
       const comprasPainelData = unwrapApiData(comprasPainelRes.data);
       const financeiroLancamentosData = asArray(financeiroLancamentosRes.data);
@@ -1342,6 +1494,7 @@ export default function Dashboard() {
       if (empresasGrupoData.length > 0) setEmpresasGrupo(empresasGrupoData);
       setFiscalPedidos(fiscalPedidosData);
       if (corporativoPainelData && typeof corporativoPainelData === 'object') setCorporativoPainel(corporativoPainelData);
+      if (dicionarioDadosData && typeof dicionarioDadosData === 'object') setDicionarioDados(dicionarioDadosData);
       if (pdvCockpitData && typeof pdvCockpitData === 'object') setPdvCockpit(pdvCockpitData);
       if (comprasPainelData && typeof comprasPainelData === 'object') setComprasPainel(comprasPainelData);
       setFinanceiroLancamentos(financeiroLancamentosData);
@@ -4038,6 +4191,27 @@ export default function Dashboard() {
                       ]}
                     />
                   </div>
+                </section>
+              )}
+
+              {activeTab === 'erp-dados' && (
+                <section className="erp-desktop-surface space-y-6">
+                  <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
+                  <ErpModuleHero
+                    eyebrow="Arquitetura operacional"
+                    title="Mapa vivo dos bancos e formulários"
+                    description="Inventário real dos bancos nexum_altivon e genesis_bd para transformar colunas, vínculos e tabelas disponíveis em funções corporativas completas."
+                  />
+                  <DataDictionaryPanel dicionario={dicionarioDados} onOpen={openMainTab} />
+                  <ModuleActionGrid
+                    title="Próximas frentes alimentadas por este mapa"
+                    actions={[
+                      { label: 'Ampliar formulários', detail: 'Converter campos pendentes em entradas reais nas telas existentes.', onClick: () => openMainTab('cadastros') },
+                      { label: 'Amarrar fiscal e financeiro', detail: 'Usar relações do banco para fechar ciclo pedido, NF, conta e caixa.', onClick: () => openMainTab('erp-fiscal') },
+                      { label: 'Consolidar relatórios', detail: 'Gerar indicadores a partir de tabelas e relações já existentes.', onClick: () => openMainTab('erp-relatorios') },
+                      { label: 'Preparar PDV desktop', detail: 'Usar campos de estoque, barras, QR, pedido e fiscal na frente física.', onClick: () => openMainTab('erp-pdv') },
+                    ]}
+                  />
                 </section>
               )}
 

@@ -3686,6 +3686,14 @@ app.MapGet("/api/gestao-corporativa/painel", [Authorize(Policy = "Gerente")] asy
 .WithName("GestaoCorporativaPainel")
 ;
 
+app.MapGet("/api/gestao-corporativa/dicionario-dados", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var dicionario = await BuildDicionarioDadosCorporativoAsync(db, ct);
+    return Results.Ok(ApiResponse<DicionarioDadosCorporativoDto>.Ok(dicionario, "Dicionario corporativo de bancos, tabelas, colunas e relacoes carregado."));
+})
+.WithName("GestaoCorporativaDicionarioDados")
+;
+
 app.MapGet("/api/crm/leads", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
 {
     var leads = await db.Database.SqlQueryRaw<LeadRow>(
@@ -5226,6 +5234,242 @@ static void AddCorporateAlert(List<GestaoCorporativaAlertaDto> alertas, int quan
     }
 
     alertas.Add(new GestaoCorporativaAlertaDto(modulo, titulo, detalhe, severidade, acao));
+}
+
+static async Task<DicionarioDadosCorporativoDto> BuildDicionarioDadosCorporativoAsync(NexumDbContext db, CancellationToken ct)
+{
+    var colunas = await db.Database.SqlQueryRaw<DatabaseColumnInventoryRow>(
+            """
+            SELECT
+                TABLE_SCHEMA AS Banco,
+                TABLE_NAME AS Tabela,
+                COLUMN_NAME AS Coluna,
+                DATA_TYPE AS Tipo,
+                COLUMN_TYPE AS TipoCompleto,
+                IS_NULLABLE AS PermiteNulo,
+                COALESCE(COLUMN_KEY, '') AS Chave,
+                COLUMN_DEFAULT AS Padrao,
+                COALESCE(EXTRA, '') AS Extra,
+                ORDINAL_POSITION AS Ordem
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA IN ('nexum_altivon', 'genesis_bd')
+            ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION;
+            """)
+        .ToListAsync(ct);
+
+    var relacionamentos = await db.Database.SqlQueryRaw<DatabaseRelationshipInventoryRow>(
+            """
+            SELECT
+                CONSTRAINT_NAME AS NomeConstraint,
+                TABLE_SCHEMA AS Banco,
+                TABLE_NAME AS Tabela,
+                COLUMN_NAME AS Coluna,
+                REFERENCED_TABLE_SCHEMA AS BancoReferencia,
+                REFERENCED_TABLE_NAME AS TabelaReferencia,
+                REFERENCED_COLUMN_NAME AS ColunaReferencia
+            FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+            WHERE TABLE_SCHEMA IN ('nexum_altivon', 'genesis_bd')
+              AND REFERENCED_TABLE_NAME IS NOT NULL
+            ORDER BY TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME;
+            """)
+        .ToListAsync(ct);
+
+    var cobertura = BuildFormularioCoverageIndex();
+    var tabelas = colunas
+        .GroupBy(coluna => new { coluna.Banco, coluna.Tabela })
+        .Select(grupo =>
+        {
+            var modulo = InferCorporateModule(grupo.Key.Tabela);
+            var formulario = InferFormularioDestino(modulo, grupo.Key.Tabela);
+            var colunasDto = grupo
+                .OrderBy(coluna => coluna.Ordem)
+                .Select(coluna =>
+                {
+                    var tecnica = IsTechnicalSchemaColumn(coluna.Coluna);
+                    var coberta = tecnica || IsColumnCoveredByForm(cobertura, modulo, grupo.Key.Tabela, coluna.Coluna);
+                    var uso = tecnica ? "Sistema/Auditoria" : coberta ? "Formulario/Operacao" : "Pendente de formulario";
+                    return new DicionarioColunaDto(
+                        coluna.Coluna,
+                        coluna.Tipo,
+                        coluna.TipoCompleto,
+                        string.Equals(coluna.PermiteNulo, "YES", StringComparison.OrdinalIgnoreCase),
+                        coluna.Chave,
+                        coluna.Padrao,
+                        coluna.Extra,
+                        coberta,
+                        uso);
+                })
+                .ToList();
+
+            var relacoes = relacionamentos
+                .Where(relacao =>
+                    string.Equals(relacao.Banco, grupo.Key.Banco, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(relacao.Tabela, grupo.Key.Tabela, StringComparison.OrdinalIgnoreCase))
+                .Select(relacao => new DicionarioRelacionamentoDto(
+                    relacao.NomeConstraint,
+                    relacao.Coluna,
+                    relacao.BancoReferencia,
+                    relacao.TabelaReferencia,
+                    relacao.ColunaReferencia,
+                    InferCorporateModule(relacao.TabelaReferencia)))
+                .ToList();
+
+            var pendentes = colunasDto
+                .Where(coluna => !coluna.CobertaPorFormulario)
+                .Select(coluna => coluna.Nome)
+                .ToList();
+
+            var status = pendentes.Count == 0 ? "ok" : pendentes.Count <= 4 ? "atencao" : "critico";
+
+            return new DicionarioTabelaDto(
+                grupo.Key.Banco,
+                grupo.Key.Tabela,
+                modulo,
+                formulario,
+                colunasDto.Count,
+                colunasDto.Count(coluna => coluna.CobertaPorFormulario),
+                pendentes.Count,
+                relacoes.Count,
+                status,
+                pendentes,
+                colunasDto,
+                relacoes);
+        })
+        .OrderBy(tabela => tabela.Modulo)
+        .ThenBy(tabela => tabela.Banco)
+        .ThenBy(tabela => tabela.Tabela)
+        .ToList();
+
+    var resumo = new DicionarioDadosResumoDto(
+        tabelas.Select(tabela => tabela.Banco).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+        tabelas.Count,
+        colunas.Count,
+        relacionamentos.Count,
+        tabelas.Count(tabela => tabela.ColunasPendentes > 0),
+        tabelas.Sum(tabela => tabela.ColunasPendentes));
+
+    var modulos = tabelas
+        .GroupBy(tabela => tabela.Modulo)
+        .Select(grupo => new DicionarioModuloDto(
+            grupo.Key,
+            grupo.Count(),
+            grupo.Sum(tabela => tabela.TotalColunas),
+            grupo.Sum(tabela => tabela.ColunasPendentes),
+            grupo.Sum(tabela => tabela.TotalRelacionamentos),
+            BuildHealthStatus(grupo.Sum(tabela => tabela.ColunasPendentes))))
+        .OrderBy(modulo => modulo.Nome)
+        .ToList();
+
+    return new DicionarioDadosCorporativoDto(resumo, modulos, tabelas, DateTime.UtcNow);
+}
+
+static Dictionary<string, HashSet<string>> BuildFormularioCoverageIndex()
+{
+    static HashSet<string> Fields(params string[] fields) =>
+        fields.Select(NormalizeSchemaToken).Where(field => field.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    return new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Nucleo"] = Fields("id", "tenant_id", "usuario_id", "nome", "email", "senha", "perfil", "role", "status", "ativo", "created_at", "updated_at"),
+        ["Cadastros"] = Fields("id", "nome", "nome_fantasia", "razao_social", "cpf_cnpj", "cnpj", "cpf", "email", "telefone", "whatsapp", "cep", "logradouro", "numero", "bairro", "cidade", "estado", "pais", "status", "tipo", "segmento", "observacoes", "created_at", "updated_at"),
+        ["Produtos"] = Fields("id", "sku", "slug", "nome", "descricao", "categoria_id", "fornecedor_id", "loja_id", "preco", "preco_promocional", "custo", "estoque_atual", "estoque_minimo", "codigo_barras", "qr_code", "identificacao_estoque", "ncm", "cfop", "ativo", "imagem_url", "origem", "marca", "peso", "altura", "largura", "comprimento", "created_at", "updated_at"),
+        ["Compras"] = Fields("id", "produto_id", "produto_nome", "fornecedor_id", "solicitacao_id", "pedido_id", "quantidade", "quantidade_solicitada", "quantidade_recebida", "custo_unitario", "valor_total", "prazo_entrega_dias", "data_prevista_entrega", "origem", "status", "prioridade", "documento_fiscal", "chave_nfe", "recebido_por", "observacoes", "created_at", "updated_at"),
+        ["Vendas"] = Fields("id", "numero_pedido", "pedido_id", "cliente_id", "produto_id", "quantidade", "preco_unitario", "subtotal", "total", "status", "status_pagamento", "meio_pagamento", "frete_valor", "frete_codigo_rastreio", "created_at", "updated_at"),
+        ["Financeiro"] = Fields("id", "pedido_id", "fornecedor_id", "tipo", "categoria", "descricao", "valor", "valor_original", "valor_pago", "data_vencimento", "data_pagamento", "status", "meio_pagamento", "forma_pagamento", "numero_documento", "observacoes", "created_at", "updated_at"),
+        ["Fiscal"] = Fields("id", "pedido_id", "empresa_id", "empresa_emitente_id", "status_nfe", "chave_nfe", "numero_nfe", "serie_nfe", "cfop", "ncm", "natureza_operacao", "valor_total", "valor_imposto", "xml", "danfe", "created_at", "updated_at"),
+        ["Logistica"] = Fields("id", "pedido_id", "transportadora", "servico", "codigo_rastreio", "frete_valor", "prazo_dias", "status", "cep_origem", "cep_destino", "peso", "altura", "largura", "comprimento", "created_at", "updated_at"),
+        ["Empresas"] = Fields("id", "razao_social", "nome_fantasia", "cnpj", "codigo_empresa", "inscricao_estadual", "inscricao_municipal", "regime_tributario", "crt", "cnae_principal", "ncm_padrao", "cfop_padrao_interno", "cfop_padrao_interestadual", "serie_nfe", "ambiente_nfe", "permite_nfe_saida", "permite_nfe_entrada", "ativa", "created_at", "updated_at"),
+        ["CRM"] = Fields("id", "nome", "email", "telefone", "whatsapp", "empresa", "origem", "status", "mensagem", "anotacoes", "responsavel_id", "created_at", "updated_at"),
+        ["Site"] = Fields("id", "chave", "valor", "tipo", "grupo", "descricao", "ativo", "created_at", "updated_at"),
+        ["RH"] = Fields("id", "nome", "cpf", "email", "telefone", "cargo", "departamento", "data_admissao", "status", "salario", "created_at", "updated_at")
+    };
+}
+
+static bool IsColumnCoveredByForm(Dictionary<string, HashSet<string>> cobertura, string modulo, string tabela, string coluna)
+{
+    var normalizedColumn = NormalizeSchemaToken(coluna);
+    if (normalizedColumn.Length == 0)
+    {
+        return true;
+    }
+
+    if (cobertura.TryGetValue(modulo, out var fields) && fields.Contains(normalizedColumn))
+    {
+        return true;
+    }
+
+    if (cobertura.TryGetValue(InferCorporateModule(tabela), out var tableFields) && tableFields.Contains(normalizedColumn))
+    {
+        return true;
+    }
+
+    return cobertura.TryGetValue("Nucleo", out var coreFields) && coreFields.Contains(normalizedColumn);
+}
+
+static bool IsTechnicalSchemaColumn(string coluna)
+{
+    var normalized = NormalizeSchemaToken(coluna);
+    return normalized is "id" or "tenantid" or "tenant_id" or "rowversion" or "createdat" or "created_at" or "createdbyuserid" or "created_by_user_id" or "updatedat" or "updated_at" or "updatedbyuserid" or "updated_by_user_id" or "isdeleted" or "is_deleted" or "deletedat" or "deleted_at";
+}
+
+static string InferCorporateModule(string? tableName)
+{
+    var normalized = NormalizeSchemaToken(tableName);
+    if (normalized.Contains("usuario") || normalized.Contains("tenant") || normalized.Contains("auth") || normalized.Contains("login")) return "Nucleo";
+    if (normalized.Contains("empresa") || normalized.Contains("emitente")) return "Empresas";
+    if (normalized.Contains("produto") || normalized.Contains("categoria") || normalized.Contains("estoque") || normalized.Contains("item")) return "Produtos";
+    if (normalized.Contains("compra") || normalized.Contains("cotacao") || normalized.Contains("fornecedor") || normalized.Contains("entrada")) return "Compras";
+    if (normalized.Contains("pedido") || normalized.Contains("venda") || normalized.Contains("checkout") || normalized.Contains("carrinho")) return "Vendas";
+    if (normalized.Contains("finance") || normalized.Contains("conta") || normalized.Contains("pagamento") || normalized.Contains("receber") || normalized.Contains("pagar") || normalized.Contains("caixa")) return "Financeiro";
+    if (normalized.Contains("fiscal") || normalized.Contains("nfe") || normalized.Contains("nfce") || normalized.Contains("tribut") || normalized.Contains("sped")) return "Fiscal";
+    if (normalized.Contains("frete") || normalized.Contains("logistica") || normalized.Contains("entrega") || normalized.Contains("rastreio") || normalized.Contains("transport")) return "Logistica";
+    if (normalized.Contains("lead") || normalized.Contains("crm") || normalized.Contains("cliente")) return "CRM";
+    if (normalized.Contains("site") || normalized.Contains("banner") || normalized.Contains("home") || normalized.Contains("config")) return "Site";
+    if (normalized.Contains("colaborador") || normalized.Contains("rh") || normalized.Contains("folha") || normalized.Contains("ponto")) return "RH";
+    return "Cadastros";
+}
+
+static string InferFormularioDestino(string modulo, string tableName) =>
+    modulo switch
+    {
+        "Nucleo" => "SSO / Usuarios / RBAC",
+        "Empresas" => "ERP > Empresas do Grupo",
+        "Produtos" => "Cadastros > Produtos / Estoque",
+        "Compras" => "ERP > Compras / Entradas",
+        "Vendas" => "Pedidos / Checkout / PDV",
+        "Financeiro" => "ERP > Financeiro",
+        "Fiscal" => "ERP > Fiscal",
+        "Logistica" => "ERP > Logistica",
+        "CRM" => "CRM / Clientes",
+        "Site" => "Site & Banners",
+        "RH" => "ERP > RH",
+        _ => $"Cadastros > {tableName}"
+    };
+
+static string NormalizeSchemaToken(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return string.Empty;
+    }
+
+    var normalized = value.Trim().Normalize(NormalizationForm.FormD).ToLowerInvariant();
+    var builder = new StringBuilder(normalized.Length);
+    foreach (var character in normalized)
+    {
+        var category = CharUnicodeInfo.GetUnicodeCategory(character);
+        if (category == UnicodeCategory.NonSpacingMark)
+        {
+            continue;
+        }
+
+        if (char.IsLetterOrDigit(character) || character == '_')
+        {
+            builder.Append(character);
+        }
+    }
+
+    return builder.ToString();
 }
 
 static void AddPdvPendencia(List<PdvPendenciaDto> pendencias, int quantidade, string titulo, string detalhe, string severidade, string acao)
@@ -9579,6 +9823,86 @@ public sealed record GestaoCorporativaVinculoDto(
     int Total,
     int Pendentes,
     string Status);
+
+public sealed record DicionarioDadosCorporativoDto(
+    DicionarioDadosResumoDto Resumo,
+    List<DicionarioModuloDto> Modulos,
+    List<DicionarioTabelaDto> Tabelas,
+    DateTime AtualizadoEm);
+
+public sealed record DicionarioDadosResumoDto(
+    int Bancos,
+    int Tabelas,
+    int Colunas,
+    int Relacionamentos,
+    int TabelasComPendencias,
+    int ColunasPendentes);
+
+public sealed record DicionarioModuloDto(
+    string Nome,
+    int Tabelas,
+    int Colunas,
+    int ColunasPendentes,
+    int Relacionamentos,
+    string Status);
+
+public sealed record DicionarioTabelaDto(
+    string Banco,
+    string Tabela,
+    string Modulo,
+    string FormularioDestino,
+    int TotalColunas,
+    int ColunasCobertas,
+    int ColunasPendentes,
+    int TotalRelacionamentos,
+    string Status,
+    List<string> CamposPendentes,
+    List<DicionarioColunaDto> Colunas,
+    List<DicionarioRelacionamentoDto> Relacionamentos);
+
+public sealed record DicionarioColunaDto(
+    string Nome,
+    string Tipo,
+    string TipoCompleto,
+    bool PermiteNulo,
+    string Chave,
+    string? Padrao,
+    string Extra,
+    bool CobertaPorFormulario,
+    string UsoOperacional);
+
+public sealed record DicionarioRelacionamentoDto(
+    string NomeConstraint,
+    string Coluna,
+    string BancoReferencia,
+    string TabelaReferencia,
+    string ColunaReferencia,
+    string ModuloReferencia);
+
+public sealed class DatabaseColumnInventoryRow
+{
+    public string Banco { get; set; } = string.Empty;
+    public string Tabela { get; set; } = string.Empty;
+    public string Coluna { get; set; } = string.Empty;
+    public string Tipo { get; set; } = string.Empty;
+    public string TipoCompleto { get; set; } = string.Empty;
+    public string PermiteNulo { get; set; } = string.Empty;
+    public string Chave { get; set; } = string.Empty;
+    public string? Padrao { get; set; }
+    public string Extra { get; set; } = string.Empty;
+    public int Ordem { get; set; }
+}
+
+public sealed class DatabaseRelationshipInventoryRow
+{
+    public string NomeConstraint { get; set; } = string.Empty;
+    public string Banco { get; set; } = string.Empty;
+    public string Tabela { get; set; } = string.Empty;
+    public string Coluna { get; set; } = string.Empty;
+    public string BancoReferencia { get; set; } = string.Empty;
+    public string TabelaReferencia { get; set; } = string.Empty;
+    public string ColunaReferencia { get; set; } = string.Empty;
+}
 
 public sealed record LeadLojaDto(
     int Id,
