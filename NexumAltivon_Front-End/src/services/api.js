@@ -354,6 +354,7 @@ export const dashboardAPI = {
   getResumo: () => api.get('/dashboard/resumo'),
   getCorporativoPainel: () => api.get('/gestao-corporativa/painel'),
   getDicionarioDados: () => api.get('/gestao-corporativa/dicionario-dados'),
+  getCicloOperacional: () => api.get('/gestao-corporativa/ciclo-operacional'),
   getRelatorioVendas: (dataInicio, dataFim) =>
     api.get('/relatorios/vendas', {
       params: { data_inicio: dataInicio, data_fim: dataFim },

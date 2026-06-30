@@ -3694,6 +3694,85 @@ app.MapGet("/api/gestao-corporativa/dicionario-dados", [Authorize(Policy = "Gere
 .WithName("GestaoCorporativaDicionarioDados")
 ;
 
+app.MapGet("/api/gestao-corporativa/ciclo-operacional", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var agora = DateTime.UtcNow;
+    var comprasPainel = await BuildComprasPainelAsync(db, ct);
+
+    var pedidosValidos = db.Pedidos.AsNoTracking()
+        .Where(pedido => pedido.Status != StatusPedido.Cancelado && pedido.Status != StatusPedido.Devolvido && pedido.Status != StatusPedido.Reembolsado);
+
+    var pedidosAbertos = await pedidosValidos
+        .CountAsync(pedido => pedido.Status != StatusPedido.Entregue, ct);
+    var pedidosPagos = await pedidosValidos
+        .CountAsync(pedido => pedido.StatusPagamento == StatusPagamento.Aprovado, ct);
+    var pedidosSemFinanceiro = await pedidosValidos
+        .CountAsync(pedido => !db.Financeiros.Any(lancamento => lancamento.PedidoId == pedido.Id && lancamento.Tipo == TipoLancamento.Receita), ct);
+    var pedidosPagosSemFiscal = await pedidosValidos
+        .CountAsync(pedido => pedido.StatusPagamento == StatusPagamento.Aprovado && !db.Fiscais.Any(fiscal => fiscal.PedidoId == pedido.Id), ct);
+    var pedidosSemRastreio = await pedidosValidos
+        .CountAsync(pedido => pedido.Status == StatusPedido.Enviado && (pedido.FreteCodigoRastreio == null || pedido.FreteCodigoRastreio == ""), ct);
+
+    var financeiroReceberPendente = await db.Financeiros.AsNoTracking()
+        .CountAsync(lancamento => lancamento.Tipo == TipoLancamento.Receita && (lancamento.Status == StatusLancamento.Pendente || lancamento.Status == StatusLancamento.Atrasado), ct);
+    var financeiroPagarPendente = await db.Financeiros.AsNoTracking()
+        .CountAsync(lancamento => lancamento.Tipo == TipoLancamento.Despesa && (lancamento.Status == StatusLancamento.Pendente || lancamento.Status == StatusLancamento.Atrasado), ct);
+    var fiscalPendente = await db.Fiscais.AsNoTracking()
+        .CountAsync(fiscal => fiscal.StatusNfe == StatusNfe.Pendente || fiscal.StatusNfe == StatusNfe.Emitida, ct);
+    var produtosEstoqueRisco = await db.Produtos.AsNoTracking()
+        .CountAsync(produto => produto.Ativo && produto.EstoqueAtual <= produto.EstoqueMinimo, ct);
+    var produtosSemIdentificacao = await db.Produtos.AsNoTracking()
+        .CountAsync(produto => produto.Ativo && (produto.CodigoBarras == null || produto.CodigoBarras == "" || produto.QrCode == null || produto.QrCode == "" || produto.IdentificacaoEstoque == null || produto.IdentificacaoEstoque == ""), ct);
+    var produtosSemFornecedor = await db.Produtos.AsNoTracking()
+        .CountAsync(produto => produto.Ativo && produto.FornecedorId == null, ct);
+
+    var comprasSolicitacoesPendentes = comprasPainel.Solicitacoes.Count(solicitacao =>
+        !string.Equals(solicitacao.Status, "aprovada", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(solicitacao.Status, "cancelada", StringComparison.OrdinalIgnoreCase));
+    var comprasPedidosPendentes = comprasPainel.Pedidos.Count(pedido =>
+        !string.Equals(pedido.Status, "recebido", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(pedido.Status, "cancelado", StringComparison.OrdinalIgnoreCase));
+
+    var etapas = new List<CicloOperacionalEtapaDto>
+    {
+        new("pedido", "Venda e pedido", pedidosAbertos, pedidosSemFinanceiro, BuildHealthStatus(pedidosSemFinanceiro), "Pedidos abertos com conta a receber vinculada ao ciclo comercial.", "pedidos"),
+        new("financeiro", "Financeiro", pedidosPagos + financeiroReceberPendente + financeiroPagarPendente, pedidosSemFinanceiro + financeiroReceberPendente + financeiroPagarPendente, BuildHealthStatus(pedidosSemFinanceiro + financeiroReceberPendente + financeiroPagarPendente), "Recebíveis, pagamentos e contas de aquisição aguardando baixa ou conciliação.", "erp-financeiro"),
+        new("fiscal", "Fiscal e emissão", pedidosPagos + fiscalPendente, pedidosPagosSemFiscal + fiscalPendente, BuildHealthStatus(pedidosPagosSemFiscal + fiscalPendente), "Pedidos pagos, NF-e/NFC-e, emitente de menor custo e documentos pendentes.", "erp-fiscal"),
+        new("logistica", "Logística e entrega", pedidosAbertos, pedidosSemRastreio, BuildHealthStatus(pedidosSemRastreio), "Separação, coleta, rastreio e acompanhamento do cliente.", "erp-logistica"),
+        new("compras", "Compras e fornecedores", comprasPainel.Solicitacoes.Count + comprasPainel.Pedidos.Count, comprasSolicitacoesPendentes + comprasPedidosPendentes, BuildHealthStatus(comprasSolicitacoesPendentes + comprasPedidosPendentes), "Cotações, pedidos de compra, dropshipping, distribuidor e fornecedores.", "erp-compras"),
+        new("estoque", "Estoque físico e fiscal", await db.Produtos.AsNoTracking().CountAsync(produto => produto.Ativo, ct), produtosEstoqueRisco + produtosSemIdentificacao + produtosSemFornecedor, BuildHealthStatus(produtosEstoqueRisco + produtosSemIdentificacao + produtosSemFornecedor), "Itens ativos com barras, QR Code, fornecedor, saldo e custo de aquisição.", "cadastro-produtos")
+    };
+
+    var alertas = new List<CicloOperacionalAlertaDto>();
+    AddCicloOperacionalAlerta(alertas, pedidosSemFinanceiro, "Pedido sem conta a receber", $"{pedidosSemFinanceiro} pedidos precisam estar vinculados ao financeiro.", "alta", "erp-financeiro");
+    AddCicloOperacionalAlerta(alertas, pedidosPagosSemFiscal, "Pedido pago sem fiscal", $"{pedidosPagosSemFiscal} pedidos pagos ainda precisam de documento fiscal.", "alta", "erp-fiscal");
+    AddCicloOperacionalAlerta(alertas, fiscalPendente, "Fiscal pendente", $"{fiscalPendente} documentos fiscais aguardam emissão, autorização ou revisão.", "alta", "erp-fiscal");
+    AddCicloOperacionalAlerta(alertas, pedidosSemRastreio, "Logística sem rastreio", $"{pedidosSemRastreio} pedidos enviados precisam de rastreio ou coleta definida.", "media", "erp-logistica");
+    AddCicloOperacionalAlerta(alertas, financeiroReceberPendente + financeiroPagarPendente, "Financeiro aberto", $"{financeiroReceberPendente + financeiroPagarPendente} lançamentos precisam de baixa ou conciliação.", "media", "erp-financeiro");
+    AddCicloOperacionalAlerta(alertas, comprasSolicitacoesPendentes + comprasPedidosPendentes, "Compras em aberto", $"{comprasSolicitacoesPendentes + comprasPedidosPendentes} processos de aquisição aguardam conclusão.", "media", "erp-compras");
+    AddCicloOperacionalAlerta(alertas, produtosEstoqueRisco, "Estoque em risco", $"{produtosEstoqueRisco} produtos estão no mínimo ou abaixo.", "media", "erp-compras");
+    AddCicloOperacionalAlerta(alertas, produtosSemIdentificacao + produtosSemFornecedor, "Produto sem amarração completa", $"{produtosSemIdentificacao + produtosSemFornecedor} produtos precisam de identificação física, QR Code ou fornecedor.", "alta", "cadastro-produtos");
+
+    if (alertas.Count == 0)
+    {
+        alertas.Add(new CicloOperacionalAlertaDto("ok", "Ciclo sem pendência crítica", "As etapas comercial, financeira, fiscal, logística e compras não retornaram lacunas críticas neste momento.", "overview"));
+    }
+
+    var resumo = new CicloOperacionalResumoDto(
+        PedidosAbertos: pedidosAbertos,
+        PedidosPagos: pedidosPagos,
+        FinanceiroPendente: financeiroReceberPendente + financeiroPagarPendente,
+        FiscalPendente: fiscalPendente + pedidosPagosSemFiscal,
+        LogisticaPendente: pedidosSemRastreio,
+        ComprasPendentes: comprasSolicitacoesPendentes + comprasPedidosPendentes,
+        EstoqueRisco: produtosEstoqueRisco + produtosSemIdentificacao + produtosSemFornecedor);
+
+    var ciclo = new CicloOperacionalCorporativoDto(resumo, etapas, alertas, agora);
+    return Results.Ok(ApiResponse<CicloOperacionalCorporativoDto>.Ok(ciclo, "Ciclo operacional corporativo carregado."));
+})
+.WithName("GestaoCorporativaCicloOperacional")
+;
+
 app.MapGet("/api/crm/leads", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
 {
     var leads = await db.Database.SqlQueryRaw<LeadRow>(
@@ -5234,6 +5313,16 @@ static void AddCorporateAlert(List<GestaoCorporativaAlertaDto> alertas, int quan
     }
 
     alertas.Add(new GestaoCorporativaAlertaDto(modulo, titulo, detalhe, severidade, acao));
+}
+
+static void AddCicloOperacionalAlerta(List<CicloOperacionalAlertaDto> alertas, int quantidade, string titulo, string detalhe, string severidade, string acao)
+{
+    if (quantidade <= 0)
+    {
+        return;
+    }
+
+    alertas.Add(new CicloOperacionalAlertaDto(severidade, titulo, detalhe, acao));
 }
 
 static async Task<DicionarioDadosCorporativoDto> BuildDicionarioDadosCorporativoAsync(NexumDbContext db, CancellationToken ct)
@@ -9823,6 +9912,36 @@ public sealed record GestaoCorporativaVinculoDto(
     int Total,
     int Pendentes,
     string Status);
+
+public sealed record CicloOperacionalCorporativoDto(
+    CicloOperacionalResumoDto Resumo,
+    List<CicloOperacionalEtapaDto> Etapas,
+    List<CicloOperacionalAlertaDto> Alertas,
+    DateTime AtualizadoEm);
+
+public sealed record CicloOperacionalResumoDto(
+    int PedidosAbertos,
+    int PedidosPagos,
+    int FinanceiroPendente,
+    int FiscalPendente,
+    int LogisticaPendente,
+    int ComprasPendentes,
+    int EstoqueRisco);
+
+public sealed record CicloOperacionalEtapaDto(
+    string Chave,
+    string Titulo,
+    int Total,
+    int Pendentes,
+    string Status,
+    string Detalhe,
+    string Acao);
+
+public sealed record CicloOperacionalAlertaDto(
+    string Severidade,
+    string Titulo,
+    string Detalhe,
+    string Acao);
 
 public sealed record DicionarioDadosCorporativoDto(
     DicionarioDadosResumoDto Resumo,

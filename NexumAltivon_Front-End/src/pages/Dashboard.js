@@ -1230,6 +1230,119 @@ function DataDictionaryPanel({ dicionario, onOpen }) {
   );
 }
 
+function OperationalCyclePanel({ ciclo, onOpen }) {
+  const resumo = ciclo?.resumo || {};
+  const etapas = asArray(ciclo?.etapas);
+  const alertas = asArray(ciclo?.alertas);
+
+  const statusClass = (status) => {
+    const normalized = String(status || '').toLowerCase();
+    if (normalized === 'ok') return 'border-emerald-200 bg-emerald-50 text-emerald-800';
+    if (normalized === 'critico' || normalized === 'alta') return 'border-rose-200 bg-rose-50 text-rose-800';
+    return 'border-amber-200 bg-amber-50 text-amber-800';
+  };
+
+  const severityClass = (severity) => {
+    const normalized = String(severity || '').toLowerCase();
+    if (normalized === 'ok') return 'bg-emerald-500';
+    if (normalized === 'alta' || normalized === 'critico') return 'bg-rose-500';
+    return 'bg-amber-500';
+  };
+
+  return (
+    <section className="space-y-6">
+      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#C9A227]">Ciclo operacional</p>
+            <h2 className="mt-2 text-2xl font-black text-slate-950">Pedido, financeiro, fiscal, logística, compras e estoque amarrados</h2>
+            <p className="mt-2 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+              Consolidação real do banco para mostrar onde o processo corporativo está íntegro e onde exige ação antes de venda, faturamento, entrega ou reposição.
+            </p>
+          </div>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-slate-500">
+            {ciclo?.atualizadoEm || ciclo?.atualizado_em ? `Atualizado ${formatDate(ciclo.atualizadoEm || ciclo.atualizado_em)}` : 'Aguardando API'}
+          </span>
+        </div>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-3 xl:grid-cols-7">
+          <StatMiniCard label="Pedidos abertos" value={resumo.pedidosAbertos ?? resumo.pedidos_abertos ?? 0} onClick={() => onOpen('pedidos')} />
+          <StatMiniCard label="Pedidos pagos" value={resumo.pedidosPagos ?? resumo.pedidos_pagos ?? 0} onClick={() => onOpen('pedidos')} />
+          <StatMiniCard label="Financeiro" value={resumo.financeiroPendente ?? resumo.financeiro_pendente ?? 0} onClick={() => onOpen('erp-financeiro')} />
+          <StatMiniCard label="Fiscal" value={resumo.fiscalPendente ?? resumo.fiscal_pendente ?? 0} onClick={() => onOpen('erp-fiscal')} />
+          <StatMiniCard label="Logística" value={resumo.logisticaPendente ?? resumo.logistica_pendente ?? 0} onClick={() => onOpen('erp-logistica')} />
+          <StatMiniCard label="Compras" value={resumo.comprasPendentes ?? resumo.compras_pendentes ?? 0} onClick={() => onOpen('erp-compras')} />
+          <StatMiniCard label="Estoque" value={resumo.estoqueRisco ?? resumo.estoque_risco ?? 0} onClick={() => onOpen('cadastro-produtos')} />
+        </div>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Etapas do processo</p>
+          <div className="mt-5 grid gap-3">
+            {etapas.length > 0 ? etapas.map((etapa) => (
+              <button
+                key={etapa.chave}
+                type="button"
+                onClick={() => onOpen(etapa.acao)}
+                className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-left transition hover:-translate-y-0.5 hover:border-[#C9A227] hover:bg-white"
+              >
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <p className="text-sm font-black text-slate-950">{etapa.titulo}</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">{etapa.detalhe}</p>
+                  </div>
+                  <span className={`w-fit rounded-full border px-2 py-1 text-[10px] font-black uppercase ${statusClass(etapa.status)}`}>
+                    {etapa.status}
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border border-slate-200 bg-white p-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Total</p>
+                    <p className="mt-1 text-xl font-black text-slate-950">{etapa.total ?? 0}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-white p-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Pendências</p>
+                    <p className="mt-1 text-xl font-black text-slate-950">{etapa.pendentes ?? 0}</p>
+                  </div>
+                </div>
+              </button>
+            )) : (
+              <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-bold text-slate-500">
+                Ciclo operacional aguardando retorno da API.
+              </p>
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Alertas de amarração</p>
+          <div className="mt-5 space-y-3">
+            {alertas.length > 0 ? alertas.map((alerta) => (
+              <button
+                key={`${alerta.titulo}-${alerta.acao}`}
+                type="button"
+                onClick={() => onOpen(alerta.acao)}
+                className="flex w-full gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-left transition hover:border-[#C9A227] hover:bg-white"
+              >
+                <span className={`mt-1 h-3 w-3 shrink-0 rounded-full ${severityClass(alerta.severidade)}`} />
+                <span>
+                  <span className="block text-sm font-black text-slate-950">{alerta.titulo}</span>
+                  <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">{alerta.detalhe}</span>
+                </span>
+              </button>
+            )) : (
+              <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-bold text-slate-500">
+                Sem alertas carregados no momento.
+              </p>
+            )}
+          </div>
+        </section>
+      </div>
+    </section>
+  );
+}
+
 function PdvCockpitPanel({ cockpit, onOpen }) {
   const indicadores = asArray(cockpit?.indicadores);
   const pendencias = asArray(cockpit?.pendencias);
@@ -1363,6 +1476,7 @@ export default function Dashboard() {
   const [financeiroLancamentos, setFinanceiroLancamentos] = useState([]);
   const [corporativoPainel, setCorporativoPainel] = useState(null);
   const [dicionarioDados, setDicionarioDados] = useState(null);
+  const [cicloOperacional, setCicloOperacional] = useState(null);
   const [pdvCockpit, setPdvCockpit] = useState(null);
   const [produtoEditingId, setProdutoEditingId] = useState('');
   const [clienteEditingId, setClienteEditingId] = useState('');
@@ -1450,10 +1564,11 @@ export default function Dashboard() {
 
   const loadData = useCallback(async () => {
     try {
-      const [resumoRes, corporativoPainelRes, dicionarioDadosRes, pdvCockpitRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, empresasGrupoRes, fiscalPedidosRes, comprasPainelRes, integracoesRes, credenciaisRes, financeiroLancamentosRes, siteConfigRes] = await Promise.all([
+      const [resumoRes, corporativoPainelRes, dicionarioDadosRes, cicloOperacionalRes, pdvCockpitRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, empresasGrupoRes, fiscalPedidosRes, comprasPainelRes, integracoesRes, credenciaisRes, financeiroLancamentosRes, siteConfigRes] = await Promise.all([
         dashboardAPI.getResumo(),
         dashboardAPI.getCorporativoPainel().catch(() => ({ data: null })),
         dashboardAPI.getDicionarioDados().catch(() => ({ data: null })),
+        dashboardAPI.getCicloOperacional().catch(() => ({ data: null })),
         pdvAPI.getCockpit().catch(() => ({ data: null })),
         pedidoAPI.getAll(),
         leadAPI.getAll(),
@@ -1484,6 +1599,7 @@ export default function Dashboard() {
       const fiscalPedidosData = asArray(fiscalPedidosRes.data);
       const corporativoPainelData = unwrapApiData(corporativoPainelRes.data);
       const dicionarioDadosData = unwrapApiData(dicionarioDadosRes.data);
+      const cicloOperacionalData = unwrapApiData(cicloOperacionalRes.data);
       const pdvCockpitData = unwrapApiData(pdvCockpitRes.data);
       const comprasPainelData = unwrapApiData(comprasPainelRes.data);
       const financeiroLancamentosData = asArray(financeiroLancamentosRes.data);
@@ -1495,6 +1611,7 @@ export default function Dashboard() {
       setFiscalPedidos(fiscalPedidosData);
       if (corporativoPainelData && typeof corporativoPainelData === 'object') setCorporativoPainel(corporativoPainelData);
       if (dicionarioDadosData && typeof dicionarioDadosData === 'object') setDicionarioDados(dicionarioDadosData);
+      if (cicloOperacionalData && typeof cicloOperacionalData === 'object') setCicloOperacional(cicloOperacionalData);
       if (pdvCockpitData && typeof pdvCockpitData === 'object') setPdvCockpit(pdvCockpitData);
       if (comprasPainelData && typeof comprasPainelData === 'object') setComprasPainel(comprasPainelData);
       setFinanceiroLancamentos(financeiroLancamentosData);
@@ -4202,6 +4319,7 @@ export default function Dashboard() {
                     title="Mapa vivo dos bancos e formulários"
                     description="Inventário real dos bancos nexum_altivon e genesis_bd para transformar colunas, vínculos e tabelas disponíveis em funções corporativas completas."
                   />
+                  <OperationalCyclePanel ciclo={cicloOperacional} onOpen={openMainTab} />
                   <DataDictionaryPanel dicionario={dicionarioDados} onOpen={openMainTab} />
                   <ModuleActionGrid
                     title="Próximas frentes alimentadas por este mapa"
