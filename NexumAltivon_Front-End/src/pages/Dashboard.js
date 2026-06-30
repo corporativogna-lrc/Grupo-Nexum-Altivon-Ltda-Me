@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { categoriaAPI, clienteAPI, comprasAPI, dashboardAPI, empresaGrupoAPI, fiscalAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI, siteAPI, unwrapApiData } from '../services/api';
+import { categoriaAPI, clienteAPI, comprasAPI, dashboardAPI, empresaGrupoAPI, financeiroAPI, fiscalAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI, siteAPI, unwrapApiData } from '../services/api';
 import { formatDate, formatPrice, getLeadStatusClass, getPagamentoLabel, getPedidoStatusClass } from '../utils/formatters';
 import {
   Activity,
@@ -562,6 +562,21 @@ const emptyResumo = {
   ticket_medio: 0,
 };
 
+const emptyFinanceiroLancamento = {
+  tipo: 'Receita',
+  status: 'Pendente',
+  categoria: '',
+  descricao: '',
+  valor: '',
+  dataVencimento: '',
+  dataPagamento: '',
+  meioPagamento: '',
+  contaBancaria: '',
+  comprovanteUrl: '',
+  observacoes: '',
+  pedidoId: '',
+};
+
 const chart = [
   { label: 'Seg', value: 42 },
   { label: 'Ter', value: 68 },
@@ -595,6 +610,15 @@ const asArray = (data) => {
   const normalized = unwrapApiData(data);
   return Array.isArray(normalized) ? normalized : [];
 };
+const getFinanceiroValor = (item) => Number(item?.valor ?? item?.Valor ?? 0) || 0;
+const getFinanceiroTipo = (item) => String(item?.tipo ?? item?.Tipo ?? '').trim();
+const getFinanceiroStatus = (item) => String(item?.status ?? item?.Status ?? '').trim();
+const getFinanceiroDescricao = (item) => item?.descricao ?? item?.Descricao ?? '-';
+const getFinanceiroCategoria = (item) => item?.categoria ?? item?.Categoria ?? '-';
+const getFinanceiroVencimento = (item) => item?.dataVencimento ?? item?.data_vencimento ?? item?.DataVencimento;
+const getFinanceiroPagamento = (item) => item?.dataPagamento ?? item?.data_pagamento ?? item?.DataPagamento;
+const getFinanceiroNumeroPedido = (item) => item?.numeroPedido ?? item?.numero_pedido ?? item?.NumeroPedido;
+const getFinanceiroPedidoId = (item) => item?.pedidoId ?? item?.pedido_id ?? item?.PedidoId;
 
 const getDashboardRouteState = (path = '') => {
   const segments = String(path || '').split('/').filter(Boolean);
@@ -825,6 +849,7 @@ export default function Dashboard() {
   const [clientes, setClientes] = useState([]);
   const [fornecedores, setFornecedores] = useState([]);
   const [empresasGrupo, setEmpresasGrupo] = useState([]);
+  const [financeiroLancamentos, setFinanceiroLancamentos] = useState([]);
   const [produtoEditingId, setProdutoEditingId] = useState('');
   const [clienteEditingId, setClienteEditingId] = useState('');
   const [fornecedorEditingId, setFornecedorEditingId] = useState('');
@@ -851,6 +876,8 @@ export default function Dashboard() {
   const [compraPedidoForm, setCompraPedidoForm] = useState(emptyCompraPedido);
   const [compraEntradaForm, setCompraEntradaForm] = useState(emptyCompraEntrada);
   const [empresaGrupoForm, setEmpresaGrupoForm] = useState(emptyEmpresaGrupo);
+  const [financeiroLancamentoForm, setFinanceiroLancamentoForm] = useState(emptyFinanceiroLancamento);
+  const [financeiroFiltro, setFinanceiroFiltro] = useState('todos');
   const [formStatus, setFormStatus] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const isErpWorkspace = activeTab === 'erp' || activeTab.startsWith('erp-');
@@ -905,7 +932,7 @@ export default function Dashboard() {
 
   const loadData = useCallback(async () => {
     try {
-      const [resumoRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, empresasGrupoRes, fiscalPedidosRes, comprasPainelRes, integracoesRes, credenciaisRes, siteConfigRes] = await Promise.all([
+      const [resumoRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, empresasGrupoRes, fiscalPedidosRes, comprasPainelRes, integracoesRes, credenciaisRes, financeiroLancamentosRes, siteConfigRes] = await Promise.all([
         dashboardAPI.getResumo(),
         pedidoAPI.getAll(),
         leadAPI.getAll(),
@@ -920,6 +947,7 @@ export default function Dashboard() {
           .catch(() => integracoesAPI.getStatus())
           .catch(() => ({ data: [] })),
         integracoesAPI.getCredenciaisModelo().catch(() => ({ data: [] })),
+        financeiroAPI.getLancamentos().catch(() => ({ data: [] })),
         siteAPI.getAll().catch(() => ({ data: [] })),
       ]);
       if (resumoRes.data) setResumo({ ...emptyResumo, ...resumoRes.data });
@@ -934,6 +962,7 @@ export default function Dashboard() {
       const empresasGrupoData = asArray(empresasGrupoRes.data);
       const fiscalPedidosData = asArray(fiscalPedidosRes.data);
       const comprasPainelData = unwrapApiData(comprasPainelRes.data);
+      const financeiroLancamentosData = asArray(financeiroLancamentosRes.data);
       if (produtosData.length > 0) setProdutos(produtosData);
       if (categoriasData.length > 0) setCategorias(categoriasData);
       if (clientesData.length > 0) setClientes(clientesData);
@@ -941,6 +970,7 @@ export default function Dashboard() {
       if (empresasGrupoData.length > 0) setEmpresasGrupo(empresasGrupoData);
       if (fiscalPedidosData.length > 0) setFiscalPedidos(fiscalPedidosData);
       if (comprasPainelData && typeof comprasPainelData === 'object') setComprasPainel(comprasPainelData);
+      setFinanceiroLancamentos(financeiroLancamentosData);
       const integracoesData = asArray(integracoesRes.data);
       const credenciaisData = asArray(credenciaisRes.data);
       const siteConfigData = asArray(siteConfigRes.data);
@@ -990,6 +1020,29 @@ export default function Dashboard() {
       label: (categoria.caminho || categoria.Caminho || categoria.nome || categoria.Nome || '').trim() || 'Sem nome',
     }))
   ), [categorias]);
+
+  const financeiroResumo = useMemo(() => {
+    const pendentes = financeiroLancamentos.filter((item) => getFinanceiroStatus(item).toLowerCase() === 'pendente');
+    const pagos = financeiroLancamentos.filter((item) => getFinanceiroStatus(item).toLowerCase() === 'pago');
+    const receitasAbertas = pendentes.filter((item) => getFinanceiroTipo(item).toLowerCase() === 'receita');
+    const despesasAbertas = pendentes.filter((item) => getFinanceiroTipo(item).toLowerCase() === 'despesa');
+    const contasAReceber = receitasAbertas.reduce((total, item) => total + getFinanceiroValor(item), 0);
+    const contasAPagar = despesasAbertas.reduce((total, item) => total + getFinanceiroValor(item), 0);
+
+    return {
+      contasAReceber,
+      contasAPagar,
+      saldoAberto: contasAReceber - contasAPagar,
+      pagos: pagos.reduce((total, item) => total + getFinanceiroValor(item), 0),
+      pendentes: pendentes.length,
+    };
+  }, [financeiroLancamentos]);
+
+  const financeiroLancamentosFiltrados = useMemo(() => {
+    if (financeiroFiltro === 'todos') return financeiroLancamentos;
+
+    return financeiroLancamentos.filter((item) => getFinanceiroStatus(item).toLowerCase() === financeiroFiltro);
+  }, [financeiroFiltro, financeiroLancamentos]);
 
   const submitCategoria = async (event) => {
     event.preventDefault();
@@ -1381,6 +1434,49 @@ export default function Dashboard() {
     } catch (error) {
       setFormStatus(error?.response?.data?.mensagem || 'Não foi possível atualizar o pedido de compra.');
     }
+  };
+
+  const submitFinanceiroLancamento = async (event) => {
+    event.preventDefault();
+    setFormStatus('');
+
+    const valor = Number(financeiroLancamentoForm.valor || 0);
+    if (valor <= 0) {
+      setFormStatus('Informe um valor financeiro maior que zero.');
+      return;
+    }
+
+    const payload = {
+      ...financeiroLancamentoForm,
+      valor,
+      pedidoId: financeiroLancamentoForm.pedidoId ? Number(financeiroLancamentoForm.pedidoId) : null,
+      dataVencimento: financeiroLancamentoForm.dataVencimento || null,
+      dataPagamento: financeiroLancamentoForm.dataPagamento || null,
+      categoria: financeiroLancamentoForm.categoria || null,
+      descricao: financeiroLancamentoForm.descricao || null,
+      meioPagamento: financeiroLancamentoForm.meioPagamento || null,
+      contaBancaria: financeiroLancamentoForm.contaBancaria || null,
+      comprovanteUrl: financeiroLancamentoForm.comprovanteUrl || null,
+      observacoes: financeiroLancamentoForm.observacoes || null,
+    };
+
+    await financeiroAPI.createLancamento(payload);
+    setFinanceiroLancamentoForm(emptyFinanceiroLancamento);
+    setFormStatus('Lançamento financeiro registrado e carteira atualizada.');
+    await loadData();
+  };
+
+  const atualizarFinanceiroLancamentoStatus = async (id, status) => {
+    await financeiroAPI.updateLancamentoStatus(id, {
+      status,
+      dataPagamento: status === 'Pago' ? new Date().toISOString() : null,
+      meioPagamento: status === 'Pago' ? 'Baixa manual' : null,
+      contaBancaria: status === 'Pago' ? 'Conta operacional' : null,
+      comprovanteUrl: null,
+      observacoes: `Atualização pelo painel financeiro em ${new Date().toLocaleString('pt-BR')}.`,
+    });
+    setFormStatus(`Lançamento financeiro atualizado para ${status}.`);
+    await loadData();
   };
 
   const submitLead = async (event) => {
@@ -2578,7 +2674,7 @@ export default function Dashboard() {
                   <ErpModuleHero
                     eyebrow="Financeiro operacional"
                     title="Fluxo de caixa, contas e conciliação"
-                    description="Tela dedicada para a retaguarda financeira com visão de entradas, saídas, recebimentos e base para DRE."
+                    description="Receitas, despesas, baixas, contas a receber e contas a pagar operando direto pela API e pelo banco."
                   />
                   <ModuleActionGrid
                     title="Acessos do financeiro"
@@ -2590,28 +2686,182 @@ export default function Dashboard() {
                     ]}
                   />
                   <div className="grid gap-4 md:grid-cols-4">
-                    <StatMiniCard label="Faturamento do mês" value={formatPrice(resumo.faturamento_mes || 0)} />
-                    <StatMiniCard label="Ticket médio" value={formatPrice(resumo.ticket_medio || 0)} />
-                    <StatMiniCard label="Pedidos hoje" value={resumo.pedidos_hoje || 0} />
-                    <StatMiniCard label="Conversão" value={`${resumo.conversao || 0}%`} />
+                    <StatMiniCard label="Contas a receber" value={formatPrice(financeiroResumo.contasAReceber)} />
+                    <StatMiniCard label="Contas a pagar" value={formatPrice(financeiroResumo.contasAPagar)} />
+                    <StatMiniCard label="Saldo aberto" value={formatPrice(financeiroResumo.saldoAberto)} />
+                    <StatMiniCard label="Pendências" value={financeiroResumo.pendentes} />
                   </div>
+                  <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+                    <SimpleForm
+                      title="Novo lançamento financeiro"
+                      subtitle="Registre receita, despesa, taxa, estorno ou transferência com vínculo opcional ao pedido."
+                      onSubmit={submitFinanceiroLancamento}
+                      buttonLabel="Registrar lançamento"
+                    >
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <SelectField
+                          label="Tipo"
+                          value={financeiroLancamentoForm.tipo}
+                          onChange={(value) => setFinanceiroLancamentoForm((current) => ({ ...current, tipo: value }))}
+                          options={['Receita', 'Despesa', 'Transferencia', 'Estorno', 'Taxa']}
+                        />
+                        <SelectField
+                          label="Status"
+                          value={financeiroLancamentoForm.status}
+                          onChange={(value) => setFinanceiroLancamentoForm((current) => ({ ...current, status: value }))}
+                          options={['Pendente', 'Pago', 'Atrasado', 'Cancelado', 'Estornado']}
+                        />
+                        <Field
+                          label="Categoria"
+                          value={financeiroLancamentoForm.categoria}
+                          onChange={(value) => setFinanceiroLancamentoForm((current) => ({ ...current, categoria: value }))}
+                        />
+                        <Field
+                          label="Valor"
+                          type="number"
+                          required
+                          value={financeiroLancamentoForm.valor}
+                          onChange={(value) => setFinanceiroLancamentoForm((current) => ({ ...current, valor: value }))}
+                        />
+                        <Field
+                          label="Vencimento"
+                          type="date"
+                          value={financeiroLancamentoForm.dataVencimento}
+                          onChange={(value) => setFinanceiroLancamentoForm((current) => ({ ...current, dataVencimento: value }))}
+                        />
+                        <Field
+                          label="Pedido vinculado"
+                          type="number"
+                          value={financeiroLancamentoForm.pedidoId}
+                          onChange={(value) => setFinanceiroLancamentoForm((current) => ({ ...current, pedidoId: value }))}
+                        />
+                        <Field
+                          label="Meio de pagamento"
+                          value={financeiroLancamentoForm.meioPagamento}
+                          onChange={(value) => setFinanceiroLancamentoForm((current) => ({ ...current, meioPagamento: value }))}
+                        />
+                        <Field
+                          label="Conta bancária"
+                          value={financeiroLancamentoForm.contaBancaria}
+                          onChange={(value) => setFinanceiroLancamentoForm((current) => ({ ...current, contaBancaria: value }))}
+                        />
+                      </div>
+                      <Field
+                        label="Descrição"
+                        value={financeiroLancamentoForm.descricao}
+                        onChange={(value) => setFinanceiroLancamentoForm((current) => ({ ...current, descricao: value }))}
+                      />
+                      <TextAreaField
+                        label="Observações"
+                        rows={3}
+                        value={financeiroLancamentoForm.observacoes}
+                        onChange={(value) => setFinanceiroLancamentoForm((current) => ({ ...current, observacoes: value }))}
+                      />
+                    </SimpleForm>
+
+                    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <h3 className="text-lg font-black text-slate-950">Carteira financeira</h3>
+                          <p className="mt-1 text-sm font-semibold text-slate-500">
+                            {financeiroLancamentosFiltrados.length} lançamentos em acompanhamento.
+                          </p>
+                        </div>
+                        <select
+                          value={financeiroFiltro}
+                          onChange={(event) => setFinanceiroFiltro(event.target.value)}
+                          className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-slate-950"
+                        >
+                          <option value="todos">Todos</option>
+                          <option value="pendente">Pendentes</option>
+                          <option value="pago">Pagos</option>
+                          <option value="atrasado">Atrasados</option>
+                          <option value="cancelado">Cancelados</option>
+                          <option value="estornado">Estornados</option>
+                        </select>
+                      </div>
+
+                      <div className="mt-5 grid gap-3">
+                        {financeiroLancamentosFiltrados.slice(0, 12).map((item) => {
+                          const id = item.id ?? item.Id;
+                          const status = getFinanceiroStatus(item);
+                          const tipo = getFinanceiroTipo(item);
+                          const statusLower = status.toLowerCase();
+
+                          return (
+                            <article key={id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                <div>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="rounded-full bg-slate-950 px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-white">
+                                      {tipo || 'Financeiro'}
+                                    </span>
+                                    <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-amber-900">
+                                      {status || 'Pendente'}
+                                    </span>
+                                  </div>
+                                  <p className="mt-3 text-base font-black text-slate-950">{getFinanceiroDescricao(item)}</p>
+                                  <p className="mt-1 text-sm font-semibold text-slate-500">
+                                    {getFinanceiroCategoria(item)} · Pedido {getFinanceiroNumeroPedido(item) || getFinanceiroPedidoId(item) || 'sem vínculo'}
+                                  </p>
+                                  <p className="mt-2 text-xs font-semibold text-slate-400">
+                                    Vencimento: {formatDate(getFinanceiroVencimento(item))} · Pagamento: {formatDate(getFinanceiroPagamento(item))}
+                                  </p>
+                                </div>
+                                <div className="text-left lg:text-right">
+                                  <p className="text-2xl font-black text-slate-950">{formatPrice(getFinanceiroValor(item))}</p>
+                                  <div className="mt-3 flex flex-wrap gap-2 lg:justify-end">
+                                    {statusLower !== 'pago' && statusLower !== 'cancelado' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => atualizarFinanceiroLancamentoStatus(id, 'Pago')}
+                                        className="h-9 rounded-lg bg-emerald-600 px-3 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:bg-emerald-700"
+                                      >
+                                        Baixar
+                                      </button>
+                                    )}
+                                    {statusLower !== 'cancelado' && statusLower !== 'pago' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => atualizarFinanceiroLancamentoStatus(id, 'Cancelado')}
+                                        className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black uppercase tracking-[0.12em] text-slate-700 transition hover:border-rose-300 hover:text-rose-700"
+                                      >
+                                        Cancelar
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </article>
+                          );
+                        })}
+
+                        {financeiroLancamentosFiltrados.length === 0 && (
+                          <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm font-bold text-slate-500">
+                            Nenhum lançamento financeiro encontrado para este filtro.
+                          </div>
+                        )}
+                      </div>
+                    </section>
+                  </div>
+
                   <div className="grid gap-6 xl:grid-cols-2">
                     <ErpChecklistCard
-                      title="Rotina financeira"
+                      title="Controles financeiros ativos"
                       items={[
-                        'Baixa automática por webhook de pagamento.',
-                        'Fluxo de caixa por pedido, loja e canal.',
-                        'Contas a pagar/receber com conciliação assistida.',
-                        'Preparação para DRE e balancete em tempo real.',
+                        'Lançamento manual operacional com tipo, status, vencimento e vínculo com pedido.',
+                        'Baixa de contas a receber e contas a pagar pelo painel administrativo.',
+                        'Separação entre receitas, despesas, taxas, estornos e transferências.',
+                        'Base aberta para conciliação com gateway, banco, DRE e relatórios contábeis.',
                       ]}
                     />
                     <ErpChecklistCard
-                      title="Acessos rápidos"
+                      title="Próxima amarração do checklist"
                       items={[
-                        'Conferir pedidos aprovados antes do faturamento.',
-                        'Relacionar gateway, taxa e liquidação.',
-                        'Separar receita operacional e custos logísticos.',
-                        'Base pronta para relatórios contábeis detalhados.',
+                        'Ligar pagamentos reais dos gateways às baixas automáticas.',
+                        'Fechar integração fiscal para nota, boleto, comprovante e cobrança.',
+                        'Conectar logística para custo de frete e baixa por entrega.',
+                        'Abrir relatórios gerenciais por empresa, loja, canal e centro de custo.',
                       ]}
                     />
                   </div>

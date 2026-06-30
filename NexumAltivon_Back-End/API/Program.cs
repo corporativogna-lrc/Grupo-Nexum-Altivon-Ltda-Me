@@ -2351,6 +2351,119 @@ app.MapGet("/api/financeiro/lancamentos", [Authorize(Policy = "Financeiro")] asy
 .WithName("FinanceiroLancamentos")
 ;
 
+app.MapPost("/api/financeiro/lancamentos", [Authorize(Policy = "Financeiro")] async (
+    FinanceiroLancamentoRequest request,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    if (!Enum.TryParse<TipoLancamento>(request.Tipo, true, out var tipo))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Tipo de lancamento financeiro invalido."));
+    }
+
+    if (request.Valor <= 0)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Informe um valor financeiro maior que zero."));
+    }
+
+    var status = StatusLancamento.Pendente;
+    if (!string.IsNullOrWhiteSpace(request.Status) &&
+        !Enum.TryParse<StatusLancamento>(request.Status, true, out status))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Status financeiro invalido."));
+    }
+
+    var pedidoExiste = request.PedidoId is null || await db.Pedidos.AnyAsync(item => item.Id == request.PedidoId.Value, ct);
+    if (!pedidoExiste)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Pedido vinculado ao financeiro nao foi encontrado."));
+    }
+
+    var now = DateTime.UtcNow;
+    var lancamento = new Financeiro
+    {
+        PedidoId = request.PedidoId,
+        Tipo = tipo,
+        Status = status,
+        Categoria = Truncate(request.Categoria, 100),
+        Descricao = Truncate(request.Descricao, 255),
+        Valor = request.Valor,
+        DataVencimento = request.DataVencimento,
+        DataPagamento = status == StatusLancamento.Pago ? request.DataPagamento ?? now : request.DataPagamento,
+        MeioPagamento = Truncate(request.MeioPagamento, 50),
+        ContaBancaria = Truncate(request.ContaBancaria, 100),
+        ComprovanteUrl = Truncate(request.ComprovanteUrl, 255),
+        Observacoes = request.Observacoes,
+        CreatedAt = now,
+        UpdatedAt = now
+    };
+
+    db.Financeiros.Add(lancamento);
+    await db.SaveChangesAsync(ct);
+
+    var dto = new FinanceiroLancamentoDto(
+        lancamento.Id,
+        lancamento.PedidoId,
+        null,
+        lancamento.Tipo.ToString(),
+        lancamento.Status.ToString(),
+        lancamento.Categoria,
+        lancamento.Descricao,
+        lancamento.Valor,
+        lancamento.DataVencimento,
+        lancamento.DataPagamento,
+        lancamento.MeioPagamento,
+        lancamento.ContaBancaria,
+        lancamento.Observacoes,
+        lancamento.CreatedAt);
+
+    return Results.Created($"/api/financeiro/lancamentos/{lancamento.Id}", ApiResponse<FinanceiroLancamentoDto>.Ok(dto, "Lancamento financeiro registrado."));
+})
+.WithName("FinanceiroCriarLancamento")
+;
+
+app.MapPatch("/api/financeiro/lancamentos/{id:int}/status", [Authorize(Policy = "Financeiro")] async (
+    int id,
+    FinanceiroLancamentoStatusRequest request,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var lancamento = await db.Financeiros.FirstOrDefaultAsync(item => item.Id == id, ct);
+    if (lancamento is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Lancamento financeiro nao encontrado."));
+    }
+
+    if (!Enum.TryParse<StatusLancamento>(request.Status, true, out var status))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Status financeiro invalido."));
+    }
+
+    lancamento.Status = status;
+    lancamento.UpdatedAt = DateTime.UtcNow;
+
+    if (status == StatusLancamento.Pago)
+    {
+        lancamento.DataPagamento = request.DataPagamento ?? DateTime.UtcNow;
+        lancamento.MeioPagamento = Truncate(request.MeioPagamento, 50) ?? lancamento.MeioPagamento;
+        lancamento.ContaBancaria = Truncate(request.ContaBancaria, 100) ?? lancamento.ContaBancaria;
+        lancamento.ComprovanteUrl = Truncate(request.ComprovanteUrl, 255) ?? lancamento.ComprovanteUrl;
+    }
+
+    if (!string.IsNullOrWhiteSpace(request.Observacoes))
+    {
+        lancamento.Observacoes = string.IsNullOrWhiteSpace(lancamento.Observacoes)
+            ? request.Observacoes
+            : $"{lancamento.Observacoes}\n{DateTime.UtcNow:yyyy-MM-dd HH:mm} - {request.Observacoes}";
+    }
+
+    await db.SaveChangesAsync(ct);
+
+    return Results.Ok(ApiResponse<string>.Ok("Status financeiro atualizado."));
+})
+.WithName("FinanceiroAtualizarStatusLancamento")
+;
+
 app.MapGet("/api/pedidos/acompanhar", async (
     string numero,
     string? email,
@@ -4192,6 +4305,17 @@ static string? NormalizeEmail(string? value) =>
     string.IsNullOrWhiteSpace(value)
         ? null
         : value.Trim().ToLowerInvariant();
+
+static string? Truncate(string? value, int maxLength)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return null;
+    }
+
+    var trimmed = value.Trim();
+    return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
+}
 
 static string ComputeSha256Hash(string value)
 {
@@ -7934,6 +8058,28 @@ public sealed record FinanceiroLancamentoDto(
     string? ContaBancaria,
     string? Observacoes,
     DateTime CreatedAt);
+
+public sealed record FinanceiroLancamentoRequest(
+    string Tipo,
+    string? Status,
+    string? Categoria,
+    string? Descricao,
+    decimal Valor,
+    DateTime? DataVencimento,
+    DateTime? DataPagamento,
+    string? MeioPagamento,
+    string? ContaBancaria,
+    string? ComprovanteUrl,
+    string? Observacoes,
+    int? PedidoId);
+
+public sealed record FinanceiroLancamentoStatusRequest(
+    string Status,
+    DateTime? DataPagamento,
+    string? MeioPagamento,
+    string? ContaBancaria,
+    string? ComprovanteUrl,
+    string? Observacoes);
 
 public sealed record LeadsRecentesDto(int Id, string Nome, string Tipo, string Status, string Prioridade, string? Email, string? Whatsapp, DateTime DataCriacao);
 

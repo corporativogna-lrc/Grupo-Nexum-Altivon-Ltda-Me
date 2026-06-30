@@ -355,6 +355,8 @@ export const dashboardAPI = {
 
 export const financeiroAPI = {
   getLancamentos: (tipo) => api.get('/financeiro/lancamentos', { params: { tipo } }),
+  createLancamento: (data) => api.post('/financeiro/lancamentos', data),
+  updateLancamentoStatus: (id, data) => api.patch(`/financeiro/lancamentos/${id}/status`, data),
   getFaturamento: (dataInicio, dataFim) =>
     api.get('/financeiro/faturamento', {
       params: { data_inicio: dataInicio, data_fim: dataFim },
