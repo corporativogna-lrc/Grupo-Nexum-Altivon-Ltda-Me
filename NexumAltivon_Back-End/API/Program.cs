@@ -4124,6 +4124,80 @@ app.MapGet("/api/fiscal/pdv/configuracoes", [Authorize(Policy = "Gerente")] asyn
 .WithName("PdvFiscalConfiguracoes")
 ;
 
+app.MapGet("/api/pdv/cockpit", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var hoje = DateTime.UtcNow.Date;
+    var inicioMes = new DateTime(hoje.Year, hoje.Month, 1);
+
+    var configuracoes = await db.EmpresasGrupo
+        .AsNoTracking()
+        .Where(item => item.Ativa && item.PermiteNfeSaida)
+        .OrderByDescending(item => item.EmitentePreferencial)
+        .ThenBy(item => item.PrioridadeFiscal)
+        .Select(item => new PdvFiscalConfigDto(
+            item.Id,
+            item.CodigoEmpresa,
+            item.RazaoSocial,
+            item.Cnpj,
+            item.ModeloDocumentoPdv ?? "NFCe",
+            item.AmbienteNfce ?? item.AmbienteNfe,
+            item.SerieNfce,
+            item.ProximaNfceNumero,
+            item.NfceCscIdToken,
+            !string.IsNullOrWhiteSpace(item.NfceCsc),
+            item.PdvSerieSat,
+            item.PdvImpressoraFiscal,
+            item.PdvNomeCaixaPadrao,
+            item.PdvContingenciaOffline,
+            item.EmitentePreferencial,
+            item.Estado))
+        .ToListAsync(ct);
+
+    var pedidosHoje = await db.Pedidos.AsNoTracking().CountAsync(item => item.CreatedAt >= hoje, ct);
+    var faturamentoHoje = await db.Pedidos.AsNoTracking()
+        .Where(item => item.CreatedAt >= hoje && item.Status != StatusPedido.Cancelado && item.Status != StatusPedido.Reembolsado)
+        .SumAsync(item => (decimal?)item.Total, ct) ?? 0m;
+    var faturamentoMes = await db.Pedidos.AsNoTracking()
+        .Where(item => item.CreatedAt >= inicioMes && item.Status != StatusPedido.Cancelado && item.Status != StatusPedido.Reembolsado)
+        .SumAsync(item => (decimal?)item.Total, ct) ?? 0m;
+    var vendasPresenciaisHoje = await db.Pedidos.AsNoTracking()
+        .CountAsync(item => item.CreatedAt >= hoje && (item.Origem == OrigemPedido.Mobile || item.Origem == OrigemPedido.API || item.MeioPagamento == "Dinheiro" || item.MeioPagamento == "CartaoPDV" || item.MeioPagamento == "Cartão PDV"), ct);
+    var produtosAtivos = await db.Produtos.AsNoTracking().CountAsync(item => item.Ativo, ct);
+    var produtosComCodigoFisico = await db.Produtos.AsNoTracking()
+        .CountAsync(item => item.Ativo && item.CodigoBarras != null && item.CodigoBarras != "" && item.QrCode != null && item.QrCode != "", ct);
+    var fiscalPdvPendente = await db.Fiscais.AsNoTracking()
+        .CountAsync(item => (item.ModeloDocumento == "NFCe" || item.ModeloDocumento == "SAT" || item.ModeloDocumento == "MFe") && item.StatusNfe != StatusNfe.Autorizada && item.StatusNfe != StatusNfe.Cancelada, ct);
+    var financeiroCaixaAberto = await db.Financeiros.AsNoTracking()
+        .CountAsync(item => item.Status == StatusLancamento.Pendente && (item.MeioPagamento == "Dinheiro" || item.MeioPagamento == "Pix" || item.MeioPagamento == "Cartao" || item.MeioPagamento == "Cartão" || item.MeioPagamento == "CartaoPDV"), ct);
+
+    var pendencias = new List<PdvPendenciaDto>();
+    AddPdvPendencia(pendencias, configuracoes.Count == 0 ? 1 : 0, "Sem empresa habilitada para PDV", "Cadastre ou habilite ao menos uma empresa ativa com emissão de saída.", "critico", "erp-empresas");
+    AddPdvPendencia(pendencias, configuracoes.Count(item => string.IsNullOrWhiteSpace(item.SerieNfce) && string.Equals(item.ModeloDocumentoPdv, "NFCe", StringComparison.OrdinalIgnoreCase)), "NFC-e sem série", "Empresas NFC-e precisam de série e numeração antes do caixa real.", "alta", "erp-empresas");
+    AddPdvPendencia(pendencias, configuracoes.Count(item => !item.PossuiCscConfigurado && string.Equals(item.ModeloDocumentoPdv, "NFCe", StringComparison.OrdinalIgnoreCase)), "CSC NFC-e ausente", "Configure CSC e ID Token das empresas que irão emitir NFC-e.", "alta", "erp-empresas");
+    AddPdvPendencia(pendencias, produtosAtivos - produtosComCodigoFisico, "Produtos sem leitura física", "Itens ativos precisam de código de barras e QR para operação de caixa.", "alta", "cadastro-produtos");
+    AddPdvPendencia(pendencias, fiscalPdvPendente, "Fiscal PDV pendente", "Documentos NFC-e/SAT/MFe ainda precisam de autorização ou contingência.", "media", "erp-fiscal");
+    AddPdvPendencia(pendencias, financeiroCaixaAberto, "Caixa financeiro pendente", "Lançamentos de caixa aguardam baixa ou conciliação.", "media", "erp-financeiro");
+
+    if (pendencias.Count == 0)
+    {
+        pendencias.Add(new PdvPendenciaDto("PDV operacional", "Configuração fiscal, produtos e caixa não retornaram pendências críticas neste momento.", "ok", "erp-pdv"));
+    }
+
+    var indicadores = new List<PdvIndicadorDto>
+    {
+        new("empresas", "Empresas PDV", configuracoes.Count.ToString(CultureInfo.InvariantCulture), $"{configuracoes.Count(item => item.PdvContingenciaOffline)} com contingência offline", BuildHealthStatus(configuracoes.Count == 0 ? 1 : 0), "erp-empresas"),
+        new("vendasHoje", "Pedidos hoje", pedidosHoje.ToString(CultureInfo.InvariantCulture), $"Presencial/API: {vendasPresenciaisHoje}", "ok", "pedidos"),
+        new("faturamentoHoje", "Faturamento hoje", faturamentoHoje.ToString("C", CultureInfo.GetCultureInfo("pt-BR")), $"Mês: {faturamentoMes.ToString("C", CultureInfo.GetCultureInfo("pt-BR"))}", "ok", "erp-financeiro"),
+        new("produtosFisicos", "Itens com leitura", $"{produtosComCodigoFisico}/{produtosAtivos}", "Código de barras e QR Code para operação de caixa", BuildHealthStatus(produtosAtivos - produtosComCodigoFisico), "cadastro-produtos"),
+        new("fiscalPdv", "Fiscal PDV pendente", fiscalPdvPendente.ToString(CultureInfo.InvariantCulture), "NFC-e/SAT/MFe em fila ou contingência", BuildHealthStatus(fiscalPdvPendente), "erp-fiscal"),
+        new("caixa", "Caixa a conciliar", financeiroCaixaAberto.ToString(CultureInfo.InvariantCulture), "Recebimentos de balcão, PIX, cartão e dinheiro", BuildHealthStatus(financeiroCaixaAberto), "erp-financeiro")
+    };
+
+    return Results.Ok(ApiResponse<PdvCockpitDto>.Ok(new PdvCockpitDto(configuracoes, indicadores, pendencias, DateTime.UtcNow)));
+})
+.WithName("PdvCockpit")
+;
+
 app.MapGet("/api/fiscal/pedidos", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
 {
     var registros = await db.Fiscais
@@ -5152,6 +5226,17 @@ static void AddCorporateAlert(List<GestaoCorporativaAlertaDto> alertas, int quan
     }
 
     alertas.Add(new GestaoCorporativaAlertaDto(modulo, titulo, detalhe, severidade, acao));
+}
+
+static void AddPdvPendencia(List<PdvPendenciaDto> pendencias, int quantidade, string titulo, string detalhe, string severidade, string acao)
+{
+    if (quantidade <= 0)
+    {
+        return;
+    }
+
+    var tituloFinal = quantidade == 1 ? titulo : $"{titulo} ({quantidade})";
+    pendencias.Add(new PdvPendenciaDto(tituloFinal, detalhe, severidade, acao));
 }
 
 static string NormalizeCompraOrigem(string? value)
@@ -9691,6 +9776,26 @@ public sealed record PdvFiscalConfigDto(
     bool PdvContingenciaOffline,
     bool EmitentePreferencial,
     string? Estado);
+
+public sealed record PdvCockpitDto(
+    List<PdvFiscalConfigDto> Configuracoes,
+    List<PdvIndicadorDto> Indicadores,
+    List<PdvPendenciaDto> Pendencias,
+    DateTime AtualizadoEm);
+
+public sealed record PdvIndicadorDto(
+    string Chave,
+    string Titulo,
+    string Valor,
+    string Detalhe,
+    string Status,
+    string Modulo);
+
+public sealed record PdvPendenciaDto(
+    string Titulo,
+    string Detalhe,
+    string Severidade,
+    string Acao);
 
 public sealed record FiscalPedidoDto(
     int Id,

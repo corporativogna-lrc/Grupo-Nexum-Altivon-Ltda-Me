@@ -359,6 +359,10 @@ export const dashboardAPI = {
     }),
 };
 
+export const pdvAPI = {
+  getCockpit: () => api.get('/pdv/cockpit'),
+};
+
 export const financeiroAPI = {
   getLancamentos: (tipo) => api.get('/financeiro/lancamentos', { params: { tipo } }),
   createLancamento: (data) => api.post('/financeiro/lancamentos', data),

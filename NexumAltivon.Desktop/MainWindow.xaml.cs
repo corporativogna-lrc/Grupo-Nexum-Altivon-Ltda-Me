@@ -107,6 +107,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         });
         Modules.Add(new DesktopModule
         {
+            Title = "PDV / Caixa",
+            Detail = "Frente de loja, leitura fisica, NFC-e/SAT, contingencia e conciliacao com financeiro.",
+            Status = "Integrado ao ERP",
+            Accent = "#EAB308",
+            ActionText = "Abrir PDV"
+        });
+        Modules.Add(new DesktopModule
+        {
             Title = "Grupo e Empresas",
             Detail = "Visao societaria, unidades, centros de custo e controle local da empresa.",
             Status = "Governanca ativa",

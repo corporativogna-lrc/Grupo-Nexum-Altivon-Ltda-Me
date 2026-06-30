@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { categoriaAPI, clienteAPI, comprasAPI, dashboardAPI, empresaGrupoAPI, financeiroAPI, fiscalAPI, fornecedorAPI, integracoesAPI, leadAPI, logisticaAPI, pedidoAPI, produtoAPI, siteAPI, unwrapApiData } from '../services/api';
+import { categoriaAPI, clienteAPI, comprasAPI, dashboardAPI, empresaGrupoAPI, financeiroAPI, fiscalAPI, fornecedorAPI, integracoesAPI, leadAPI, logisticaAPI, pedidoAPI, pdvAPI, produtoAPI, siteAPI, unwrapApiData } from '../services/api';
 import { formatDate, formatPrice, getLeadStatusClass, getPagamentoLabel, getPedidoStatusClass } from '../utils/formatters';
 import {
   Activity,
@@ -51,6 +51,7 @@ const tabs = [
   { id: 'cadastro-clientes', label: 'Clientes', icon: Users, section: 'Cadastros' },
   { id: 'cadastro-fornecedores', label: 'Fornecedores', icon: Building2, section: 'Cadastros' },
   { id: 'erp', label: 'ERP', icon: Database, section: 'Gestão', badge: 'desktop' },
+  { id: 'erp-pdv', label: 'PDV / Caixa', icon: CreditCard, section: 'Gestão', badge: 'caixa' },
   { id: 'erp-financeiro', label: 'Financeiro', icon: WalletCards, section: 'Gestão', badge: 'caixa' },
   { id: 'erp-empresas', label: 'Empresas do Grupo', icon: Building2, section: 'Gestão', badge: 'fiscal' },
   { id: 'erp-fiscal', label: 'Notas e Fiscal', icon: FileText, section: 'Gestão', badge: 'auto' },
@@ -102,6 +103,14 @@ const plannedModules = [
 ];
 
 const erpModules = [
+  {
+    title: 'PDV / Caixa',
+    tabId: 'erp-pdv',
+    status: 'Caixa fiscal assistido',
+    icon: CreditCard,
+    metrics: ['NFC-e/SAT', 'Contingência', 'Leitura física', 'Conciliação'],
+    signal: 'Frente de loja',
+  },
   {
     title: 'Financeiro',
     tabId: 'erp-financeiro',
@@ -162,6 +171,7 @@ const erpModules = [
 
 const erpWorkspaceNavItems = [
   { id: 'erp', label: 'Painel', short: 'painel', signal: 'Visão geral' },
+  { id: 'erp-pdv', label: 'PDV', short: 'caixa', signal: 'Frente de loja' },
   { id: 'erp-fiscal', label: 'Fiscal', short: 'nf-e', signal: 'Emissão' },
   { id: 'erp-financeiro', label: 'Financeiro', short: 'caixa', signal: 'Fluxo de caixa' },
   { id: 'erp-logistica', label: 'Logística', short: 'estoque', signal: 'Expedição' },
@@ -172,6 +182,7 @@ const erpWorkspaceNavItems = [
 ];
 
 const erpCockpitActions = [
+  { id: 'erp-pdv', label: 'PDV / Caixa', detail: 'Frente de loja, contingência e leitura física' },
   { id: 'erp-fiscal', label: 'Emissão fiscal', detail: 'Fila, emitente e automação NF-e' },
   { id: 'erp-financeiro', label: 'Caixa / Financeiro', detail: 'Fluxo de caixa, liquidação e conciliação' },
   { id: 'erp-logistica', label: 'Expedição / Estoque', detail: 'Separação, despacho e rastreio' },
@@ -967,6 +978,7 @@ function CorporateBindingPanel({ painel, onOpen }) {
       'cadastro-fornecedores': 'Abrir fornecedores',
       cadastros: 'Abrir cadastros',
       pedidos: 'Abrir pedidos',
+      'erp-pdv': 'Abrir PDV',
       'erp-compras': 'Abrir compras',
       'erp-empresas': 'Abrir empresas',
       'erp-financeiro': 'Abrir financeiro',
@@ -1069,6 +1081,122 @@ function CorporateBindingPanel({ painel, onOpen }) {
   );
 }
 
+function PdvCockpitPanel({ cockpit, onOpen }) {
+  const indicadores = asArray(cockpit?.indicadores);
+  const pendencias = asArray(cockpit?.pendencias);
+  const configuracoes = asArray(cockpit?.configuracoes);
+  const atualizadoEm = cockpit?.atualizado_em || cockpit?.atualizadoEm;
+  const statusClass = (status) => {
+    const normalized = String(status || '').toLowerCase();
+    if (normalized === 'ok') return 'border-emerald-200 bg-emerald-50 text-emerald-800';
+    if (normalized === 'critico' || normalized === 'alta') return 'border-rose-200 bg-rose-50 text-rose-800';
+    return 'border-amber-200 bg-amber-50 text-amber-800';
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {indicadores.map((item) => (
+          <button
+            key={item.chave || item.titulo}
+            type="button"
+            onClick={() => item.modulo && onOpen(item.modulo)}
+            className="rounded-lg border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#C9A227] hover:shadow-md"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{item.titulo}</p>
+                <p className="mt-2 text-2xl font-black text-slate-950">{item.valor}</p>
+              </div>
+              <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${statusClass(item.status)}`}>
+                {item.status || 'ok'}
+              </span>
+            </div>
+            <p className="mt-3 text-sm font-semibold text-slate-500">{item.detalhe}</p>
+          </button>
+        ))}
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Empresas de caixa</p>
+              <h3 className="mt-2 text-xl font-black text-slate-950">Configuração fiscal do PDV</h3>
+              <p className="mt-1 text-sm font-semibold text-slate-500">
+                {atualizadoEm ? `Leitura atualizada em ${formatDate(atualizadoEm)}.` : 'Leitura em tempo real da API.'}
+              </p>
+            </div>
+            <button type="button" onClick={() => onOpen('erp-empresas')} className="rounded-full bg-slate-950 px-4 py-2 text-sm font-black text-white">
+              Ajustar empresas
+            </button>
+          </div>
+
+          <div className="mt-5 grid gap-3">
+            {configuracoes.length > 0 ? configuracoes.map((empresa) => (
+              <article key={empresa.id || empresa.cnpj} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-slate-950 px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-white">
+                        {empresa.modeloDocumentoPdv || empresa.modelo_documento_pdv || 'PDV'}
+                      </span>
+                      {empresa.emitentePreferencial || empresa.emitente_preferencial ? (
+                        <span className="rounded-full bg-amber-100 px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-amber-900">Preferencial</span>
+                      ) : null}
+                      {empresa.pdvContingenciaOffline || empresa.pdv_contingencia_offline ? (
+                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-emerald-800">Contingência</span>
+                      ) : null}
+                    </div>
+                    <h4 className="mt-3 text-lg font-black text-slate-950">{empresa.razaoSocial || empresa.razao_social}</h4>
+                    <p className="mt-1 text-sm font-semibold text-slate-500">{empresa.cnpj} · UF {empresa.estado || 'não definida'}</p>
+                  </div>
+                  <div className="grid gap-2 text-sm font-bold text-slate-600 sm:grid-cols-2 lg:min-w-[300px]">
+                    <span>Série: {empresa.serieNfce || empresa.serie_nfce || 'pendente'}</span>
+                    <span>Próxima: {empresa.proximaNfceNumero || empresa.proxima_nfce_numero || 'pendente'}</span>
+                    <span>Caixa: {empresa.pdvNomeCaixaPadrao || empresa.pdv_nome_caixa_padrao || 'não definido'}</span>
+                    <span>CSC: {empresa.possuiCscConfigurado || empresa.possui_csc_configurado ? 'configurado' : 'pendente'}</span>
+                  </div>
+                </div>
+              </article>
+            )) : (
+              <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-5 text-sm font-semibold text-slate-500">
+                Nenhuma empresa ativa com emissão de saída retornou para operação PDV.
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-lg border border-slate-200 bg-slate-950 p-6 text-white shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Pendências do caixa</p>
+              <h3 className="mt-2 text-xl font-black">Fila para operação presencial</h3>
+            </div>
+            <CreditCard className="text-[#C9A227]" size={24} />
+          </div>
+          <div className="mt-5 space-y-3">
+            {pendencias.map((item) => (
+              <div key={`${item.titulo}-${item.acao}`} className="rounded-lg border border-white/10 bg-white/5 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black">{item.titulo}</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-300">{item.detalhe}</p>
+                  </div>
+                  <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase ${statusClass(item.severidade)}`}>{item.severidade}</span>
+                </div>
+                <button type="button" onClick={() => item.acao && onOpen(item.acao)} className="mt-3 text-xs font-black uppercase tracking-[0.14em] text-[#C9A227]">
+                  Abrir correção
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const params = useParams();
@@ -1085,6 +1213,7 @@ export default function Dashboard() {
   const [empresasGrupo, setEmpresasGrupo] = useState([]);
   const [financeiroLancamentos, setFinanceiroLancamentos] = useState([]);
   const [corporativoPainel, setCorporativoPainel] = useState(null);
+  const [pdvCockpit, setPdvCockpit] = useState(null);
   const [produtoEditingId, setProdutoEditingId] = useState('');
   const [clienteEditingId, setClienteEditingId] = useState('');
   const [fornecedorEditingId, setFornecedorEditingId] = useState('');
@@ -1171,9 +1300,10 @@ export default function Dashboard() {
 
   const loadData = useCallback(async () => {
     try {
-      const [resumoRes, corporativoPainelRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, empresasGrupoRes, fiscalPedidosRes, comprasPainelRes, integracoesRes, credenciaisRes, financeiroLancamentosRes, siteConfigRes] = await Promise.all([
+      const [resumoRes, corporativoPainelRes, pdvCockpitRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, empresasGrupoRes, fiscalPedidosRes, comprasPainelRes, integracoesRes, credenciaisRes, financeiroLancamentosRes, siteConfigRes] = await Promise.all([
         dashboardAPI.getResumo(),
         dashboardAPI.getCorporativoPainel().catch(() => ({ data: null })),
+        pdvAPI.getCockpit().catch(() => ({ data: null })),
         pedidoAPI.getAll(),
         leadAPI.getAll(),
         produtoAPI.getAll(),
@@ -1202,6 +1332,7 @@ export default function Dashboard() {
       const empresasGrupoData = asArray(empresasGrupoRes.data);
       const fiscalPedidosData = asArray(fiscalPedidosRes.data);
       const corporativoPainelData = unwrapApiData(corporativoPainelRes.data);
+      const pdvCockpitData = unwrapApiData(pdvCockpitRes.data);
       const comprasPainelData = unwrapApiData(comprasPainelRes.data);
       const financeiroLancamentosData = asArray(financeiroLancamentosRes.data);
       if (produtosData.length > 0) setProdutos(produtosData);
@@ -1211,6 +1342,7 @@ export default function Dashboard() {
       if (empresasGrupoData.length > 0) setEmpresasGrupo(empresasGrupoData);
       setFiscalPedidos(fiscalPedidosData);
       if (corporativoPainelData && typeof corporativoPainelData === 'object') setCorporativoPainel(corporativoPainelData);
+      if (pdvCockpitData && typeof pdvCockpitData === 'object') setPdvCockpit(pdvCockpitData);
       if (comprasPainelData && typeof comprasPainelData === 'object') setComprasPainel(comprasPainelData);
       setFinanceiroLancamentos(financeiroLancamentosData);
       const integracoesData = asArray(integracoesRes.data);
@@ -2881,6 +3013,27 @@ export default function Dashboard() {
                       </section>
                     </div>
                   </div>
+                </section>
+              )}
+
+              {activeTab === 'erp-pdv' && (
+                <section className="erp-desktop-surface space-y-6">
+                  <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
+                  <ErpModuleHero
+                    eyebrow="Frente de loja"
+                    title="PDV, caixa fiscal e contingência"
+                    description="Cockpit do caixa presencial usando empresas emitentes, produtos com leitura física, pedidos, fiscal, financeiro e contingência operacional."
+                  />
+                  <PdvCockpitPanel cockpit={pdvCockpit} onOpen={openMainTab} />
+                  <ModuleActionGrid
+                    title="Ações de caixa integradas"
+                    actions={[
+                      { label: 'Configurar empresa emitente', detail: 'Séries, CSC, impressora, contingência e prioridade fiscal.', onClick: () => openMainTab('erp-empresas') },
+                      { label: 'Revisar produtos de caixa', detail: 'Código de barras, QR Code, estoque e preço de venda.', onClick: () => openMainTab('cadastro-produtos') },
+                      { label: 'Conferir fila fiscal', detail: 'NFC-e/SAT/MFe, emissão manual e documentos pendentes.', onClick: () => openMainTab('erp-fiscal') },
+                      { label: 'Conciliar financeiro', detail: 'PIX, cartão, dinheiro, taxas e baixas do caixa.', onClick: () => openMainTab('erp-financeiro') },
+                    ]}
+                  />
                 </section>
               )}
 
