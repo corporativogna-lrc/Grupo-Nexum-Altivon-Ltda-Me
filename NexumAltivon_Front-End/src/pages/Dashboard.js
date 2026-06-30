@@ -339,8 +339,40 @@ const emptyCategoria = {
   ordem: '0',
 };
 
-const emptyCliente = { nome: '', email: '', telefone: '', cpf: '' };
-const emptyFornecedor = { nome: '', documento: '', email: '', telefone: '', categoria: 'Geral' };
+const emptyCliente = {
+  nome: '',
+  email: '',
+  telefone: '',
+  whatsapp: '',
+  cpf: '',
+  rgIe: '',
+  dataNascimento: '',
+  tipo: 'PF',
+  newsletter: true,
+  vip: false,
+  pontosFidelidade: '0',
+  status: 'Pendente',
+  avatar: '',
+};
+const emptyFornecedor = {
+  nome: '',
+  nomeFantasia: '',
+  documento: '',
+  ie: '',
+  email: '',
+  telefone: '',
+  whatsapp: '',
+  categoria: 'Geral',
+  endereco: '',
+  cidade: '',
+  estado: '',
+  cep: '',
+  lojaVinculadaId: '',
+  comissaoPercentual: '0',
+  prazoEntregaDias: '7',
+  status: 'Ativo',
+  observacoes: '',
+};
 const emptyLead = { nome: '', email: '', telefone: '', status: 'Novo', origem: 'Site', observacao: '' };
 const emptyCompraSolicitacao = {
   produtoId: '',
@@ -1267,18 +1299,26 @@ export default function Dashboard() {
       return;
     }
 
+    const payload = {
+      nome: clienteForm.nome,
+      email: clienteForm.email,
+      cpf: clienteForm.cpf || null,
+      cpfCnpj: clienteForm.cpf || null,
+      rgIe: clienteForm.rgIe || null,
+      dataNascimento: clienteForm.dataNascimento || null,
+      telefone: clienteForm.telefone || null,
+      whatsapp: clienteForm.whatsapp || clienteForm.telefone || null,
+      avatar: clienteForm.avatar || null,
+      newsletter: Boolean(clienteForm.newsletter),
+      vip: Boolean(clienteForm.vip),
+      pontosFidelidade: Number(clienteForm.pontosFidelidade || 0),
+      status: clienteForm.status || 'Pendente',
+      tipo: clienteForm.tipo || 'PF',
+    };
+
     const response = clienteEditingId
-      ? await clienteAPI.update(clienteEditingId, {
-        nome: clienteForm.nome,
-        email: clienteForm.email,
-        cpfCnpj: clienteForm.cpf || null,
-        telefone: clienteForm.telefone || null,
-        whatsapp: clienteForm.telefone || null,
-        newsletter: true,
-        vip: false,
-        status: 'Ativo',
-      })
-      : await clienteAPI.create(clienteForm);
+      ? await clienteAPI.update(clienteEditingId, payload)
+      : await clienteAPI.create(payload);
     setClientes((current) => {
       const semDuplicidade = current.filter((cliente) => String(cliente.id) !== String(response.data.id ?? clienteEditingId));
       return [response.data, ...semDuplicidade];
@@ -1297,9 +1337,16 @@ export default function Dashboard() {
       return;
     }
 
+    const payload = {
+      ...fornecedorForm,
+      lojaVinculadaId: fornecedorForm.lojaVinculadaId ? Number(fornecedorForm.lojaVinculadaId) : null,
+      comissaoPercentual: Number(fornecedorForm.comissaoPercentual || 0),
+      prazoEntregaDias: Number(fornecedorForm.prazoEntregaDias || 7),
+    };
+
     const response = fornecedorEditingId
-      ? await fornecedorAPI.update(fornecedorEditingId, fornecedorForm)
-      : await fornecedorAPI.create(fornecedorForm);
+      ? await fornecedorAPI.update(fornecedorEditingId, payload)
+      : await fornecedorAPI.create(payload);
     setFornecedores((current) => {
       const semDuplicidade = current.filter((fornecedor) => String(fornecedor.id) !== String(response.data.id ?? fornecedorEditingId));
       return [response.data, ...semDuplicidade];
@@ -1846,10 +1893,20 @@ export default function Dashboard() {
   const startEditCliente = (cliente) => {
     setClienteEditingId(String(cliente.id ?? cliente.Id ?? '').trim());
     setClienteForm({
+      ...emptyCliente,
       nome: cliente.nome ?? cliente.Nome ?? '',
       email: cliente.email ?? cliente.Email ?? '',
       telefone: cliente.telefone ?? cliente.Telefone ?? '',
       cpf: cliente.cpf ?? cliente.cpfCnpj ?? cliente.CpfCnpj ?? '',
+      whatsapp: cliente.whatsapp ?? cliente.Whatsapp ?? cliente.telefone ?? cliente.Telefone ?? '',
+      rgIe: cliente.rgIe ?? cliente.rg_ie ?? cliente.RgIe ?? '',
+      dataNascimento: String(cliente.dataNascimento ?? cliente.data_nascimento ?? cliente.DataNascimento ?? '').slice(0, 10),
+      tipo: cliente.tipo ?? cliente.Tipo ?? 'PF',
+      newsletter: Boolean(cliente.newsletter ?? cliente.Newsletter ?? true),
+      vip: Boolean(cliente.vip ?? cliente.Vip ?? false),
+      pontosFidelidade: String(cliente.pontosFidelidade ?? cliente.pontos_fidelidade ?? cliente.PontosFidelidade ?? '0'),
+      status: cliente.status ?? cliente.Status ?? 'Pendente',
+      avatar: cliente.avatar ?? cliente.Avatar ?? '',
     });
     setFormStatus(`Editando cliente ${cliente.nome ?? cliente.Nome ?? ''}.`);
     setActiveTab('cadastro-clientes');
@@ -1859,11 +1916,24 @@ export default function Dashboard() {
   const startEditFornecedor = (fornecedor) => {
     setFornecedorEditingId(String(fornecedor.id ?? fornecedor.Id ?? '').trim());
     setFornecedorForm({
+      ...emptyFornecedor,
       nome: fornecedor.nome ?? fornecedor.Nome ?? '',
+      nomeFantasia: fornecedor.nomeFantasia ?? fornecedor.nome_fantasia ?? fornecedor.NomeFantasia ?? '',
       documento: fornecedor.documento ?? fornecedor.cnpj ?? fornecedor.Cnpj ?? '',
+      ie: fornecedor.ie ?? fornecedor.Ie ?? '',
       email: fornecedor.email ?? fornecedor.Email ?? '',
       telefone: fornecedor.telefone ?? fornecedor.Telefone ?? '',
+      whatsapp: fornecedor.whatsapp ?? fornecedor.Whatsapp ?? fornecedor.telefone ?? fornecedor.Telefone ?? '',
       categoria: fornecedor.categoria ?? fornecedor.segmento ?? fornecedor.Categoria ?? 'Geral',
+      endereco: fornecedor.endereco ?? fornecedor.Endereco ?? '',
+      cidade: fornecedor.cidade ?? fornecedor.Cidade ?? '',
+      estado: fornecedor.estado ?? fornecedor.Estado ?? '',
+      cep: fornecedor.cep ?? fornecedor.Cep ?? '',
+      lojaVinculadaId: String(fornecedor.lojaVinculadaId ?? fornecedor.loja_vinculada_id ?? fornecedor.LojaVinculadaId ?? ''),
+      comissaoPercentual: String(fornecedor.comissaoPercentual ?? fornecedor.comissao_percentual ?? fornecedor.ComissaoPercentual ?? '0'),
+      prazoEntregaDias: String(fornecedor.prazoEntregaDias ?? fornecedor.prazo_entrega_dias ?? fornecedor.PrazoEntregaDias ?? '7'),
+      status: fornecedor.status ?? fornecedor.Status ?? 'Ativo',
+      observacoes: fornecedor.observacoes ?? fornecedor.Observacoes ?? '',
     });
     setFormStatus(`Editando fornecedor ${fornecedor.nome ?? fornecedor.Nome ?? ''}.`);
     setActiveTab('cadastro-fornecedores');
@@ -2399,10 +2469,46 @@ export default function Dashboard() {
                         <Field label="Email principal" type="email" value={clienteForm.email} onChange={(value) => setClienteForm((form) => ({ ...form, email: value }))} required />
                         <Field label="Telefone / WhatsApp" value={clienteForm.telefone} onChange={(value) => setClienteForm((form) => ({ ...form, telefone: value }))} />
                         <Field label="CPF/CNPJ" value={clienteForm.cpf} onChange={(value) => setClienteForm((form) => ({ ...form, cpf: value }))} />
+                        <Field label="WhatsApp dedicado" value={clienteForm.whatsapp} onChange={(value) => setClienteForm((form) => ({ ...form, whatsapp: value }))} />
+                        <Field label="RG / Inscrição estadual" value={clienteForm.rgIe} onChange={(value) => setClienteForm((form) => ({ ...form, rgIe: value }))} />
+                        <Field label="Data de nascimento / abertura" type="date" value={clienteForm.dataNascimento} onChange={(value) => setClienteForm((form) => ({ ...form, dataNascimento: value }))} />
+                        <label className="block text-sm font-bold text-slate-700">
+                          Tipo de cliente
+                          <select
+                            value={clienteForm.tipo}
+                            onChange={(event) => setClienteForm((form) => ({ ...form, tipo: event.target.value }))}
+                            className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+                          >
+                            <option value="PF">Pessoa física</option>
+                            <option value="PJ">Pessoa jurídica</option>
+                          </select>
+                        </label>
+                        <label className="block text-sm font-bold text-slate-700">
+                          Status cadastral
+                          <select
+                            value={clienteForm.status}
+                            onChange={(event) => setClienteForm((form) => ({ ...form, status: event.target.value }))}
+                            className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+                          >
+                            <option value="Pendente">Pendente</option>
+                            <option value="Ativo">Ativo</option>
+                            <option value="Bloqueado">Bloqueado</option>
+                          </select>
+                        </label>
+                        <Field label="Pontos de fidelidade" type="number" value={clienteForm.pontosFidelidade} onChange={(value) => setClienteForm((form) => ({ ...form, pontosFidelidade: value }))} />
+                        <Field label="Avatar / imagem do cliente" value={clienteForm.avatar} onChange={(value) => setClienteForm((form) => ({ ...form, avatar: value }))} />
+                        <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-bold text-slate-700">
+                          <input type="checkbox" checked={clienteForm.newsletter} onChange={(event) => setClienteForm((form) => ({ ...form, newsletter: event.target.checked }))} />
+                          Recebe comunicados e ofertas
+                        </label>
+                        <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-bold text-slate-700">
+                          <input type="checkbox" checked={clienteForm.vip} onChange={(event) => setClienteForm((form) => ({ ...form, vip: event.target.checked }))} />
+                          Cliente VIP / relacionamento prioritário
+                        </label>
                       </SimpleForm>
                       <div className="space-y-6">
                         <CadastroInsightPanel title="Controle de clientes" checks={cadastroHighlights.clientes} />
-                        <CompactList title="Clientes cadastrados" items={clientes} fields={['nome', 'email', 'telefone', 'cpf']} onEdit={startEditCliente} />
+                        <CompactList title="Clientes cadastrados" items={clientes} fields={['nome', 'email', 'telefone', 'cpf', 'status', 'tipo']} onEdit={startEditCliente} />
                       </div>
                     </div>
                   )}
@@ -2415,10 +2521,42 @@ export default function Dashboard() {
                         <Field label="Email comercial" type="email" value={fornecedorForm.email} onChange={(value) => setFornecedorForm((form) => ({ ...form, email: value }))} />
                         <Field label="Telefone / WhatsApp" value={fornecedorForm.telefone} onChange={(value) => setFornecedorForm((form) => ({ ...form, telefone: value }))} />
                         <Field label="Categoria / Segmento" value={fornecedorForm.categoria} onChange={(value) => setFornecedorForm((form) => ({ ...form, categoria: value }))} />
+                        <Field label="Nome fantasia" value={fornecedorForm.nomeFantasia} onChange={(value) => setFornecedorForm((form) => ({ ...form, nomeFantasia: value }))} />
+                        <Field label="Inscrição estadual" value={fornecedorForm.ie} onChange={(value) => setFornecedorForm((form) => ({ ...form, ie: value }))} />
+                        <Field label="WhatsApp operacional" value={fornecedorForm.whatsapp} onChange={(value) => setFornecedorForm((form) => ({ ...form, whatsapp: value }))} />
+                        <Field label="Endereço" value={fornecedorForm.endereco} onChange={(value) => setFornecedorForm((form) => ({ ...form, endereco: value }))} />
+                        <Field label="Cidade" value={fornecedorForm.cidade} onChange={(value) => setFornecedorForm((form) => ({ ...form, cidade: value }))} />
+                        <Field label="Estado" value={fornecedorForm.estado} onChange={(value) => setFornecedorForm((form) => ({ ...form, estado: value }))} />
+                        <Field label="CEP" value={fornecedorForm.cep} onChange={(value) => setFornecedorForm((form) => ({ ...form, cep: value }))} />
+                        <Field label="ID da loja vinculada" type="number" value={fornecedorForm.lojaVinculadaId} onChange={(value) => setFornecedorForm((form) => ({ ...form, lojaVinculadaId: value }))} />
+                        <Field label="Comissão percentual" type="number" value={fornecedorForm.comissaoPercentual} onChange={(value) => setFornecedorForm((form) => ({ ...form, comissaoPercentual: value }))} />
+                        <Field label="Prazo de entrega em dias" type="number" value={fornecedorForm.prazoEntregaDias} onChange={(value) => setFornecedorForm((form) => ({ ...form, prazoEntregaDias: value }))} />
+                        <label className="block text-sm font-bold text-slate-700">
+                          Status do fornecedor
+                          <select
+                            value={fornecedorForm.status}
+                            onChange={(event) => setFornecedorForm((form) => ({ ...form, status: event.target.value }))}
+                            className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+                          >
+                            <option value="Ativo">Ativo</option>
+                            <option value="Pendente">Pendente</option>
+                            <option value="Bloqueado">Bloqueado</option>
+                            <option value="Inativo">Inativo</option>
+                          </select>
+                        </label>
+                        <label className="block text-sm font-bold text-slate-700">
+                          Observações comerciais
+                          <textarea
+                            value={fornecedorForm.observacoes}
+                            onChange={(event) => setFornecedorForm((form) => ({ ...form, observacoes: event.target.value }))}
+                            rows={4}
+                            className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+                          />
+                        </label>
                       </SimpleForm>
                       <div className="space-y-6">
                         <CadastroInsightPanel title="Controle de fornecedores" checks={cadastroHighlights.fornecedores} />
-                        <CompactList title="Fornecedores cadastrados" items={fornecedores} fields={['nome', 'documento', 'email', 'categoria']} onEdit={startEditFornecedor} />
+                        <CompactList title="Fornecedores cadastrados" items={fornecedores} fields={['nome', 'documento', 'email', 'categoria', 'cidade', 'status']} onEdit={startEditFornecedor} />
                       </div>
                     </div>
                   )}

@@ -1269,12 +1269,12 @@ app.MapGet("/api/cupons/{codigo}", async (string codigo, NexumDbContext db, Canc
 
 app.MapGet("/api/clientes", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
 {
-    var clientes = await db.Clientes
+    var clientesDb = await db.Clientes
         .AsNoTracking()
         .OrderByDescending(cliente => cliente.CreatedAt)
         .Take(500)
-        .Select(cliente => new ClienteLojaDto(cliente.Id, cliente.Nome, cliente.Email, cliente.Telefone, cliente.CpfCnpj))
         .ToListAsync(ct);
+    var clientes = clientesDb.Select(ToClienteLojaDto).ToList();
 
     return Results.Ok(ApiResponse<List<ClienteLojaDto>>.Ok(clientes));
 })
@@ -1308,9 +1308,7 @@ app.MapGet("/api/clientes/verificar", async (string? email, string? cpf, NexumDb
                  .Replace("/", string.Empty)
                  .Replace(" ", string.Empty)) == normalizedDocument), ct);
 
-    var dto = cliente is null
-        ? null
-        : new ClienteLojaDto(cliente.Id, cliente.Nome, cliente.Email, cliente.Telefone, cliente.CpfCnpj);
+    var dto = cliente is null ? null : ToClienteLojaDto(cliente);
 
     return Results.Ok(ApiResponse<CadastroClienteStatusDto>.Ok(
         new CadastroClienteStatusDto(cliente is not null, dto),
@@ -1328,7 +1326,7 @@ app.MapPost("/api/clientes", async (ClienteRequest request, IConfiguration confi
     }
 
     var email = NormalizeEmail(request.Email)!;
-    var cpfCnpj = NormalizeDocument(request.Cpf);
+    var cpfCnpj = NormalizeDocument(request.Cpf ?? request.CpfCnpj);
     if (!string.IsNullOrWhiteSpace(cpfCnpj) && !IsValidCpfCnpj(cpfCnpj))
     {
         return Results.BadRequest(ApiResponse<string>.Erro("CPF/CNPJ inválido."));
@@ -1355,6 +1353,18 @@ app.MapPost("/api/clientes", async (ClienteRequest request, IConfiguration confi
             clienteExistente.UpdatedAt = DateTime.UtcNow;
         }
 
+        if (string.IsNullOrWhiteSpace(clienteExistente.Whatsapp) && !string.IsNullOrWhiteSpace(request.Whatsapp))
+        {
+            clienteExistente.Whatsapp = request.Whatsapp.Trim();
+        }
+
+        if (string.IsNullOrWhiteSpace(clienteExistente.RgIe) && !string.IsNullOrWhiteSpace(request.RgIe))
+        {
+            clienteExistente.RgIe = request.RgIe.Trim();
+        }
+
+        clienteExistente.DataNascimento ??= request.DataNascimento;
+        clienteExistente.Avatar = string.IsNullOrWhiteSpace(request.Avatar) ? clienteExistente.Avatar : request.Avatar.Trim();
         clienteExistente.Newsletter = request.Newsletter ?? clienteExistente.Newsletter;
         clienteExistente.UpdatedAt = DateTime.UtcNow;
 
@@ -1369,7 +1379,7 @@ app.MapPost("/api/clientes", async (ClienteRequest request, IConfiguration confi
 
         await db.SaveChangesAsync(ct);
 
-        var existenteDto = new ClienteLojaDto(clienteExistente.Id, clienteExistente.Nome, clienteExistente.Email, clienteExistente.Telefone, clienteExistente.CpfCnpj);
+        var existenteDto = ToClienteLojaDto(clienteExistente);
         return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(existenteDto, clienteExistente.Status == StatusCliente.Ativo
             ? "Cliente ja cadastrado. Registro existente reutilizado."
             : "Cliente já cadastrado. Reenviamos o link de confirmação para liberar o acesso."));
@@ -1380,8 +1390,12 @@ app.MapPost("/api/clientes", async (ClienteRequest request, IConfiguration confi
         Nome = request.Nome.Trim(),
         Email = email,
         Telefone = request.Telefone,
-        Whatsapp = request.Telefone,
+        Whatsapp = string.IsNullOrWhiteSpace(request.Whatsapp) ? request.Telefone : request.Whatsapp.Trim(),
         CpfCnpj = cpfCnpj,
+        RgIe = string.IsNullOrWhiteSpace(request.RgIe) ? null : request.RgIe.Trim(),
+        DataNascimento = request.DataNascimento,
+        Avatar = string.IsNullOrWhiteSpace(request.Avatar) ? null : request.Avatar.Trim(),
+        Tipo = Enum.TryParse<TipoCliente>(request.Tipo, true, out var tipoCliente) ? tipoCliente : TipoCliente.PF,
         SenhaHash = !string.IsNullOrWhiteSpace(request.Senha) ? BCrypt.Net.BCrypt.HashPassword(request.Senha.Trim(), 12) : null,
         Newsletter = request.Newsletter ?? true,
         Status = StatusCliente.Pendente,
@@ -1397,11 +1411,68 @@ app.MapPost("/api/clientes", async (ClienteRequest request, IConfiguration confi
     var linkConfirmacao = $"{baseUrl}/confirmar-cadastro.html?token={Uri.EscapeDataString(cliente.TokenConfirmacaoEmail ?? string.Empty)}";
     await notificacaoService.EnviarConfirmacaoCadastroAsync(cliente, linkConfirmacao);
 
-    var dto = new ClienteLojaDto(cliente.Id, cliente.Nome, cliente.Email, cliente.Telefone, cliente.CpfCnpj);
+    var dto = ToClienteLojaDto(cliente);
     return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(dto, "Cliente registrado. Enviamos um link de confirmação por e-mail."));
 })
 .AllowAnonymous()
 .WithName("CriarCliente")
+;
+
+app.MapPut("/api/clientes/{id:int}", [Authorize(Policy = "Gerente")] async (int id, ClienteRequest request, NexumDbContext db, CancellationToken ct) =>
+{
+    var cliente = await db.Clientes.FirstOrDefaultAsync(item => item.Id == id, ct);
+    if (cliente is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Cliente nao encontrado."));
+    }
+
+    if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Nome))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Nome e email sao obrigatorios."));
+    }
+
+    var email = NormalizeEmail(request.Email)!;
+    var cpfCnpj = NormalizeDocument(request.Cpf ?? request.CpfCnpj);
+    if (!string.IsNullOrWhiteSpace(cpfCnpj) && !IsValidCpfCnpj(cpfCnpj))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("CPF/CNPJ inválido."));
+    }
+
+    var duplicado = await db.Clientes.FirstOrDefaultAsync(item =>
+        item.Id != cliente.Id &&
+        (item.Email == email ||
+         (!string.IsNullOrWhiteSpace(cpfCnpj) &&
+          ((item.CpfCnpj ?? string.Empty)
+              .Replace(".", string.Empty)
+              .Replace("-", string.Empty)
+              .Replace("/", string.Empty)
+              .Replace(" ", string.Empty)) == cpfCnpj)), ct);
+
+    if (duplicado is not null)
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("Cliente ja cadastrado com este email ou CPF/CNPJ."));
+    }
+
+    cliente.Nome = request.Nome.Trim();
+    cliente.Email = email;
+    cliente.CpfCnpj = cpfCnpj;
+    cliente.RgIe = string.IsNullOrWhiteSpace(request.RgIe) ? null : request.RgIe.Trim();
+    cliente.DataNascimento = request.DataNascimento;
+    cliente.Telefone = string.IsNullOrWhiteSpace(request.Telefone) ? null : request.Telefone.Trim();
+    cliente.Whatsapp = string.IsNullOrWhiteSpace(request.Whatsapp) ? cliente.Telefone : request.Whatsapp.Trim();
+    cliente.Avatar = string.IsNullOrWhiteSpace(request.Avatar) ? null : request.Avatar.Trim();
+    cliente.Newsletter = request.Newsletter ?? cliente.Newsletter;
+    cliente.Vip = request.Vip ?? cliente.Vip;
+    cliente.PontosFidelidade = request.PontosFidelidade ?? cliente.PontosFidelidade;
+    cliente.Tipo = Enum.TryParse<TipoCliente>(request.Tipo, true, out var tipo) ? tipo : cliente.Tipo;
+    cliente.Status = Enum.TryParse<StatusCliente>(request.Status, true, out var status) ? status : cliente.Status;
+    cliente.UpdatedAt = DateTime.UtcNow;
+
+    await db.SaveChangesAsync(ct);
+
+    return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(ToClienteLojaDto(cliente), "Cliente atualizado."));
+})
+.WithName("AtualizarCliente")
 ;
 
 app.MapGet("/api/clientes/confirmar", async (string token, NexumDbContext db, CancellationToken ct) =>
@@ -1700,19 +1771,12 @@ app.MapDelete("/api/clientes/portal/enderecos/{id:int}", [Authorize] async (int 
 
 app.MapGet("/api/fornecedores", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
 {
-    var fornecedores = await db.Fornecedores
+    var fornecedoresDb = await db.Fornecedores
         .AsNoTracking()
         .OrderByDescending(fornecedor => fornecedor.CreatedAt)
         .Take(500)
-        .Select(fornecedor => new FornecedorDto(
-            fornecedor.Id,
-            string.IsNullOrWhiteSpace(fornecedor.NomeFantasia) ? fornecedor.RazaoSocial : fornecedor.NomeFantasia,
-            fornecedor.Cnpj ?? string.Empty,
-            fornecedor.Email ?? string.Empty,
-            fornecedor.Telefone ?? string.Empty,
-            fornecedor.Segmento ?? "Geral",
-            fornecedor.CreatedAt))
         .ToListAsync(ct);
+    var fornecedores = fornecedoresDb.Select(ToFornecedorDto).ToList();
 
     return Results.Ok(ApiResponse<List<FornecedorDto>>.Ok(fornecedores));
 })
@@ -1744,11 +1808,22 @@ app.MapPost("/api/fornecedores", [Authorize(Policy = "Gerente")] async (Forneced
     var fornecedor = new Fornecedor
     {
         RazaoSocial = request.Nome.Trim(),
+        NomeFantasia = string.IsNullOrWhiteSpace(request.NomeFantasia) ? request.Nome.Trim() : request.NomeFantasia.Trim(),
         Cnpj = documento,
+        Ie = string.IsNullOrWhiteSpace(request.Ie) ? null : request.Ie.Trim(),
         Email = email,
-        Telefone = request.Telefone,
+        Telefone = string.IsNullOrWhiteSpace(request.Telefone) ? null : request.Telefone.Trim(),
+        Whatsapp = string.IsNullOrWhiteSpace(request.Whatsapp) ? request.Telefone : request.Whatsapp.Trim(),
+        Endereco = string.IsNullOrWhiteSpace(request.Endereco) ? null : request.Endereco.Trim(),
+        Cidade = string.IsNullOrWhiteSpace(request.Cidade) ? null : request.Cidade.Trim(),
+        Estado = string.IsNullOrWhiteSpace(request.Estado) ? null : request.Estado.Trim(),
+        Cep = string.IsNullOrWhiteSpace(request.Cep) ? null : request.Cep.Trim(),
         Segmento = request.Categoria,
-        Status = StatusFornecedor.Ativo,
+        LojaVinculadaId = request.LojaVinculadaId,
+        ComissaoPercentual = request.ComissaoPercentual ?? 0.00m,
+        PrazoEntregaDias = request.PrazoEntregaDias ?? 7,
+        Status = Enum.TryParse<StatusFornecedor>(request.Status, true, out var statusFornecedor) ? statusFornecedor : StatusFornecedor.Ativo,
+        Observacoes = string.IsNullOrWhiteSpace(request.Observacoes) ? null : request.Observacoes.Trim(),
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow
     };
@@ -1756,16 +1831,7 @@ app.MapPost("/api/fornecedores", [Authorize(Policy = "Gerente")] async (Forneced
     db.Fornecedores.Add(fornecedor);
     await db.SaveChangesAsync(ct);
 
-    var dto = new FornecedorDto(
-        fornecedor.Id,
-        string.IsNullOrWhiteSpace(fornecedor.NomeFantasia) ? fornecedor.RazaoSocial : fornecedor.NomeFantasia,
-        fornecedor.Cnpj ?? string.Empty,
-        fornecedor.Email ?? string.Empty,
-        fornecedor.Telefone ?? string.Empty,
-        fornecedor.Segmento ?? "Geral",
-        fornecedor.CreatedAt);
-
-    return Results.Ok(ApiResponse<FornecedorDto>.Ok(dto, "Fornecedor cadastrado."));
+    return Results.Ok(ApiResponse<FornecedorDto>.Ok(ToFornecedorDto(fornecedor), "Fornecedor cadastrado."));
 })
 .WithName("CriarFornecedor")
 ;
@@ -1800,25 +1866,27 @@ app.MapPut("/api/fornecedores/{id:int}", [Authorize(Policy = "Gerente")] async (
     }
 
     fornecedor.RazaoSocial = request.Nome.Trim();
-    fornecedor.NomeFantasia = request.Nome.Trim();
+    fornecedor.NomeFantasia = string.IsNullOrWhiteSpace(request.NomeFantasia) ? request.Nome.Trim() : request.NomeFantasia.Trim();
     fornecedor.Cnpj = documento;
+    fornecedor.Ie = string.IsNullOrWhiteSpace(request.Ie) ? null : request.Ie.Trim();
     fornecedor.Email = email;
-    fornecedor.Telefone = request.Telefone;
+    fornecedor.Telefone = string.IsNullOrWhiteSpace(request.Telefone) ? null : request.Telefone.Trim();
+    fornecedor.Whatsapp = string.IsNullOrWhiteSpace(request.Whatsapp) ? fornecedor.Telefone : request.Whatsapp.Trim();
+    fornecedor.Endereco = string.IsNullOrWhiteSpace(request.Endereco) ? null : request.Endereco.Trim();
+    fornecedor.Cidade = string.IsNullOrWhiteSpace(request.Cidade) ? null : request.Cidade.Trim();
+    fornecedor.Estado = string.IsNullOrWhiteSpace(request.Estado) ? null : request.Estado.Trim();
+    fornecedor.Cep = string.IsNullOrWhiteSpace(request.Cep) ? null : request.Cep.Trim();
     fornecedor.Segmento = request.Categoria;
+    fornecedor.LojaVinculadaId = request.LojaVinculadaId;
+    fornecedor.ComissaoPercentual = request.ComissaoPercentual ?? fornecedor.ComissaoPercentual;
+    fornecedor.PrazoEntregaDias = request.PrazoEntregaDias ?? fornecedor.PrazoEntregaDias;
+    fornecedor.Status = Enum.TryParse<StatusFornecedor>(request.Status, true, out var status) ? status : fornecedor.Status;
+    fornecedor.Observacoes = string.IsNullOrWhiteSpace(request.Observacoes) ? null : request.Observacoes.Trim();
     fornecedor.UpdatedAt = DateTime.UtcNow;
 
     await db.SaveChangesAsync(ct);
 
-    var dto = new FornecedorDto(
-        fornecedor.Id,
-        string.IsNullOrWhiteSpace(fornecedor.NomeFantasia) ? fornecedor.RazaoSocial : fornecedor.NomeFantasia,
-        fornecedor.Cnpj ?? string.Empty,
-        fornecedor.Email ?? string.Empty,
-        fornecedor.Telefone ?? string.Empty,
-        fornecedor.Segmento ?? "Geral",
-        fornecedor.CreatedAt);
-
-    return Results.Ok(ApiResponse<FornecedorDto>.Ok(dto, "Fornecedor atualizado."));
+    return Results.Ok(ApiResponse<FornecedorDto>.Ok(ToFornecedorDto(fornecedor), "Fornecedor atualizado."));
 })
 .WithName("AtualizarFornecedor")
 ;
@@ -5385,6 +5453,49 @@ static string? ValidateEnderecoRequest(ClientePortalEnderecoRequest request)
 static TipoEndereco ParseTipoEndereco(string? value) =>
     Enum.TryParse<TipoEndereco>(value, true, out var tipo) ? tipo : TipoEndereco.Entrega;
 
+static ClienteLojaDto ToClienteLojaDto(Cliente cliente) => new(
+    cliente.Id,
+    cliente.Nome,
+    cliente.Email,
+    cliente.Telefone,
+    cliente.CpfCnpj,
+    cliente.Tipo.ToString(),
+    cliente.RgIe,
+    cliente.DataNascimento,
+    cliente.Whatsapp,
+    cliente.Avatar,
+    cliente.Newsletter,
+    cliente.Vip,
+    cliente.PontosFidelidade,
+    cliente.Status.ToString(),
+    cliente.UltimoAcesso,
+    cliente.ConfirmadoEm,
+    cliente.CreatedAt,
+    cliente.UpdatedAt);
+
+static FornecedorDto ToFornecedorDto(Fornecedor fornecedor) => new(
+    fornecedor.Id,
+    string.IsNullOrWhiteSpace(fornecedor.NomeFantasia) ? fornecedor.RazaoSocial : fornecedor.NomeFantasia,
+    fornecedor.Cnpj ?? string.Empty,
+    fornecedor.Email ?? string.Empty,
+    fornecedor.Telefone ?? string.Empty,
+    fornecedor.Segmento ?? "Geral",
+    fornecedor.CreatedAt,
+    fornecedor.RazaoSocial,
+    fornecedor.NomeFantasia,
+    fornecedor.Ie,
+    fornecedor.Whatsapp,
+    fornecedor.Endereco,
+    fornecedor.Cidade,
+    fornecedor.Estado,
+    fornecedor.Cep,
+    fornecedor.LojaVinculadaId,
+    fornecedor.ComissaoPercentual,
+    fornecedor.PrazoEntregaDias,
+    fornecedor.Status.ToString(),
+    fornecedor.Observacoes,
+    fornecedor.UpdatedAt);
+
 static ClientePortalEnderecoDto ToClientePortalEnderecoDto(Endereco endereco) => new(
     endereco.Id,
     endereco.Apelido,
@@ -8608,9 +8719,42 @@ public sealed record UploadImagemDto(string Url);
 
 public sealed record CupomDto(string Codigo, decimal? DescontoPercentual, decimal? DescontoValor, decimal? ValorMinimo);
 
-public sealed record ClienteRequest(string Nome, string Email, string? Cpf, string? Telefone, string? Senha = null, bool? Newsletter = null);
+public sealed record ClienteRequest(
+    string Nome,
+    string Email,
+    string? Cpf,
+    string? Telefone,
+    string? Senha = null,
+    bool? Newsletter = null,
+    string? CpfCnpj = null,
+    string? RgIe = null,
+    DateTime? DataNascimento = null,
+    string? Whatsapp = null,
+    string? Avatar = null,
+    bool? Vip = null,
+    int? PontosFidelidade = null,
+    string? Status = null,
+    string? Tipo = null);
 
-public sealed record ClienteLojaDto(int Id, string Nome, string Email, string? Telefone, string? Cpf = null);
+public sealed record ClienteLojaDto(
+    int Id,
+    string Nome,
+    string Email,
+    string? Telefone,
+    string? Cpf = null,
+    string? Tipo = null,
+    string? RgIe = null,
+    DateTime? DataNascimento = null,
+    string? Whatsapp = null,
+    string? Avatar = null,
+    bool Newsletter = true,
+    bool Vip = false,
+    int PontosFidelidade = 0,
+    string? Status = null,
+    DateTime? UltimoAcesso = null,
+    DateTime? ConfirmadoEm = null,
+    DateTime? CreatedAt = null,
+    DateTime? UpdatedAt = null);
 
 public sealed record CadastroClienteStatusDto(bool Existe, ClienteLojaDto? Cliente);
 
@@ -8680,9 +8824,47 @@ public sealed record ClientePortalEnderecoRequest(
     string? Pais,
     bool Padrao);
 
-public sealed record FornecedorRequest(string Nome, string? Documento, string? Email, string? Telefone, string? Categoria);
+public sealed record FornecedorRequest(
+    string Nome,
+    string? Documento,
+    string? Email,
+    string? Telefone,
+    string? Categoria,
+    string? NomeFantasia = null,
+    string? Ie = null,
+    string? Whatsapp = null,
+    string? Endereco = null,
+    string? Cidade = null,
+    string? Estado = null,
+    string? Cep = null,
+    int? LojaVinculadaId = null,
+    decimal? ComissaoPercentual = null,
+    int? PrazoEntregaDias = null,
+    string? Status = null,
+    string? Observacoes = null);
 
-public sealed record FornecedorDto(int Id, string Nome, string Documento, string Email, string Telefone, string Categoria, DateTime CreatedAt);
+public sealed record FornecedorDto(
+    int Id,
+    string Nome,
+    string Documento,
+    string Email,
+    string Telefone,
+    string Categoria,
+    DateTime CreatedAt,
+    string? RazaoSocial = null,
+    string? NomeFantasia = null,
+    string? Ie = null,
+    string? Whatsapp = null,
+    string? Endereco = null,
+    string? Cidade = null,
+    string? Estado = null,
+    string? Cep = null,
+    int? LojaVinculadaId = null,
+    decimal ComissaoPercentual = 0m,
+    int PrazoEntregaDias = 7,
+    string? Status = null,
+    string? Observacoes = null,
+    DateTime? UpdatedAt = null);
 
 public sealed record CompraSolicitacaoRequest(
     int? ProdutoId,
