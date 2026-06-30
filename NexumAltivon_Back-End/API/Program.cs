@@ -6215,7 +6215,7 @@ static SiteConfiguracaoPublicaDto BuildPublicSiteConfig(IReadOnlyDictionary<stri
         GetConfigValue(configMap, "site_whatsapp", "5514996731879"),
         GetConfigValue(configMap, "site_whatsapp_secundario", "5514996348409"),
         GetConfigValue(configMap, "site_yara_email", contactEmail),
-        GetConfigValue(configMap, "site_logo", "/imagens/homepage/logo-grupo-nexum-altivon.svg"),
+        GetConfigValue(configMap, "site_logo", "/imagens/homepage/Logo-2.png"),
         GetConfigValue(configMap, "site_subtitulo", "Participações societárias"),
         GetConfigValue(configMap, "site_institucional_url", "/institucional"),
         GetConfigValue(configMap, "site_politica_privacidade_url", "/politica-privacidade"),
@@ -6549,7 +6549,7 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
         VALUES
             ('site_nome', 'Grupo Nexum Altivon', 'Texto', 'Nome público principal exibido no site', 'Geral', 1),
             ('site_subtitulo', 'Participações societárias', 'Texto', 'Subtítulo discreto da marca no cabeçalho e rodapé', 'Geral', 1),
-            ('site_logo', '/imagens/homepage/logo-grupo-nexum-altivon.svg', 'Imagem', 'Logo público carregado pela home, cabeçalho e rodapé', 'Geral', 1),
+            ('site_logo', '/imagens/homepage/Logo-2.png', 'Imagem', 'Logo público carregado pela home, cabeçalho e rodapé', 'Geral', 1),
             ('site_institucional_url', '/institucional', 'Texto', 'Link da página institucional', 'SiteHome', 1),
             ('site_politica_privacidade_url', '/politica-privacidade', 'Texto', 'Link da política de privacidade', 'SiteHome', 1),
             ('site_politica_reembolso_url', '/politica-reembolso', 'Texto', 'Link da política de reembolso', 'SiteHome', 1),

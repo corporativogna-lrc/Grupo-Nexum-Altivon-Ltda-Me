@@ -1,6 +1,21 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
+
 import { useState } from 'react';
+import { Building, CheckCircle, Mail, MessageSquare, Phone, Send, User } from 'lucide-react';
 import { leadAPI } from '../services/api';
-import { Mail, Phone, MessageSquare, User, Building, CheckCircle } from 'lucide-react';
+
+const canais = [
+  { label: 'Rodrigo', value: '+55 (14) 99673-1879', href: 'tel:+5514996731879', icon: Phone },
+  { label: 'Vinicius', value: '+55 (14) 99634-8409', href: 'tel:+5514996348409', icon: Phone },
+  { label: 'E-mail comercial', value: 'corporativo.gna@gmail.com', href: 'mailto:corporativo.gna@gmail.com', icon: Mail },
+  { label: 'Atendimento', value: 'Segunda a sexta, 9h às 18h', href: null, icon: MessageSquare },
+];
 
 export default function Contato() {
   const [formData, setFormData] = useState({
@@ -8,25 +23,25 @@ export default function Contato() {
     email: '',
     telefone: '',
     empresa: '',
-    mensagem: ''
+    mensagem: '',
   });
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+  const handleChange = (event) => {
+    setFormData((current) => ({ ...current, [event.target.name]: event.target.value }));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     setLoading(true);
     setError('');
 
     try {
       await leadAPI.create({
         ...formData,
-        origem: 'Website - Formulário de Contato'
+        origem: 'Website - Formulário de Contato',
       });
       setSuccess(true);
       setFormData({ nome: '', email: '', telefone: '', empresa: '', mensagem: '' });
@@ -39,167 +54,119 @@ export default function Contato() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-gray-50 py-12 flex items-center justify-center">
-        <div className="max-w-md bg-white p-8 rounded-lg shadow-md text-center" data-testid="success-message">
-          <CheckCircle className="text-green-500 mx-auto mb-4" size={64} />
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Mensagem Enviada!</h2>
-          <p className="text-gray-600 mb-6">Recebemos sua mensagem e nossa equipe entrará em contato em breve.</p>
+      <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,#2B2108_0,#050505_36%,#050505_100%)] px-4 py-14 text-white sm:px-6 lg:px-8">
+        <section className="mx-auto max-w-xl rounded-[34px] border border-[#C9A227]/25 bg-[#111111] p-8 text-center shadow-2xl shadow-black/50" data-testid="success-message">
+          <CheckCircle className="mx-auto text-[#C9A227]" size={64} />
+          <p className="mt-6 text-xs font-black uppercase tracking-[0.26em] text-[#E8D5A3]">Contato registrado</p>
+          <h1 className="mt-3 text-3xl font-black">Mensagem enviada.</h1>
+          <p className="mt-4 text-sm leading-6 text-zinc-300">Recebemos sua solicitação e a equipe comercial dará sequência pelo canal informado.</p>
           <button
+            type="button"
             onClick={() => setSuccess(false)}
-            className="bg-amber-500 hover:bg-amber-600 text-white px-6 py-2 rounded-lg font-semibold"
+            className="mt-8 inline-flex h-12 items-center justify-center rounded-full bg-[#C9A227] px-6 text-sm font-black text-black transition hover:bg-[#E8D5A3]"
           >
-            Enviar Nova Mensagem
+            Enviar nova mensagem
           </button>
-        </div>
-      </div>
+        </section>
+      </main>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4" data-testid="contato-title">Entre em Contato</h1>
-          <p className="text-gray-600 text-lg">Estamos prontos para atendê-lo</p>
-        </div>
+    <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,#2B2108_0,#050505_36%,#050505_100%)] px-4 py-12 text-white sm:px-6 lg:px-8">
+      <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.9fr_1.1fr]">
+        <section className="rounded-[36px] border border-[#C9A227]/20 bg-[#111111] p-6 shadow-2xl shadow-black/50 sm:p-8">
+          <p className="text-xs font-black uppercase tracking-[0.28em] text-[#E8D5A3]">Grupo Nexum Altivon</p>
+          <h1 className="mt-4 text-4xl font-black leading-tight sm:text-5xl" data-testid="contato-title">
+            Fale com a operação comercial.
+          </h1>
+          <p className="mt-5 max-w-2xl text-base leading-7 text-zinc-300">
+            Canal direto para clientes, fornecedores, parceiros e assuntos institucionais. As mensagens alimentam o CRM do GenesisGest.Net.
+          </p>
 
-        <div className="grid lg:grid-cols-2 gap-12 max-w-5xl mx-auto">
-          {/* Informações de Contato */}
-          <div className="space-y-6">
-            <div className="bg-white p-6 rounded-lg shadow-md">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">Informações</h2>
-              <div className="space-y-4">
-                <div className="flex items-center space-x-3">
-                  <div className="bg-amber-100 p-3 rounded-full">
-                    <Phone className="text-amber-600" size={20} />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Rodrigo</p>
-                    <a className="font-semibold hover:text-amber-600" href="tel:+5514996731879">+55 (14) 99673-1879</a>
-                  </div>
+          <div className="mt-8 grid gap-3">
+            {canais.map((canal) => {
+              const Icon = canal.icon;
+              const content = (
+                <div className="flex min-w-0 items-center gap-4 rounded-3xl border border-white/10 bg-black/25 p-4 transition hover:border-[#C9A227]/60">
+                  <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#C9A227] text-black">
+                    <Icon size={19} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-xs font-black uppercase tracking-[0.18em] text-zinc-500">{canal.label}</span>
+                    <span className="mt-1 block break-words text-sm font-bold text-zinc-100">{canal.value}</span>
+                  </span>
                 </div>
-                <div className="flex items-center space-x-3">
-                  <div className="bg-amber-100 p-3 rounded-full">
-                    <Phone className="text-amber-600" size={20} />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Vinicius</p>
-                    <a className="font-semibold hover:text-amber-600" href="tel:+5514996348409">+55 (14) 99634-8409</a>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <div className="bg-amber-100 p-3 rounded-full">
-                    <Mail className="text-amber-600" size={20} />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Email</p>
-                    <a className="font-semibold hover:text-amber-600" href="mailto:corporativo.gna@gmail.com">corporativo.gna@gmail.com</a>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <div className="bg-amber-100 p-3 rounded-full">
-                    <MessageSquare className="text-amber-600" size={20} />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Horário de Atendimento</p>
-                    <p className="font-semibold">Seg-Sex: 9h às 18h</p>
-                  </div>
-                </div>
-              </div>
+              );
+
+              return canal.href ? (
+                <a key={canal.label} href={canal.href}>
+                  {content}
+                </a>
+              ) : (
+                <div key={canal.label}>{content}</div>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="rounded-[36px] border border-white/10 bg-[#111111] p-6 shadow-2xl shadow-black/50 sm:p-8">
+          <div className="mb-6">
+            <p className="text-xs font-black uppercase tracking-[0.24em] text-[#E8D5A3]">Contato oficial</p>
+            <h2 className="mt-3 text-3xl font-black">Envie sua mensagem</h2>
+          </div>
+
+          {error && (
+            <div className="mb-5 rounded-3xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-100">
+              {error}
             </div>
-          </div>
+          )}
 
-          {/* Formulário */}
-          <div className="bg-white p-8 rounded-lg shadow-md">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Envie sua Mensagem</h2>
+          <form onSubmit={handleSubmit} className="grid gap-4">
+            <FormInput icon={User} name="nome" value={formData.nome} onChange={handleChange} placeholder="Seu nome *" required testId="contato-nome" />
+            <FormInput icon={Mail} type="email" name="email" value={formData.email} onChange={handleChange} placeholder="E-mail *" required testId="contato-email" />
+            <FormInput icon={Phone} type="tel" name="telefone" value={formData.telefone} onChange={handleChange} placeholder="Telefone / WhatsApp" testId="contato-telefone" />
+            <FormInput icon={Building} name="empresa" value={formData.empresa} onChange={handleChange} placeholder="Empresa" testId="contato-empresa" />
 
-            {error && (
-              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-                {error}
-              </div>
-            )}
+            <label className="relative block">
+              <MessageSquare className="pointer-events-none absolute left-4 top-4 text-zinc-500" size={19} />
+              <textarea
+                name="mensagem"
+                value={formData.mensagem}
+                onChange={handleChange}
+                required
+                rows="5"
+                placeholder="Sua mensagem *"
+                className="w-full rounded-3xl border border-white/10 bg-black/30 px-12 py-4 text-sm font-semibold text-white outline-none placeholder:text-zinc-600 focus:border-[#C9A227] focus:ring-4 focus:ring-[#C9A227]/10"
+                data-testid="contato-mensagem"
+              />
+            </label>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="relative">
-                <User className="absolute left-3 top-3 text-gray-400" size={20} />
-                <input
-                  type="text"
-                  name="nome"
-                  value={formData.nome}
-                  onChange={handleChange}
-                  required
-                  placeholder="Seu Nome *"
-                  className="w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  data-testid="contato-nome"
-                />
-              </div>
-
-              <div className="relative">
-                <Mail className="absolute left-3 top-3 text-gray-400" size={20} />
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  required
-                  placeholder="Email *"
-                  className="w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  data-testid="contato-email"
-                />
-              </div>
-
-              <div className="relative">
-                <Phone className="absolute left-3 top-3 text-gray-400" size={20} />
-                <input
-                  type="tel"
-                  name="telefone"
-                  value={formData.telefone}
-                  onChange={handleChange}
-                  placeholder="Telefone"
-                  className="w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  data-testid="contato-telefone"
-                />
-              </div>
-
-              <div className="relative">
-                <Building className="absolute left-3 top-3 text-gray-400" size={20} />
-                <input
-                  type="text"
-                  name="empresa"
-                  value={formData.empresa}
-                  onChange={handleChange}
-                  placeholder="Empresa"
-                  className="w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  data-testid="contato-empresa"
-                />
-              </div>
-
-              <div className="relative">
-                <MessageSquare className="absolute left-3 top-3 text-gray-400" size={20} />
-                <textarea
-                  name="mensagem"
-                  value={formData.mensagem}
-                  onChange={handleChange}
-                  required
-                  rows="4"
-                  placeholder="Sua mensagem *"
-                  className="w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  data-testid="contato-mensagem"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-amber-500 hover:bg-amber-600 text-white py-3 rounded-lg font-semibold transition disabled:opacity-50"
-                data-testid="contato-submit"
-              >
-                {loading ? 'Enviando...' : 'Enviar Mensagem'}
-              </button>
-            </form>
-          </div>
-        </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="inline-flex h-[52px] items-center justify-center gap-2 rounded-full bg-[#C9A227] px-6 py-4 text-sm font-black text-black transition hover:bg-[#E8D5A3] disabled:cursor-not-allowed disabled:opacity-50"
+              data-testid="contato-submit"
+            >
+              <Send size={17} />
+              {loading ? 'Enviando...' : 'Enviar mensagem'}
+            </button>
+          </form>
+        </section>
       </div>
-    </div>
+    </main>
+  );
+}
+
+function FormInput({ icon: Icon, testId, ...props }) {
+  return (
+    <label className="relative block">
+      <Icon className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={19} />
+      <input
+        {...props}
+        className="h-[52px] w-full rounded-full border border-white/10 bg-black/30 px-12 py-4 text-sm font-semibold text-white outline-none placeholder:text-zinc-600 focus:border-[#C9A227] focus:ring-4 focus:ring-[#C9A227]/10"
+        data-testid={testId}
+      />
+    </label>
   );
 }

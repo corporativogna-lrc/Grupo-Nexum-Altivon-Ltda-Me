@@ -466,7 +466,7 @@ const emptySiteConfigForm = {
   site_whatsapp: '5514996731879',
   site_whatsapp_secundario: '5514996348409',
   site_yara_email: 'corporativo.gna@gmail.com',
-  site_logo: '/imagens/homepage/logo-grupo-nexum-altivon.svg',
+  site_logo: '/imagens/homepage/Logo-2.png',
   site_subtitulo: 'Participações societárias',
   site_institucional_url: '/institucional',
   site_politica_privacidade_url: '/politica-privacidade',
@@ -489,7 +489,7 @@ const siteConfigFieldMeta = [
   { key: 'site_whatsapp', label: 'WhatsApp principal', type: 'text', group: 'Geral', description: 'Número usado em links do site.' },
   { key: 'site_whatsapp_secundario', label: 'WhatsApp secundário', type: 'text', group: 'Geral', description: 'Número usado em parceria/fornecedores.' },
   { key: 'site_yara_email', label: 'E-mail da Yara', type: 'text', group: 'Atendimento', description: 'Canal atual da Yara para atendimento comercial.' },
-  { key: 'site_logo', label: 'Logo do site', type: 'text', group: 'Geral', description: 'URL pública ou caminho relativo do logo exibido na home.' },
+  { key: 'site_logo', label: 'Logo do site', type: 'text', group: 'Geral', description: 'URL pública ou caminho relativo do logo exibido na home.', imagePicker: true },
   { key: 'site_subtitulo', label: 'Subtítulo da marca', type: 'text', group: 'Geral', description: 'Texto discreto abaixo do nome público da empresa.' },
   { key: 'site_institucional_url', label: 'Link institucional', type: 'text', group: 'SiteHome', description: 'Destino do link institucional da home.' },
   { key: 'site_politica_privacidade_url', label: 'Link privacidade', type: 'text', group: 'SiteHome', description: 'Destino da política de privacidade.' },
@@ -500,10 +500,48 @@ const siteConfigFieldMeta = [
   { key: 'home_intro_badge', label: 'Selo institucional', type: 'text', group: 'SiteHome', description: 'Texto do selo abaixo do bloco institucional.' },
   { key: 'home_footer_texto', label: 'Rodapé público', type: 'textarea', group: 'SiteHome', description: 'Mensagem institucional no rodapé da home.' },
   { key: 'home_quality_items', label: 'Itens de qualidade (JSON)', type: 'textarea', group: 'SiteHome', description: 'Array JSON de frases do bloco de qualidade.' },
-  { key: 'home_lojas_cards', label: 'Lojas e imagens (JSON)', type: 'textarea', group: 'SiteHome', description: 'Array JSON com nome, slug, segmento, descrição, imagem e icon das lojas.' },
+  { key: 'home_lojas_cards', label: 'Lojas e imagens (JSON)', type: 'textarea', group: 'SiteHome', description: 'Array JSON com nome, slug, segmento, descrição, imagem e icon das lojas.', imagePicker: true },
   { key: 'home_partner_cards', label: 'Cards de parceria (JSON)', type: 'textarea', group: 'SiteHome', description: 'Array JSON com title, text, cta, href e icon.' },
-  { key: 'home_hero_slides', label: 'Slides do banner (JSON)', type: 'textarea', group: 'SiteHome', description: 'Array JSON com id, badge, title, highlight, description e image.' },
+  { key: 'home_hero_slides', label: 'Slides do banner (JSON)', type: 'textarea', group: 'SiteHome', description: 'Array JSON com id, badge, title, highlight, description e image.', imagePicker: true },
 ];
+
+const toHomepageImagePath = (fileName = '') => {
+  const safeName = String(fileName)
+    .trim()
+    .replace(/\\/g, '/')
+    .split('/')
+    .pop()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-zA-Z0-9._-]/g, '');
+
+  return safeName ? `/imagens/homepage/${safeName}` : '';
+};
+
+const resolveSiteLogoPreview = (logo) => {
+  const value = String(logo || '').trim();
+  return value && !value.includes('logo-grupo-nexum-altivon.svg') ? value : '/imagens/homepage/Logo-2.png';
+};
+
+const applyImagePathToSiteConfig = (fieldKey, currentValue, imagePath) => {
+  if (!imagePath) return currentValue || '';
+  if (fieldKey === 'site_logo') return imagePath;
+
+  try {
+    const parsed = JSON.parse(currentValue || '[]');
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      const imageField = fieldKey === 'home_lojas_cards' ? 'imagem' : 'image';
+      return JSON.stringify(
+        parsed.map((item, index) => (index === 0 ? { ...item, [imageField]: imagePath } : item)),
+        null,
+        2
+      );
+    }
+  } catch {
+    return currentValue || '';
+  }
+
+  return currentValue || '';
+};
 const pedidoStatusOptions = ['Pendente', 'Pago', 'Em Separacao', 'Enviado', 'Entregue', 'Cancelado', 'Devolvido', 'Reembolsado'];
 const pedidoFilaOptions = [
   { id: 'todos', label: 'Todos' },
@@ -816,24 +854,35 @@ export default function Dashboard() {
   const [formStatus, setFormStatus] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const isErpWorkspace = activeTab === 'erp' || activeTab.startsWith('erp-');
-  const sitePreviewLogo = String(siteConfigForm.site_logo || '').trim() || '/imagens/homepage/logo-grupo-nexum-altivon.svg';
+  const sitePreviewLogo = resolveSiteLogoPreview(siteConfigForm.site_logo);
   const previewSlides = parseJsonPreview(siteConfigForm.home_hero_slides, [{
     id: 'preview',
     badge: siteConfigForm.home_intro_badge || 'Preview do banner',
     title: siteConfigForm.home_intro_titulo || 'Título institucional',
     highlight: 'Visual ao vivo',
     description: siteConfigForm.home_intro_texto_1 || 'A prévia mostra como o banner ficará na home antes de salvar no banco.',
-    image: siteConfigForm.site_logo || '/imagens/homepage/logo-grupo-nexum-altivon.svg',
+    image: siteConfigForm.site_logo || '/imagens/homepage/Logo-2.png',
   }]);
   const previewSlide = previewSlides[0] || {
     badge: siteConfigForm.home_intro_badge || 'Preview do banner',
     title: siteConfigForm.home_intro_titulo || 'Título institucional',
     highlight: 'Visual ao vivo',
     description: siteConfigForm.home_intro_texto_1 || 'A prévia mostra como o banner ficará na home antes de salvar no banco.',
-    image: siteConfigForm.site_logo || '/imagens/homepage/logo-grupo-nexum-altivon.svg',
+    image: siteConfigForm.site_logo || '/imagens/homepage/Logo-2.png',
   };
   const previewQualityItems = parseJsonPreview(siteConfigForm.home_quality_items, []);
   const previewPartnerCards = parseJsonPreview(siteConfigForm.home_partner_cards, []);
+
+  const handleSiteConfigImageSelect = (fieldKey, file) => {
+    const imagePath = toHomepageImagePath(file?.name);
+    if (!imagePath) return;
+
+    setSiteConfigForm((current) => ({
+      ...current,
+      [fieldKey]: applyImagePathToSiteConfig(fieldKey, current[fieldKey], imagePath),
+    }));
+    setFormStatus(`Caminho aplicado: ${imagePath}. Mantenha o arquivo publicado em public/imagens/homepage.`);
+  };
 
   useEffect(() => {
     const syncFullscreen = () => setIsFullscreen(Boolean(document.fullscreenElement));
@@ -3053,6 +3102,26 @@ export default function Dashboard() {
                               />
                             )}
                             <span className="mt-2 block text-xs font-semibold text-slate-400">{field.description}</span>
+                            {field.imagePicker && (
+                              <span className="mt-3 flex flex-wrap items-center gap-3">
+                                <span className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black text-slate-700 transition hover:border-slate-950 hover:bg-white">
+                                  <ImagePlus size={15} />
+                                  Selecionar imagem
+                                  <input
+                                    type="file"
+                                    accept="image/*,.svg"
+                                    className="sr-only"
+                                    onChange={(event) => {
+                                      handleSiteConfigImageSelect(field.key, event.target.files?.[0]);
+                                      event.target.value = '';
+                                    }}
+                                  />
+                                </span>
+                                <span className="text-xs font-semibold text-slate-400">
+                                  Arquivos devem ficar em public/imagens/homepage.
+                                </span>
+                              </span>
+                            )}
                           </label>
                         ))}
                       </div>

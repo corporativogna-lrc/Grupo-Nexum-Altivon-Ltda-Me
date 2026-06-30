@@ -11,6 +11,12 @@ import { Mail, MapPin, Phone, ShieldCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { siteAPI, unwrapApiData } from '../services/api';
 
+const fallbackLogo = '/imagens/homepage/Logo-2.png';
+const resolveLogo = (logo) => {
+  const value = String(logo || '').trim();
+  return value && !value.includes('logo-grupo-nexum-altivon.svg') ? value : fallbackLogo;
+};
+
 const links = [
   { to: '/produtos', label: 'Catálogo' },
   { to: '/lojas', label: 'Lojas' },
@@ -24,7 +30,7 @@ export default function Footer() {
   const [branding, setBranding] = useState({
     siteName: 'Grupo Nexum Altivon',
     subtitle: 'Participações societárias',
-    logo: '/imagens/homepage/logo-grupo-nexum-altivon.svg',
+    logo: fallbackLogo,
     email: 'corporativo.gna@gmail.com',
     telefone: '+55 (14) 99673-1879',
     telefoneSecundario: '+55 (14) 99634-8409',
@@ -41,7 +47,7 @@ export default function Footer() {
         setBranding({
           siteName: config.siteNome || config.siteName || 'Grupo Nexum Altivon',
           subtitle: config.siteSubtitulo || config.siteSubtitle || 'Participações societárias',
-          logo: config.siteLogo || '/imagens/homepage/logo-grupo-nexum-altivon.svg',
+          logo: resolveLogo(config.siteLogo),
           email: config.contactEmail || 'corporativo.gna@gmail.com',
           telefone: config.primaryPhone || '+55 (14) 99673-1879',
           telefoneSecundario: config.secondaryPhone || '+55 (14) 99634-8409',
@@ -59,7 +65,14 @@ export default function Footer() {
       <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-[1.5fr_1fr_1fr] lg:px-8">
         <div className="space-y-4">
           <Link to="/" className="inline-flex items-center gap-3" aria-label="Grupo Nexum Altivon">
-            <img src={branding.logo} alt="Logotipo Grupo Nexum Altivon" className="h-10 w-10 rounded-lg bg-[#C9A227] object-contain p-1" />
+            <img
+              src={branding.logo}
+              alt="Logotipo Grupo Nexum Altivon"
+              className="h-11 w-11 rounded-xl bg-[#C9A227] object-contain p-1"
+              onError={(event) => {
+                event.currentTarget.src = fallbackLogo;
+              }}
+            />
             <div className="leading-tight">
               <p className="text-base font-black text-[#C9A227]">{branding.siteName}</p>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">{branding.subtitle}</p>

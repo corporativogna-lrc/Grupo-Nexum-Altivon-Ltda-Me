@@ -36,6 +36,12 @@ import ProductCard from '../components/ProductCard';
 import { clienteAPI, produtoAPI, siteAPI, unwrapApiData } from '../services/api';
 import { isValidCpfCnpj } from '../utils/validation';
 
+const fallbackLogo = '/imagens/homepage/Logo-2.png';
+const resolveLogo = (logo) => {
+  const value = String(logo || '').trim();
+  return value && !value.includes('logo-grupo-nexum-altivon.svg') ? value : fallbackLogo;
+};
+
 const heroSlides = [
   {
     id: 'ecommerce',
@@ -235,7 +241,7 @@ const mapPublicSiteConfig = (config) => {
     primaryWhatsapp: pickConfigValue(config, ['primaryWhatsapp', 'PrimaryWhatsapp', 'site_whatsapp', 'siteWhatsapp'], '5514996731879'),
     secondaryWhatsapp: pickConfigValue(config, ['secondaryWhatsapp', 'SecondaryWhatsapp', 'site_whatsapp_secundario', 'siteWhatsappSecundario'], '5514996348409'),
     yaraEmail: pickConfigValue(config, ['yaraEmail', 'YaraEmail', 'site_yara_email', 'siteYaraEmail'], 'corporativo.gna@gmail.com'),
-    siteLogo: pickConfigValue(config, ['siteLogo', 'SiteLogo', 'site_logo', 'siteLogoUrl'], '/imagens/homepage/logo-grupo-nexum-altivon.svg'),
+    siteLogo: resolveLogo(pickConfigValue(config, ['siteLogo', 'SiteLogo', 'site_logo', 'siteLogoUrl'], fallbackLogo)),
     institutionalUrl: pickConfigValue(config, ['institutionalUrl', 'InstitutionalUrl', 'site_institucional_url', 'siteInstitucionalUrl'], '/institucional'),
     privacyUrl: pickConfigValue(config, ['privacyUrl', 'PrivacyUrl', 'site_politica_privacidade_url', 'sitePoliticaPrivacidadeUrl'], '/politica-privacidade'),
     refundUrl: pickConfigValue(config, ['refundUrl', 'RefundUrl', 'site_politica_reembolso_url', 'sitePoliticaReembolsoUrl'], '/politica-reembolso'),
@@ -277,7 +283,7 @@ export default function Home() {
   const publicContactEmail = siteConfig?.contactEmail || 'corporativo.gna@gmail.com';
   const yaraEmail = siteConfig?.yaraEmail || publicContactEmail;
   const yaraMailTo = `mailto:${encodeURIComponent(yaraEmail)}?subject=Yara%20-%20Atendimento%20de%20vendas&body=Ol%C3%A1%20Yara%2C%20preciso%20de%20ajuda%20com%20assuntos%20da%20empresa%2C%20produtos%20ou%20d%C3%BAvidas%20sobre%20a%20compra.`;
-  const siteLogo = siteConfig?.siteLogo || '/imagens/homepage/logo-grupo-nexum-altivon.svg';
+  const siteLogo = siteConfig?.siteLogo || fallbackLogo;
   const institutionalUrl = siteConfig?.institutionalUrl || '/institucional';
   const privacyUrl = siteConfig?.privacyUrl || '/politica-privacidade';
   const refundUrl = siteConfig?.refundUrl || '/politica-reembolso';
@@ -307,17 +313,17 @@ export default function Home() {
       setLoadingProducts(true);
 
       try {
-        const destaquesRes = await produtoAPI.getDestaques(5);
+        const destaquesRes = await produtoAPI.getDestaques(4);
         let produtos = unwrapApiData(destaquesRes.data);
 
         if (!Array.isArray(produtos) || produtos.length === 0) {
-          const todosRes = await produtoAPI.getAll({ pagina: 1, itensPorPagina: 5 });
+          const todosRes = await produtoAPI.getAll({ pagina: 1, itensPorPagina: 4 });
           produtos = unwrapApiData(todosRes.data);
         }
 
         if (active) {
           const publicaveis = Array.isArray(produtos)
-            ? produtos.filter(isProdutoPublicavel).slice(0, 5)
+            ? produtos.filter(isProdutoPublicavel).slice(0, 4)
             : [];
           setFeaturedProducts(publicaveis);
         }
@@ -466,7 +472,14 @@ export default function Home() {
               <span className="block text-[#C9A227]">{activeSlide.highlight}</span>
             </h1>
             <div className="mt-6 flex items-start gap-4">
-              <img src={siteLogo} alt="Logotipo Grupo Nexum Altivon" className="hidden h-16 w-16 rounded-2xl border border-[#C9A227]/30 bg-black/60 object-contain p-2 sm:block" />
+            <img
+              src={siteLogo}
+              alt="Logotipo Grupo Nexum Altivon"
+              className="hidden h-16 w-16 rounded-2xl border border-[#C9A227]/30 bg-black/60 object-contain p-2 sm:block"
+              onError={(event) => {
+                event.currentTarget.src = fallbackLogo;
+              }}
+            />
               <p className="max-w-2xl text-lg leading-8 text-zinc-200 sm:text-xl">{activeSlide.description}</p>
             </div>
 
@@ -874,7 +887,14 @@ export default function Home() {
         <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-4 sm:px-6 md:flex-row md:items-center lg:px-8">
           <div>
             <div className="flex items-center gap-3">
-              <img src={siteLogo} alt="Logotipo Grupo Nexum Altivon" className="h-12 w-12 rounded-xl border border-[#C9A227]/30 bg-black object-contain p-1.5" />
+              <img
+                src={siteLogo}
+                alt="Logotipo Grupo Nexum Altivon"
+                className="h-12 w-12 rounded-xl border border-[#C9A227]/30 bg-black object-contain p-1.5"
+                onError={(event) => {
+                  event.currentTarget.src = fallbackLogo;
+                }}
+              />
               <p className="text-xs font-black uppercase tracking-[0.25em] text-[#E8D5A3]">Grupo Nexum Altivon</p>
             </div>
             <p className="mt-3 text-sm leading-7 text-zinc-400">{siteConfig?.footerText || 'Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas.'}</p>

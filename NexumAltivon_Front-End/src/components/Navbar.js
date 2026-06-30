@@ -13,6 +13,12 @@ import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { siteAPI, unwrapApiData } from '../services/api';
 
+const fallbackLogo = '/imagens/homepage/Logo-2.png';
+const resolveLogo = (logo) => {
+  const value = String(logo || '').trim();
+  return value && !value.includes('logo-grupo-nexum-altivon.svg') ? value : fallbackLogo;
+};
+
 const navItems = [
   { to: '/', label: 'Início' },
   { to: '/produtos', label: 'Catálogo' },
@@ -30,7 +36,7 @@ export default function Navbar() {
   const [branding, setBranding] = useState({
     siteName: 'Grupo Nexum Altivon',
     subtitle: 'Participações societárias',
-    logo: '/imagens/homepage/logo-grupo-nexum-altivon.svg',
+    logo: fallbackLogo,
   });
   const displayName = useMemo(() => {
     const rawName = String(user?.nome || user?.name || user?.email || '').trim();
@@ -54,7 +60,7 @@ export default function Navbar() {
         setBranding({
           siteName: config.siteNome || config.siteName || 'Grupo Nexum Altivon',
           subtitle: config.siteSubtitulo || config.siteSubtitle || 'Participações societárias',
-          logo: config.siteLogo || '/imagens/homepage/logo-grupo-nexum-altivon.svg',
+          logo: resolveLogo(config.siteLogo),
         });
       })
       .catch(() => {});
@@ -66,16 +72,23 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-[#2A2A2A] bg-[#0A0A0A]/95 text-white backdrop-blur-xl">
-      <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        <Link to="/" className="flex items-center gap-3" aria-label="Grupo Nexum Altivon">
-          <img src={branding.logo} alt="Logotipo Grupo Nexum Altivon" className="h-11 w-11 rounded-lg bg-[#C9A227] object-contain p-1 shadow-sm" />
-          <div className="leading-tight">
-            <p className="text-base font-black tracking-wide text-[#C9A227]">{branding.siteName}</p>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">{branding.subtitle}</p>
+      <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between gap-3 px-3 sm:px-6 lg:px-8">
+        <Link to="/" className="flex min-w-0 items-center gap-2 sm:gap-3" aria-label="Grupo Nexum Altivon">
+          <img
+            src={branding.logo}
+            alt="Logotipo Grupo Nexum Altivon"
+            className="h-12 w-12 shrink-0 rounded-xl bg-[#C9A227] object-contain p-1 shadow-sm sm:h-14 sm:w-14"
+            onError={(event) => {
+              event.currentTarget.src = fallbackLogo;
+            }}
+          />
+          <div className="min-w-0 leading-tight">
+            <p className="max-w-[132px] truncate text-sm font-black tracking-wide text-[#C9A227] sm:max-w-none sm:text-base">{branding.siteName}</p>
+            <p className="max-w-[132px] truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400 sm:max-w-none sm:text-xs">{branding.subtitle}</p>
           </div>
         </Link>
 
-        <nav className="hidden items-center gap-1 rounded-full border border-[#2A2A2A] bg-black/30 p-1 shadow-sm md:flex">
+        <nav className="hidden items-center gap-1 rounded-full border border-[#2A2A2A] bg-black/30 p-1 shadow-sm lg:flex">
           {navItems.map((item) => (
             <NavLink key={item.to} to={item.to} className={navClass} data-testid={`nav-${item.label.toLowerCase()}`}>
               {item.label}
@@ -83,7 +96,7 @@ export default function Navbar() {
           ))}
         </nav>
 
-        <div className="hidden items-center gap-2 md:flex">
+        <div className="hidden items-center gap-2 lg:flex">
           <Link
             to="/produtos"
             className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#2A2A2A] text-zinc-300 transition hover:border-[#C9A227] hover:text-[#C9A227]"
@@ -176,7 +189,7 @@ export default function Navbar() {
           )}
         </div>
 
-        <div className="flex items-center gap-2 md:hidden">
+        <div className="flex shrink-0 items-center gap-2 lg:hidden">
           <Link
             to="/carrinho"
             className="inline-flex items-center gap-2 rounded-full border border-[#2A2A2A] px-3 py-2 text-xs font-black text-zinc-200 transition hover:border-[#C9A227] hover:text-[#E8D5A3]"
@@ -205,7 +218,7 @@ export default function Navbar() {
       </div>
 
       {isOpen && (
-        <div className="border-t border-[#2A2A2A] bg-[#0A0A0A] px-4 py-4 shadow-xl md:hidden">
+        <div className="border-t border-[#2A2A2A] bg-[#0A0A0A] px-4 py-4 shadow-xl lg:hidden">
           <div className="space-y-1">
             {navItems.map((item) => (
               <NavLink

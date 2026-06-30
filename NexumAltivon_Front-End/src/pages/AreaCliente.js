@@ -203,13 +203,13 @@ export default function AreaCliente() {
   if (isAdmin) return <Navigate to="/dashboard" replace />;
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,#241B07_0,#050505_34%,#050505_100%)] px-4 py-8 text-white sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl space-y-8">
-        <section className="overflow-hidden rounded-[32px] border border-[#C9A227]/20 bg-gradient-to-br from-[#141414] to-[#080808] p-6 shadow-2xl shadow-black/40 sm:p-8">
+    <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,#241B07_0,#050505_34%,#050505_100%)] px-3 py-6 text-white sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-7xl space-y-6 sm:space-y-8">
+        <section className="w-full max-w-full overflow-hidden rounded-[28px] border border-[#C9A227]/20 bg-gradient-to-br from-[#141414] to-[#080808] p-5 shadow-2xl shadow-black/40 sm:rounded-[32px] sm:p-8">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <p className="text-sm font-black uppercase tracking-[0.22em] text-[#E8D5A3]">Área do cliente Grupo Nexum Altivon</p>
-              <h1 className="mt-3 text-4xl font-black">Olá, {portal?.nome || user?.nome || 'cliente'}.</h1>
+              <h1 className="mt-3 break-words text-3xl font-black sm:text-4xl">Olá, {portal?.nome || user?.nome || 'cliente'}.</h1>
               <p className="mt-3 max-w-2xl text-zinc-300">
                 Aqui você acompanha pedidos, documentos, relacionamento e suporte em um canal direto com a operação comercial.
               </p>
@@ -220,9 +220,9 @@ export default function AreaCliente() {
                   : 'Cadastro pendente de confirmação'}
               </div>
             </div>
-            <div className="w-full rounded-3xl border border-[#C9A227]/20 bg-black/40 p-5 lg:max-w-sm">
+            <div className="w-full min-w-0 rounded-3xl border border-[#C9A227]/20 bg-black/40 p-5 lg:max-w-sm">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-zinc-500">Cadastro principal</p>
-              <p className="mt-2 text-lg font-bold">{portal?.email || user?.email}</p>
+              <p className="mt-2 break-words text-lg font-bold">{portal?.email || user?.email}</p>
               <p className="mt-1 text-sm text-zinc-400">{portal?.telefone || 'Telefone em atualização'}</p>
               <a
                 href={yaraMailTo}
@@ -255,7 +255,7 @@ export default function AreaCliente() {
           </section>
         ) : (
           <>
-            <section className="grid gap-4 lg:grid-cols-4">
+            <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {[
                 { label: 'Pedidos registrados', value: portal?.pedidos?.length || 0, icon: ShoppingBag },
                 { label: 'Total comprado', value: formatCurrency(stats.totalCompras), icon: BadgeDollarSign },
@@ -264,30 +264,58 @@ export default function AreaCliente() {
               ].map((item) => {
                 const Icon = item.icon;
                 return (
-                  <article key={item.label} className="rounded-[28px] border border-white/10 bg-[#111111] p-6">
+                  <article key={item.label} className="min-w-0 rounded-[28px] border border-white/10 bg-[#111111] p-5 sm:p-6">
                     <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[#C9A227] text-black">
                       <Icon size={20} />
                     </div>
                     <p className="mt-5 text-sm font-black uppercase tracking-[0.16em] text-zinc-500">{item.label}</p>
-                    <p className="mt-3 text-xl font-black text-white">{item.value}</p>
+                    <p className="mt-3 break-words text-xl font-black text-white">{item.value}</p>
                   </article>
                 );
               })}
             </section>
 
             <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-              <article className="rounded-[32px] border border-white/10 bg-[#111111] p-6">
-                <div className="flex items-center justify-between gap-3">
+              <article className="min-w-0 rounded-[28px] border border-white/10 bg-[#111111] p-5 sm:rounded-[32px] sm:p-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-black uppercase tracking-[0.18em] text-[#E8D5A3]">Histórico de compras</p>
                     <h2 className="mt-2 text-2xl font-black">Pedidos e status reais</h2>
                   </div>
-                  <Link to="/produtos" className="rounded-full border border-white/10 px-4 py-2 text-sm font-bold text-zinc-100 transition hover:border-[#C9A227] hover:text-[#E8D5A3]">
+                  <Link to="/produtos" className="inline-flex w-fit rounded-full border border-white/10 px-4 py-2 text-sm font-bold text-zinc-100 transition hover:border-[#C9A227] hover:text-[#E8D5A3]">
                     Continuar comprando
                   </Link>
                 </div>
 
-                <div className="mt-6 overflow-x-auto rounded-3xl border border-white/5">
+                <div className="mt-6 grid gap-3 md:hidden">
+                  {(portal?.pedidos || []).map((pedido) => {
+                    const rastreio = getPedidoRastreio(pedido);
+                    return (
+                      <article key={pedido.id} className="rounded-3xl border border-white/10 bg-black/25 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="break-words text-sm font-black text-white">{pedido.numeroPedido || `NX-${pedido.id}`}</p>
+                            <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-[#E8D5A3]">{pedido.status || '-'}</p>
+                          </div>
+                          <span className="shrink-0 text-sm font-black text-white">{formatCurrency(getPedidoTotal(pedido))}</span>
+                        </div>
+                        <div className="mt-4 grid gap-2 text-sm text-zinc-300">
+                          <p><span className="font-bold text-zinc-100">Pagamento:</span> {getPedidoPagamento(pedido)}</p>
+                          <p><span className="font-bold text-zinc-100">Entrega:</span> {getPedidoTransportadora(pedido)}</p>
+                          <p><span className="font-bold text-zinc-100">Rastreio:</span> {rastreio || 'em preparação'}</p>
+                          <p><span className="font-bold text-zinc-100">Data:</span> {formatDate(getPedidoData(pedido))}</p>
+                        </div>
+                      </article>
+                    );
+                  })}
+                  {(portal?.pedidos || []).length === 0 && (
+                    <div className="rounded-3xl border border-dashed border-white/10 bg-black/20 p-5 text-center text-sm text-zinc-500">
+                      Nenhum pedido registrado ainda.
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-6 hidden max-w-full overflow-x-auto rounded-3xl border border-white/5 md:block">
                   <table className="min-w-[860px] divide-y divide-white/5 text-sm">
                     <thead className="bg-black/30 text-zinc-400">
                       <tr>
@@ -335,8 +363,8 @@ export default function AreaCliente() {
                 </div>
               </article>
 
-              <div className="space-y-6">
-                <article className="rounded-[32px] border border-white/10 bg-[#111111] p-6">
+              <div className="min-w-0 space-y-6">
+                <article className="min-w-0 rounded-[28px] border border-white/10 bg-[#111111] p-5 sm:rounded-[32px] sm:p-6">
                   <p className="text-sm font-black uppercase tracking-[0.18em] text-[#E8D5A3]">Central de mensagens</p>
                   <h2 className="mt-2 text-2xl font-black">Atendimento e suporte</h2>
                   <div className="mt-5 space-y-4">
@@ -353,7 +381,7 @@ export default function AreaCliente() {
                   </div>
                 </article>
 
-                <article className="rounded-[32px] border border-white/10 bg-[#111111] p-6">
+                <article className="min-w-0 rounded-[28px] border border-white/10 bg-[#111111] p-5 sm:rounded-[32px] sm:p-6">
                   <p className="text-sm font-black uppercase tracking-[0.18em] text-[#E8D5A3]">Documentos e relacionamento</p>
                   <h2 className="mt-2 text-2xl font-black">NFs, boletos e vínculo comercial</h2>
                   <div className="mt-5 space-y-3">
@@ -379,12 +407,12 @@ export default function AreaCliente() {
                   </div>
                 </article>
 
-                <article className="rounded-[32px] border border-white/10 bg-[#111111] p-6">
+                <article className="min-w-0 rounded-[28px] border border-white/10 bg-[#111111] p-5 sm:rounded-[32px] sm:p-6">
                   <p className="text-sm font-black uppercase tracking-[0.18em] text-[#E8D5A3]">Endereços</p>
                   <h2 className="mt-2 text-2xl font-black">Principal e auxiliares</h2>
 
-                  <form onSubmit={salvarEndereco} className="mt-5 space-y-3 rounded-3xl border border-white/5 bg-black/20 p-4">
-                    <div className="grid gap-3 sm:grid-cols-2">
+                  <form onSubmit={salvarEndereco} className="mt-5 min-w-0 space-y-3 rounded-3xl border border-white/5 bg-black/20 p-4">
+                    <div className="grid min-w-0 gap-3 sm:grid-cols-2">
                       <input
                         type="text"
                         placeholder="Apelido"
@@ -486,9 +514,9 @@ export default function AreaCliente() {
 
                   <div className="mt-5 space-y-3">
                     {(portal?.enderecos || []).map((endereco) => (
-                      <div key={endereco.id} className="rounded-3xl border border-white/5 bg-black/20 p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
+                      <div key={endereco.id} className="min-w-0 rounded-3xl border border-white/5 bg-black/20 p-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
                             <div className="inline-flex items-center gap-2">
                               <MapPin size={16} className="text-[#C9A227]" />
                               <p className="text-sm font-black text-white">
@@ -496,15 +524,15 @@ export default function AreaCliente() {
                                 {endereco.padrao ? ' • Principal' : ''}
                               </p>
                             </div>
-                            <p className="mt-1 text-sm text-zinc-400">
+                            <p className="mt-1 break-words text-sm text-zinc-400">
                               {endereco.logradouro}, {endereco.numero}
                               {endereco.complemento ? ` - ${endereco.complemento}` : ''}
                             </p>
-                            <p className="mt-1 text-xs text-zinc-500">
+                            <p className="mt-1 break-words text-xs text-zinc-500">
                               {endereco.bairro || 'Bairro não informado'} • {endereco.cidade || 'Cidade não informada'} / {endereco.estado || '--'} • {endereco.cep}
                             </p>
                           </div>
-                          <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                          <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
                             <span className="rounded-full border border-[#C9A227]/20 px-3 py-1 text-xs font-black text-[#E8D5A3]">
                               {endereco.tipo || 'Entrega'}
                             </span>
