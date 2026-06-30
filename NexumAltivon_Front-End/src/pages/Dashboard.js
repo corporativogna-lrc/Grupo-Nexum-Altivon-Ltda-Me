@@ -329,6 +329,9 @@ const emptyProduto = {
   seoTitulo: '',
   seoDescricao: '',
   seoKeywords: '',
+  codigoBarras: '',
+  qrCode: '',
+  identificacaoEstoque: '',
 };
 
 const emptyCategoria = {
@@ -765,6 +768,40 @@ const normalizarSkuInterno = (form, empresasGrupo = []) => {
   const sequencial = corpo ? corpo.slice(-6).padStart(6, '0') : Date.now().toString().slice(-6);
 
   return `${empresaCodigo}-${prefixo}-${sequencial}`;
+};
+
+const gerarCodigoBarrasPreview = (sku) => {
+  const digits = String(sku || '').replace(/\D+/g, '');
+  const seed = digits || String(Math.abs(hashCode(String(sku || 'NEXUM')))).replace(/\D+/g, '');
+  const baseCode = `789${seed.padStart(9, '0').slice(-9)}`;
+  const sum = baseCode.split('').reduce((total, char, index) => {
+    const digit = Number(char);
+    return total + (index % 2 === 0 ? digit : digit * 3);
+  }, 0);
+  const checkDigit = (10 - (sum % 10)) % 10;
+  return `${baseCode}${checkDigit}`;
+};
+
+const hashCode = (value) => Array.from(String(value || '')).reduce((hash, char) => {
+  const next = ((hash << 5) - hash) + char.charCodeAt(0);
+  return next & next;
+}, 0);
+
+const getProdutoIdentificacaoPreview = (produto, empresasGrupo = []) => {
+  const sku = normalizarSkuInterno(produto, empresasGrupo);
+  const aquisicao = getProdutoPrefixoAquisicao(produto.tipoProduto, produto.fornecedorId);
+  const codigoBarras = produto.codigoBarras || produto.codigo_barras || produto.CodigoBarras || gerarCodigoBarrasPreview(sku);
+  const qrCode = produto.qrCode || produto.qr_code || produto.QrCode || JSON.stringify({
+    tipo: 'PRODUTO',
+    sku,
+    nome: produto.nome || 'Produto',
+    aquisicao,
+    fornecedorId: produto.fornecedorId || null,
+  });
+  const identificacaoEstoque = produto.identificacaoEstoque || produto.identificacao_estoque || produto.IdentificacaoEstoque
+    || `SKU=${sku};ITEM=${produto.nome || 'Produto'};AQUISICAO=${aquisicao};FORNECEDOR=${produto.fornecedorId || 'NAO_VINCULADO'}`;
+
+  return { sku, codigoBarras, qrCode, identificacaoEstoque };
 };
 
 const fileToDataUrl = (file) =>
@@ -1884,6 +1921,9 @@ export default function Dashboard() {
       seoTitulo: produto.seo_titulo ?? produto.seoTitulo ?? produto.SeoTitulo ?? '',
       seoDescricao: produto.seo_descricao ?? produto.seoDescricao ?? produto.SeoDescricao ?? '',
       seoKeywords: produto.seo_keywords ?? produto.seoKeywords ?? produto.SeoKeywords ?? '',
+      codigoBarras: produto.codigo_barras ?? produto.codigoBarras ?? produto.CodigoBarras ?? '',
+      qrCode: produto.qr_code ?? produto.qrCode ?? produto.QrCode ?? '',
+      identificacaoEstoque: produto.identificacao_estoque ?? produto.identificacaoEstoque ?? produto.IdentificacaoEstoque ?? '',
     });
     setFormStatus(`Editando produto ${produto.nome ?? produto.Nome ?? ''}.`);
     setActiveTab('cadastro-produtos');
@@ -2314,6 +2354,7 @@ export default function Dashboard() {
                           <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-700">
                             Código final: {normalizarSkuInterno(produtoForm, empresasGrupo)}
                           </div>
+                          <ProductIdentificationPanel produto={produtoForm} empresasGrupo={empresasGrupo} className="md:col-span-2" />
                           <Field label="Preço" type="number" value={produtoForm.preco} onChange={(value) => setProdutoForm((form) => ({ ...form, preco: value }))} required />
                           <Field label="Preço promocional" type="number" value={produtoForm.precoPromocional} onChange={(value) => setProdutoForm((form) => ({ ...form, precoPromocional: value }))} />
                           <Field label="Custo interno" type="number" value={produtoForm.custo} onChange={(value) => setProdutoForm((form) => ({ ...form, custo: value }))} />
@@ -2428,7 +2469,7 @@ export default function Dashboard() {
                         </div>
                       </form>
                       <div className="space-y-6">
-                        <ProductPreview produto={produtoForm} categorias={categorias} />
+                        <ProductPreview produto={produtoForm} categorias={categorias} empresasGrupo={empresasGrupo} />
                         <form onSubmit={submitCategoria} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
                           <h4 className="text-base font-black text-slate-950">Categorias e subcategorias</h4>
                           <p className="mt-1 text-sm font-semibold text-slate-500">Monte a hierarquia do catálogo antes de liberar o cadastro em massa.</p>
@@ -2457,7 +2498,7 @@ export default function Dashboard() {
                           </button>
                         </form>
                         <CompactList title="Hierarquia do catálogo" items={categoriasHierarquicas} fields={['label', 'descricao']} />
-                        <CompactList title="Produtos cadastrados" items={produtos} fields={['nome', 'sku', 'estoque']} onEdit={startEditProduto} />
+                        <CompactList title="Produtos cadastrados" items={produtos} fields={['nome', 'sku', 'codigoBarras', 'estoque']} onEdit={startEditProduto} />
                       </div>
                     </div>
                   )}
@@ -4205,7 +4246,35 @@ function ErpCockpitMenu({ activeTab, onNavigate }) {
   );
 }
 
-function ProductPreview({ produto, categorias }) {
+function ProductIdentificationPanel({ produto, empresasGrupo, className = '' }) {
+  const identificacao = getProdutoIdentificacaoPreview(produto, empresasGrupo);
+
+  const rows = [
+    ['SKU operacional', identificacao.sku],
+    ['Código de barras', identificacao.codigoBarras],
+    ['QR code / payload', identificacao.qrCode],
+    ['Identificação de estoque', identificacao.identificacaoEstoque],
+  ];
+
+  return (
+    <div className={`rounded-lg border border-amber-200 bg-amber-50 p-4 ${className}`}>
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-700">Identificação física e PDV</p>
+      <div className="mt-3 grid gap-3">
+        {rows.map(([label, value]) => (
+          <div key={label} className="rounded-lg border border-amber-100 bg-white px-3 py-2">
+            <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">{label}</p>
+            <p className="mt-1 break-all text-sm font-black text-slate-900">{value || '-'}</p>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-xs font-semibold text-amber-800">
+        Esses dados são gerados pelo sistema a partir do SKU e alimentam estoque físico, PDV, conferência e etiquetas.
+      </p>
+    </div>
+  );
+}
+
+function ProductPreview({ produto, categorias, empresasGrupo = [] }) {
   const categoriaSelecionada = produto.subcategoriaId || produto.categoriaId;
   const categoria = categorias.find((item) => item.id === categoriaSelecionada)?.caminho
     || categorias.find((item) => item.id === categoriaSelecionada)?.nome
@@ -4214,6 +4283,7 @@ function ProductPreview({ produto, categorias }) {
   const image = produto.imagemUrl || '';
   const price = Number(produto.preco || 0);
   const promotional = Number(produto.precoPromocional || 0);
+  const identificacao = getProdutoIdentificacaoPreview(produto, empresasGrupo);
 
   return (
     <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -4233,6 +4303,7 @@ function ProductPreview({ produto, categorias }) {
         <div className="mt-4 flex flex-wrap gap-2">
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">{categoria}</span>
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">SKU {produto.sku || '-'}</span>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">Barras {identificacao.codigoBarras}</span>
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">Estoque {produto.estoque || 0}</span>
         </div>
         <div className="mt-5 flex items-end gap-3">
