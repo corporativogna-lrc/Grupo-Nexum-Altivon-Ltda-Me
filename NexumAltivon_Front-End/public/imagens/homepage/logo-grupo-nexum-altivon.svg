@@ -1,0 +1,21 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ --><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" role="img" aria-label="Grupo Nexum Altivon">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#E8D5A3"/>
+      <stop offset="0.52" stop-color="#C9A227"/>
+      <stop offset="1" stop-color="#8C6D13"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="320" rx="72" fill="#070707"/>
+  <rect x="18" y="18" width="284" height="284" rx="58" fill="none" stroke="url(#g)" stroke-width="10"/>
+  <path d="M72 214V106h27l74 70v-70h38v108h-27l-74-70v70H72Z" fill="url(#g)"/>
+  <path d="M214 214h-42l47-108h39l47 108h-43l-7-19h-34l-7 19Zm17-50h14l-7-22-7 22Z" fill="url(#g)" opacity=".95"/>
+  <text x="160" y="258" text-anchor="middle" font-family="Montserrat, Arial, sans-serif" font-size="18" font-weight="800" letter-spacing="4" fill="#E8D5A3">GRUPO</text>
+</svg>
+

@@ -6215,10 +6215,15 @@ static SiteConfiguracaoPublicaDto BuildPublicSiteConfig(IReadOnlyDictionary<stri
         GetConfigValue(configMap, "site_whatsapp", "5514996731879"),
         GetConfigValue(configMap, "site_whatsapp_secundario", "5514996348409"),
         GetConfigValue(configMap, "site_yara_email", contactEmail),
-        GetConfigValue(configMap, "site_logo", "/assets/logo-2.jpg"),
+        GetConfigValue(configMap, "site_logo", "/imagens/homepage/logo-grupo-nexum-altivon.svg"),
+        GetConfigValue(configMap, "site_subtitulo", "Participações societárias"),
+        GetConfigValue(configMap, "site_institucional_url", "/institucional"),
+        GetConfigValue(configMap, "site_politica_privacidade_url", "/politica-privacidade"),
+        GetConfigValue(configMap, "site_politica_reembolso_url", "/politica-reembolso"),
         ParseJsonList(GetConfigValue(configMap, "home_hero_slides", string.Empty), GetDefaultHeroSlides()),
+        ParseJsonList(GetConfigValue(configMap, "home_lojas_cards", string.Empty), GetDefaultStoreCards()),
         GetConfigValue(configMap, "home_intro_titulo", "Uma Nova Era Começa"),
-        GetConfigValue(configMap, "home_intro_texto_1", "A Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro."),
+        GetConfigValue(configMap, "home_intro_texto_1", "O Grupo Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro."),
         GetConfigValue(configMap, "home_intro_texto_2", "Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso."),
         GetConfigValue(configMap, "home_intro_badge", "nexumaltivon.com.br"),
         ParseJsonStringList(GetConfigValue(configMap, "home_quality_items", string.Empty), [
@@ -6285,9 +6290,19 @@ static List<T> ParseJsonList<T>(string? json, List<T> fallback)
 
 static List<HeroSlideSiteDto> GetDefaultHeroSlides() =>
 [
-    new("ecommerce", "Grupo Nexum Altivon", "O Futuro do", "E-Commerce", "Seis lojas, uma operação conectada e uma proposta premium para transformar a experiência de compra online.", "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1920&q=88"),
-    new("marcas", "6 marcas em expansão", "Uma operação,", "múltiplos mercados", "Turismo, relógios, moda, tecnologia, construção e festas com a mesma curadoria comercial do Grupo Nexum Altivon.", "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=1920&q=88"),
-    new("tecnologia", "Experiência tecnológica", "Compra segura com", "atendimento humano", "Fluxos preparados para catálogo, clientes, pedidos, integrações e relacionamento com visão de crescimento contínuo.", "https://images.unsplash.com/photo-1524805444758-089113d48a6d?auto=format&fit=crop&w=1920&q=88")
+    new("ecommerce", "Grupo Nexum Altivon", "O Futuro do", "E-Commerce", "Seis lojas, uma operação conectada e uma proposta premium para transformar a experiência de compra online.", "/imagens/homepage/banner-ecommerce.svg"),
+    new("marcas", "6 marcas em expansão", "Uma operação,", "múltiplos mercados", "Turismo, relógios, moda, tecnologia, construção e festas com a mesma curadoria comercial do Grupo Nexum Altivon.", "/imagens/homepage/banner-marcas.svg"),
+    new("tecnologia", "Experiência tecnológica", "Compra segura com", "atendimento humano", "Fluxos preparados para catálogo, clientes, pedidos, integrações e relacionamento com visão de crescimento contínuo.", "/imagens/homepage/banner-atendimento.svg")
+];
+
+static List<StoreCardSiteDto> GetDefaultStoreCards() =>
+[
+    new("Gran Tur", "gran-tur", "Viagens & Turismo", "Mochilas, malas, acessórios de viagem e produtos para explorar o mundo com estilo e conforto.", "/imagens/homepage/loja-gran-tur.svg", "Plane"),
+    new("Chronos", "chronos", "Relógios & Acessórios", "Relógios e acessórios para quem valoriza precisão, presença e elegância.", "/imagens/homepage/loja-chronos.svg", "Watch"),
+    new("Moda Mim", "moda-mim", "Moda & Vestuário", "Roupas, calçados e acessórios para uma experiência de compra prática e atual.", "/imagens/homepage/loja-moda-mim.svg", "Shirt"),
+    new("Geração Top+", "geracao-top", "Tecnologia & Gadgets", "Smartphones, eletrônicos, acessórios e tecnologia para rotina, trabalho e lazer.", "/imagens/homepage/loja-geracao-top.svg", "Smartphone"),
+    new("Estruturaline", "estruturaline", "Construção & Estruturas", "Materiais, ferramentas e soluções para quem constrói com seriedade.", "/imagens/homepage/loja-estruturaline.svg", "Hammer"),
+    new("Gran Festas", "gran-festas", "Festas & Eventos", "Decoração, utensílios e produtos para encontros, comemorações e eventos.", "/imagens/homepage/loja-gran-festas.svg", "Gift")
 ];
 
 static List<PartnerCardSiteDto> GetDefaultPartnerCards() =>
@@ -6532,17 +6547,24 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
         """
         INSERT INTO configuracoes_sistema (chave, valor, tipo, descricao, grupo, editavel)
         VALUES
+            ('site_nome', 'Grupo Nexum Altivon', 'Texto', 'Nome público principal exibido no site', 'Geral', 1),
+            ('site_subtitulo', 'Participações societárias', 'Texto', 'Subtítulo discreto da marca no cabeçalho e rodapé', 'Geral', 1),
+            ('site_logo', '/imagens/homepage/logo-grupo-nexum-altivon.svg', 'Imagem', 'Logo público carregado pela home, cabeçalho e rodapé', 'Geral', 1),
+            ('site_institucional_url', '/institucional', 'Texto', 'Link da página institucional', 'SiteHome', 1),
+            ('site_politica_privacidade_url', '/politica-privacidade', 'Texto', 'Link da política de privacidade', 'SiteHome', 1),
+            ('site_politica_reembolso_url', '/politica-reembolso', 'Texto', 'Link da política de reembolso', 'SiteHome', 1),
             ('site_telefone_secundario', '(14) 99634-8409', 'Texto', 'Telefone comercial secundário', 'Geral', 1),
             ('site_whatsapp_secundario', '5514996348409', 'Texto', 'WhatsApp comercial secundário', 'Geral', 1),
             ('site_yara_email', 'corporativo.gna@gmail.com', 'Texto', 'E-mail de atendimento da Yara', 'Atendimento', 1),
             ('home_intro_titulo', 'Uma Nova Era Começa', 'Texto', 'Título principal do bloco institucional da home', 'SiteHome', 1),
-            ('home_intro_texto_1', 'A Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro.', 'Texto', 'Primeiro texto institucional da home', 'SiteHome', 1),
+            ('home_intro_texto_1', 'O Grupo Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro.', 'Texto', 'Primeiro texto institucional da home', 'SiteHome', 1),
             ('home_intro_texto_2', 'Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso.', 'Texto', 'Segundo texto institucional da home', 'SiteHome', 1),
             ('home_intro_badge', 'nexumaltivon.com.br', 'Texto', 'Texto do selo institucional da home', 'SiteHome', 1),
             ('home_footer_texto', 'Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas.', 'Texto', 'Texto do rodapé público da home', 'SiteHome', 1),
             ('home_quality_items', '["Curadoria rigorosa de fornecedores","Atendimento humano e especializado","Política de devolução simplificada","Preços justos e acessíveis"]', 'JSON', 'Itens do bloco de qualidade da home', 'SiteHome', 1),
+            ('home_lojas_cards', '[{{"nome":"Gran Tur","slug":"gran-tur","segmento":"Viagens & Turismo","descricao":"Mochilas, malas, acessórios de viagem e produtos para explorar o mundo com estilo e conforto.","imagem":"/imagens/homepage/loja-gran-tur.svg","icon":"Plane"}},{{"nome":"Chronos","slug":"chronos","segmento":"Relógios & Acessórios","descricao":"Relógios e acessórios para quem valoriza precisão, presença e elegância.","imagem":"/imagens/homepage/loja-chronos.svg","icon":"Watch"}},{{"nome":"Moda Mim","slug":"moda-mim","segmento":"Moda & Vestuário","descricao":"Roupas, calçados e acessórios para uma experiência de compra prática e atual.","imagem":"/imagens/homepage/loja-moda-mim.svg","icon":"Shirt"}},{{"nome":"Geração Top+","slug":"geracao-top","segmento":"Tecnologia & Gadgets","descricao":"Smartphones, eletrônicos, acessórios e tecnologia para rotina, trabalho e lazer.","imagem":"/imagens/homepage/loja-geracao-top.svg","icon":"Smartphone"}},{{"nome":"Estruturaline","slug":"estruturaline","segmento":"Construção & Estruturas","descricao":"Materiais, ferramentas e soluções para quem constrói com seriedade.","imagem":"/imagens/homepage/loja-estruturaline.svg","icon":"Hammer"}},{{"nome":"Gran Festas","slug":"gran-festas","segmento":"Festas & Eventos","descricao":"Decoração, utensílios e produtos para encontros, comemorações e eventos.","imagem":"/imagens/homepage/loja-gran-festas.svg","icon":"Gift"}}]', 'JSON', 'Cards e imagens das lojas na Home e página Lojas', 'SiteHome', 1),
             ('home_partner_cards', '[{{"title":"Parceiros de Vendas","text":"Lojas físicas ou online podem ampliar seus horizontes de venda com nossa infraestrutura comercial e operação integrada.","cta":"Quero Vender","href":"https://wa.me/5514996731879?text=Olá! Tenho interesse em ser parceiro de vendas do Grupo Nexum Altivon.","icon":"Store"}},{{"title":"Fornecedores & Distribuidores","text":"Distribuidores e fabricantes encontram um canal de venda em crescimento, com visão de volume, relacionamento e longo prazo.","cta":"Quero Fornecer","href":"https://wa.me/5514996348409?text=Olá! Sou fornecedor/distribuidor e tenho interesse em parceria com o Grupo Nexum Altivon.","icon":"Truck"}},{{"title":"Dropshipping","text":"Integre seu catálogo às nossas lojas ou utilize nossa infraestrutura para conectar produtos, logística e novos canais.","cta":"Quero Fazer Dropship","href":"https://wa.me/5514996731879?text=Olá! Tenho interesse em parceria de dropshipping com o Grupo Nexum Altivon.","icon":"Building2"}}]', 'JSON', 'Cards de parceria da home', 'SiteHome', 1),
-            ('home_hero_slides', '[{{"id":"ecommerce","badge":"Grupo Nexum Altivon","title":"O Futuro do","highlight":"E-Commerce","description":"Seis lojas, uma operação conectada e uma proposta premium para transformar a experiência de compra online.","image":"https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1920&q=88"}},{{"id":"marcas","badge":"6 marcas em expansão","title":"Uma operação,","highlight":"múltiplos mercados","description":"Turismo, relógios, moda, tecnologia, construção e festas com a mesma curadoria comercial do Grupo Nexum Altivon.","image":"https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=1920&q=88"}},{{"id":"tecnologia","badge":"Experiência tecnológica","title":"Compra segura com","highlight":"atendimento humano","description":"Fluxos preparados para catálogo, clientes, pedidos, integrações e relacionamento com visão de crescimento contínuo.","image":"https://images.unsplash.com/photo-1524805444758-089113d48a6d?auto=format&fit=crop&w=1920&q=88"}}]', 'JSON', 'Slides principais da home', 'SiteHome', 1)
+            ('home_hero_slides', '[{{"id":"ecommerce","badge":"Grupo Nexum Altivon","title":"O Futuro do","highlight":"E-Commerce","description":"Seis lojas, uma operação conectada e uma proposta premium para transformar a experiência de compra online.","image":"/imagens/homepage/banner-ecommerce.svg"}},{{"id":"marcas","badge":"6 marcas em expansão","title":"Uma operação,","highlight":"múltiplos mercados","description":"Turismo, relógios, moda, tecnologia, construção e festas com a mesma curadoria comercial do Grupo Nexum Altivon.","image":"/imagens/homepage/banner-marcas.svg"}},{{"id":"tecnologia","badge":"Experiência tecnológica","title":"Compra segura com","highlight":"atendimento humano","description":"Fluxos preparados para catálogo, clientes, pedidos, integrações e relacionamento com visão de crescimento contínuo.","image":"/imagens/homepage/banner-atendimento.svg"}}]', 'JSON', 'Slides principais da home', 'SiteHome', 1)
         ON DUPLICATE KEY UPDATE
             valor = VALUES(valor),
             descricao = VALUES(descricao),
@@ -8472,6 +8494,14 @@ public sealed record HeroSlideSiteDto(
     string Description,
     string Image);
 
+public sealed record StoreCardSiteDto(
+    string Nome,
+    string Slug,
+    string Segmento,
+    string Descricao,
+    string Imagem,
+    string Icon);
+
 public sealed record PartnerCardSiteDto(
     string Title,
     string Text,
@@ -8489,7 +8519,12 @@ public sealed record SiteConfiguracaoPublicaDto(
     string SecondaryWhatsapp,
     string YaraEmail,
     string SiteLogo,
+    string SiteSubtitulo,
+    string InstitutionalUrl,
+    string PrivacyUrl,
+    string RefundUrl,
     List<HeroSlideSiteDto> HeroSlides,
+    List<StoreCardSiteDto> StoreCards,
     string IntroTitle,
     string IntroText1,
     string IntroText2,

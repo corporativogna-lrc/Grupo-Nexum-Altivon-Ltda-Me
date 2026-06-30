@@ -1,0 +1,33 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ --><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#030303"/>
+      <stop offset=".48" stop-color="#15110A"/>
+      <stop offset="1" stop-color="#2F2408"/>
+    </linearGradient>
+    <radialGradient id="glow" cx=".78" cy=".42" r=".55">
+      <stop offset="0" stop-color="#C9A227" stop-opacity=".42"/>
+      <stop offset=".45" stop-color="#C9A227" stop-opacity=".12"/>
+      <stop offset="1" stop-color="#C9A227" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <rect width="1920" height="1080" fill="url(#glow)"/>
+  <g opacity=".28" fill="none" stroke="#E8D5A3" stroke-width="4">
+    <rect x="1110" y="210" width="520" height="360" rx="46"/>
+    <path d="M1180 660h390M1260 745h230M1320 210v535"/>
+    <circle cx="1330" cy="390" r="92"/>
+    <circle cx="1515" cy="390" r="92"/>
+  </g>
+  <g opacity=".14" fill="#fff">
+    <circle cx="290" cy="210" r="150"/>
+    <circle cx="1680" cy="870" r="210"/>
+  </g>
+</svg>
+

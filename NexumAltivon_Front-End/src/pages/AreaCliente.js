@@ -1,3 +1,11 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
+
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { AlertCircle, BadgeDollarSign, CheckCircle2, FileText, LifeBuoy, LoaderCircle, MapPin, Pencil, Plus, Receipt, Save, ShoppingBag, Star, Trash2, Truck, UserCircle2, X } from 'lucide-react';
@@ -195,12 +203,12 @@ export default function AreaCliente() {
   if (isAdmin) return <Navigate to="/dashboard" replace />;
 
   return (
-    <main className="min-h-screen bg-[#050505] px-4 py-10 text-white sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,#241B07_0,#050505_34%,#050505_100%)] px-4 py-8 text-white sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-8">
-        <section className="rounded-[32px] border border-white/10 bg-gradient-to-br from-[#111111] to-[#1B1B1B] p-8 shadow-2xl">
+        <section className="overflow-hidden rounded-[32px] border border-[#C9A227]/20 bg-gradient-to-br from-[#141414] to-[#080808] p-6 shadow-2xl shadow-black/40 sm:p-8">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-sm font-black uppercase tracking-[0.22em] text-[#E8D5A3]">Área do cliente Nexum Altivon</p>
+              <p className="text-sm font-black uppercase tracking-[0.22em] text-[#E8D5A3]">Área do cliente Grupo Nexum Altivon</p>
               <h1 className="mt-3 text-4xl font-black">Olá, {portal?.nome || user?.nome || 'cliente'}.</h1>
               <p className="mt-3 max-w-2xl text-zinc-300">
                 Aqui você acompanha pedidos, documentos, relacionamento e suporte em um canal direto com a operação comercial.
@@ -212,15 +220,17 @@ export default function AreaCliente() {
                   : 'Cadastro pendente de confirmação'}
               </div>
             </div>
-            <div className="rounded-3xl border border-[#C9A227]/20 bg-black/30 p-5">
+            <div className="w-full rounded-3xl border border-[#C9A227]/20 bg-black/40 p-5 lg:max-w-sm">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-zinc-500">Cadastro principal</p>
               <p className="mt-2 text-lg font-bold">{portal?.email || user?.email}</p>
               <p className="mt-1 text-sm text-zinc-400">{portal?.telefone || 'Telefone em atualização'}</p>
               <a
                 href={yaraMailTo}
-                className="mt-4 inline-flex items-center justify-center rounded-full border border-[#C9A227]/30 px-4 py-2 text-sm font-black text-[#E8D5A3] transition hover:border-[#E8D5A3] hover:text-white"
+                className="mt-4 inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#C9A227]/30 text-[#E8D5A3] transition hover:border-[#E8D5A3] hover:text-white"
+                aria-label="Atendimento Yara"
+                title="Atendimento Yara"
               >
-                Falar com Yara
+                <LifeBuoy size={18} />
               </a>
             </div>
           </div>
@@ -277,8 +287,8 @@ export default function AreaCliente() {
                   </Link>
                 </div>
 
-                <div className="mt-6 overflow-hidden rounded-3xl border border-white/5">
-                  <table className="min-w-full divide-y divide-white/5 text-sm">
+                <div className="mt-6 overflow-x-auto rounded-3xl border border-white/5">
+                  <table className="min-w-[860px] divide-y divide-white/5 text-sm">
                     <thead className="bg-black/30 text-zinc-400">
                       <tr>
                         <th className="px-4 py-3 text-left font-black uppercase tracking-[0.14em]">Pedido</th>
@@ -333,13 +343,12 @@ export default function AreaCliente() {
                     <div className="rounded-3xl border border-white/5 bg-black/20 p-4">
                       <div className="inline-flex items-center gap-2 text-white">
                         <LifeBuoy size={18} />
-                        <span className="font-bold">Yara • atendimento comercial</span>
+                        <span className="font-bold">Atendimento comercial</span>
                       </div>
                       <p className="mt-2 text-sm leading-6 text-zinc-300">Contato direto para dúvidas comerciais, apoio ao pedido e acompanhamento do relacionamento com o cliente.</p>
                     </div>
-                    <a href={yaraMailTo} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#C9A227] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-black transition hover:bg-[#E8D5A3]">
+                    <a href={yaraMailTo} className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-[#C9A227] text-black transition hover:bg-[#E8D5A3]" aria-label="Atendimento Yara" title="Atendimento Yara">
                       <LifeBuoy size={18} />
-                      Conversar com Yara
                     </a>
                   </div>
                 </article>

@@ -1,0 +1,23 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ --><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#030303"/>
+      <stop offset=".58" stop-color="#121212"/>
+      <stop offset="1" stop-color="#2A2008"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <g opacity=".28" fill="none" stroke="#C9A227" stroke-width="10">
+    <path d="M1260 300h300c100 0 180 80 180 180s-80 180-180 180h-44l-106 98v-98h-150c-100 0-180-80-180-180s80-180 180-180Z"/>
+    <path d="M1230 450h360M1230 530h250"/>
+  </g>
+  <circle cx="1450" cy="510" r="300" fill="#C9A227" opacity=".08"/>
+  <circle cx="330" cy="210" r="220" fill="#FFFFFF" opacity=".08"/>
+</svg>
+

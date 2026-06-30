@@ -1,0 +1,15 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ --><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 560" preserveAspectRatio="xMidYMid slice">
+  <rect width="900" height="560" fill="#17110E"/>
+  <rect x="285" y="245" width="330" height="190" rx="28" fill="#C9A227"/>
+  <path d="M450 245v190M265 245h370" stroke="#111" stroke-width="16" opacity=".55"/>
+  <path d="M405 245c-100-80-26-156 45-78 72-78 146-2 45 78" fill="none" stroke="#E8D5A3" stroke-width="20" stroke-linecap="round"/>
+  <circle cx="710" cy="120" r="88" fill="#C9A227" opacity=".18"/>
+  <text x="78" y="95" fill="#E8D5A3" font-family="Montserrat, Arial, sans-serif" font-size="48" font-weight="900">GRAN FESTAS</text>
+</svg>
+

@@ -1,0 +1,14 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ --><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 560" preserveAspectRatio="xMidYMid slice">
+  <rect width="900" height="560" fill="#102235"/>
+  <path d="M330 140h240l70 96-86 62v126H346V298l-86-62Z" fill="#C9A227"/>
+  <path d="M390 140c18 34 102 34 120 0" fill="none" stroke="#111" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="705" cy="135" r="110" fill="#FFFFFF" opacity=".08"/>
+  <text x="82" y="100" fill="#E8D5A3" font-family="Montserrat, Arial, sans-serif" font-size="48" font-weight="900">MODA MIM</text>
+</svg>
+

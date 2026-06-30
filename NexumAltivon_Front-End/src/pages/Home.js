@@ -1,3 +1,11 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
+
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
@@ -36,7 +44,7 @@ const heroSlides = [
     highlight: 'E-Commerce',
     description:
       'Seis lojas, uma operação conectada e uma proposta premium para transformar a experiência de compra online.',
-    image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1920&q=88',
+    image: '/imagens/homepage/banner-ecommerce.svg',
   },
   {
     id: 'marcas',
@@ -45,7 +53,7 @@ const heroSlides = [
     highlight: 'múltiplos mercados',
     description:
       'Turismo, relógios, moda, tecnologia, construção e festas com a mesma curadoria comercial do Grupo Nexum Altivon.',
-    image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=1920&q=88',
+    image: '/imagens/homepage/banner-marcas.svg',
   },
   {
     id: 'tecnologia',
@@ -54,7 +62,7 @@ const heroSlides = [
     highlight: 'atendimento humano',
     description:
       'Fluxos preparados para catálogo, clientes, pedidos, integrações e relacionamento com visão de crescimento contínuo.',
-    image: 'https://images.unsplash.com/photo-1524805444758-089113d48a6d?auto=format&fit=crop&w=1920&q=88',
+    image: '/imagens/homepage/banner-atendimento.svg',
   },
   {
     id: 'audio',
@@ -63,16 +71,16 @@ const heroSlides = [
     highlight: 'a dedo para você',
     description:
       'Curadoria, confiança e posicionamento visual forte para acelerar as vendas com identidade própria.',
-    image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=1920&q=88',
+    image: '/imagens/homepage/banner-ecommerce.svg',
   },
   {
     id: 'luxo',
-    badge: 'Nexum Altivon',
+    badge: 'Grupo Nexum Altivon',
     title: 'Presença digital com',
     highlight: 'força de marca',
     description:
       'Uma vitrine mais elegante, mais viva e preparada para receber clientes, parceiros e operações reais.',
-    image: 'https://images.unsplash.com/photo-1546868871-af0c7a6b6f7f?auto=format&fit=crop&w=1920&q=88',
+    image: '/imagens/homepage/banner-marcas.svg',
   },
   {
     id: 'mobile',
@@ -81,7 +89,7 @@ const heroSlides = [
     highlight: 'escalar o negócio',
     description:
       'Estrutura pensada para integrar e-commerce, dropshipping, logística, gateways e relacionamento com o cliente.',
-    image: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=1920&q=88',
+    image: '/imagens/homepage/banner-atendimento.svg',
   },
 ];
 
@@ -99,42 +107,42 @@ const lojas = [
     nome: 'Gran Tur',
     segmento: 'Viagens & Turismo',
     descricao: 'Mochilas, malas, acessórios de viagem e tudo o que você precisa para explorar o mundo com estilo e conforto.',
-    imagem: 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=900&q=85',
+    imagem: '/imagens/homepage/loja-gran-tur.svg',
     icon: Plane,
   },
   {
     nome: 'Chronos',
     segmento: 'Relógios & Acessórios',
     descricao: 'Relógios que marcam mais que horas — marcam estilo. Do clássico ao moderno, peças para quem valoriza precisão e elegância.',
-    imagem: 'https://images.unsplash.com/photo-1524592094714-0f0654e20314?auto=format&fit=crop&w=900&q=85',
+    imagem: '/imagens/homepage/loja-chronos.svg',
     icon: Watch,
   },
   {
     nome: 'Moda Mim',
     segmento: 'Moda & Vestuário',
     descricao: 'Tendências que vestem a sua personalidade. Roupas, calçados e acessórios para quem não abre mão de estar no topo.',
-    imagem: 'https://images.unsplash.com/photo-1445205170230-46b8b7b1d0a6?auto=format&fit=crop&w=900&q=85',
+    imagem: '/imagens/homepage/loja-moda-mim.svg',
     icon: Shirt,
   },
   {
     nome: 'Geração Top+',
     segmento: 'Tecnologia & Gadgets',
     descricao: 'Tecnologia de ponta ao alcance de todos. Smartphones, gadgets, eletrônicos e inovações que conectam você ao futuro.',
-    imagem: 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=900&q=85',
+    imagem: '/imagens/homepage/loja-geracao-top.svg',
     icon: Smartphone,
   },
   {
     nome: 'Estruturaline',
     segmento: 'Construção & Estruturas',
     descricao: 'Ferramentas, materiais de construção e equipamentos profissionais. Solidez para quem constrói com seriedade.',
-    imagem: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=900&q=85',
+    imagem: '/imagens/homepage/loja-estruturaline.svg',
     icon: Hammer,
   },
   {
     nome: 'Gran Festas',
     segmento: 'Festas & Eventos',
     descricao: 'Decorações, utensílios e tudo para tornar sua festa inesquecível, dos pequenos encontros aos grandes eventos.',
-    imagem: 'https://images.unsplash.com/photo-1530103862676-de3c9a59aa38?auto=format&fit=crop&w=900&q=85',
+    imagem: '/imagens/homepage/loja-gran-festas.svg',
     icon: Gift,
   },
 ];
@@ -174,6 +182,15 @@ const partnerIconMap = {
   Store,
   Truck,
   Building2,
+};
+
+const storeIconMap = {
+  Plane,
+  Watch,
+  Shirt,
+  Smartphone,
+  Hammer,
+  Gift,
 };
 
 const normalizeText = (value) => String(value || '').trim().toLowerCase();
@@ -218,10 +235,14 @@ const mapPublicSiteConfig = (config) => {
     primaryWhatsapp: pickConfigValue(config, ['primaryWhatsapp', 'PrimaryWhatsapp', 'site_whatsapp', 'siteWhatsapp'], '5514996731879'),
     secondaryWhatsapp: pickConfigValue(config, ['secondaryWhatsapp', 'SecondaryWhatsapp', 'site_whatsapp_secundario', 'siteWhatsappSecundario'], '5514996348409'),
     yaraEmail: pickConfigValue(config, ['yaraEmail', 'YaraEmail', 'site_yara_email', 'siteYaraEmail'], 'corporativo.gna@gmail.com'),
-    siteLogo: pickConfigValue(config, ['siteLogo', 'SiteLogo', 'site_logo', 'siteLogoUrl'], '/assets/logo-2.jpg'),
+    siteLogo: pickConfigValue(config, ['siteLogo', 'SiteLogo', 'site_logo', 'siteLogoUrl'], '/imagens/homepage/logo-grupo-nexum-altivon.svg'),
+    institutionalUrl: pickConfigValue(config, ['institutionalUrl', 'InstitutionalUrl', 'site_institucional_url', 'siteInstitucionalUrl'], '/institucional'),
+    privacyUrl: pickConfigValue(config, ['privacyUrl', 'PrivacyUrl', 'site_politica_privacidade_url', 'sitePoliticaPrivacidadeUrl'], '/politica-privacidade'),
+    refundUrl: pickConfigValue(config, ['refundUrl', 'RefundUrl', 'site_politica_reembolso_url', 'sitePoliticaReembolsoUrl'], '/politica-reembolso'),
     heroSlides: pickConfigValue(config, ['heroSlides', 'HeroSlides'], []),
+    storeCards: pickConfigValue(config, ['storeCards', 'StoreCards', 'home_lojas_cards', 'homeLojasCards'], []),
     introTitle: pickConfigValue(config, ['introTitle', 'IntroTitle', 'home_intro_titulo', 'homeIntroTitulo'], 'Uma Nova Era Começa'),
-    introText1: pickConfigValue(config, ['introText1', 'IntroText1', 'home_intro_texto_1', 'homeIntroTexto1'], 'A Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro.'),
+    introText1: pickConfigValue(config, ['introText1', 'IntroText1', 'home_intro_texto_1', 'homeIntroTexto1'], 'O Grupo Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro.'),
     introText2: pickConfigValue(config, ['introText2', 'IntroText2', 'home_intro_texto_2', 'homeIntroTexto2'], 'Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso.'),
     introBadge: pickConfigValue(config, ['introBadge', 'IntroBadge', 'home_intro_badge', 'homeIntroBadge'], 'nexumaltivon.com.br'),
     qualityItems: pickConfigValue(config, ['qualityItems', 'QualityItems', 'home_quality_items', 'homeQualityItems'], []),
@@ -242,11 +263,12 @@ export default function Home() {
 
   const displaySlides = Array.isArray(siteConfig?.heroSlides) && siteConfig.heroSlides.length > 0 ? siteConfig.heroSlides : heroSlides;
   const activeSlide = displaySlides[currentSlide] || displaySlides[0] || heroSlides[0];
+  const displayStores = Array.isArray(siteConfig?.storeCards) && siteConfig.storeCards.length > 0 ? siteConfig.storeCards : lojas;
   const qualityItems = Array.isArray(siteConfig?.qualityItems) && siteConfig.qualityItems.length > 0 ? siteConfig.qualityItems : qualidade;
   const partnerCards = Array.isArray(siteConfig?.partnerCards) && siteConfig.partnerCards.length > 0 ? siteConfig.partnerCards : parceiros;
   const introTitle = siteConfig?.introTitle || 'Uma Nova Era Começa';
   const introText1 =
-    siteConfig?.introText1 || 'A Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro.';
+    siteConfig?.introText1 || 'O Grupo Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro.';
   const introText2 =
     siteConfig?.introText2 || 'Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso.';
   const introBadge = siteConfig?.introBadge || 'nexumaltivon.com.br';
@@ -255,14 +277,10 @@ export default function Home() {
   const publicContactEmail = siteConfig?.contactEmail || 'corporativo.gna@gmail.com';
   const yaraEmail = siteConfig?.yaraEmail || publicContactEmail;
   const yaraMailTo = `mailto:${encodeURIComponent(yaraEmail)}?subject=Yara%20-%20Atendimento%20de%20vendas&body=Ol%C3%A1%20Yara%2C%20preciso%20de%20ajuda%20com%20assuntos%20da%20empresa%2C%20produtos%20ou%20d%C3%BAvidas%20sobre%20a%20compra.`;
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      setCurrentSlide((slide) => (slide + 1) % displaySlides.length);
-    }, 5000);
-
-    return () => window.clearInterval(interval);
-  }, [displaySlides.length]);
+  const siteLogo = siteConfig?.siteLogo || '/imagens/homepage/logo-grupo-nexum-altivon.svg';
+  const institutionalUrl = siteConfig?.institutionalUrl || '/institucional';
+  const privacyUrl = siteConfig?.privacyUrl || '/politica-privacidade';
+  const refundUrl = siteConfig?.refundUrl || '/politica-reembolso';
 
   useEffect(() => {
     let active = true;
@@ -270,8 +288,9 @@ export default function Home() {
     siteAPI
       .getPublicConfig()
       .then((response) => {
-        if (active && response.data) {
-          setSiteConfig(mapPublicSiteConfig(response.data));
+        const config = unwrapApiData(response.data);
+        if (active && config) {
+          setSiteConfig(mapPublicSiteConfig(config));
         }
       })
       .catch(() => {});
@@ -446,7 +465,10 @@ export default function Home() {
               {activeSlide.title}
               <span className="block text-[#C9A227]">{activeSlide.highlight}</span>
             </h1>
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-zinc-200 sm:text-xl">{activeSlide.description}</p>
+            <div className="mt-6 flex items-start gap-4">
+              <img src={siteLogo} alt="Logotipo Grupo Nexum Altivon" className="hidden h-16 w-16 rounded-2xl border border-[#C9A227]/30 bg-black/60 object-contain p-2 sm:block" />
+              <p className="max-w-2xl text-lg leading-8 text-zinc-200 sm:text-xl">{activeSlide.description}</p>
+            </div>
 
             <form onSubmit={handleCatalogSearch} className="mt-8 flex max-w-2xl gap-3 rounded-2xl border border-white/10 bg-black/40 p-3 backdrop-blur">
               <input
@@ -475,11 +497,11 @@ export default function Home() {
                 <ArrowRight size={18} />
               </a>
               <a
-                href="#cadastro"
+                href={institutionalUrl}
                 className="inline-flex items-center justify-center gap-2 rounded-full border border-white/35 px-7 py-4 text-sm font-black uppercase tracking-wide text-white transition hover:border-[#C9A227] hover:text-[#C9A227]"
               >
-                Fazer meu cadastro
-                <UserPlus size={18} />
+                Institucional
+                <Building2 size={18} />
               </a>
             </div>
 
@@ -543,7 +565,7 @@ export default function Home() {
               <p className="text-sm font-black uppercase tracking-[0.25em] text-[#E8D5A3]">Vitrine em operação</p>
               <h2 className="mt-4 font-serif text-4xl font-bold leading-tight text-[#C9A227]">Produtos disponíveis para compra</h2>
               <p className="mt-4 max-w-2xl text-zinc-400">
-                Itens carregados diretamente da API operacional, com estoque, preço e checkout conectados ao fluxo interno de vendas.
+                Itens carregados diretamente da operação comercial, com estoque, preço e checkout conectados ao fluxo interno de vendas.
               </p>
             </div>
             <Link
@@ -575,7 +597,7 @@ export default function Home() {
             <div className="rounded-[28px] border border-[#C9A227]/25 bg-[#111111] p-8 text-center shadow-2xl shadow-black/30">
               <p className="text-xl font-black text-white">Produtos temporariamente indisponíveis na Home</p>
               <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-zinc-400">
-                A vitrine está preparada para exibir os produtos assim que a API responder. Use o catálogo completo como rota de consulta enquanto isso.
+                A vitrine exibe somente produtos completos e liberados para venda. Use o catálogo completo como rota de consulta enquanto a curadoria é atualizada.
               </p>
               <Link to="/produtos" className="mt-6 inline-flex rounded-full bg-[#C9A227] px-6 py-3 text-sm font-black text-black">
                 Abrir catálogo
@@ -595,10 +617,11 @@ export default function Home() {
             </p>
             <a
               href={yaraMailTo}
-              className="mt-6 inline-flex items-center gap-2 rounded-full border border-[#C9A227]/30 bg-[#C9A227]/10 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-[#E8D5A3] transition hover:border-[#E8D5A3] hover:text-white"
+              className="mt-6 inline-flex h-12 w-12 items-center justify-center rounded-full border border-[#C9A227]/30 bg-[#C9A227]/10 text-[#E8D5A3] transition hover:border-[#E8D5A3] hover:text-white"
+              aria-label="Atendimento Yara"
+              title="Atendimento Yara"
             >
-              <MessageCircleMore size={16} />
-              Falar com Yara agora
+              <MessageCircleMore size={18} />
             </a>
 
             <div className="mt-8 grid gap-4">
@@ -746,8 +769,8 @@ export default function Home() {
         </div>
 
         <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-3">
-          {lojas.map((loja) => {
-            const Icon = loja.icon;
+          {displayStores.map((loja) => {
+            const Icon = typeof loja.icon === 'string' ? storeIconMap[loja.icon] || Store : loja.icon || Store;
             return (
               <article
                 key={loja.nome}
@@ -850,11 +873,19 @@ export default function Home() {
       <section className="border-t border-white/5 bg-[#050505] px-4 py-12">
         <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-4 sm:px-6 md:flex-row md:items-center lg:px-8">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.25em] text-[#E8D5A3]">Grupo Nexum Altivon</p>
+            <div className="flex items-center gap-3">
+              <img src={siteLogo} alt="Logotipo Grupo Nexum Altivon" className="h-12 w-12 rounded-xl border border-[#C9A227]/30 bg-black object-contain p-1.5" />
+              <p className="text-xs font-black uppercase tracking-[0.25em] text-[#E8D5A3]">Grupo Nexum Altivon</p>
+            </div>
             <p className="mt-3 text-sm leading-7 text-zinc-400">{siteConfig?.footerText || 'Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas.'}</p>
             <p className="mt-2 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
               Rodrigo: {primaryPhone} · Vinicios: {secondaryPhone} · {publicContactEmail}
             </p>
+            <div className="mt-4 flex flex-wrap gap-3 text-xs font-bold uppercase tracking-[0.12em] text-zinc-400">
+              <a href={institutionalUrl} className="transition hover:text-[#C9A227]">Institucional</a>
+              <a href={privacyUrl} className="transition hover:text-[#C9A227]">Política de privacidade</a>
+              <a href={refundUrl} className="transition hover:text-[#C9A227]">Política de reembolso</a>
+            </div>
           </div>
           <div className="flex flex-wrap gap-3">
             <a

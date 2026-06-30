@@ -466,15 +466,20 @@ const emptySiteConfigForm = {
   site_whatsapp: '5514996731879',
   site_whatsapp_secundario: '5514996348409',
   site_yara_email: 'corporativo.gna@gmail.com',
-  site_logo: '/assets/logo-2.jpg',
+  site_logo: '/imagens/homepage/logo-grupo-nexum-altivon.svg',
+  site_subtitulo: 'Participações societárias',
+  site_institucional_url: '/institucional',
+  site_politica_privacidade_url: '/politica-privacidade',
+  site_politica_reembolso_url: '/politica-reembolso',
   home_intro_titulo: 'Uma Nova Era Começa',
-  home_intro_texto_1: 'A Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro.',
+  home_intro_texto_1: 'O Grupo Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro.',
   home_intro_texto_2: 'Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso.',
   home_intro_badge: 'nexumaltivon.com.br',
   home_footer_texto: 'Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas.',
   home_quality_items: '["Curadoria rigorosa de fornecedores","Atendimento humano e especializado","Política de devolução simplificada","Preços justos e acessíveis"]',
+  home_lojas_cards: '[{"nome":"Gran Tur","slug":"gran-tur","segmento":"Viagens & Turismo","descricao":"Mochilas, malas, acessórios de viagem e produtos para explorar o mundo com estilo e conforto.","imagem":"/imagens/homepage/loja-gran-tur.svg","icon":"Plane"},{"nome":"Chronos","slug":"chronos","segmento":"Relógios & Acessórios","descricao":"Relógios e acessórios para quem valoriza precisão, presença e elegância.","imagem":"/imagens/homepage/loja-chronos.svg","icon":"Watch"},{"nome":"Moda Mim","slug":"moda-mim","segmento":"Moda & Vestuário","descricao":"Roupas, calçados e acessórios para uma experiência de compra prática e atual.","imagem":"/imagens/homepage/loja-moda-mim.svg","icon":"Shirt"},{"nome":"Geração Top+","slug":"geracao-top","segmento":"Tecnologia & Gadgets","descricao":"Smartphones, eletrônicos, acessórios e tecnologia para rotina, trabalho e lazer.","imagem":"/imagens/homepage/loja-geracao-top.svg","icon":"Smartphone"},{"nome":"Estruturaline","slug":"estruturaline","segmento":"Construção & Estruturas","descricao":"Materiais, ferramentas e soluções para quem constrói com seriedade.","imagem":"/imagens/homepage/loja-estruturaline.svg","icon":"Hammer"},{"nome":"Gran Festas","slug":"gran-festas","segmento":"Festas & Eventos","descricao":"Decoração, utensílios e produtos para encontros, comemorações e eventos.","imagem":"/imagens/homepage/loja-gran-festas.svg","icon":"Gift"}]',
   home_partner_cards: '[{"title":"Parceiros de Vendas","text":"Lojas físicas ou online podem ampliar seus horizontes de venda com nossa infraestrutura comercial e operação integrada.","cta":"Quero Vender","href":"https://wa.me/5514996731879?text=Olá! Tenho interesse em ser parceiro de vendas do Grupo Nexum Altivon.","icon":"Store"}]',
-  home_hero_slides: '[{"id":"ecommerce","badge":"Grupo Nexum Altivon","title":"O Futuro do","highlight":"E-Commerce","description":"Seis lojas, uma operação conectada e uma proposta premium para transformar a experiência de compra online.","image":"https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1920&q=88"}]',
+  home_hero_slides: '[{"id":"ecommerce","badge":"Grupo Nexum Altivon","title":"O Futuro do","highlight":"E-Commerce","description":"Seis lojas, uma operação conectada e uma proposta premium para transformar a experiência de compra online.","image":"/imagens/homepage/banner-ecommerce.svg"},{"id":"marcas","badge":"6 marcas em expansão","title":"Uma operação,","highlight":"múltiplos mercados","description":"Turismo, relógios, moda, tecnologia, construção e festas com a mesma curadoria comercial do Grupo Nexum Altivon.","image":"/imagens/homepage/banner-marcas.svg"},{"id":"tecnologia","badge":"Experiência tecnológica","title":"Compra segura com","highlight":"atendimento humano","description":"Fluxos preparados para catálogo, clientes, pedidos, integrações e relacionamento com visão de crescimento contínuo.","image":"/imagens/homepage/banner-atendimento.svg"}]',
 };
 const siteConfigFieldMeta = [
   { key: 'site_nome', label: 'Nome do site', type: 'text', group: 'Geral', description: 'Nome público principal da operação.' },
@@ -485,12 +490,17 @@ const siteConfigFieldMeta = [
   { key: 'site_whatsapp_secundario', label: 'WhatsApp secundário', type: 'text', group: 'Geral', description: 'Número usado em parceria/fornecedores.' },
   { key: 'site_yara_email', label: 'E-mail da Yara', type: 'text', group: 'Atendimento', description: 'Canal atual da Yara para atendimento comercial.' },
   { key: 'site_logo', label: 'Logo do site', type: 'text', group: 'Geral', description: 'URL pública ou caminho relativo do logo exibido na home.' },
+  { key: 'site_subtitulo', label: 'Subtítulo da marca', type: 'text', group: 'Geral', description: 'Texto discreto abaixo do nome público da empresa.' },
+  { key: 'site_institucional_url', label: 'Link institucional', type: 'text', group: 'SiteHome', description: 'Destino do link institucional da home.' },
+  { key: 'site_politica_privacidade_url', label: 'Link privacidade', type: 'text', group: 'SiteHome', description: 'Destino da política de privacidade.' },
+  { key: 'site_politica_reembolso_url', label: 'Link reembolso', type: 'text', group: 'SiteHome', description: 'Destino da política de reembolso.' },
   { key: 'home_intro_titulo', label: 'Título institucional', type: 'text', group: 'SiteHome', description: 'Título principal do bloco institucional.' },
   { key: 'home_intro_texto_1', label: 'Texto institucional 1', type: 'textarea', group: 'SiteHome', description: 'Primeiro texto institucional da home.' },
   { key: 'home_intro_texto_2', label: 'Texto institucional 2', type: 'textarea', group: 'SiteHome', description: 'Segundo texto institucional da home.' },
   { key: 'home_intro_badge', label: 'Selo institucional', type: 'text', group: 'SiteHome', description: 'Texto do selo abaixo do bloco institucional.' },
   { key: 'home_footer_texto', label: 'Rodapé público', type: 'textarea', group: 'SiteHome', description: 'Mensagem institucional no rodapé da home.' },
   { key: 'home_quality_items', label: 'Itens de qualidade (JSON)', type: 'textarea', group: 'SiteHome', description: 'Array JSON de frases do bloco de qualidade.' },
+  { key: 'home_lojas_cards', label: 'Lojas e imagens (JSON)', type: 'textarea', group: 'SiteHome', description: 'Array JSON com nome, slug, segmento, descrição, imagem e icon das lojas.' },
   { key: 'home_partner_cards', label: 'Cards de parceria (JSON)', type: 'textarea', group: 'SiteHome', description: 'Array JSON com title, text, cta, href e icon.' },
   { key: 'home_hero_slides', label: 'Slides do banner (JSON)', type: 'textarea', group: 'SiteHome', description: 'Array JSON com id, badge, title, highlight, description e image.' },
 ];
@@ -806,21 +816,21 @@ export default function Dashboard() {
   const [formStatus, setFormStatus] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const isErpWorkspace = activeTab === 'erp' || activeTab.startsWith('erp-');
-  const sitePreviewLogo = String(siteConfigForm.site_logo || '').trim() || '/assets/logo-2.jpg';
+  const sitePreviewLogo = String(siteConfigForm.site_logo || '').trim() || '/imagens/homepage/logo-grupo-nexum-altivon.svg';
   const previewSlides = parseJsonPreview(siteConfigForm.home_hero_slides, [{
     id: 'preview',
     badge: siteConfigForm.home_intro_badge || 'Preview do banner',
     title: siteConfigForm.home_intro_titulo || 'Título institucional',
     highlight: 'Visual ao vivo',
     description: siteConfigForm.home_intro_texto_1 || 'A prévia mostra como o banner ficará na home antes de salvar no banco.',
-    image: siteConfigForm.site_logo || '/assets/logo-2.jpg',
+    image: siteConfigForm.site_logo || '/imagens/homepage/logo-grupo-nexum-altivon.svg',
   }]);
   const previewSlide = previewSlides[0] || {
     badge: siteConfigForm.home_intro_badge || 'Preview do banner',
     title: siteConfigForm.home_intro_titulo || 'Título institucional',
     highlight: 'Visual ao vivo',
     description: siteConfigForm.home_intro_texto_1 || 'A prévia mostra como o banner ficará na home antes de salvar no banco.',
-    image: siteConfigForm.site_logo || '/assets/logo-2.jpg',
+    image: siteConfigForm.site_logo || '/imagens/homepage/logo-grupo-nexum-altivon.svg',
   };
   const previewQualityItems = parseJsonPreview(siteConfigForm.home_quality_items, []);
   const previewPartnerCards = parseJsonPreview(siteConfigForm.home_partner_cards, []);

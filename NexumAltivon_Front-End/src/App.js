@@ -1,3 +1,11 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
+
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import '@/App.css';
 import { AuthProvider } from './context/AuthContext';
@@ -17,6 +25,9 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import AreaCliente from './pages/AreaCliente';
 import AcompanharPedido from './pages/AcompanharPedido';
+import Institucional from './pages/Institucional';
+import PoliticaPrivacidade from './pages/PoliticaPrivacidade';
+import PoliticaReembolso from './pages/PoliticaReembolso';
 
 function getRouterBasename() {
   const publicUrl = process.env.PUBLIC_URL || '';
@@ -49,6 +60,9 @@ function AppShell() {
         <Route path="/carrinho" element={<Carrinho />} />
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/acompanhar-pedido" element={<AcompanharPedido />} />
+        <Route path="/institucional" element={<Institucional />} />
+        <Route path="/politica-privacidade" element={<PoliticaPrivacidade />} />
+        <Route path="/politica-reembolso" element={<PoliticaReembolso />} />
         <Route path="/login" element={<Login />} />
         <Route path="/area-cliente" element={<AreaCliente />} />
         <Route path="/dashboard/*" element={<Dashboard />} />

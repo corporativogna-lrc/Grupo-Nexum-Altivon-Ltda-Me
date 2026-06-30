@@ -1,0 +1,15 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ --><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 560" preserveAspectRatio="xMidYMid slice">
+  <rect width="900" height="560" fill="#090909"/>
+  <circle cx="500" cy="280" r="170" fill="none" stroke="#C9A227" stroke-width="26"/>
+  <circle cx="500" cy="280" r="104" fill="none" stroke="#E8D5A3" stroke-width="8" opacity=".58"/>
+  <path d="M500 280V190M500 280l78 54" stroke="#E8D5A3" stroke-width="18" stroke-linecap="round"/>
+  <path d="M438 86h124M438 474h124" stroke="#C9A227" stroke-width="44" stroke-linecap="round"/>
+  <text x="80" y="96" fill="#E8D5A3" font-family="Montserrat, Arial, sans-serif" font-size="48" font-weight="900">CHRONOS</text>
+</svg>
+
