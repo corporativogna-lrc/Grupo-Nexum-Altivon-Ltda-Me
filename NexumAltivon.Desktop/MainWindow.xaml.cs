@@ -1,31 +1,44 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
+
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Net.Http;
 using System.Windows;
 using NexumAltivon.Desktop.Models;
+using NexumAltivon.Desktop.Services;
 
 namespace NexumAltivon.Desktop;
 
 public partial class MainWindow : Window, INotifyPropertyChanged
 {
-    private const string PortalUrl = "http://127.0.0.1:3000/dashboard";
-    private const string ApiBaseUrl = "http://192.168.1.72:5012";
+    private const string PortalUrl = "https://nexumaltivon.com.br/dashboard";
+    private readonly DesktopApiClient _apiClient = new();
 
-    private string _environmentStatus = "Aguardando conexao";
-    private string _environmentDetail = "Os blocos de gestao local e integrações estao preparados para receber as chaves.";
-    private string _selectedModuleTitle = "ERP local pronto";
-    private string _selectedModuleDetail = "Selecione um modulo para ver a proposta operacional do desktop.";
+    private string _environmentStatus = "Aguardando conexão";
+    private string _environmentDetail = "Terminal preparado para validar servidor, Cloudflare e modo de contingência.";
+    private string _selectedModuleTitle = "ERP/PDV local pronto";
+    private string _selectedModuleDetail = "Selecione uma ação para operar loja física, caixa, fiscal, estoque ou gestão.";
     private string _lastUpdatedLabel = "Atualizado agora";
-    private string _salesMetricValue = "01";
-    private string _fiscalMetricValue = "04";
-    private string _groupMetricValue = "Grupo";
-    private string _integrationMetricValue = "08";
+    private string _salesMetricValue = "PDV";
+    private string _fiscalMetricValue = "NFC-e";
+    private string _groupMetricValue = "Loja";
+    private string _integrationMetricValue = "API";
+    private string _connectionModeLabel = "Validando conexão";
+    private string _pdvOperationalNote = "Contingência preparada para registrar venda local e sincronizar quando a API estiver disponível.";
+    private string _serverDatabaseLabel = "Banco interno 192.168.1.72:3309";
 
+    public TerminalProfile Terminal { get; } = new();
     public ObservableCollection<DesktopModule> Modules { get; } = new();
+    public ObservableCollection<WorkstationAction> PdvActions { get; } = new();
     public ObservableCollection<OrganizationNode> OrganizationUnits { get; } = new();
 
     public string EnvironmentStatus
@@ -82,6 +95,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         set => SetField(ref _integrationMetricValue, value);
     }
 
+    public string ConnectionModeLabel
+    {
+        get => _connectionModeLabel;
+        set => SetField(ref _connectionModeLabel, value);
+    }
+
+    public string PdvOperationalNote
+    {
+        get => _pdvOperationalNote;
+        set => SetField(ref _pdvOperationalNote, value);
+    }
+
+    public string ServerDatabaseLabel
+    {
+        get => _serverDatabaseLabel;
+        set => SetField(ref _serverDatabaseLabel, value);
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public MainWindow()
@@ -89,113 +120,153 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         InitializeComponent();
         DataContext = this;
 
+        LoadPdvActions();
+        LoadEnterpriseModules();
+        LoadOrganizationTree();
+
+        SelectedModuleTitle = PdvActions[0].Title;
+        SelectedModuleDetail = PdvActions[0].Detail;
+        Loaded += async (_, _) => await RefreshStatusAsync();
+    }
+
+    private void LoadPdvActions()
+    {
+        PdvActions.Add(new WorkstationAction
+        {
+            Title = "Abrir caixa",
+            Detail = "Inicializa operador, terminal, loja, saldo de abertura e vínculo financeiro.",
+            Route = "pdv-caixa-abertura",
+            Accent = "#22C55E",
+            Status = "Pronto para implementação"
+        });
+        PdvActions.Add(new WorkstationAction
+        {
+            Title = "Venda balcão",
+            Detail = "Busca item por código de barras, QR Code, SKU, nome ou categoria.",
+            Route = "pdv-venda",
+            Accent = "#38BDF8",
+            Status = "Base conectada à API"
+        });
+        PdvActions.Add(new WorkstationAction
+        {
+            Title = "Pagamento",
+            Detail = "Dinheiro, PIX, cartão, voucher e registro de baixa no financeiro.",
+            Route = "pdv-pagamento",
+            Accent = "#8B5CF6",
+            Status = "Aguardando gateways"
+        });
+        PdvActions.Add(new WorkstationAction
+        {
+            Title = "Fiscal local",
+            Detail = "NFC-e/SAT/MFe, contingência e emissão manual quando necessário.",
+            Route = "pdv-fiscal",
+            Accent = "#F59E0B",
+            Status = "Preparado para certificado"
+        });
+        PdvActions.Add(new WorkstationAction
+        {
+            Title = "Troca/devolução",
+            Detail = "Localiza pedido, cliente, item vendido, estoque e financeiro reverso.",
+            Route = "pdv-devolucao",
+            Accent = "#FB7185",
+            Status = "Fila de desenvolvimento"
+        });
+        PdvActions.Add(new WorkstationAction
+        {
+            Title = "Fechar caixa",
+            Detail = "Concilia recebimentos, sangrias, suprimentos, fiscal e relatório local.",
+            Route = "pdv-caixa-fechamento",
+            Accent = "#EAB308",
+            Status = "Fila de desenvolvimento"
+        });
+    }
+
+    private void LoadEnterpriseModules()
+    {
         Modules.Add(new DesktopModule
         {
-            Title = "Operacao Comercial",
-            Detail = "Fluxo para vendas, pedidos, checkout e atendimento ao cliente com foco em conversao.",
-            Status = "Pronto para operar",
+            Title = "Operação Comercial",
+            Detail = "Vendas, pedidos, checkout, cliente, catálogo, loja física e e-commerce integrados.",
+            Status = "Conectado ao ciclo comercial",
             Accent = "#38BDF8",
             ActionText = "Abrir vendas"
         });
         Modules.Add(new DesktopModule
         {
-            Title = "Gestao Fiscal",
-            Detail = "NFe, emissoes, pendencias, roteamento tributario e acompanhamento de documentos.",
-            Status = "Homologacao guiada",
+            Title = "Financeiro",
+            Detail = "Contas a receber, contas a pagar, caixa, conciliação e vínculos com pedido/compra.",
+            Status = "Amarração em evolução",
+            Accent = "#22C55E",
+            ActionText = "Abrir financeiro"
+        });
+        Modules.Add(new DesktopModule
+        {
+            Title = "Fiscal",
+            Detail = "Roteamento por empresa do grupo, menor custo, maior margem e emissão fiscal.",
+            Status = "Motor fiscal conectado",
             Accent = "#F59E0B",
             ActionText = "Abrir fiscal"
         });
         Modules.Add(new DesktopModule
         {
-            Title = "PDV / Caixa",
-            Detail = "Frente de loja, leitura fisica, NFC-e/SAT, contingencia e conciliacao com financeiro.",
-            Status = "Integrado ao ERP",
+            Title = "Compras e Estoque",
+            Detail = "Solicitação, cotação, pedido, entrada, QR Code, código de barras e saldo físico/fiscal.",
+            Status = "Módulo base ativo",
             Accent = "#EAB308",
-            ActionText = "Abrir PDV"
+            ActionText = "Abrir compras"
         });
         Modules.Add(new DesktopModule
         {
-            Title = "Grupo e Empresas",
-            Detail = "Visao societaria, unidades, centros de custo e controle local da empresa.",
-            Status = "Governanca ativa",
-            Accent = "#22C55E",
-            ActionText = "Abrir grupo"
-        });
-        Modules.Add(new DesktopModule
-        {
-            Title = "Integracoes",
-            Detail = "Ambientes prontos para receber chaves, tokens, webhooks e autorizações externas.",
-            Status = "Aguardando chaves",
+            Title = "Logística",
+            Detail = "Coleta, rastreio, entrega, status do pedido e comunicação ao cliente.",
+            Status = "Integração em preparação",
             Accent = "#8B5CF6",
-            ActionText = "Abrir integracoes"
+            ActionText = "Abrir logística"
         });
+        Modules.Add(new DesktopModule
+        {
+            Title = "Governança",
+            Detail = "Perfis, trilha de auditoria, empresas, usuários e controle multi-empresarial.",
+            Status = "Estrutura enterprise",
+            Accent = "#FB7185",
+            ActionText = "Abrir governança"
+        });
+    }
 
+    private void LoadOrganizationTree()
+    {
         var holding = new OrganizationNode
         {
             Name = "Grupo Nexum Altivon Ltda. Me.",
-            Domain = "www.nexumaltivon.com",
+            Domain = "nexumaltivon.com.br",
             Role = "Matriz / Holding / Gestora Corporativa",
-            TaxSituation = "Situação tributária: centralizadora, fiscalizadora e emitente principal sob análise de custo.",
-            EmailPattern = "5 caixas-padrao: Corporativo, Vendas, Compras, Contabilidade e RecursosHumanos"
+            TaxSituation = "Centralizadora, fiscalizadora e emitente preferencial conforme menor custo operacional.",
+            EmailPattern = "Corporativo, vendas, compras, financeiro e fiscal"
         };
 
-        holding.Children.Add(CreateFilial(
-            "Geracao Top Mais MEI",
-            "www.geracaotopmais.com.br",
-            "Filial - Informatica e Tecnologia / Loja-01"));
-        holding.Children.Add(CreateFilial(
-            "Moda Mim MEI",
-            "www.modamim.com.br",
-            "Filial - Vestuario Feminino / Loja-02"));
-        holding.Children.Add(CreateFilial(
-            "Ghrann Tur MEI",
-            "www.ghranntur.com.br",
-            "Filial - Turismo e Viagens / Loja-03"));
-        holding.Children.Add(CreateFilial(
-            "Chornos Relojoaria MEI",
-            "www.chornosrelojoaria.com.br",
-            "Filial - Relojoaria / Loja-04"));
-        holding.Children.Add(CreateFilial(
-            "Estrutural Line MEI",
-            "www.estruturaline.com.br",
-            "Filial - Construcao / Loja-05"));
-        holding.Children.Add(CreateFilial(
-            "Ghrann Fest Festas MEI",
-            "www.ghrannfestfestas.com.br",
-            "Filial - Festas e Eventos / Loja-06"));
+        holding.Children.Add(CreateFilial("Geração Top Mais", "geracaotopmais.com.br", "Tecnologia / Loja física e online"));
+        holding.Children.Add(CreateFilial("Moda Mim", "modamim.com.br", "Moda e acessórios"));
+        holding.Children.Add(CreateFilial("Ghrann Tur", "ghranntur.com.br", "Turismo e serviços"));
+        holding.Children.Add(CreateFilial("Chronnus Relojoaria", "chronnusrelojoaria.com.br", "Relojoaria"));
+        holding.Children.Add(CreateFilial("Estrutural Line", "estruturaline.com.br", "Construção e estrutura"));
+        holding.Children.Add(CreateFilial("Gran Festas", "granfestas.com.br", "Festas e eventos"));
 
         OrganizationUnits.Add(holding);
-
-        SelectedModuleTitle = Modules[0].Title;
-        SelectedModuleDetail = Modules[0].Detail;
-        Loaded += async (_, _) => await RefreshStatusAsync();
     }
 
     private async Task RefreshStatusAsync()
     {
-        try
-        {
-            using var http = new HttpClient { BaseAddress = new Uri(ApiBaseUrl) };
-            using var response = await http.GetAsync("/health");
+        ServerDatabaseLabel = $"Banco interno {Terminal.ServerAddress}:{Terminal.DatabasePort}";
 
-            if (response.IsSuccessStatusCode)
-            {
-                EnvironmentStatus = "Conexao local ok";
-                EnvironmentDetail = "API acessivel e pronta para alimentar o desktop com dados operacionais.";
-            }
-            else
-            {
-                EnvironmentStatus = "API responde com alerta";
-                EnvironmentDetail = $"A API respondeu com status {(int)response.StatusCode}. O desktop segue carregado para a operacao.";
-            }
-        }
-        catch
-        {
-            EnvironmentStatus = "Aguardando API";
-            EnvironmentDetail = "Nao foi possivel confirmar a API local agora. O painel permanece pronto para o uso corporativo.";
-        }
-
-        LastUpdatedLabel = $"Atualizado em {DateTime.Now:dd/MM/yyyy HH:mm}";
+        var result = await _apiClient.CheckHealthAsync(Terminal);
+        EnvironmentStatus = result.Status;
+        EnvironmentDetail = result.Detail;
+        LastUpdatedLabel = $"Atualizado em {result.CheckedAt:dd/MM/yyyy HH:mm}";
+        ConnectionModeLabel = result.LocalHealthy ? "Conexão local ativa" : result.PublicHealthy ? "Público ativo" : "Contingência";
+        IntegrationMetricValue = result.LocalHealthy || result.PublicHealthy ? "OK" : "OFF";
+        PdvOperationalNote = result.LocalHealthy
+            ? "PDV pode operar online contra o servidor principal. Próxima etapa: tela de venda com carrinho local e envio para a API."
+            : "PDV deve permanecer em modo de contingência até a API responder novamente.";
     }
 
     private async void RefreshStatus_Click(object sender, RoutedEventArgs e)
@@ -205,42 +276,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void OpenPortal_Click(object sender, RoutedEventArgs e)
     {
-        try
-        {
-            var chromePaths = new[]
-            {
-                Environment.GetEnvironmentVariable("ProgramFiles") is string programFiles
-                    ? Path.Combine(programFiles, "Google", "Chrome", "Application", "chrome.exe")
-                    : null,
-                Environment.GetEnvironmentVariable("ProgramFiles(x86)") is string programFilesX86
-                    ? Path.Combine(programFilesX86, "Google", "Chrome", "Application", "chrome.exe")
-                    : null
-            };
-
-            var chromePath = chromePaths.FirstOrDefault(File.Exists);
-
-            if (!string.IsNullOrWhiteSpace(chromePath))
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = chromePath,
-                    Arguments = $"\"{PortalUrl}\"",
-                    UseShellExecute = false
-                });
-                return;
-            }
-
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = PortalUrl,
-                UseShellExecute = true
-            });
-        }
-        catch
-        {
-            EnvironmentStatus = "Portal indisponivel";
-            EnvironmentDetail = "Nao foi possivel abrir o portal no Chrome nem no navegador padrao.";
-        }
+        OpenUrl(PortalUrl);
     }
 
     private void OpenManualNfe_Click(object sender, RoutedEventArgs e)
@@ -264,6 +300,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SelectedModuleDetail = $"{module.Detail} ({module.ActionText})";
     }
 
+    private void WorkstationAction_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element || element.Tag is not WorkstationAction action)
+        {
+            return;
+        }
+
+        SelectedModuleTitle = action.Title;
+        SelectedModuleDetail = $"{action.Detail} Rota interna: {action.Route}.";
+    }
+
     private static OrganizationNode CreateFilial(string name, string domain, string role)
     {
         var filial = new OrganizationNode
@@ -271,20 +318,59 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             Name = name,
             Domain = domain,
             Role = role,
-            TaxSituation = "Situação tributária: parametrização fiscal pendente de regime, CFOP, ST e emitente preferencial.",
-            EmailPattern = $"5 caixas por dominio: Financeiro@{domain}, Vendas@{domain}, Compras@{domain}, Contabilidade@{domain}, RecursosHumanos@{domain}"
+            TaxSituation = "Parametrização fiscal por regime, CFOP, ST e emitente preferencial.",
+            EmailPattern = "Financeiro, vendas, compras, fiscal e atendimento"
         };
 
         filial.Children.Add(new OrganizationNode
         {
-            Name = "Parceiros de negocios",
+            Name = "Terminal físico / PDV",
             Domain = domain,
-            Role = "Vinculacao direta ao dominio da filial",
-            TaxSituation = "Situação tributária: depende do cadastro de cada parceiro e do vínculo com a filial responsável.",
-            EmailPattern = "Cada parceiro pode receber ate 5 contas por dominio registrado"
+            Role = "Caixa, balcão, estoque local e atendimento",
+            TaxSituation = "Venda local com emissão fiscal e sincronização com servidor principal.",
+            EmailPattern = "Operador, gerente, fiscal, estoque e suporte"
         });
 
         return filial;
+    }
+
+    private static void OpenUrl(string url)
+    {
+        try
+        {
+            var chromePaths = new[]
+            {
+                Environment.GetEnvironmentVariable("ProgramFiles") is string programFiles
+                    ? Path.Combine(programFiles, "Google", "Chrome", "Application", "chrome.exe")
+                    : null,
+                Environment.GetEnvironmentVariable("ProgramFiles(x86)") is string programFilesX86
+                    ? Path.Combine(programFilesX86, "Google", "Chrome", "Application", "chrome.exe")
+                    : null
+            };
+
+            var chromePath = chromePaths.FirstOrDefault(File.Exists);
+
+            if (!string.IsNullOrWhiteSpace(chromePath))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = chromePath,
+                    Arguments = $"\"{url}\"",
+                    UseShellExecute = false
+                });
+                return;
+            }
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            // A interface mantém o status operacional mesmo se o navegador local falhar.
+        }
     }
 
     private void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
