@@ -947,6 +947,128 @@ function StatMiniCard({ label, value, onClick }) {
   );
 }
 
+function CorporateBindingPanel({ painel, onOpen }) {
+  const indicadores = asArray(painel?.indicadores);
+  const alertas = asArray(painel?.alertas);
+  const vinculos = asArray(painel?.vinculos);
+  const atualizadoEm = painel?.atualizado_em || painel?.atualizadoEm;
+
+  const statusClass = (status) => {
+    const normalized = String(status || '').toLowerCase();
+    if (normalized === 'ok') return 'border-emerald-200 bg-emerald-50 text-emerald-800';
+    if (normalized === 'critico' || normalized === 'alta') return 'border-rose-200 bg-rose-50 text-rose-800';
+    return 'border-amber-200 bg-amber-50 text-amber-800';
+  };
+
+  const actionLabel = (acao) => {
+    const labels = {
+      'cadastro-produtos': 'Abrir produtos',
+      'cadastro-clientes': 'Abrir clientes',
+      'cadastro-fornecedores': 'Abrir fornecedores',
+      cadastros: 'Abrir cadastros',
+      pedidos: 'Abrir pedidos',
+      'erp-compras': 'Abrir compras',
+      'erp-empresas': 'Abrir empresas',
+      'erp-financeiro': 'Abrir financeiro',
+      'erp-fiscal': 'Abrir fiscal',
+      'erp-logistica': 'Abrir logística',
+      overview: 'Ver painel',
+    };
+
+    return labels[acao] || 'Abrir módulo';
+  };
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-amber-700">Governança corporativa</p>
+          <h2 className="mt-2 text-xl font-black text-slate-950">Amarração entre cadastros, vendas, fiscal, financeiro e logística</h2>
+          <p className="mt-2 max-w-3xl text-sm font-medium text-slate-500">
+            Leitura operacional gerada a partir do banco para mostrar onde o ciclo empresarial está completo e onde ainda exige ação.
+          </p>
+        </div>
+        <div className="rounded-full border border-slate-200 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-slate-500">
+          {atualizadoEm ? `Atualizado ${formatDate(atualizadoEm)}` : 'Dados em leitura'}
+        </div>
+      </div>
+
+      <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {indicadores.length > 0 ? indicadores.map((indicador) => (
+          <button
+            key={indicador.chave || indicador.titulo}
+            type="button"
+            onClick={() => indicador.modulo && onOpen(indicador.modulo)}
+            className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-left transition hover:-translate-y-0.5 hover:border-[#C9A227] hover:shadow-md"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{indicador.titulo}</p>
+                <p className="mt-2 text-2xl font-black text-slate-950">{indicador.valor}</p>
+              </div>
+              <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${statusClass(indicador.status)}`}>
+                {indicador.status || 'ok'}
+              </span>
+            </div>
+            <p className="mt-3 text-sm font-semibold text-slate-500">{indicador.detalhe}</p>
+          </button>
+        )) : (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
+            Painel corporativo ainda sem retorno consolidado da API.
+          </div>
+        )}
+      </div>
+
+      <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(340px,0.75fr)]">
+        <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-black uppercase tracking-[0.16em] text-slate-700">Vínculos empresariais</h3>
+            <Database size={18} className="text-slate-500" />
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {vinculos.map((vinculo) => (
+              <div key={`${vinculo.origem}-${vinculo.destino}`} className="rounded-lg border border-white bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-black text-slate-950">{vinculo.origem} → {vinculo.destino}</p>
+                  <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase ${statusClass(vinculo.status)}`}>{vinculo.status}</span>
+                </div>
+                <p className="mt-2 text-xs font-semibold text-slate-500">{vinculo.total} registros ligados, {vinculo.pendentes} pendências.</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-100 bg-slate-950 p-4 text-white">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-sm font-black uppercase tracking-[0.16em] text-amber-300">Ações pendentes</h3>
+            <Activity size={18} className="text-amber-300" />
+          </div>
+          <div className="mt-4 space-y-3">
+            {alertas.slice(0, 6).map((alerta) => (
+              <div key={`${alerta.modulo}-${alerta.titulo}`} className="rounded-lg border border-white/10 bg-white/5 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black">{alerta.titulo}</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-300">{alerta.detalhe}</p>
+                  </div>
+                  <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase ${statusClass(alerta.severidade)}`}>{alerta.severidade}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => alerta.acao && onOpen(alerta.acao)}
+                  className="mt-3 text-xs font-black uppercase tracking-[0.14em] text-amber-300 hover:text-amber-200"
+                >
+                  {actionLabel(alerta.acao)}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const params = useParams();
@@ -962,6 +1084,7 @@ export default function Dashboard() {
   const [fornecedores, setFornecedores] = useState([]);
   const [empresasGrupo, setEmpresasGrupo] = useState([]);
   const [financeiroLancamentos, setFinanceiroLancamentos] = useState([]);
+  const [corporativoPainel, setCorporativoPainel] = useState(null);
   const [produtoEditingId, setProdutoEditingId] = useState('');
   const [clienteEditingId, setClienteEditingId] = useState('');
   const [fornecedorEditingId, setFornecedorEditingId] = useState('');
@@ -1048,8 +1171,9 @@ export default function Dashboard() {
 
   const loadData = useCallback(async () => {
     try {
-      const [resumoRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, empresasGrupoRes, fiscalPedidosRes, comprasPainelRes, integracoesRes, credenciaisRes, financeiroLancamentosRes, siteConfigRes] = await Promise.all([
+      const [resumoRes, corporativoPainelRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, empresasGrupoRes, fiscalPedidosRes, comprasPainelRes, integracoesRes, credenciaisRes, financeiroLancamentosRes, siteConfigRes] = await Promise.all([
         dashboardAPI.getResumo(),
+        dashboardAPI.getCorporativoPainel().catch(() => ({ data: null })),
         pedidoAPI.getAll(),
         leadAPI.getAll(),
         produtoAPI.getAll(),
@@ -1077,6 +1201,7 @@ export default function Dashboard() {
       const fornecedoresData = asArray(fornecedoresRes.data);
       const empresasGrupoData = asArray(empresasGrupoRes.data);
       const fiscalPedidosData = asArray(fiscalPedidosRes.data);
+      const corporativoPainelData = unwrapApiData(corporativoPainelRes.data);
       const comprasPainelData = unwrapApiData(comprasPainelRes.data);
       const financeiroLancamentosData = asArray(financeiroLancamentosRes.data);
       if (produtosData.length > 0) setProdutos(produtosData);
@@ -1085,6 +1210,7 @@ export default function Dashboard() {
       if (fornecedoresData.length > 0) setFornecedores(fornecedoresData);
       if (empresasGrupoData.length > 0) setEmpresasGrupo(empresasGrupoData);
       setFiscalPedidos(fiscalPedidosData);
+      if (corporativoPainelData && typeof corporativoPainelData === 'object') setCorporativoPainel(corporativoPainelData);
       if (comprasPainelData && typeof comprasPainelData === 'object') setComprasPainel(comprasPainelData);
       setFinanceiroLancamentos(financeiroLancamentosData);
       const integracoesData = asArray(integracoesRes.data);
@@ -2202,6 +2328,8 @@ export default function Dashboard() {
                       })}
                     </div>
                   </section>
+
+                  <CorporateBindingPanel painel={corporativoPainel} onOpen={openMainTab} />
 
                   <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(360px,1fr)]">
                     <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">

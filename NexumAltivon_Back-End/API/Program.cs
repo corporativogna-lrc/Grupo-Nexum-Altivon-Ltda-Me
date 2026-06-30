@@ -3590,6 +3590,102 @@ app.MapGet("/api/dashboard/resumo", [Authorize(Policy = "Gerente")] async (Nexum
 .WithName("DashboardResumo")
 ;
 
+app.MapGet("/api/gestao-corporativa/painel", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var agora = DateTime.UtcNow;
+    var comprasPainel = await BuildComprasPainelAsync(db, ct);
+
+    var totalEmpresas = await db.EmpresasGrupo.AsNoTracking().CountAsync(ct);
+    var empresasAtivas = await db.EmpresasGrupo.AsNoTracking().CountAsync(empresa => empresa.Ativa, ct);
+    var emitentesSaida = await db.EmpresasGrupo.AsNoTracking().CountAsync(empresa => empresa.Ativa && empresa.PermiteNfeSaida, ct);
+    var emitentesEntrada = await db.EmpresasGrupo.AsNoTracking().CountAsync(empresa => empresa.Ativa && empresa.PermiteNfeEntrada, ct);
+    var empresasSemCnpj = await db.EmpresasGrupo.AsNoTracking().CountAsync(empresa => empresa.Cnpj == "" || empresa.Cnpj == null, ct);
+    var empresasSemSerie = await db.EmpresasGrupo.AsNoTracking().CountAsync(empresa => empresa.Ativa && empresa.PermiteNfeSaida && (empresa.SerieNfe == null || empresa.SerieNfe == ""), ct);
+
+    var produtosAtivos = await db.Produtos.AsNoTracking().CountAsync(produto => produto.Ativo, ct);
+    var produtosSemIdentificacao = await db.Produtos.AsNoTracking()
+        .CountAsync(produto => produto.Ativo && (produto.CodigoBarras == null || produto.CodigoBarras == "" || produto.QrCode == null || produto.QrCode == "" || produto.IdentificacaoEstoque == null || produto.IdentificacaoEstoque == ""), ct);
+    var produtosSemFornecedor = await db.Produtos.AsNoTracking()
+        .CountAsync(produto => produto.Ativo && produto.FornecedorId == null, ct);
+    var produtosEstoqueBaixo = await db.Produtos.AsNoTracking()
+        .CountAsync(produto => produto.Ativo && produto.EstoqueAtual <= produto.EstoqueMinimo, ct);
+    var produtosMargem = await db.Produtos.AsNoTracking()
+        .Where(produto => produto.Ativo && produto.Preco > 0)
+        .Select(produto => new { produto.Preco, produto.Custo })
+        .ToListAsync(ct);
+    var margemMedia = produtosMargem.Count == 0
+        ? 0m
+        : Math.Round(produtosMargem.Average(produto => produto.Preco <= 0 ? 0m : ((produto.Preco - produto.Custo) / produto.Preco) * 100m), 2);
+
+    var clientesTotal = await db.Clientes.AsNoTracking().CountAsync(ct);
+    var clientesSemDocumento = await db.Clientes.AsNoTracking()
+        .CountAsync(cliente => cliente.CpfCnpj == null || cliente.CpfCnpj == "", ct);
+    var fornecedoresTotal = await db.Fornecedores.AsNoTracking().CountAsync(ct);
+    var fornecedoresSemDocumento = await db.Fornecedores.AsNoTracking()
+        .CountAsync(fornecedor => fornecedor.Cnpj == null || fornecedor.Cnpj == "", ct);
+    var fornecedoresSemLoja = await db.Fornecedores.AsNoTracking()
+        .CountAsync(fornecedor => fornecedor.Status == StatusFornecedor.Ativo && fornecedor.LojaVinculadaId == null, ct);
+
+    var pedidosAbertos = await db.Pedidos.AsNoTracking()
+        .CountAsync(pedido => pedido.Status != StatusPedido.Entregue && pedido.Status != StatusPedido.Cancelado && pedido.Status != StatusPedido.Devolvido && pedido.Status != StatusPedido.Reembolsado, ct);
+    var pedidosPagosSemFiscal = await db.Pedidos.AsNoTracking()
+        .CountAsync(pedido => pedido.StatusPagamento == StatusPagamento.Aprovado && !db.Fiscais.Any(fiscal => fiscal.PedidoId == pedido.Id), ct);
+    var pedidosLogisticaPendente = await db.Pedidos.AsNoTracking()
+        .CountAsync(pedido => pedido.Status == StatusPedido.Enviado && (pedido.FreteCodigoRastreio == null || pedido.FreteCodigoRastreio == ""), ct);
+    var financeiroPendente = await db.Financeiros.AsNoTracking()
+        .CountAsync(lancamento => lancamento.Status == StatusLancamento.Pendente || lancamento.Status == StatusLancamento.Atrasado, ct);
+    var fiscalPendente = await db.Fiscais.AsNoTracking()
+        .CountAsync(fiscal => fiscal.StatusNfe == StatusNfe.Pendente || fiscal.StatusNfe == StatusNfe.Emitida, ct);
+
+    var comprasPendentes = comprasPainel.Solicitacoes.Count(solicitacao => !string.Equals(solicitacao.Status, "aprovada", StringComparison.OrdinalIgnoreCase) && !string.Equals(solicitacao.Status, "cancelada", StringComparison.OrdinalIgnoreCase))
+        + comprasPainel.Pedidos.Count(pedido => !string.Equals(pedido.Status, "recebido", StringComparison.OrdinalIgnoreCase) && !string.Equals(pedido.Status, "cancelado", StringComparison.OrdinalIgnoreCase));
+
+    var indicadores = new List<GestaoCorporativaIndicadorDto>
+    {
+        new("empresas", "Empresas operacionais", $"{empresasAtivas}/{totalEmpresas}", $"{emitentesSaida} emitentes de saída e {emitentesEntrada} emitentes de entrada", BuildHealthStatus(empresasSemCnpj + empresasSemSerie), "erp-empresas"),
+        new("cadastros", "Cadastros documentados", $"{clientesTotal + fornecedoresTotal}", $"{clientesSemDocumento + fornecedoresSemDocumento} sem CPF/CNPJ ou CNPJ", BuildHealthStatus(clientesSemDocumento + fornecedoresSemDocumento), "cadastros"),
+        new("produtos", "Produtos publicáveis", $"{produtosAtivos}", $"{produtosSemIdentificacao + produtosSemFornecedor} exigem amarração física ou fornecedor", BuildHealthStatus(produtosSemIdentificacao + produtosSemFornecedor), "cadastro-produtos"),
+        new("compras", "Aquisições em curso", $"{comprasPendentes}", $"{comprasPainel.Entradas.Count} entradas registradas para alimentar estoque", BuildHealthStatus(comprasPendentes), "erp-compras"),
+        new("vendas", "Pedidos em ciclo aberto", $"{pedidosAbertos}", $"{pedidosPagosSemFiscal} pagos aguardando documento fiscal", BuildHealthStatus(pedidosPagosSemFiscal), "pedidos"),
+        new("financeiro", "Pendências financeiras", $"{financeiroPendente}", "Receitas, despesas, taxas ou conciliações ainda abertas", BuildHealthStatus(financeiroPendente), "erp-financeiro"),
+        new("fiscal", "Documentos fiscais", $"{fiscalPendente}", "NF-e/NFC-e pendentes ou emitidas sem autorização final", BuildHealthStatus(fiscalPendente), "erp-fiscal"),
+        new("logistica", "Rastreio e coleta", $"{pedidosLogisticaPendente}", "Pedidos enviados que ainda precisam de rastreio/coleta", BuildHealthStatus(pedidosLogisticaPendente), "erp-logistica"),
+        new("margem", "Margem média de itens", $"{margemMedia:N2}%", "Baseada no preço e custo dos produtos ativos", margemMedia > 0 ? "ok" : "atencao", "cadastro-produtos")
+    };
+
+    var alertas = new List<GestaoCorporativaAlertaDto>();
+    AddCorporateAlert(alertas, produtosSemIdentificacao, "Cadastros", "Produtos sem identificação física", $"{produtosSemIdentificacao} itens ativos ainda precisam de código de barras, QR Code ou identificação de estoque.", "alta", "cadastro-produtos");
+    AddCorporateAlert(alertas, produtosSemFornecedor, "Compras", "Produtos sem fornecedor", $"{produtosSemFornecedor} itens ativos não estão vinculados a origem de aquisição.", "alta", "erp-compras");
+    AddCorporateAlert(alertas, produtosEstoqueBaixo, "Estoque", "Produtos abaixo do mínimo", $"{produtosEstoqueBaixo} itens exigem cotação, compra, entrada ou reposição.", "media", "erp-compras");
+    AddCorporateAlert(alertas, clientesSemDocumento, "Clientes", "Clientes sem CPF/CNPJ", $"{clientesSemDocumento} clientes precisam de documento válido para faturamento.", "alta", "cadastro-clientes");
+    AddCorporateAlert(alertas, fornecedoresSemDocumento, "Fornecedores", "Fornecedores sem CNPJ", $"{fornecedoresSemDocumento} fornecedores precisam de documento para compras formais.", "alta", "cadastro-fornecedores");
+    AddCorporateAlert(alertas, fornecedoresSemLoja, "Fornecedores", "Fornecedores sem loja vinculada", $"{fornecedoresSemLoja} fornecedores ativos precisam de vínculo operacional.", "media", "cadastro-fornecedores");
+    AddCorporateAlert(alertas, pedidosPagosSemFiscal, "Fiscal", "Vendas pagas sem documento fiscal", $"{pedidosPagosSemFiscal} pedidos pagos ainda precisam de emissão fiscal.", "alta", "erp-fiscal");
+    AddCorporateAlert(alertas, financeiroPendente, "Financeiro", "Financeiro pendente", $"{financeiroPendente} lançamentos precisam de baixa, conciliação ou cancelamento.", "media", "erp-financeiro");
+    AddCorporateAlert(alertas, pedidosLogisticaPendente, "Logística", "Envios sem rastreio", $"{pedidosLogisticaPendente} pedidos enviados ainda precisam de rastreio/coleta.", "media", "erp-logistica");
+    AddCorporateAlert(alertas, empresasSemSerie + empresasSemCnpj, "Empresas", "Configuração fiscal empresarial incompleta", $"{empresasSemSerie + empresasSemCnpj} pendências em CNPJ ou série fiscal das empresas.", "alta", "erp-empresas");
+
+    if (alertas.Count == 0)
+    {
+        alertas.Add(new GestaoCorporativaAlertaDto("Geral", "Ciclo corporativo sem pendências críticas", "Os cadastros principais, amarrações fiscais, financeiras e logísticas não retornaram lacunas críticas neste momento.", "ok", "overview"));
+    }
+
+    var vinculos = new List<GestaoCorporativaVinculoDto>
+    {
+        new("Empresa", "Fiscal", emitentesSaida + emitentesEntrada, empresasSemSerie + empresasSemCnpj, BuildHealthStatus(empresasSemSerie + empresasSemCnpj)),
+        new("Produto", "Fornecedor/Compras", produtosAtivos, produtosSemFornecedor + comprasPendentes, BuildHealthStatus(produtosSemFornecedor + comprasPendentes)),
+        new("Pedido", "Financeiro", pedidosAbertos, financeiroPendente, BuildHealthStatus(financeiroPendente)),
+        new("Pedido", "Fiscal", pedidosAbertos, pedidosPagosSemFiscal + fiscalPendente, BuildHealthStatus(pedidosPagosSemFiscal + fiscalPendente)),
+        new("Pedido", "Logística", pedidosAbertos, pedidosLogisticaPendente, BuildHealthStatus(pedidosLogisticaPendente)),
+        new("Cliente", "Documento/Faturamento", clientesTotal, clientesSemDocumento, BuildHealthStatus(clientesSemDocumento))
+    };
+
+    var painel = new GestaoCorporativaPainelDto(indicadores, alertas, vinculos, margemMedia, agora);
+    return Results.Ok(ApiResponse<GestaoCorporativaPainelDto>.Ok(painel));
+})
+.WithName("GestaoCorporativaPainel")
+;
+
 app.MapGet("/api/crm/leads", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
 {
     var leads = await db.Database.SqlQueryRaw<LeadRow>(
@@ -5044,6 +5140,19 @@ static string? NormalizePhone(string? value)
 
 static string? TrimOrNull(string? value) =>
     string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+static string BuildHealthStatus(int pending) =>
+    pending <= 0 ? "ok" : pending <= 3 ? "atencao" : "critico";
+
+static void AddCorporateAlert(List<GestaoCorporativaAlertaDto> alertas, int quantidade, string modulo, string titulo, string detalhe, string severidade, string acao)
+{
+    if (quantidade <= 0)
+    {
+        return;
+    }
+
+    alertas.Add(new GestaoCorporativaAlertaDto(modulo, titulo, detalhe, severidade, acao));
+}
 
 static string NormalizeCompraOrigem(string? value)
 {
@@ -9356,6 +9465,35 @@ public sealed record DashboardResumoDto(
     int ProdutosEstoqueBaixo,
     decimal Conversao,
     decimal TicketMedio);
+
+public sealed record GestaoCorporativaPainelDto(
+    List<GestaoCorporativaIndicadorDto> Indicadores,
+    List<GestaoCorporativaAlertaDto> Alertas,
+    List<GestaoCorporativaVinculoDto> Vinculos,
+    decimal MargemEstimadaPercentual,
+    DateTime AtualizadoEm);
+
+public sealed record GestaoCorporativaIndicadorDto(
+    string Chave,
+    string Titulo,
+    string Valor,
+    string Detalhe,
+    string Status,
+    string Modulo);
+
+public sealed record GestaoCorporativaAlertaDto(
+    string Modulo,
+    string Titulo,
+    string Detalhe,
+    string Severidade,
+    string Acao);
+
+public sealed record GestaoCorporativaVinculoDto(
+    string Origem,
+    string Destino,
+    int Total,
+    int Pendentes,
+    string Status);
 
 public sealed record LeadLojaDto(
     int Id,
