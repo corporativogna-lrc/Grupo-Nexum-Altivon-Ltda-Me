@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { categoriaAPI, clienteAPI, comprasAPI, dashboardAPI, empresaGrupoAPI, financeiroAPI, fiscalAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI, siteAPI, unwrapApiData } from '../services/api';
+import { categoriaAPI, clienteAPI, comprasAPI, dashboardAPI, empresaGrupoAPI, financeiroAPI, fiscalAPI, fornecedorAPI, integracoesAPI, leadAPI, logisticaAPI, pedidoAPI, produtoAPI, siteAPI, unwrapApiData } from '../services/api';
 import { formatDate, formatPrice, getLeadStatusClass, getPagamentoLabel, getPedidoStatusClass } from '../utils/formatters';
 import {
   Activity,
@@ -389,6 +389,7 @@ const emptyCompraEntrada = {
 };
 const compraSolicitacaoStatusOptions = ['Aberta', 'Cotado', 'Aprovada', 'Atendida', 'Cancelada', 'Fechada'];
 const compraPedidoStatusOptions = ['Aberto', 'Aprovado', 'RecebidoParcial', 'Recebido', 'Cancelado', 'Fechado'];
+const fiscalStatusOptions = ['Pendente', 'Emitida', 'Autorizada', 'Cancelada', 'Denegada', 'Inutilizada'];
 const emptyEmpresaGrupo = {
   tipoCadastro: 'GrupoSocietario',
   razaoSocial: '',
@@ -457,6 +458,48 @@ const emptyEmpresaGrupo = {
   beneficiosEstrategicos: '',
   contratoResumo: '',
   observacoes: '',
+};
+const emptyFiscalManualForm = {
+  empresaEmissora: 'Grupo Nexum Altivon',
+  cnpjEmissor: '43.479.266/0001-71',
+  clienteDestinatario: '',
+  documentoDestinatario: '',
+  naturezaOperacao: 'Venda de mercadoria',
+  cfop: '5102',
+  subtotal: '',
+  frete: '0',
+  impostosEstimados: '0',
+  margemMinima: '0',
+  observacoes: '',
+  tipoOperacao: 'VendaInterna',
+  estadoOrigem: 'SP',
+  estadoDestino: 'SP',
+  categoriaFiscal: '',
+  subcategoriaFiscal: '',
+  exigeMarketplace: false,
+  exigeDropshipping: false,
+  requerSaidaNfe: true,
+  requerEntradaNfe: false,
+};
+const emptyLogisticaRoteamentoForm = {
+  cepOrigem: '17400000',
+  cepDestino: '',
+  valorProdutos: '',
+  estadoOrigem: 'SP',
+  estadoDestino: 'SP',
+  categoriaFiscal: '',
+  subcategoriaFiscal: '',
+  naturezaOperacao: 'Venda de mercadoria',
+  tipoOperacao: 'VendaInterna',
+  exigeMarketplace: false,
+  exigeDropshipping: false,
+  sku: 'OPERACAO-LOGISTICA',
+  quantidade: '1',
+  valorUnitario: '',
+  pesoKg: '0.5',
+  alturaCm: '8',
+  larguraCm: '16',
+  comprimentoCm: '24',
 };
 const emptySiteConfigForm = {
   site_nome: 'Grupo Nexum Altivon',
@@ -876,6 +919,10 @@ export default function Dashboard() {
   const [compraPedidoForm, setCompraPedidoForm] = useState(emptyCompraPedido);
   const [compraEntradaForm, setCompraEntradaForm] = useState(emptyCompraEntrada);
   const [empresaGrupoForm, setEmpresaGrupoForm] = useState(emptyEmpresaGrupo);
+  const [fiscalManualForm, setFiscalManualForm] = useState(emptyFiscalManualForm);
+  const [fiscalManualResultado, setFiscalManualResultado] = useState(null);
+  const [logisticaRoteamentoForm, setLogisticaRoteamentoForm] = useState(emptyLogisticaRoteamentoForm);
+  const [logisticaRoteamentoResultado, setLogisticaRoteamentoResultado] = useState(null);
   const [financeiroLancamentoForm, setFinanceiroLancamentoForm] = useState(emptyFinanceiroLancamento);
   const [financeiroFiltro, setFinanceiroFiltro] = useState('todos');
   const [formStatus, setFormStatus] = useState('');
@@ -968,7 +1015,7 @@ export default function Dashboard() {
       if (clientesData.length > 0) setClientes(clientesData);
       if (fornecedoresData.length > 0) setFornecedores(fornecedoresData);
       if (empresasGrupoData.length > 0) setEmpresasGrupo(empresasGrupoData);
-      if (fiscalPedidosData.length > 0) setFiscalPedidos(fiscalPedidosData);
+      setFiscalPedidos(fiscalPedidosData);
       if (comprasPainelData && typeof comprasPainelData === 'object') setComprasPainel(comprasPainelData);
       setFinanceiroLancamentos(financeiroLancamentosData);
       const integracoesData = asArray(integracoesRes.data);
@@ -1549,6 +1596,78 @@ export default function Dashboard() {
     setEmpresasGrupo((current) => [response.data, ...current]);
     setEmpresaGrupoForm(emptyEmpresaGrupo);
     setFormStatus('Empresa fiscal cadastrada no ERP.');
+  };
+
+  const buildFiscalManualPayload = () => ({
+    ...fiscalManualForm,
+    subtotal: Number(fiscalManualForm.subtotal || 0),
+    frete: Number(fiscalManualForm.frete || 0),
+    impostosEstimados: Number(fiscalManualForm.impostosEstimados || 0),
+    margemMinima: Number(fiscalManualForm.margemMinima || 0),
+  });
+
+  const prepararFiscalManual = async (event) => {
+    event.preventDefault();
+    setFormStatus('');
+
+    if (Number(fiscalManualForm.subtotal || 0) <= 0) {
+      setFormStatus('Informe subtotal maior que zero para preparar a emissão fiscal.');
+      return;
+    }
+
+    const response = await fiscalAPI.prepararEmissaoManual(buildFiscalManualPayload());
+    setFiscalManualResultado(response.data);
+    setFormStatus('Emissão fiscal manual preparada para conferência.');
+  };
+
+  const salvarRascunhoFiscalManual = async () => {
+    await fiscalAPI.salvarRascunhoManual(buildFiscalManualPayload());
+    setFormStatus('Rascunho fiscal manual salvo para contingência.');
+  };
+
+  const calcularRoteamentoLogistico = async (event) => {
+    event.preventDefault();
+    setFormStatus('');
+
+    const valorProdutos = Number(logisticaRoteamentoForm.valorProdutos || logisticaRoteamentoForm.valorUnitario || 0);
+    if (valorProdutos <= 0) {
+      setFormStatus('Informe valor de produtos maior que zero para calcular a coleta.');
+      return;
+    }
+
+    const quantidade = Math.max(1, Number(logisticaRoteamentoForm.quantidade || 1));
+    const valorUnitario = Number(logisticaRoteamentoForm.valorUnitario || valorProdutos / quantidade || valorProdutos);
+    const response = await logisticaAPI.rotear({
+      cep_origem: logisticaRoteamentoForm.cepOrigem,
+      cep_destino: logisticaRoteamentoForm.cepDestino,
+      valor_produtos: valorProdutos,
+      estado_origem: logisticaRoteamentoForm.estadoOrigem,
+      estado_destino: logisticaRoteamentoForm.estadoDestino,
+      categoria_fiscal: logisticaRoteamentoForm.categoriaFiscal,
+      subcategoria_fiscal: logisticaRoteamentoForm.subcategoriaFiscal,
+      natureza_operacao: logisticaRoteamentoForm.naturezaOperacao,
+      tipo_operacao: logisticaRoteamentoForm.tipoOperacao,
+      exige_marketplace: logisticaRoteamentoForm.exigeMarketplace,
+      exige_dropshipping: logisticaRoteamentoForm.exigeDropshipping,
+      itens: [{
+        sku: logisticaRoteamentoForm.sku,
+        quantidade,
+        valor_unitario: valorUnitario,
+        peso_kg: Number(logisticaRoteamentoForm.pesoKg || 0.5),
+        altura_cm: Number(logisticaRoteamentoForm.alturaCm || 8),
+        largura_cm: Number(logisticaRoteamentoForm.larguraCm || 16),
+        comprimento_cm: Number(logisticaRoteamentoForm.comprimentoCm || 24),
+      }],
+    });
+    setLogisticaRoteamentoResultado(unwrapApiData(response.data));
+    setFormStatus('Roteamento logístico calculado com seleção de menor custo e melhor margem.');
+  };
+
+  const atualizarFiscalStatus = async (id, status) => {
+    await fiscalAPI.updatePedidoStatus(id, status);
+    setFormStatus(`Registro fiscal atualizado para ${status}.`);
+    const response = await fiscalAPI.getPedidos();
+    setFiscalPedidos(asArray(response.data));
   };
 
   const updateLeadStatus = async (id, status) => {
@@ -2597,31 +2716,115 @@ export default function Dashboard() {
               {activeTab === 'erp-fiscal' && (
                 <section className="erp-desktop-surface space-y-6">
                   <ErpWorkspaceNav activeTab={activeTab} onNavigate={openMainTab} />
-                  <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-                    <ErpCockpitMenu activeTab={activeTab} onNavigate={openMainTab} />
-                    <div className="space-y-6">
-                      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-                        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Fiscal operacional</p>
-                        <h2 className="mt-2 text-2xl font-black text-slate-950">Notas e automação fiscal</h2>
-                        <p className="mt-1 max-w-3xl text-sm text-slate-500">
-                          A ERP agora expõe a fila fiscal dos pedidos, com empresa emitente sugerida, ambiente, CFOP e resumo da automação preparada no ato da compra.
-                        </p>
-                      </div>
+                  <ErpModuleHero
+                    eyebrow="Fiscal operacional"
+                    title="Notas, contingência e emissão manual"
+                    description="Fila fiscal dos pedidos, status da NF-e, preparação manual e rascunho de contingência usando a API e o banco."
+                  />
+                  <div className="grid gap-4 md:grid-cols-4">
+                    <StatMiniCard label="Pendências fiscais" value={fiscalPedidos.filter((item) => String(item.statusNfe || '').toLowerCase() === 'pendente').length} />
+                    <StatMiniCard label="Autorizadas" value={fiscalPedidos.filter((item) => String(item.statusNfe || '').toLowerCase() === 'autorizada').length} />
+                    <StatMiniCard label="Empresas emitentes" value={new Set(fiscalPedidos.map((item) => item.codigoEmpresaEmitente).filter(Boolean)).size} />
+                    <StatMiniCard label="Pedidos na fila" value={fiscalPedidos.length} />
+                  </div>
 
-                      <div className="grid gap-4 md:grid-cols-4">
-                        <StatMiniCard label="Pendências fiscais" value={fiscalPedidos.filter((item) => item.statusNfe === 'Pendente').length} />
-                        <StatMiniCard label="Autorizadas" value={fiscalPedidos.filter((item) => item.statusNfe === 'Autorizada').length} />
-                        <StatMiniCard label="Empresas emitentes" value={new Set(fiscalPedidos.map((item) => item.codigoEmpresaEmitente).filter(Boolean)).size} />
-                        <StatMiniCard label="Pedidos na fila" value={fiscalPedidos.length} />
-                      </div>
-
-                      <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-                        <div className="border-b border-slate-200 px-6 py-5">
-                          <h3 className="text-lg font-black text-slate-950">Fila fiscal dos pedidos</h3>
-                          <p className="mt-1 text-sm text-slate-500">Pré-emissão automática gerada a partir do checkout e do roteamento fiscal.</p>
+                  <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+                    <SimpleForm
+                      title="Emissão manual / contingência"
+                      subtitle="Prepare a emissão sem depender do emissor automático. O rascunho fica salvo para operação manual se houver falha externa."
+                      onSubmit={prepararFiscalManual}
+                      buttonLabel="Preparar emissão"
+                    >
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <Field label="Empresa emissora" value={fiscalManualForm.empresaEmissora} onChange={(value) => setFiscalManualForm((current) => ({ ...current, empresaEmissora: value }))} />
+                        <Field label="CNPJ emissor" value={fiscalManualForm.cnpjEmissor} onChange={(value) => setFiscalManualForm((current) => ({ ...current, cnpjEmissor: value }))} />
+                        <Field label="Cliente destinatário" value={fiscalManualForm.clienteDestinatario} onChange={(value) => setFiscalManualForm((current) => ({ ...current, clienteDestinatario: value }))} />
+                        <Field label="Documento destinatário" value={fiscalManualForm.documentoDestinatario} onChange={(value) => setFiscalManualForm((current) => ({ ...current, documentoDestinatario: value }))} />
+                        <SelectField label="Tipo de operação" value={fiscalManualForm.tipoOperacao} onChange={(value) => setFiscalManualForm((current) => ({ ...current, tipoOperacao: value }))} options={['VendaInterna', 'VendaInterestadual', 'Marketplace', 'Dropshipping', 'EntradaCompra', 'Transferencia']} />
+                        <Field label="Natureza da operação" value={fiscalManualForm.naturezaOperacao} onChange={(value) => setFiscalManualForm((current) => ({ ...current, naturezaOperacao: value }))} />
+                        <Field label="CFOP" value={fiscalManualForm.cfop} onChange={(value) => setFiscalManualForm((current) => ({ ...current, cfop: value }))} />
+                        <Field label="Subtotal" type="number" value={fiscalManualForm.subtotal} onChange={(value) => setFiscalManualForm((current) => ({ ...current, subtotal: value }))} />
+                        <Field label="Frete" type="number" value={fiscalManualForm.frete} onChange={(value) => setFiscalManualForm((current) => ({ ...current, frete: value }))} />
+                        <Field label="Impostos estimados" type="number" value={fiscalManualForm.impostosEstimados} onChange={(value) => setFiscalManualForm((current) => ({ ...current, impostosEstimados: value }))} />
+                        <Field label="Margem mínima (%)" type="number" value={fiscalManualForm.margemMinima} onChange={(value) => setFiscalManualForm((current) => ({ ...current, margemMinima: value }))} />
+                        <div className="grid grid-cols-2 gap-3">
+                          <Field label="UF origem" value={fiscalManualForm.estadoOrigem} onChange={(value) => setFiscalManualForm((current) => ({ ...current, estadoOrigem: value.toUpperCase().slice(0, 2) }))} />
+                          <Field label="UF destino" value={fiscalManualForm.estadoDestino} onChange={(value) => setFiscalManualForm((current) => ({ ...current, estadoDestino: value.toUpperCase().slice(0, 2) }))} />
                         </div>
-                        <div className="overflow-x-auto">
-                          <table className="w-full min-w-[1100px]">
+                        <Field label="Categoria fiscal" value={fiscalManualForm.categoriaFiscal} onChange={(value) => setFiscalManualForm((current) => ({ ...current, categoriaFiscal: value }))} />
+                        <Field label="Subcategoria fiscal" value={fiscalManualForm.subcategoriaFiscal} onChange={(value) => setFiscalManualForm((current) => ({ ...current, subcategoriaFiscal: value }))} />
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <ToggleField label="Marketplace" checked={fiscalManualForm.exigeMarketplace} onChange={(checked) => setFiscalManualForm((current) => ({ ...current, exigeMarketplace: checked }))} />
+                        <ToggleField label="Dropshipping" checked={fiscalManualForm.exigeDropshipping} onChange={(checked) => setFiscalManualForm((current) => ({ ...current, exigeDropshipping: checked }))} />
+                        <ToggleField label="Exige NF-e saída" checked={fiscalManualForm.requerSaidaNfe} onChange={(checked) => setFiscalManualForm((current) => ({ ...current, requerSaidaNfe: checked }))} />
+                        <ToggleField label="Exige NF-e entrada" checked={fiscalManualForm.requerEntradaNfe} onChange={(checked) => setFiscalManualForm((current) => ({ ...current, requerEntradaNfe: checked }))} />
+                      </div>
+                      <TextAreaField label="Observações fiscais" rows={3} value={fiscalManualForm.observacoes} onChange={(value) => setFiscalManualForm((current) => ({ ...current, observacoes: value }))} />
+                      <button
+                        type="button"
+                        onClick={salvarRascunhoFiscalManual}
+                        className="inline-flex h-11 items-center justify-center rounded-lg border border-slate-200 bg-white px-5 text-sm font-black text-slate-700 transition hover:border-[#C9A227] hover:text-[#8E6A12]"
+                      >
+                        Salvar rascunho de contingência
+                      </button>
+                    </SimpleForm>
+
+                    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                      <h3 className="text-lg font-black text-slate-950">Resultado fiscal</h3>
+                      <p className="mt-1 text-sm font-semibold text-slate-500">Validação do certificado, empresa emitente sugerida e pendências antes da emissão.</p>
+                      {fiscalManualResultado ? (
+                        <div className="mt-5 space-y-4">
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Certificado</p>
+                            <p className="mt-2 text-lg font-black text-slate-950">
+                              {(fiscalManualResultado.certificadoOperacional ?? fiscalManualResultado.CertificadoOperacional) ? 'Operacional' : 'Pendente'}
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-slate-500">
+                              {fiscalManualResultado.certificadoStatus ?? fiscalManualResultado.CertificadoStatus}
+                            </p>
+                          </div>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Emitente sugerido</p>
+                            <p className="mt-2 text-lg font-black text-slate-950">
+                              {fiscalManualResultado.razaoSocialSelecionada ?? fiscalManualResultado.RazaoSocialSelecionada ?? 'Sem emitente selecionado'}
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-slate-500">
+                              {fiscalManualResultado.cnpjSelecionado ?? fiscalManualResultado.CnpjSelecionado ?? '-'} · {fiscalManualResultado.estadoSelecionado ?? fiscalManualResultado.EstadoSelecionado ?? '-'}
+                            </p>
+                          </div>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Roteamento</p>
+                            <p className="mt-2 text-sm font-bold leading-6 text-slate-700">
+                              {fiscalManualResultado.roteamentoResumo ?? fiscalManualResultado.RoteamentoResumo}
+                            </p>
+                          </div>
+                          {(fiscalManualResultado.pendencias ?? fiscalManualResultado.Pendencias ?? []).length > 0 && (
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                              <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-800">Pendências</p>
+                              <div className="mt-3 grid gap-2">
+                                {(fiscalManualResultado.pendencias ?? fiscalManualResultado.Pendencias ?? []).map((pendencia) => (
+                                  <p key={pendencia} className="rounded-lg bg-white px-3 py-2 text-sm font-bold text-amber-950">{pendencia}</p>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="mt-5 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm font-bold text-slate-500">
+                          Preencha os dados e prepare a emissão para ver a conferência fiscal.
+                        </div>
+                      )}
+                    </section>
+                  </div>
+
+                  <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                    <div className="border-b border-slate-200 px-6 py-5">
+                      <h3 className="text-lg font-black text-slate-950">Fila fiscal dos pedidos</h3>
+                      <p className="mt-1 text-sm text-slate-500">Pré-emissão automática gerada a partir do checkout e do roteamento fiscal.</p>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[1180px]">
                         <thead className="bg-slate-50">
                           <tr>
                             <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Pedido</th>
@@ -2630,7 +2833,7 @@ export default function Dashboard() {
                             <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">CFOP</th>
                             <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Status</th>
                             <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Total</th>
-                            <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Resumo</th>
+                            <th className="px-6 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">Ação</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -2640,7 +2843,10 @@ export default function Dashboard() {
                             </tr>
                           ) : fiscalPedidos.map((item) => (
                             <tr key={item.id} className="hover:bg-slate-50">
-                              <td className="px-6 py-4 font-mono text-sm font-black text-slate-950">#{item.pedidoId}</td>
+                              <td className="px-6 py-4">
+                                <p className="font-mono text-sm font-black text-slate-950">#{item.pedidoId}</p>
+                                <p className="mt-1 text-xs font-semibold text-slate-500">Fiscal #{item.id}</p>
+                              </td>
                               <td className="px-6 py-4">
                                 <p className="font-black text-slate-950">{item.empresaEmitente || '-'}</p>
                                 <p className="mt-1 text-xs font-semibold text-slate-500">{item.codigoEmpresaEmitente || '-'}</p>
@@ -2654,17 +2860,36 @@ export default function Dashboard() {
                                 <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-900">
                                   {item.statusNfe} · {item.statusAutomacao || 'Aguardando'}
                                 </span>
+                                <p className="mt-2 max-w-sm text-xs font-semibold text-slate-500">{item.resumoRoteamento || '-'}</p>
                               </td>
                               <td className="px-6 py-4 text-sm font-black text-slate-950">{formatPrice(item.valorTotal || 0)}</td>
-                              <td className="px-6 py-4 text-sm font-semibold text-slate-500">{item.resumoRoteamento || '-'}</td>
+                              <td className="px-6 py-4">
+                                <select
+                                  value={item.statusNfe || 'Pendente'}
+                                  onChange={(event) => atualizarFiscalStatus(item.id, event.target.value)}
+                                  className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 outline-none focus:border-slate-950"
+                                >
+                                  {fiscalStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+                                </select>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {['Emitida', 'Autorizada'].map((status) => (
+                                    <button
+                                      key={status}
+                                      type="button"
+                                      onClick={() => atualizarFiscalStatus(item.id, status)}
+                                      className="h-8 rounded-lg bg-slate-950 px-3 text-[11px] font-black uppercase tracking-[0.12em] text-white transition hover:bg-[#C9A227] hover:text-black"
+                                    >
+                                      {status}
+                                    </button>
+                                  ))}
+                                </div>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
-                          </table>
-                        </div>
-                      </section>
+                      </table>
                     </div>
-                  </div>
+                  </section>
                 </section>
               )}
 
@@ -2891,14 +3116,95 @@ export default function Dashboard() {
                     <StatMiniCard label="Fornecedores" value={fornecedores.length} />
                     <StatMiniCard label="Integrações logísticas" value={integracoes.filter((item) => ['logistica', 'melhorenvio'].includes(item.slug)).length} />
                   </div>
+                  <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+                    <SimpleForm
+                      title="Roteamento de coleta e entrega"
+                      subtitle="Seleciona automaticamente o frete de menor custo, cruza com a empresa emitente mais vantajosa e calcula margem prevista."
+                      onSubmit={calcularRoteamentoLogistico}
+                      buttonLabel="Calcular melhor rota"
+                    >
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <Field label="CEP origem" value={logisticaRoteamentoForm.cepOrigem} onChange={(value) => setLogisticaRoteamentoForm((current) => ({ ...current, cepOrigem: value }))} />
+                        <Field label="CEP destino" value={logisticaRoteamentoForm.cepDestino} onChange={(value) => setLogisticaRoteamentoForm((current) => ({ ...current, cepDestino: value }))} />
+                        <Field label="Valor dos produtos" type="number" value={logisticaRoteamentoForm.valorProdutos} onChange={(value) => setLogisticaRoteamentoForm((current) => ({ ...current, valorProdutos: value, valorUnitario: current.valorUnitario || value }))} />
+                        <SelectField label="Tipo de operação" value={logisticaRoteamentoForm.tipoOperacao} onChange={(value) => setLogisticaRoteamentoForm((current) => ({ ...current, tipoOperacao: value }))} options={['VendaInterna', 'VendaInterestadual', 'Marketplace', 'Dropshipping', 'EntradaCompra', 'Transferencia']} />
+                        <Field label="UF origem" value={logisticaRoteamentoForm.estadoOrigem} onChange={(value) => setLogisticaRoteamentoForm((current) => ({ ...current, estadoOrigem: value.toUpperCase().slice(0, 2) }))} />
+                        <Field label="UF destino" value={logisticaRoteamentoForm.estadoDestino} onChange={(value) => setLogisticaRoteamentoForm((current) => ({ ...current, estadoDestino: value.toUpperCase().slice(0, 2) }))} />
+                        <Field label="Categoria fiscal" value={logisticaRoteamentoForm.categoriaFiscal} onChange={(value) => setLogisticaRoteamentoForm((current) => ({ ...current, categoriaFiscal: value }))} />
+                        <Field label="Subcategoria fiscal" value={logisticaRoteamentoForm.subcategoriaFiscal} onChange={(value) => setLogisticaRoteamentoForm((current) => ({ ...current, subcategoriaFiscal: value }))} />
+                        <Field label="SKU / referência" value={logisticaRoteamentoForm.sku} onChange={(value) => setLogisticaRoteamentoForm((current) => ({ ...current, sku: value }))} />
+                        <Field label="Quantidade" type="number" value={logisticaRoteamentoForm.quantidade} onChange={(value) => setLogisticaRoteamentoForm((current) => ({ ...current, quantidade: value }))} />
+                        <Field label="Peso kg" type="number" value={logisticaRoteamentoForm.pesoKg} onChange={(value) => setLogisticaRoteamentoForm((current) => ({ ...current, pesoKg: value }))} />
+                        <Field label="Altura cm" type="number" value={logisticaRoteamentoForm.alturaCm} onChange={(value) => setLogisticaRoteamentoForm((current) => ({ ...current, alturaCm: value }))} />
+                        <Field label="Largura cm" type="number" value={logisticaRoteamentoForm.larguraCm} onChange={(value) => setLogisticaRoteamentoForm((current) => ({ ...current, larguraCm: value }))} />
+                        <Field label="Comprimento cm" type="number" value={logisticaRoteamentoForm.comprimentoCm} onChange={(value) => setLogisticaRoteamentoForm((current) => ({ ...current, comprimentoCm: value }))} />
+                      </div>
+                      <Field label="Natureza da operação" value={logisticaRoteamentoForm.naturezaOperacao} onChange={(value) => setLogisticaRoteamentoForm((current) => ({ ...current, naturezaOperacao: value }))} />
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <ToggleField label="Marketplace" checked={logisticaRoteamentoForm.exigeMarketplace} onChange={(checked) => setLogisticaRoteamentoForm((current) => ({ ...current, exigeMarketplace: checked }))} />
+                        <ToggleField label="Dropshipping" checked={logisticaRoteamentoForm.exigeDropshipping} onChange={(checked) => setLogisticaRoteamentoForm((current) => ({ ...current, exigeDropshipping: checked }))} />
+                      </div>
+                    </SimpleForm>
+
+                    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                      <h3 className="text-lg font-black text-slate-950">Decisão automática</h3>
+                      <p className="mt-1 text-sm font-semibold text-slate-500">Resultado combinado entre frete, custo fiscal, lucro previsto e empresa emitente.</p>
+                      {logisticaRoteamentoResultado ? (
+                        <div className="mt-5 space-y-4">
+                          <div className="grid gap-3 sm:grid-cols-3">
+                            <StatMiniCard label="Custo total" value={formatPrice(logisticaRoteamentoResultado.custoTotalEstimado ?? logisticaRoteamentoResultado.CustoTotalEstimado ?? 0)} />
+                            <StatMiniCard label="Lucro previsto" value={formatPrice(logisticaRoteamentoResultado.lucroEstimado ?? logisticaRoteamentoResultado.LucroEstimado ?? 0)} />
+                            <StatMiniCard label="Margem" value={`${logisticaRoteamentoResultado.margemEstimadaPercentual ?? logisticaRoteamentoResultado.MargemEstimadaPercentual ?? 0}%`} />
+                          </div>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Coleta selecionada</p>
+                            <p className="mt-2 text-lg font-black text-slate-950">
+                              {(logisticaRoteamentoResultado.freteSelecionado ?? logisticaRoteamentoResultado.FreteSelecionado)?.transportadora
+                                ?? (logisticaRoteamentoResultado.freteSelecionado ?? logisticaRoteamentoResultado.FreteSelecionado)?.Transportadora
+                                ?? 'Sem transportadora'}
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-slate-500">
+                              {(logisticaRoteamentoResultado.freteSelecionado ?? logisticaRoteamentoResultado.FreteSelecionado)?.nome
+                                ?? (logisticaRoteamentoResultado.freteSelecionado ?? logisticaRoteamentoResultado.FreteSelecionado)?.Nome
+                                ?? '-'} · {formatPrice((logisticaRoteamentoResultado.freteSelecionado ?? logisticaRoteamentoResultado.FreteSelecionado)?.valor ?? (logisticaRoteamentoResultado.freteSelecionado ?? logisticaRoteamentoResultado.FreteSelecionado)?.Valor ?? 0)}
+                            </p>
+                          </div>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Empresa e emissão</p>
+                            <p className="mt-2 text-lg font-black text-slate-950">{logisticaRoteamentoResultado.empresaEmitente ?? logisticaRoteamentoResultado.EmpresaEmitente ?? 'Emitente pendente'}</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-500">{logisticaRoteamentoResultado.codigoEmpresaEmitente ?? logisticaRoteamentoResultado.CodigoEmpresaEmitente ?? '-'} · {logisticaRoteamentoResultado.cnpjEmitente ?? logisticaRoteamentoResultado.CnpjEmitente ?? '-'}</p>
+                          </div>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Resumo</p>
+                            <p className="mt-2 text-sm font-bold leading-6 text-slate-700">{logisticaRoteamentoResultado.resumoLogistico ?? logisticaRoteamentoResultado.ResumoLogistico}</p>
+                          </div>
+                          {(logisticaRoteamentoResultado.pendencias ?? logisticaRoteamentoResultado.Pendencias ?? []).length > 0 && (
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                              <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-800">Pendências</p>
+                              <div className="mt-3 grid gap-2">
+                                {(logisticaRoteamentoResultado.pendencias ?? logisticaRoteamentoResultado.Pendencias ?? []).map((pendencia) => (
+                                  <p key={pendencia} className="rounded-lg bg-white px-3 py-2 text-sm font-bold text-amber-950">{pendencia}</p>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="mt-5 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm font-bold text-slate-500">
+                          Informe destino e valor para calcular a melhor coleta.
+                        </div>
+                      )}
+                    </section>
+                  </div>
+
                   <div className="grid gap-6 xl:grid-cols-2">
                     <ErpChecklistCard
                       title="Frentes logísticas"
                       items={[
-                        'Rastreamento detalhado por evento.',
-                        'Despacho por transportadora e retirada local.',
+                        'Seleção por menor custo com desempate por prazo.',
+                        'Cruzamento com emitente fiscal de maior margem.',
                         'Peso, volume e cubagem ligados ao cadastro do produto.',
-                        'Base pronta para etiqueta, CT-e e expedição.',
+                        'Base pronta para etiqueta, rastreio e baixa por entrega.',
                       ]}
                     />
                     <CompactList title="Produtos com foco logístico" items={produtos} fields={['nome', 'estoque', 'peso', 'altura']} />

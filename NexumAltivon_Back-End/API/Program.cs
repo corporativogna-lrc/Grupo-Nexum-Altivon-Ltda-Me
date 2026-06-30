@@ -99,6 +99,11 @@ builder.Services.AddCors(options =>
     });
 });
 
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
+
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -3224,6 +3229,102 @@ app.MapPost("/api/frete/cotar", async (
 })
 .AllowAnonymous()
 .WithName("CotarFrete")
+;
+
+app.MapPost("/api/logistica/roteamento", [Authorize(Policy = "Gerente")] async (
+    LogisticaRoteamentoRequest request,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    IFiscalRoutingEngine fiscalRoutingEngine,
+    CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.CepDestino))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("CEP de destino obrigatorio para selecionar coleta logistica."));
+    }
+
+    if (request.Itens.Count == 0)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Informe ao menos um item para calcular coleta, cubagem e frete."));
+    }
+
+    var cotacoes = await CotarFreteAsync(
+        new FreteCotacaoRequest(request.CepOrigem, request.CepDestino, request.Itens),
+        configuration,
+        httpClientFactory,
+        ct);
+
+    var freteSelecionado = cotacoes
+        .OrderBy(item => item.Valor)
+        .ThenBy(item => item.PrazoDias)
+        .FirstOrDefault();
+
+    if (freteSelecionado is null)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Nenhuma opcao de coleta ou frete disponivel para o destino informado."));
+    }
+
+    var empresas = await db.EmpresasGrupo
+        .AsNoTracking()
+        .Where(item => item.Ativa)
+        .ToListAsync(ct);
+
+    var tipoOperacao = request.TipoOperacao ?? TipoOperacaoFiscal.VendaInterna;
+    var decision = fiscalRoutingEngine.Evaluate(
+        new FiscalRoutingRequest(
+            tipoOperacao,
+            request.ValorProdutos,
+            freteSelecionado.Valor,
+            string.IsNullOrWhiteSpace(request.EstadoOrigem) ? "SP" : request.EstadoOrigem,
+            string.IsNullOrWhiteSpace(request.EstadoDestino) ? "SP" : request.EstadoDestino,
+            request.CategoriaFiscal,
+            request.SubcategoriaFiscal,
+            request.NaturezaOperacao,
+            request.ExigeMarketplace,
+            request.ExigeDropshipping,
+            true,
+            false),
+        empresas.Select(fiscalRoutingEngine.ToSnapshot).ToList());
+
+    var candidatoFiscal = decision.EmpresaSelecionada is null
+        ? null
+        : decision.Ranking.FirstOrDefault(item => item.Empresa.Id == decision.EmpresaSelecionada.Id);
+    var custoFiscal = candidatoFiscal?.CustoTotalEstimado ?? 0m;
+    var custoOperacionalTotal = decimal.Round(custoFiscal + freteSelecionado.Valor, 2);
+    var receitaTotal = request.ValorProdutos + freteSelecionado.Valor;
+    var lucroEstimado = decimal.Round(receitaTotal - custoOperacionalTotal, 2);
+    var margemEstimada = receitaTotal <= 0 ? 0m : decimal.Round(lucroEstimado / receitaTotal * 100m, 2);
+
+    var pendencias = new List<string>();
+    if (!decision.Sucesso)
+    {
+        pendencias.Add(decision.Resumo);
+    }
+
+    if (!cotacoes.Any(item => string.Equals(item.Fonte, "Melhor Envio", StringComparison.OrdinalIgnoreCase)))
+    {
+        pendencias.Add("Cotacao usando tabela local ate credencial oficial da transportadora ficar operacional.");
+    }
+
+    var resumo = $"Coleta sugerida: {freteSelecionado.Transportadora} / {freteSelecionado.Nome} por R$ {freteSelecionado.Valor:F2} em {freteSelecionado.PrazoDias} dia(s). Emitente: {decision.EmpresaSelecionada?.CodigoEmpresa ?? "pendente"}. Custo total estimado: R$ {custoOperacionalTotal:F2}. Margem prevista: {margemEstimada:F2}%.";
+    var resposta = new LogisticaRoteamentoResponseDto(
+        freteSelecionado,
+        cotacoes,
+        decision.EmpresaSelecionada?.CodigoEmpresa,
+        decision.EmpresaSelecionada?.RazaoSocial,
+        decision.EmpresaSelecionada?.Cnpj,
+        decision.Resumo,
+        custoOperacionalTotal,
+        lucroEstimado,
+        margemEstimada,
+        resumo,
+        pendencias.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+        DateTime.UtcNow);
+
+    return Results.Ok(ApiResponse<LogisticaRoteamentoResponseDto>.Ok(resposta, "Roteamento logistico calculado com menor custo e melhor margem."));
+})
+.WithName("LogisticaRoteamento")
 ;
 
 app.MapPost("/api/webhooks/mercadopago", async (
@@ -8710,6 +8811,46 @@ public sealed record FreteCotacaoDto(
     decimal Valor,
     int PrazoDias,
     string Fonte);
+
+public sealed record LogisticaRoteamentoRequest(
+    [property: JsonPropertyName("cep_origem")]
+    string? CepOrigem,
+    [property: JsonPropertyName("cep_destino")]
+    string? CepDestino,
+    [property: JsonPropertyName("itens")]
+    List<FreteCotacaoItemRequest> Itens,
+    [property: JsonPropertyName("valor_produtos")]
+    decimal ValorProdutos,
+    [property: JsonPropertyName("estado_origem")]
+    string EstadoOrigem,
+    [property: JsonPropertyName("estado_destino")]
+    string EstadoDestino,
+    [property: JsonPropertyName("categoria_fiscal")]
+    string? CategoriaFiscal,
+    [property: JsonPropertyName("subcategoria_fiscal")]
+    string? SubcategoriaFiscal,
+    [property: JsonPropertyName("natureza_operacao")]
+    string? NaturezaOperacao,
+    [property: JsonPropertyName("tipo_operacao")]
+    TipoOperacaoFiscal? TipoOperacao,
+    [property: JsonPropertyName("exige_marketplace")]
+    bool ExigeMarketplace,
+    [property: JsonPropertyName("exige_dropshipping")]
+    bool ExigeDropshipping);
+
+public sealed record LogisticaRoteamentoResponseDto(
+    FreteCotacaoDto FreteSelecionado,
+    List<FreteCotacaoDto> OpcoesFrete,
+    string? CodigoEmpresaEmitente,
+    string? EmpresaEmitente,
+    string? CnpjEmitente,
+    string RoteamentoFiscalResumo,
+    decimal CustoTotalEstimado,
+    decimal LucroEstimado,
+    decimal MargemEstimadaPercentual,
+    string ResumoLogistico,
+    List<string> Pendencias,
+    DateTime CalculadoEm);
 
 public sealed record GatewayPaymentStartResult(
     bool Started,

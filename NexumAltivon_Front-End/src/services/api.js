@@ -334,8 +334,12 @@ export const empresaGrupoAPI = {
 
 export const fiscalAPI = {
   getPedidos: () => api.get('/fiscal/pedidos'),
+  updatePedidoStatus: (id, status) => api.put(`/fiscal/pedidos/${id}/status`, { novo_status: status }),
   getPdvConfiguracoes: () => api.get('/fiscal/pdv/configuracoes'),
   simularRoteamento: (data) => api.post('/fiscal/simular-roteamento', data),
+  prepararEmissaoManual: (data) => api.post('/fiscal/preparar-emissao-manual', data),
+  salvarRascunhoManual: (data) => api.post('/fiscal/rascunho-manual', data),
+  getRascunhoManual: () => api.get('/fiscal/rascunho-manual'),
 };
 
 export const leadAPI = {
@@ -372,6 +376,10 @@ export const integracoesAPI = {
 
 export const freteAPI = {
   cotar: (data) => api.post('/frete/cotar', data),
+};
+
+export const logisticaAPI = {
+  rotear: (data) => api.post('/logistica/roteamento', data),
 };
 
 export default api;
