@@ -1,0 +1,276 @@
+================================================================================
+DIAGNÓSTICO CONSOLIDADO — GRUPO NEXUM ALTIVON (Ecossistema Multiempresarial)
+================================================================================
+Data: 2026-07-01
+Fontes analisadas:
+  [1] ANALISE_ESTRUTURAL_GRUPO_NEXUM_ALTIVON2.txt  (auditoria por leitura de código-fonte, 423 arquivos, commit aed084a)
+  [2] ANALISE_ESTRUTURAL_NEXUM_ALTIVON.txt         (auditoria estrutural por setor, 409 arquivos, ZIP + repo)
+Repositório: Y:\Nexum Altivon\NexumAltivon.com (branch main)
+Stack oficial: ASP.NET 8 (Minimal API) + MySQL/Pomelo + React 19 (CRA/CRACO) +
+               WPF (.NET 8) + Docker + GitHub Actions + GitHub Pages
+Nenhum arquivo do projeto foi alterado nesta análise (somente leitura + diagnóstico).
+
+--------------------------------------------------------------------------------
+1) VEREDITO GERAL
+--------------------------------------------------------------------------------
+Maturidade estrutural: AVANÇADA (~70% pronto em código; ~45% pronto em homologação operacional).
+Classificação: Ecossistema multiempresarial integrado (e-commerce + ERP + PDV + BI) em estágio
+               "pré-homologação". A base enterprise já existe; o gargalo NÃO é falta de código,
+               e sim ALINHAMENTO OPERACIONAL, CONSOLIDAÇÃO ARQUITETURAL e HOMOLOGAÇÃO REAL.
+
+Os dois pareceres convergem em todos os pontos críticos. Não há contradição entre eles —
+o parecer [1] aprofunda a leitura do código-fonte real; o parecer [2] consolida o inventário
+por setor e endpoints. Este diagnóstico funde os dois.
+
+--------------------------------------------------------------------------------
+2) O QUE JÁ ESTÁ PRONTO E OPERACIONAL (consolidado)
+--------------------------------------------------------------------------------
+[Plataforma .NET 8]
+- Program.cs com ~10.731 linhas e ~90-97 endpoints Minimal API reais (JWT Bearer, RBAC via
+  policies: SuperAdmin/Admin/Gerente/Financeiro/Fiscal/RH, Swagger, HealthChecks
+  /health, /health/db, /health/db/genesis, CORS por ambiente, DataProtection, AutoMapper,
+  HttpClient pool).
+- Middleware próprio: AuthValidators, ExceptionMiddleware, RateLimitingMiddleware,
+  AuditoriaMiddleware, ApiHealthCheck.
+
+[E-commerce completo — Setores 03 + 06]
+- Lojas (seed das 6 unidades: Chronos, EstruturaLine, Geracao Top, Gran Festas, Gran Tur,
+  Moda Mim), categorias, produtos (CRUD + upload de imagem), cupons, carrinho, checkout,
+  pedidos (CRUD + acompanhar + fluxo-operacional + logística), clientes (CRUD + confirmar
+  cadastro + portal/endereços), fornecedores (CRUD), dashboard admin (KPIs, faturamento,
+  mais-vendidos).
+
+[Financeiro — Setor 04 — duas camadas]
+- API e-commerce: /api/financeiro/lancamentos (GET/POST/PATCH status).
+- GenesisGest: /api/erp/genesis/financeiro/* (contas pagar/receber, baixas, boletos,
+  referências) + services ERP isolados (ContaPagar, ContaReceber, FluxoCaixa, DRE,
+  PlanoContas, Banco) com lógica de negócio real.
+
+[Compras/SCM — Setor 05]
+- /api/compras/{painel, solicitacoes, cotacoes, pedidos, entradas} com máquina de status
+  (Pendente -> Cotado -> Pedido -> Recebido/RecebidoParcial).
+
+[PDV + Fiscal — Setor 06]
+- /api/pdv/cockpit, /api/erp/genesis/pdv/vendas, /api/desktop/genesis/pdv/vendas,
+  FiscalRoutingEngine (motor real de roteamento CFOP/ICMS), /api/fiscal/{pdv/configuracoes,
+  pedidos, simular-roteamento, preparar-emissao-manual, rascunho-manual}.
+
+[RH — Setor 07 — básico]
+- /api/erp/genesis/rh/{resumo, colaboradores (CRUD), referencias}.
+
+[Desktop WPF — PDV offline-first]
+- MainWindow + 7 janelas (PDV, ManualNfe, FiscalRouting, Procurement, Logistics,
+  CorporateMasterData, FinancialLedger) + DesktopApiClient + LocalOutboxService
+  (contingência offline) + ModuleWorkspaceWindow.
+
+[Frontend React 19]
+- 14 páginas + 5 componentes de negócio + 46 componentes UI (Radix/shadcn) + contextos
+  Auth/Cart + Tailwind + Recharts + react-router 7 + zod. Runtime fixado em
+  https://api.nexumaltivon.com.br.
+
+[Infra/DevOps]
+- 4 workflows (ci-cd, Pages, dotnet-desktop, npm-publish-github-packages), Docker
+  (api/frontend/nginx/watchtower), scripts .cmd de operação servidor (instalação,
+  aplicação 5012, guardian, tunnel cloudflare), backup MySQL.
+
+[Schema de dados]
+- 125 tabelas no schema GenesisGest original (prefixo adm_*) + schema e-commerce
+  nexum_altivon (23 tabelas, 5 views, 6 procedures, 2 triggers); scripts ERP adicionam
+  22 tabelas ERP, views de resumo, procedures e triggers; seed das 6 lojas.
+
+--------------------------------------------------------------------------------
+3) GAPS CRÍTICOS (bloqueadores de homologação) — priorizados
+--------------------------------------------------------------------------------
+G1 [ARQUITETURA — CRÍTICO] Solution quebrada / três linhas arquiteturais sobrepostas
+    - NexumAltivon.ERP.sln só inclui NexumAltivon.ERP.csproj (raiz) + Desktop.
+    - Os projetos NexumAltivon_Back-End/API (a API real de produção) e NexumAltivon_ERP
+      (camada ERP com services) NÃO estão na solution e não são referenciados.
+    - Existem 3 linhas sobrepostas: (a) API principal Minimal API em Program.cs,
+      (b) ERP raiz controller-based (NexumAltivon.ERP.csproj), (c) NexumAltivon_ERP isolado.
+    - Decisão pendente: consolidar qual API é a oficial e como o ERP se acopla.
+
+G2 [ARQUITETURA — CRÍTICO] Controllers MVC mortos / superfície da API divergente
+    - ~14 [ApiController] em NexumAltivon_Back-End/API/Controllers/* mas o Program.cs
+      NÃO chama AddControllers() nem MapControllers() -> todos esses endpoints estão
+      duplicados/inativos. Risco de divergência de comportamento e "falso pronto".
+    - Frontend consome endpoints AUSENTES no Program.cs principal:
+        GET  /lojas/{id}
+        GET  /pedidos/{id}
+        GET  /relatorios/vendas
+        GET  /financeiro/faturamento
+        POST /api/auth/refresh
+      (partes existem em controllers mortos -> risco de 404 em produção).
+
+G3 [ARQUITETURA — ALTO] Duplicação massiva de código legado na raiz
+    - Controllers/, Services/, Models/, DTOs/, Data/, Configurations/ na raiz do repo
+      são cópias legadas excluídas do build (via <Compile Remove>) mas ainda versionadas.
+    - Recomendado arquivar (já existe pasta Arquivos_Mortos/).
+
+G4 [DOMÍNIO — ALTO] Regra de ouro Sys_AuditableEntity não implementada
+    - Modelos usam int Id, SEM TenantId, SEM RowVersion, SEM soft-delete padronizado
+      (IsDeleted/DeletedAt). Multitenancy real ausente -> impede isolamento por empresa/loja.
+
+G5 [SEGURANÇA — CRÍTICO] Secret management
+    - JwtSettings:SecretKey em appsettings + env; sem cofre (Key Vault/Secrets Manager).
+    - Segredos realistas aparecem em arquivos de configuração -> tratar como VAZADOS e
+      rotacionar imediatamente. appsettings.PrivateProduction.template.json indica fluxo manual.
+
+G6 [INFRA — ALTO] docker-compose.prod.yml sem banco nem cache
+    - Não sobe MySQL nem Redis/cache -> depende de banco externo no servidor
+      192.168.1.72:3309 (single point of failure).
+    - Nginx de produção expõe apenas HTTP (porta 80); TLS/certificados precisam estar
+      resolvidos por proxy externo (Cloudflare Tunnel) ou no Nginx.
+
+G7 [QUALIDADE — ALTO] Sem testes automatizados
+    - Nenhum projeto *.Tests, nenhum arquivo .spec/.test no repo.
+    - Sem observabilidade estruturada (Serilog no csproj mas sem sinks/JSON; sem
+      OpenTelemetry; sem APM).
+    - Sem EF Migrations — schema gerenciado por scripts SQL manuais soltos -> risco de drift.
+    - Backup MySQL existe mas sem validação automatizada nem restore testado.
+
+G8 [INTEGRAÇÕES — MÉDIO] Credenciais reais pendentes
+    - Mercado Pago, Melhor Envio, Mercado Livre, Shopify, CJ Dropshipping, gateways
+      adicionais, SMTP, certificado NF-e/NFC-e e banco -> todos aguardando credenciais
+      reais e homologação transacional.
+
+G9 [DOCUMENTAÇÃO — MÉDIO] Documentos operacionais referenciados mas ausentes
+    - docs/2026-06-16-checklist-prontidao-deploy.md
+    - docs/CHECKLIST_OPERACIONAL_TABELAS_2026-06-29.md
+    - docs/CRONOGRAMA_OPERACIONAL_2026-06-29.md
+    - docs/HANDOFF-PRODUCAO-PRIVADA-INTEGRACOES.md
+
+--------------------------------------------------------------------------------
+4) GAPS POR SETOR (mapa de endpoints faltantes — modelo-alvo)
+--------------------------------------------------------------------------------
+Setor 00 — Plataforma/SSO [PARCIAL]:
+  [F] POST /api/auth/mfa/enable, /api/auth/mfa/verify (TOTP)
+  [F] POST /api/auth/refresh (rotação) — também consumido pelo frontend
+  [F] GET /api/tenants, middleware TenantResolver (multitenancy real)
+  [F] GET/POST/PUT /api/workflows/* (aprovações)
+  [F] RBAC fino por módulo, SSO OIDC/SAML
+
+Setor 01 — Cockpit/BI [IMPLEMENTADO leitura]:
+  [F] POST /api/relatorios/dinamico (builder), GET /api/relatorios/{id}/export (pdf/xlsx)
+  [F] POST /api/relatorios/agendar
+  (ClosedXML/DinkToPdf no csproj mas sem endpoints expostos)
+
+Setor 02 — GRC/IAM [PARCIAL]:
+  [F] GET/POST/PUT/DELETE /api/perfis, /api/permissoes, /api/perfis/{id}/permissoes
+  [F] GET /api/auditoria (com filtros), GET /api/auditoria/{id}
+  [F] Segregação de funções (SoD)
+
+Setor 03 — Master Data [IMPLEMENTADO e-com; ERP PARCIAL]:
+  [F] /api/pessoas (PF/PJ unificadas), /api/centros-custo, /api/itens-servico
+  [F] /api/produtos/{id}/precos-por-loja, /api/fornecedores/{id}/contatos
+
+Setor 04 — FICO [IMPLEMENTADO em 2 camadas; ERP isolado não exposto]:
+  [F] Integrar services do NexumAltivon_ERP na API ativa (hoje duplicados em ERP/SharedData)
+  [F] /api/financeiro/contabil/lancamentos, /api/financeiro/razao, /conciliacao, /dre,
+      /fechamento
+  [F] /api/fiscal/sped, /api/fiscal/ecf
+
+Setor 05 — SCM/WMS [IMPLEMENTADO compras; WMS só model]:
+  [F] /api/estoque/movimentacoes, /inventario, /kardex, /locais, /transferencias, /alertas
+  [F] /api/portaria/{entradas,saidas}
+  [F] Cotação automática multi-fornecedor
+
+Setor 06 — Comercial/CRM/Fiscal [IMPLEMENTADO e-com+PDV; fiscal só rascunho]:
+  [F] /api/fiscal/nfe/emitir (SEFAZ real), /nfce/emitir, /cte, /mdfe, /inutilizar,
+      /cancelar, /cartacorrecao
+  [F] /api/crm/pipelines, /oportunidades, /tickets, /atividades, /campanhas, /segmentos
+  [F] /api/marketplaces/{ml,b2w,via}/sync, /api/faturamento/lote
+
+Setor 07 — HCM/RH [PARCIAL]:
+  [F] /api/rh/ponto, /folha, /avaliacoes, /admissoes, /demissoes, /esocial, /beneficios
+
+Setor 08 — MES/OPS [AUSENTE — 100%]:
+  [F] /api/ops/ordens-servico, /producao/apontamentos, /manutencao (preventiva/corretiva),
+      /ativos
+
+--------------------------------------------------------------------------------
+5) FLUXO OPERACIONAL ALVO (multiempresarial — ponta a ponta)
+--------------------------------------------------------------------------------
+Venda(PDV/Ecom) -> Pedido -> Fiscal(NF-e/NFC-e real) -> Estoque(saída/Kardex)
+   -> Financeiro(conta a receber) -> Conciliação -> Contabilidade -> DRE/SPED
+Compra -> Solicitação -> Cotação -> Pedido -> Recebimento(Portaria) ->
+   Estoque(entrada/Kardex) -> Financeiro(conta a pagar) -> Conciliação
+RH admissão -> Ponto -> Folha -> Contabilidade -> eSocial
+Tudo auditado (Sys_AuditableEntity) e isolado por TenantId por empresa/loja.
+
+--------------------------------------------------------------------------------
+6) RISCOS OBJETIVOS (consolidados)
+--------------------------------------------------------------------------------
+R1. Concentração de regra de negócio em Program.cs (10k+ linhas): risco alto de manutenção
+    e regressão; dificulta testes por módulo.
+R2. Controllers existem mas não são compilados pelo csproj da API principal: risco de falsa
+    sensação de endpoint pronto.
+R3. Frontend consome endpoints ausentes no Program.cs: risco de 404 em produção.
+R4. Segredos em arquivos de configuração: risco CRÍTICO de segurança — tratar como vazados.
+R5. Produção Docker sem banco: depende de banco externo e secrets corretos (SPOF).
+R6. Nginx produção só HTTP: TLS precisa de proxy externo ou config adicional.
+R7. Três linhas arquiteturais sobrepostas (API Minimal / ERP raiz controller / ERP isolado):
+    precisa consolidação formal.
+R8. Sem suíte de testes automatizados.
+R9. Sem EF Migrations -> drift de schema.
+R10. Divergência .com vs .com.br: workflows indicam .com.br oficial e .com como
+     redirecionamento legado; docker prod ainda usa vários hosts .com.
+
+--------------------------------------------------------------------------------
+7) PLANO DE AÇÃO RECOMENDADO (ordem de execução)
+--------------------------------------------------------------------------------
+FASE 0 — ESTABILIZAÇÃO (semântica + segurança) [crítico]
+  0.1 Rotacionar TODOS os segredos (JWT, integrações, banco) e migrar para secret store.
+  0.2 Decidir a API oficial: consolidar NexumAltivon_Back-End/API como única API de
+      produção; arquivar ERP raiz controller-based e NexumAltivon_ERP ou incorporá-los.
+  0.3 Corrigir a solution (.sln) para incluir API + ERP + Desktop.
+  0.4 Ativar AddControllers()/MapControllers() OU remover os 14 controllers MVC mortos;
+      garantir que endpoints consumidos pelo frontend existam no build principal:
+      /lojas/{id}, /pedidos/{id}, /relatorios/vendas, /financeiro/faturamento, /auth/refresh.
+  0.5 Arquivar duplicações da raiz (Controllers/, Services/, Models/, DTOs/ legados) em
+      Arquivos_Mortos/.
+
+FASE 1 — DOMÍNIO MULTIEMPRESARIAL [alto]
+  1.1 Implementar Sys_AuditableEntity (TenantId, RowVersion, IsDeleted, DeletedAt) em toda
+      tabela transacional; soft-delete global; índices multitenant.
+  1.2 Middleware TenantResolver (resolve tenant por JWT/empresa/loja).
+  1.3 Adotar EF Migrations (substituir scripts SQL manuais soltos).
+
+FASE 2 — HOMOLOGAÇÃO DE INTEGRAÇÕES [alto]
+  2.1 Credenciais reais + homologação transacional: Mercado Pago, Melhor Envio, Mercado
+      Livre, Shopify, CJ Dropshipping, SMTP, certificado NF-e/NFC-e.
+  2.2 Emissão fiscal real SEFAZ (NF-e/NFC-e) — hoje só rascunho manual e simulação.
+
+FASE 3 — INFRA/PRODUÇÃO [alto]
+  3.1 TLS no Nginx ou confirmar Cloudflare Tunnel como terminação TLS.
+  3.2 Estratégia de banco em produção (HA/replica) — eliminar SPOF 192.168.1.72.
+  3.3 Redis cache + Hangfire store; S3/MinIO para anexos/NF-e XML/SPED.
+  3.4 Backup automatizado + restore testado periodicamente.
+
+FASE 4 — QUALIDADE/OBSERVABILIDADE [médio]
+  4.1 Suíte de testes (unit + integração + smoke de endpoints críticos).
+  4.2 Observabilidade: Serilog com sinks estruturados, OpenTelemetry, APM, alertas.
+  4.3 Documentação técnica: OpenAPI exportado, diagramas de sequência, handoff operacional.
+
+FASE 5 — MÓDULOS FALTANTES (expansão) [médio/baixo]
+  5.1 Expor services do NexumAltivon_ERP via API (WMS, CRM avançado, contabilidade, DRE).
+  5.2 RH completo (ponto, folha, eSocial).
+  5.3 MES/OPS (OS, produção, manutenção) — setor 08 ausente.
+
+--------------------------------------------------------------------------------
+8) CONCLUSÃO OBJETIVA
+--------------------------------------------------------------------------------
+O Grupo Nexum Altivon possui uma base enterprise avançada, com front, back, banco, ERP,
+desktop, CI/CD e infraestrutura já estruturados. O maior ponto de atenção NÃO é ausência de
+código, mas ALINHAMENTO OPERACIONAL: (1) consolidar qual API é a oficial, (2) garantir que
+todos os endpoints consumidos estejam publicados no build principal, (3) remover/rotacionar
+segredos, (4) implementar multitenancy (TenantId + Sys_AuditableEntity), (5) homologar
+integrações reais (especialmente fiscal SEFAZ), (6) fechar HTTPS/observabilidade/testes, e
+(7) validar o fluxo ponta a ponta multiempresa: cadastro -> venda -> pagamento -> estoque ->
+fiscal -> logística -> financeiro -> BI.
+
+Pronto para produção: NÃO (pré-homologação).
+Pronto para homologação interna: SIM, após FASE 0 (estabilização + segurança).
+
+================================================================================
+FIM DO DIAGNÓSTICO CONSOLIDADO
+================================================================================
