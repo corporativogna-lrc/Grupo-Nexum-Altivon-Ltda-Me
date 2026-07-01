@@ -1,0 +1,1297 @@
+ANALISE ESTRUTURAL COMPLETA - GRUPO NEXUM ALTIVON
+========================================================================
+Fonte principal indicada pelo solicitante: Y:\Nexum Altivon\NexumAltivon.com
+Fonte acessivel efetivamente auditada nesta execucao: ZIP enviado do projeto + estrutura vinculada ao repositorio corporativogna-lrc/Grupo-Nexum-Altivon-Ltda-Me.
+Escopo: levantamento estrutural, diagramas, infraestrutura, endpoints, SQL, pronto x pendente. Nenhum arquivo do projeto foi alterado.
+
+1) RESUMO EXECUTIVO
+------------------------------------------------------------------------
+- Total de arquivos auditados: 409.
+- Arquitetura encontrada: Frontend React + API ASP.NET Core .NET 8 + ERP GenesisGest + Desktop WPF/PDV + MySQL + Docker/Nginx + GitHub Actions.
+- API operacional principal publicada pelo Docker/GHCR: NexumAltivon_Back-End/NexumAltivon.API.csproj, com entrada em NexumAltivon_Back-End/API/Program.cs.
+- Endpoints efetivamente mapeados no Program.cs da API principal: 97.
+- Existem controllers REST adicionais no repositório, mas o csproj principal da API não inclui esses controllers no build Docker atual; portanto são código existente, não superfície garantida da API principal.
+- Banco principal: MySQL 8; schemas: nexum_altivon, genesis_bd e extensões ERP/GenesisGest.
+- Situação geral: base estrutural robusta e avançada; pendências centrais em credenciais reais, fechamento de endpoints faltantes, unificação dos projetos API/ERP, homologação build/test/deploy, HTTPS/certificados e observabilidade.
+
+2) DISTRIBUICAO DE ARQUIVOS POR SETOR
+------------------------------------------------------------------------
+- 01_FRONTEND_REACT_PUBLICACAO_WEB: 125 arquivo(s)
+- 02_BACKEND_API_COMMERCE_ERP: 111 arquivo(s)
+- 03_ERP_GENESISGEST_SEPARADO: 53 arquivo(s)
+- 10_ERP_RAIZ_ASPNET_CONTROLLER_BASED: 37 arquivo(s)
+- 12_PUBLICACAO_ESTATICA_RAIZ: 19 arquivo(s)
+- 04_DESKTOP_WPF_PDV: 18 arquivo(s)
+- 11_SCRIPTS_OPERACIONAIS: 11 arquivo(s)
+- 13_CONFIG_RAIZ_APOIO: 10 arquivo(s)
+- 06_INFRA_DOCKER_NGINX: 9 arquivo(s)
+- 09_ARQUIVOS_MORTOS_LEGADO: 5 arquivo(s)
+- 05_BANCO_SQL_MIGRACOES: 5 arquivo(s)
+- 07_CICD_GITHUB_ACTIONS: 4 arquivo(s)
+- 08_DOCUMENTACAO: 2 arquivo(s)
+
+Extensoes:
+- .Config: 1
+- .api: 1
+- .cmd: 9
+- .conf: 2
+- .config: 2
+- .cs: 205
+- .csproj: 3
+- .css: 3
+- .example: 2
+- .frontend: 1
+- .html: 29
+- .js: 38
+- .json: 15
+- .jsx: 46
+- .map: 2
+- .md: 6
+- .png: 1
+- .sh: 2
+- .sln: 1
+- .sql: 7
+- .svg: 10
+- .txt: 1
+- .xaml: 4
+- .yml: 6
+- [sem_ext]: 12
+
+Arquivos maiores / mais densos:
+-  20570 linhas | NexumAltivon_Front-End/package-lock.json
+-  10381 linhas | NexumAltivon_Back-End/API/Program.cs
+-   5495 linhas | NexumAltivon_Front-End/src/pages/Dashboard.js
+-   3625 linhas | README.md
+-   3117 linhas | docs/README.md
+-   1942 linhas | NexumAltivon_Back-End/API/Database/2026-06-29-genesisgest-original-schema.sql
+-   1472 linhas | Arquivos_Mortos/frontend-legado-20260629/admin-index-mock-legado.html
+-   1381 linhas | Arquivos_Mortos/frontend-legado-20260629/public-landing-legado.html
+-   1381 linhas | Arquivos_Mortos/frontend-legado-20260629/landing-raiz-legado.html
+-   1380 linhas | Arquivos_Mortos/frontend-legado-20260629/frontend-index-legado.html
+-   1081 linhas | NexumAltivon_Back-End/API/ERP/SharedData/GenesisPdvService.cs
+-    959 linhas | NexumAltivon_Back-End/Database/nexum_altivon_schema.sql
+-    931 linhas | NexumAltivon_Front-End/src/pages/Home.js
+-    763 linhas | nexum-admin-integration.js
+-    762 linhas | NexumAltivon_Front-End/public/nexum-admin-integration.js
+-    659 linhas | docs/AGENTS.md
+-    659 linhas | AGENTS.md
+-    634 linhas | Database/erp_update_schema.sql
+-    623 linhas | Database/erp_schema_update.sql
+-    586 linhas | NexumAltivon_Front-End/src/pages/AreaCliente.js
+
+3) DIAGRAMA 1 - ORGANIZACAO EMPRESARIAL / CORPORATIVA POR SETOR
+------------------------------------------------------------------------
+GRUPO NEXUM ALTIVON - ECOSSISTEMA CORPORATIVO ATUAL
+|
++-- PRESIDENCIA / GOVERNANCA DIGITAL
+|   +-- Gestão corporativa, dashboards, dicionário de dados, indicadores e ciclo operacional
+|   +-- Arquivos:
+|       - NexumAltivon_Back-End/API/Program.cs
+|       - NexumAltivon_Front-End/src/pages/Dashboard.js
+|       - NexumAltivon_Back-End/API/Controllers/Admin/DashboardController.cs
+|       - NexumAltivon_Back-End/API/DTOs/Admin/DashboardDtos.cs
+|       - NexumAltivon_Back-End/API/Services/Admin/AdminDashboardService.cs
+|
++-- COMERCIAL / E-COMMERCE / LOJAS
+|   +-- Vitrine, catálogo, produtos, categorias, lojas, checkout e pedidos
+|   +-- Arquivos:
+|       - NexumAltivon_Front-End/src/pages/Home.js
+|       - NexumAltivon_Front-End/src/pages/Produtos.js
+|       - NexumAltivon_Front-End/src/pages/ProdutoDetalhe.js
+|       - NexumAltivon_Front-End/src/pages/Lojas.js
+|       - NexumAltivon_Front-End/src/pages/Carrinho.js
+|       - NexumAltivon_Front-End/src/pages/Checkout.js
+|       - NexumAltivon_Front-End/src/pages/AcompanharPedido.js
+|       - NexumAltivon_Front-End/src/services/api.js
+|       - NexumAltivon_Back-End/API/Models/Loja.cs
+|       - NexumAltivon_Back-End/API/Models/Produto.cs
+|       - NexumAltivon_Back-End/API/Models/Categoria.cs
+|       - NexumAltivon_Back-End/API/Models/Pedido.cs
+|       - NexumAltivon_Back-End/API/Models/PedidoItem.cs
+|
++-- CLIENTES / CRM / ATENDIMENTO
+|   +-- Cadastro cliente, portal cliente, leads, atendimento, relacionamento e funil comercial
+|   +-- Arquivos:
+|       - NexumAltivon_Front-End/src/pages/AreaCliente.js
+|       - NexumAltivon_Front-End/src/pages/Login.js
+|       - NexumAltivon_Back-End/API/Models/Cliente.cs
+|       - NexumAltivon_Back-End/API/Models/Endereco.cs
+|       - NexumAltivon_Back-End/API/Models/CrmLead.cs
+|       - NexumAltivon_Back-End/API/Models/CrmAtendimento.cs
+|       - NexumAltivon_Back-End/API/DTOs/ClienteDtos.cs
+|       - NexumAltivon_Back-End/API/DTOs/CrmDtos.cs
+|       - Controllers/CrmController.cs
+|       - Services/CrmService.cs
+|
++-- FINANCEIRO / CONTAS / CAIXA
+|   +-- Lançamentos, contas a pagar/receber, boletos, DRE, fluxo de caixa, baixa e conciliação futura
+|   +-- Arquivos:
+|       - NexumAltivon_Back-End/API/Models/Financeiro.cs
+|       - NexumAltivon_Back-End/API/ERP/SharedData/GenesisFinanceService.cs
+|       - NexumAltivon_Back-End/API/ERP/SharedData/GenesisFinanceModels.cs
+|       - NexumAltivon_Back-End/API/ERP/SharedData/GenesisFinanceDtos.cs
+|       - NexumAltivon_ERP/Models/Financeiro/*.cs
+|       - NexumAltivon_ERP/Services/Financeiro/*.cs
+|       - Controllers/FinanceiroController.cs
+|       - Services/FinanceiroService.cs
+|
++-- FISCAL / NF-E / NFC-E / EMPRESAS DO GRUPO
+|   +-- Empresas, roteamento fiscal, emissão manual, fiscal por pedido, PDV fiscal e certificado
+|   +-- Arquivos:
+|       - NexumAltivon_Back-End/API/Models/Fiscal.cs
+|       - NexumAltivon_Back-End/API/Models/EmpresaGrupo.cs
+|       - NexumAltivon_Back-End/API/ERP/FiscalRouting/FiscalRoutingEngine.cs
+|       - NexumAltivon_Back-End/API/ERP/FiscalRouting/FiscalRoutingModels.cs
+|       - NexumAltivon_ERP/Models/Fiscal/*.cs
+|       - Controllers/FiscalController.cs
+|       - NexumAltivon.Desktop/ManualNfeWindow.xaml
+|       - NexumAltivon.Desktop/ManualNfeWindow.xaml.cs
+|
++-- SUPRIMENTOS / COMPRAS / FORNECEDORES / ESTOQUE
+|   +-- Fornecedores, solicitação de compra, cotação, pedido de compra, entrada, estoque e identificação física
+|   +-- Arquivos:
+|       - NexumAltivon_Back-End/API/Models/Fornecedor.cs
+|       - NexumAltivon_Back-End/API/Models/Produto.cs
+|       - Models/EstoqueModels.cs
+|       - Services/EstoqueService.cs
+|       - Services/FornecedorService.cs
+|       - Controllers/EstoqueController.cs
+|       - Controllers/FornecedoresController.cs
+|       - NexumAltivon_ERP/Models/Estoque/*.cs
+|
++-- LOGISTICA / FRETE / RASTREAMENTO
+|   +-- Cotação, roteamento, transportadoras, Melhor Envio, envio e rastreio
+|   +-- Arquivos:
+|       - NexumAltivon_Back-End/API/Models/Envio.cs
+|       - NexumAltivon_Back-End/API/Models/Transportadora.cs
+|       - NexumAltivon_Back-End/API/DTOs/LogisticaDtos.cs
+|       - NexumAltivon_Back-End/API/Services/FreteService.cs
+|       - NexumAltivon_Back-End/API/Services/LogisticaService.cs
+|       - NexumAltivon_Back-End/API/Services/MelhorEnvioService.cs
+|
++-- INTEGRACOES / MARKETPLACES / DROPSHIPPING / PAGAMENTO
+|   +-- Mercado Pago, Mercado Livre, Shopify, CJ Dropshipping, gateways principal/secundário, webhooks
+|   +-- Arquivos:
+|       - NexumAltivon_Back-End/API/Controllers/IntegracoesController.cs
+|       - NexumAltivon_Back-End/API/Controllers/WebhookController.cs
+|       - NexumAltivon_Back-End/API/Models/Marketplace.cs
+|       - NexumAltivon_Back-End/API/Models/DropshippingConfig.cs
+|       - NexumAltivon_Back-End/API/Models/Pagamento.cs
+|       - NexumAltivon_Back-End/API/DTOs/MarketplaceDtos.cs
+|       - NexumAltivon_Back-End/API/DTOs/DropshippingDtos.cs
+|       - NexumAltivon_Back-End/API/DTOs/PagamentoDtos.cs
+|       - NexumAltivon_Back-End/API/Services/MercadoPagoService.cs
+|       - NexumAltivon_Back-End/API/Services/MercadoLivreService.cs
+|       - NexumAltivon_Back-End/API/Services/MarketplaceSyncService.cs
+|       - NexumAltivon_Back-End/API/Services/DropshippingService.cs
+|
++-- ERP GENESISGEST / BACKOFFICE ESPECIALIZADO
+|   +-- Módulos ERP separados para financeiro, fiscal, estoque e CRM
+|   +-- Arquivos:
+|       - NexumAltivon_ERP/Data/GenesisDbContext.cs
+|       - NexumAltivon_ERP/Models/Financeiro/*.cs
+|       - NexumAltivon_ERP/Models/Fiscal/*.cs
+|       - NexumAltivon_ERP/Models/Estoque/*.cs
+|       - NexumAltivon_ERP/Models/CRM/*.cs
+|       - NexumAltivon_ERP/DTOs/**/*.cs
+|       - NexumAltivon_ERP/Services/**/*.cs
+|
++-- OPERACAO LOCAL / DESKTOP / PDV
+|   +-- WPF, PDV, venda local, outbox, terminal e emissão fiscal manual
+|   +-- Arquivos:
+|       - NexumAltivon.Desktop/App.xaml
+|       - NexumAltivon.Desktop/MainWindow.xaml
+|       - NexumAltivon.Desktop/PdvSaleWindow.xaml
+|       - NexumAltivon.Desktop/ManualNfeWindow.xaml
+|       - NexumAltivon.Desktop/Services/DesktopApiClient.cs
+|       - NexumAltivon.Desktop/Services/LocalOutboxService.cs
+|       - NexumAltivon.Desktop/Models/*.cs
+|
++-- INFRAESTRUTURA / DEVOPS / PUBLICACAO
+    +-- Docker, Nginx, GitHub Pages, GHCR, CI/CD, scripts de servidor e backup
+    +-- Arquivos:
+        - docker/docker-compose.yml
+        - docker/docker-compose.prod.yml
+        - docker/Dockerfile.api
+        - docker/Dockerfile.frontend
+        - docker/nginx/nginx.conf
+        - docker/nginx/frontend.conf
+        - docker/scripts/backup-mysql.sh
+        - docker/scripts/restore-mysql.sh
+        - .github/workflows/Pages.yml
+        - .github/workflows/ci-cd.yml
+        - .github/workflows/dotnet-desktop.yml
+        - scripts/server/*.cmd
+
+4) DIAGRAMA 2 - INFRAESTRUTURA USADA / FLUXO GRAFICO
+------------------------------------------------------------------------
+                 USUARIOS / CLIENTES / OPERADORES / ADMIN / PDV
+                                      |
+                                      v
++------------------------- DOMINIOS PUBLICOS --------------------------+
+| nexumaltivon.com.br | www.nexumaltivon.com.br | admin/erp/crm/pdv    |
+| api.nexumaltivon.com.br | back.nexumaltivon.com.br                    |
++----------------------------------+-----------------------------------+
+                                   |
+                                   v
++--------------------------- CAMADA WEB -------------------------------+
+| GitHub Pages / Build React / Publicacao estatica                      |
+| Arquivos: CNAME, api-runtime.json, index.html, static/*, public/*     |
++----------------------------------+-----------------------------------+
+                                   |
+                                   v
++------------------------- FRONTEND REACT -----------------------------+
+| React 19 + Router + Axios + Tailwind + Radix UI + Recharts            |
+| Build: npm ci --legacy-peer-deps -> npm run build                     |
+| Entrada: NexumAltivon_Front-End/src/App.js                            |
+| API client: NexumAltivon_Front-End/src/services/api.js                |
++----------------------------------+-----------------------------------+
+                                   |
+                                   | HTTPS /api + /health
+                                   v
++-------------------------- NGINX / REVERSE PROXY ---------------------+
+| docker/nginx/nginx.conf                                               |
+| - /              -> nexum_frontend:80                                 |
+| - api/back hosts -> nexum_api:8080                                    |
+| - /health        -> frontend ou API conforme host                     |
++----------------------------------+-----------------------------------+
+                                   |
+              +--------------------+--------------------+
+              |                                         |
+              v                                         v
++------------------------------+       +--------------------------------+
+| CONTAINER FRONTEND           |       | CONTAINER API .NET 8            |
+| imagem GHCR frontend         |       | imagem GHCR API                 |
+| Nginx static SPA             |       | NexumAltivon.API.dll            |
+| Dockerfile.frontend          |       | Dockerfile.api                  |
++------------------------------+       +----------------+---------------+
+                                                        |
+                                                        v
++---------------------------- BACKEND OPERACIONAL ----------------------+
+| NexumAltivon_Back-End/NexumAltivon.API.csproj                         |
+| Compila: API/Program.cs + API/Data + API/ERP + API/Models +           |
+|          API/Services/NotificacaoService.cs                           |
+| Serviços: JWT, CORS, Swagger dev/staging, HealthChecks, HTTP clients, |
+|           MySQL EF Core, DataProtection, Notificações                 |
++--------------------+---------------------+----------------------------+
+                     |                     |
+                     v                     v
++--------------------------+     +-----------------------------+
+| BANCO NEXUM              |     | BANCO GENESIS               |
+| MySQL: nexum_altivon     |     | MySQL: genesis_bd           |
+| schema ecommerce/ERP     |     | schema ERP legado/original  |
+| pedidos, clientes, etc.  |     | financeiro, RH, PDV, etc.   |
++--------------------------+     +-----------------------------+
+                     |
+                     v
++------------------------- INTEGRACOES EXTERNAS -----------------------+
+| Mercado Pago | Melhor Envio | Mercado Livre | Shopify | CJ Dropship  |
+| SMTP/E-mail  | Gateways principal/secundario | Logistica secundaria    |
++-----------------------------------------------------------------------+
+                     |
+                     v
++--------------------------- OPERACAO LOCAL ----------------------------+
+| Desktop WPF / PDV: terminal, venda local, outbox JSON, emissão manual |
+| Scripts servidor: Guardian API 5012, Cloudflare Tunnel, Boot servidor |
++-----------------------------------------------------------------------+
+
+5) O QUE JA ESTA PRONTO
+------------------------------------------------------------------------
+- Frontend React estruturado, com rotas públicas, área de cliente, dashboard e integração Axios com API runtime.
+- API .NET 8 principal com 97 endpoints minimal API no Program.cs, JWT, CORS, MySQL, health checks e serviços de integração.
+- Persistência MySQL com schema principal nexum_altivon, schema GenesisGest original e scripts ERP.
+- Docker de desenvolvimento com MySQL, API, frontend, Redis opcional e Nginx.
+- Docker de produção com API, frontend, Nginx e Watchtower; imagens previstas em GHCR.
+- Workflows: GitHub Pages, CI/CD API/frontend, Desktop WPF e pacote Node.
+- ERP raiz controller-based com controllers, services, DTOs e models para CRM, financeiro, fiscal, estoque, fornecedores, relatórios e sync.
+- ERP GenesisGest separado com Models/DTOs/Services para financeiro, fiscal, estoque e CRM.
+- Desktop WPF/PDV com tela principal, PDV de venda, emissão fiscal manual e outbox local.
+- Scripts SQL para schema principal, atualização ERP, sincronização de lojas, normalização de enums e schema GenesisGest original.
+- Runtime público fixado para https://api.nexumaltivon.com.br e domínio CNAME em nexumaltivon.com.br.
+
+6) O QUE RESTA COMPLETAR / HOMOLOGAR
+------------------------------------------------------------------------
+- Unificar a superfície real da API: controllers existentes não estão incluídos no build Docker principal da API; hoje a superfície garantida é majoritariamente o Program.cs.
+- Implementar ou expor na API principal endpoints consumidos pelo frontend e não encontrados no Program.cs: POST /api/auth/refresh; GET /api/lojas/{id}; GET /api/pedidos/{id}; GET /api/relatorios/vendas; GET /api/financeiro/faturamento.
+- Concluir credenciais reais de produção: Mercado Pago, Melhor Envio, Mercado Livre, Shopify, CJ Dropshipping, gateways adicionais, SMTP, certificado NF-e/NFC-e e banco.
+- Rotacionar segredos já presentes em appsettings/configs e manter somente via ambiente/secret store; a análise não replica valores sensíveis.
+- Validar build real .NET/React em CI; neste ambiente local não havia dotnet instalado para compilação independente.
+- Completar HTTPS no docker-compose.prod.yml/Nginx: produção expõe porta 80; TLS/certificados devem estar definidos no proxy externo ou no Nginx.
+- Confirmar provisionamento externo do MySQL em produção; docker-compose.prod.yml não sobe MySQL, depende de API_DEFAULT_CONNECTION.
+- Adicionar testes automatizados de API, frontend, integração, carga e smoke test de endpoints críticos.
+- Fechar observabilidade: logs centralizados, métricas, tracing, alertas, backup testado e restore validado.
+- Completar documentação operacional referenciada no README, pois alguns arquivos citados em docs/ não existem no ZIP auditado.
+- Validar módulos planejados ou em status aguardando: bancos/conciliação, fiscal real, etiquetas/frete real, marketplace real e dropshipping real.
+- Resolver divergências entre .com e .com.br: workflows indicam .com.br oficial e .com como redirecionamento legado; docker prod ainda usa vários hosts .com.
+
+Documentos referenciados mas ausentes no ZIP:
+- docs/2026-06-16-checklist-prontidao-deploy.md
+- docs/CHECKLIST_OPERACIONAL_TABELAS_2026-06-29.md
+- docs/CRONOGRAMA_OPERACIONAL_2026-06-29.md
+- docs/HANDOFF-PRODUCAO-PRIVADA-INTEGRACOES.md
+
+7) ENDPOINTS DA API PRINCIPAL - Program.cs
+------------------------------------------------------------------------
+[01_SISTEMA_AUTH_HEALTH]
+- GET    /health  (linha 232)
+- GET    /health/db  (linha 233)
+- GET    /health/db/genesis  (linha 255)
+- GET    /  (linha 442)
+- POST   /api/auth/login  (linha 452)
+- POST   /api/sistema/validar-token  (linha 525)
+- GET    /api/sistema/credenciais/status  (linha 553)
+- GET    /api/auth/me  (linha 584)
+
+[02_ERP_GENESIS_FINANCEIRO_RH_PDV]
+- GET    /api/erp/genesis/financeiro/resumo  (linha 277)
+- GET    /api/erp/genesis/financeiro/contas-pagar  (linha 284)
+- GET    /api/erp/genesis/financeiro/contas-receber  (linha 291)
+- POST   /api/erp/genesis/financeiro/contas-pagar  (linha 298)
+- POST   /api/erp/genesis/financeiro/contas-receber  (linha 305)
+- POST   /api/erp/genesis/financeiro/contas-pagar/{id:int}/baixa  (linha 312)
+- POST   /api/erp/genesis/financeiro/contas-receber/{id:int}/baixa  (linha 319)
+- GET    /api/erp/genesis/financeiro/boletos  (linha 326)
+- POST   /api/erp/genesis/financeiro/boletos  (linha 333)
+- GET    /api/erp/genesis/financeiro/referencias  (linha 340)
+- POST   /api/erp/genesis/financeiro/referencias  (linha 347)
+- GET    /api/erp/genesis/pdv/vendas  (linha 361)
+- POST   /api/erp/genesis/pdv/vendas  (linha 368)
+- GET    /api/erp/genesis/rh/resumo  (linha 386)
+- GET    /api/erp/genesis/rh/colaboradores  (linha 393)
+- POST   /api/erp/genesis/rh/colaboradores  (linha 400)
+- PUT    /api/erp/genesis/rh/colaboradores/{id:int}  (linha 407)
+- PATCH  /api/erp/genesis/rh/colaboradores/{id:int}/status  (linha 414)
+- GET    /api/erp/genesis/rh/referencias  (linha 421)
+- POST   /api/erp/genesis/rh/referencias  (linha 428)
+
+[03_ADMIN_GESTAO_CORPORATIVA]
+- GET    /api/admin/dashboard/completo  (linha 604)
+- GET    /api/admin/dashboard/kpis  (linha 614)
+- GET    /api/admin/genesisgest/schema-status  (linha 621)
+- GET    /api/dashboard/resumo  (linha 3585)
+- GET    /api/gestao-corporativa/painel  (linha 3618)
+- GET    /api/gestao-corporativa/dicionario-dados  (linha 3714)
+- GET    /api/gestao-corporativa/ciclo-operacional  (linha 3722)
+
+[04_SITE_CATALOGO_LOJAS_PRODUTOS]
+- GET    /api/lojas  (linha 630)
+- GET    /api/site/configuracoes/publico  (linha 654)
+- GET    /api/site/configuracoes  (linha 671)
+- PUT    /api/site/configuracoes  (linha 693)
+- GET    /api/categorias  (linha 757)
+- POST   /api/categorias  (linha 781)
+- GET    /api/produtos  (linha 855)
+- GET    /api/produtos/destaques  (linha 917)
+- GET    /api/produtos/{id}  (linha 933)
+- POST   /api/uploads/produtos/imagens  (linha 952)
+- POST   /api/produtos  (linha 1018)
+- PUT    /api/produtos/{id}  (linha 1152)
+- GET    /api/cupons/{codigo}  (linha 1260)
+
+[05_CLIENTES_PORTAL]
+- GET    /api/clientes  (linha 1295)
+- GET    /api/clientes/verificar  (linha 1309)
+- POST   /api/clientes  (linha 1346)
+- PUT    /api/clientes/{id:int}  (linha 1446)
+- GET    /api/clientes/confirmar  (linha 1503)
+- GET    /api/clientes/portal/me  (linha 1530)
+- POST   /api/clientes/portal/enderecos  (linha 1631)
+- PUT    /api/clientes/portal/enderecos/{id:int}  (linha 1682)
+- PUT    /api/clientes/portal/enderecos/{id:int}/principal  (linha 1731)
+- DELETE /api/clientes/portal/enderecos/{id:int}  (linha 1760)
+
+[06_FORNECEDORES_COMPRAS_ESTOQUE]
+- GET    /api/fornecedores  (linha 1797)
+- POST   /api/fornecedores  (linha 1811)
+- PUT    /api/fornecedores/{id:int}  (linha 1864)
+- GET    /api/compras/painel  (linha 1919)
+- POST   /api/compras/solicitacoes  (linha 1927)
+- POST   /api/compras/cotacoes  (linha 1970)
+- POST   /api/compras/pedidos  (linha 2035)
+- POST   /api/compras/pedidos/{id:int}/entradas  (linha 2135)
+- PATCH  /api/compras/solicitacoes/{id:int}/status  (linha 2264)
+- PATCH  /api/compras/pedidos/{id:int}/status  (linha 2309)
+
+[07_PEDIDOS_VENDAS_LOGISTICA_PEDIDO]
+- GET    /api/pedidos  (linha 2359)
+- GET    /api/pedidos/acompanhar  (linha 2565)
+- PUT    /api/pedidos/{id}/status  (linha 2633)
+- POST   /api/pedidos/{id}/fluxo-operacional  (linha 2777)
+- PUT    /api/pedidos/{id}/logistica  (linha 2862)
+- POST   /api/pedidos  (linha 2921)
+
+[08_FINANCEIRO]
+- GET    /api/financeiro/lancamentos  (linha 2400)
+- POST   /api/financeiro/lancamentos  (linha 2452)
+- PATCH  /api/financeiro/lancamentos/{id:int}/status  (linha 2523)
+
+[09_INTEGRACOES_FRETE_LOGISTICA_WEBHOOKS]
+- GET    /api/integracoes/status  (linha 3212)
+- GET    /api/integracoes/diagnostico  (linha 3330)
+- GET    /api/integracoes/credenciais-modelo  (linha 3349)
+- POST   /api/integracoes/testar/{slug}  (linha 3384)
+- POST   /api/frete/cotar  (linha 3397)
+- POST   /api/logistica/roteamento  (linha 3412)
+- POST   /api/webhooks/mercadopago  (linha 3508)
+
+[10_CRM]
+- GET    /api/crm/leads  (linha 3801)
+- POST   /api/crm/leads  (linha 3837)
+- PUT    /api/crm/leads/{id}/status  (linha 3912)
+
+[11_FISCAL_PDV_MULTIEMPRESA]
+- GET    /api/erp/empresas  (linha 3945)
+- POST   /api/erp/empresas  (linha 4030)
+- GET    /api/fiscal/pdv/configuracoes  (linha 4208)
+- GET    /api/pdv/cockpit  (linha 4239)
+- GET    /api/fiscal/pedidos  (linha 4313)
+- PUT    /api/fiscal/pedidos/{id}/status  (linha 4345)
+- POST   /api/fiscal/simular-roteamento  (linha 4404)
+- POST   /api/fiscal/preparar-emissao-manual  (linha 4458)
+- POST   /api/fiscal/rascunho-manual  (linha 4530)
+- GET    /api/fiscal/rascunho-manual  (linha 4572)
+
+8) ENDPOINTS CONSUMIDOS PELO FRONTEND MAS NAO ENCONTRADOS NO Program.cs PRINCIPAL
+------------------------------------------------------------------------
+- GET    /lojas/${id}
+- GET    /pedidos/${id}
+- GET    /relatorios/vendas
+- GET    /financeiro/faturamento
+- POST   /api/auth/refresh
+
+Observacao objetiva: parte desses endpoints existe em controllers no repositório, mas esses controllers não entram no build do csproj principal da API Docker conforme NexumAltivon_Back-End/NexumAltivon.API.csproj.
+
+9) CONTROLLERS REST EXISTENTES FORA DA SUPERFICIE GARANTIDA DO build principal
+------------------------------------------------------------------------
+Arquivo: Controllers/CrmController.cs
+- GET    /api/erp/Crm/leads (linha 23)
+- GET    /api/erp/Crm/leads/{id} (linha 34)
+- POST   /api/erp/Crm/leads (linha 42)
+- PUT    /api/erp/Crm/leads/status (linha 50)
+- POST   /api/erp/Crm/leads/{leadId}/converter (linha 58)
+- GET    /api/erp/Crm/leads/{leadId}/interacoes (linha 66)
+- POST   /api/erp/Crm/interacoes (linha 73)
+- GET    /api/erp/Crm/tarefas (linha 81)
+- POST   /api/erp/Crm/tarefas (linha 91)
+- PUT    /api/erp/Crm/tarefas/{tarefaId}/concluir (linha 99)
+- GET    /api/erp/Crm/pipeline (linha 107)
+- GET    /api/erp/Crm/resumo (linha 114)
+
+Arquivo: Controllers/ErpDashboardController.cs
+- GET    /api/erp/dashboard/completo (linha 38)
+- GET    /api/erp/dashboard/financeiro (linha 72)
+- GET    /api/erp/dashboard/crm (linha 79)
+- GET    /api/erp/dashboard/estoque (linha 95)
+
+Arquivo: Controllers/EstoqueController.cs
+- GET    /api/erp/Estoque/movimentacoes (linha 23)
+- POST   /api/erp/Estoque/movimentacoes (linha 34)
+- GET    /api/erp/Estoque/kardex/{produtoId} (linha 43)
+- GET    /api/erp/Estoque/inventarios (linha 50)
+- POST   /api/erp/Estoque/inventarios (linha 57)
+- POST   /api/erp/Estoque/inventarios/{inventarioId}/contagem (linha 65)
+- POST   /api/erp/Estoque/inventarios/{inventarioId}/finalizar (linha 74)
+- POST   /api/erp/Estoque/inventarios/{inventarioId}/ajustar (linha 82)
+
+Arquivo: Controllers/FinanceiroController.cs
+- GET    /api/erp/Financeiro/contas-pagar (linha 25)
+- GET    /api/erp/Financeiro/contas-pagar/{id} (linha 36)
+- POST   /api/erp/Financeiro/contas-pagar (linha 44)
+- POST   /api/erp/Financeiro/contas-pagar/baixar (linha 53)
+- DELETE /api/erp/Financeiro/contas-pagar/{id} (linha 62)
+- GET    /api/erp/Financeiro/contas-receber (linha 73)
+- GET    /api/erp/Financeiro/contas-receber/{id} (linha 84)
+- POST   /api/erp/Financeiro/contas-receber (linha 92)
+- POST   /api/erp/Financeiro/contas-receber/baixar (linha 101)
+- DELETE /api/erp/Financeiro/contas-receber/{id} (linha 110)
+- GET    /api/erp/Financeiro/resumo (linha 121)
+- GET    /api/erp/Financeiro/fluxo-caixa (linha 128)
+
+Arquivo: Controllers/FiscalController.cs
+- GET    /api/erp/fiscal/nfe (linha 16)
+- GET    /api/erp/fiscal/nfe/{id} (linha 22)
+- POST   /api/erp/fiscal/nfe/emitir (linha 29)
+- POST   /api/erp/fiscal/nfe/cancelar (linha 33)
+- GET    /api/erp/fiscal/configuracao/{lojaId} (linha 37)
+- POST   /api/erp/fiscal/configuracao (linha 44)
+- GET    /api/erp/fiscal/manifestos (linha 48)
+- POST   /api/erp/fiscal/manifestos/{id}/confirmar (linha 52)
+
+Arquivo: Controllers/FornecedoresController.cs
+- GET    /api/erp/fornecedores (linha 25)
+- GET    /api/erp/fornecedores/{id} (linha 35)
+- POST   /api/erp/fornecedores (linha 43)
+- PUT    /api/erp/fornecedores/{id} (linha 50)
+- POST   /api/erp/fornecedores/{id}/avaliar (linha 57)
+- GET    /api/erp/fornecedores/{id}/avaliacoes (linha 64)
+
+Arquivo: Controllers/RelatoriosController.cs
+- POST   /api/erp/relatorios/gerar (linha 17)
+- POST   /api/erp/relatorios/download (linha 25)
+
+Arquivo: Controllers/SyncController.cs
+- POST   /api/erp/sync/completo (linha 23)
+- POST   /api/erp/sync/agendado (linha 30)
+- POST   /api/erp/sync/produtos (linha 37)
+- POST   /api/erp/sync/clientes (linha 44)
+- POST   /api/erp/sync/pedidos (linha 51)
+- POST   /api/erp/sync/estoque (linha 58)
+
+Arquivo: NexumAltivon_Back-End/API/Controllers/Admin/DashboardController.cs
+- GET    /api/admin/Dashboard/completo (linha 24)
+- GET    /api/admin/Dashboard/kpis (linha 35)
+- GET    /api/admin/Dashboard/faturamento/semanal (linha 46)
+- GET    /api/admin/Dashboard/faturamento/mensal (linha 57)
+- GET    /api/admin/Dashboard/vendas/lojas (linha 68)
+- GET    /api/admin/Dashboard/produtos/mais-vendidos (linha 81)
+- GET    /api/admin/Dashboard/clientes/recentes (linha 92)
+- GET    /api/admin/Dashboard/pedidos/recentes (linha 103)
+- GET    /api/admin/Dashboard/leads/recentes (linha 114)
+
+Arquivo: NexumAltivon_Back-End/API/Controllers/AuthController.cs
+- POST   /api/Auth/login (linha 22)
+- POST   /api/Auth/refresh (linha 36)
+- POST   /api/Auth/registrar (linha 49)
+- POST   /api/Auth/alterar-senha (linha 63)
+
+Arquivo: NexumAltivon_Back-End/API/Controllers/CarrinhoController.cs
+- GET    /api/Carrinho (linha 49)
+- POST   /api/Carrinho/itens (linha 59)
+- PUT    /api/Carrinho/itens/{itemId} (linha 70)
+- DELETE /api/Carrinho/itens/{itemId} (linha 80)
+- POST   /api/Carrinho/cupom (linha 89)
+- DELETE /api/Carrinho/cupom (linha 99)
+- POST   /api/Carrinho/migrar (linha 108)
+- DELETE /api/Carrinho (linha 124)
+- GET    /api/Carrinho/resumo (linha 133)
+
+Arquivo: NexumAltivon_Back-End/API/Controllers/CheckoutController.cs
+- POST   /api/Checkout/iniciar (linha 31)
+- POST   /api/Checkout/{checkoutId}/frete (linha 40)
+- POST   /api/Checkout/finalizar (linha 48)
+- GET    /api/Checkout/{checkoutId} (linha 59)
+
+Arquivo: NexumAltivon_Back-End/API/Controllers/ClientesController.cs
+- GET    /api/Clientes (linha 22)
+- GET    /api/Clientes/{id:int} (linha 36)
+- GET    /api/Clientes/email/{email} (linha 51)
+- POST   /api/Clientes (linha 65)
+- GET    /api/Clientes/confirmar (linha 79)
+- PUT    /api/Clientes/{id:int} (linha 93)
+- DELETE /api/Clientes/{id:int} (linha 107)
+- POST   /api/Clientes/{id:int}/enderecos (linha 121)
+- DELETE /api/Clientes/{clienteId:int}/enderecos/{enderecoId:int} (linha 135)
+
+Arquivo: NexumAltivon_Back-End/API/Controllers/CrmController.cs
+- GET    /api/crm/leads (linha 22)
+- GET    /api/crm/leads/{id:int} (linha 38)
+- POST   /api/crm/leads (linha 52)
+- PUT    /api/crm/leads/{id:int} (linha 66)
+- DELETE /api/crm/leads/{id:int} (linha 80)
+
+Arquivo: NexumAltivon_Back-End/API/Controllers/ERP/ErpDashboardController.cs
+- GET    /api/erp/dashboard/completo (linha 29)
+- GET    /api/erp/dashboard/financeiro (linha 49)
+- GET    /api/erp/dashboard/crm (linha 61)
+- GET    /api/erp/dashboard/estoque (linha 72)
+- GET    /api/erp/dashboard/fiscal (linha 83)
+- GET    /api/erp/dashboard/executivo (linha 95)
+- GET    /api/erp/dashboard/grafico/financeiro-12m (linha 107)
+- GET    /api/erp/dashboard/grafico/pipeline-crm (linha 119)
+- GET    /api/erp/dashboard/grafico/giro-estoque (linha 130)
+- GET    /api/erp/dashboard/alertas (linha 141)
+
+Arquivo: NexumAltivon_Back-End/API/Controllers/FinanceiroController.cs
+- GET    /api/Financeiro/faturamento (linha 22)
+- GET    /api/Financeiro/faturamento/lojas (linha 37)
+
+Arquivo: NexumAltivon_Back-End/API/Controllers/IntegracoesController.cs
+- POST   /api/Integracoes/marketplaces/sync (linha 40)
+- POST   /api/Integracoes/marketplaces/sync-lote (linha 48)
+- GET    /api/Integracoes/marketplaces/relatorio (linha 57)
+- GET    /api/Integracoes/marketplaces/status/{produtoId} (linha 64)
+- POST   /api/Integracoes/mercadolivre/publicar/{produtoId} (linha 74)
+- POST   /api/Integracoes/mercadolivre/importar-pedidos (linha 81)
+- POST   /api/Integracoes/mercadolivre/marcar-enviado/{mlOrderId} (linha 88)
+- POST   /api/Integracoes/dropshipping/roteiar (linha 96)
+- GET    /api/Integracoes/dropshipping/pendentes (linha 104)
+- PUT    /api/Integracoes/dropshipping/{dropshippingId}/status (linha 111)
+- GET    /api/Integracoes/dropshipping/fornecedores (linha 118)
+- GET    /api/Integracoes/dropshipping/comissao/{fornecedorId} (linha 125)
+- POST   /api/Integracoes/logistica/etiqueta (linha 133)
+- GET    /api/Integracoes/logistica/rastrear/{codigoRastreio} (linha 141)
+- PUT    /api/Integracoes/logistica/status-envio (linha 150)
+- GET    /api/Integracoes/logistica/dashboard (linha 158)
+- GET    /api/Integracoes/logistica/transportadoras (linha 165)
+- POST   /api/Integracoes/erp/sync (linha 173)
+- GET    /api/Integracoes/erp/status (linha 188)
+- GET    /api/Integracoes/erp/configuracao (linha 195)
+- PUT    /api/Integracoes/erp/configuracao (linha 202)
+- POST   /api/Integracoes/sync/executar-agendado (linha 210)
+- GET    /api/Integracoes/sync/logs (linha 218)
+
+Arquivo: NexumAltivon_Back-End/API/Controllers/LojasController.cs
+- GET    /api/Lojas (linha 22)
+- GET    /api/Lojas/{id:int} (linha 34)
+- GET    /api/Lojas/slug/{slug} (linha 49)
+- POST   /api/Lojas (linha 64)
+- PUT    /api/Lojas/{id:int} (linha 78)
+- DELETE /api/Lojas/{id:int} (linha 92)
+
+Arquivo: NexumAltivon_Back-End/API/Controllers/PagamentoController.cs
+- GET    /api/Pagamento/consulta/{transacaoId} (linha 28)
+- POST   /api/Pagamento/reembolso (linha 36)
+- POST   /api/Pagamento/reembolso/{transacaoId} (linha 48)
+
+Arquivo: NexumAltivon_Back-End/API/Controllers/PedidosController.cs
+- GET    /api/Pedidos (linha 22)
+- GET    /api/Pedidos/{id:int} (linha 38)
+- GET    /api/Pedidos/numero/{numero} (linha 52)
+- POST   /api/Pedidos (linha 66)
+- PATCH  /api/Pedidos/{id:int}/status (linha 80)
+
+Arquivo: NexumAltivon_Back-End/API/Controllers/ProdutosController.cs
+- GET    /api/Produtos (linha 22)
+- GET    /api/Produtos/destaques (linha 38)
+- GET    /api/Produtos/{id:int} (linha 50)
+- GET    /api/Produtos/slug/{slug} (linha 64)
+- POST   /api/Produtos (linha 78)
+- PUT    /api/Produtos/{id:int} (linha 92)
+- DELETE /api/Produtos/{id:int} (linha 106)
+- PATCH  /api/Produtos/{id:int}/estoque (linha 120)
+
+Arquivo: NexumAltivon_Back-End/API/Controllers/WebhookController.cs
+- POST   /api/webhooks/mercadopago (linha 24)
+- POST   /api/webhooks/melhorenvio (linha 55)
+- POST   /api/webhooks/teste (linha 64)
+
+10) SCRIPTS SQL E OBJETOS
+------------------------------------------------------------------------
+Arquivo SQL: Database/2026-06-19-corrigir-clientes-confirmacao-email.sql
+- Sem CREATE TABLE/VIEW/PROCEDURE/TRIGGER detectado; script de UPDATE/ALTER/INSERT operacional.
+
+Arquivo SQL: Database/2026-06-19-normalizar-enums-operacionais.sql
+- Sem CREATE TABLE/VIEW/PROCEDURE/TRIGGER detectado; script de UPDATE/ALTER/INSERT operacional.
+
+Arquivo SQL: Database/2026-06-19-sincronizar-6-lojas-operacao.sql
+- VIEW: 1
+  vw_lojas_operacionais
+
+Arquivo SQL: Database/erp_schema_update.sql
+- TABLE: 22
+  erp_avaliacoes_fornecedor, erp_boletos, erp_centros_custo, erp_contas_bancarias, erp_contas_pagar,
+    erp_contas_receber, erp_financeiro_referencias, erp_fluxo_caixa, erp_fornecedores, erp_impostos_config,
+    erp_interacoes_crm, erp_inventarios, erp_itens_inventario, erp_itens_nota_fiscal, erp_kardex,
+    erp_leads_crm, erp_locais_estoque, erp_movimentacoes_estoque, erp_notas_fiscais, erp_rh_colaboradores,
+    erp_rh_referencias, erp_tarefas_crm
+- VIEW: 3
+  v_estoque_baixo_erp, v_pipeline_crm, v_resumo_financeiro
+- PROCEDURE: 3
+  sp_atualizar_saldo_conta, sp_gerar_dre, sp_recalcular_custo_medio
+- TRIGGER: 3
+  trg_atualiza_status_conta_pagar, trg_atualiza_status_conta_receber, trg_auditoria_movimentacao_estoque
+
+Arquivo SQL: Database/erp_update_schema.sql
+- TABLE: 22
+  erp_avaliacoes_fornecedor, erp_boletos, erp_centros_custo, erp_contas_bancarias, erp_contas_pagar,
+    erp_contas_receber, erp_financeiro_referencias, erp_fluxo_caixa, erp_fornecedores, erp_impostos_config,
+    erp_interacoes_crm, erp_inventarios, erp_itens_inventario, erp_itens_nota_fiscal, erp_kardex,
+    erp_leads_crm, erp_locais_estoque, erp_movimentacoes_estoque, erp_notas_fiscais, erp_rh_colaboradores,
+    erp_rh_referencias, erp_tarefas_crm
+- VIEW: 3
+  v_estoque_baixo_erp, v_pipeline_crm, v_resumo_financeiro
+
+Arquivo SQL: NexumAltivon_Back-End/API/Database/2026-06-29-genesisgest-original-schema.sql
+- TABLE: 125
+  adm_auditoria, adm_contatos, adm_empresas, adm_perfil_permissoes, adm_perfis, adm_permissoes,
+    adm_pessoas_empresas, adm_usuarios, bi_dashboards, bi_kpi_valores, bi_kpis, bi_relatorio_historico,
+    bi_relatorios, bi_widgets, cfg_anexos, cfg_comentarios, cfg_layouts_impressao, cfg_notificacoes,
+    cfg_parametros, cfg_sequenciais, cfg_tarefas, cfg_workflow_aprovacoes, cfg_workflow_definicoes,
+    cfg_workflow_etapas, cfg_workflow_instancias, cmp_aprovacoes, cmp_cotacao_fornecedores,
+    cmp_cotacao_itens, cmp_cotacoes, cmp_notas_fiscais, cmp_pedido_itens, cmp_pedidos,
+    cmp_requisicao_itens, cmp_requisicoes, cnt_fechamentos, cnt_lancamentos, cnt_partidas, est_curva_abc,
+    est_depositos, est_enderecos, est_inventario_contagens, est_inventarios, est_movimentacoes,
+    est_ordem_separacao_itens, est_ordens_separacao, est_ponto_pedido, est_saldos, fin_aprovacoes_pagar,
+    fin_centros_custo, fin_conciliacoes, fin_contas_bancarias, fin_extratos_bancarios, fin_moedas,
+    fin_orcamento_itens, fin_orcamentos, fin_pagamentos, fin_plano_contas, fin_recebimentos,
+    fin_taxas_cambio, fin_titulos_pagar, fin_titulos_receber, fis_apuracao_impostos, fis_sped_contabil,
+    fis_sped_fiscal, fis_tributacao_ncm, jur_aditivos, jur_andamentos, jur_base_conhecimento,
+    jur_certidoes, jur_contrato_clausulas, jur_contratos, jur_depositos_judiciais, jur_prazos,
+    jur_processos, jur_tipos_acao, log_auditoria_fretes, log_cte, log_frete_faixas, log_mdfe,
+    log_mdfe_documentos, log_tabelas_frete, log_tracking, log_transportadoras, pcp_apontamentos, pcp_bom,
+    pcp_bom_itens, pcp_centros_trabalho, pcp_inspecoes, pcp_nao_conformidades, pcp_ordens_producao,
+    pcp_requisicoes_material, pcp_roteiro_operacoes, pcp_roteiros, rh_afastamentos, rh_cargos,
+    rh_colaboradores, rh_departamentos, rh_dependentes, rh_esocial_eventos, rh_eventos_folha, rh_ferias,
+    rh_folha_itens, rh_folhas_pagamento, rh_historico_salarial, rh_ponto, vnd_itens, vnd_itens_precos,
+    vnd_notas_fiscais, vnd_pedido_itens, vnd_pedidos, vnd_tabelas_preco, vw_balanco_patrimonial,
+    vw_certidoes_vencer, vw_contratos_vencer, vw_custos_producao, vw_dre_gerencial,
+    vw_fluxo_caixa_projetado, vw_inadimplencia, vw_ordens_producao_andamento, vw_performance_vendedores,
+    vw_processos_risco, vw_ranking_produtos, vw_saldo_contas_pagar, vw_saldo_contas_receber,
+    vw_saldo_estoque
+- VIEW: 3
+  vw_nexum_genesis_compras, vw_nexum_genesis_financeiro_aberto, vw_nexum_genesis_produtos
+
+Arquivo SQL: NexumAltivon_Back-End/Database/nexum_altivon_schema.sql
+- TABLE: 23
+  carrinho, categorias, clientes, configuracoes_sistema, crm_atendimentos, crm_leads, cupons,
+    dropshipping_config, enderecos, envios, financeiro, fiscal, fornecedores, logs_auditoria, lojas,
+    marketplaces, notificacoes, pagamentos, pedido_itens, pedidos, produtos, transportadoras, usuarios
+- VIEW: 5
+  v_clientes_vip, v_crm_leads_status, v_estoque_baixo, v_resumo_pedidos_status, v_vendas_loja
+- PROCEDURE: 6
+  sp_atualizar_estoque_pedido, sp_calcular_total_pedido, sp_gerar_numero_pedido,
+    sp_limpar_carrinho_abandonado, sp_registrar_auditoria, sp_relatorio_vendas_dia
+- TRIGGER: 2
+  trg_cliente_after_update, trg_pedido_before_update
+
+11) ANALISE ESTRUTURAL POR CAMADA
+------------------------------------------------------------------------
+[Frontend React]
+- Projeto CRA/CRACO com React 19, Tailwind, Radix UI, Recharts, Axios e React Router.
+- Rotas principais: /, /produtos, /produto/:id, /lojas, /contato, /carrinho, /checkout, /acompanhar-pedido, /login, /area-cliente, /dashboard/*.
+- api-runtime.json força API oficial em https://api.nexumaltivon.com.br, com fallback local em desenvolvimento.
+- Dashboard.js concentra grande parte do backoffice; arquivo denso, funcional, mas candidato a decomposição modular.
+
+[Back-End API principal]
+- Minimal API concentrada em NexumAltivon_Back-End/API/Program.cs, com 10k+ linhas e 97 endpoints.
+- Usa EF Core/Pomelo MySQL, JWT Bearer, CORS, DataProtection, Swagger em dev/staging, HTTP clients de integrações e schema bootstrap.
+- Ponto forte: fluxo operacional completo de pedido, compras, financeiro, fiscal, logística, CRM e painel corporativo no mesmo processo.
+- Ponto crítico: concentração excessiva no Program.cs reduz manutenibilidade e dificulta testes por módulo.
+
+[ERP raiz controller-based]
+- Projeto NexumAltivon.ERP.csproj com Program.cs próprio, controllers raiz, Hangfire, Quartz, Serilog/MySQL e DbContext ERP.
+- Indica uma segunda API/ERP paralela, controller-based, com endpoints de ERP/CRM/financeiro/fiscal/estoque/sync.
+- Precisa decisão arquitetural: manter como serviço ERP separado ou incorporar corretamente na API principal.
+
+[Banco de dados]
+- Schema principal nexum_altivon com 23 tabelas, views, procedures e triggers.
+- Schema GenesisGest original com 125 estruturas CREATE TABLE e 3 views de ponte Nexum/Genesis.
+- Scripts ERP adicionam 22 tabelas ERP, views de resumo, procedures e triggers.
+- API principal também cria/garante tabelas operacionais adicionais em runtime, como compras_* e estoque_movimentos.
+
+[Infraestrutura]
+- Desenvolvimento: docker-compose sobe MySQL, API, frontend, Redis opcional e Nginx.
+- Produção: docker-compose.prod usa imagens GHCR, Nginx e Watchtower; banco é externo por variável API_DEFAULT_CONNECTION.
+- GitHub Pages publica frontend .com.br e valida runtime/API; CI/CD também constrói API/frontend e imagens Docker.
+- Pendente: TLS explícito, secrets de produção, health de banco real, rollback, backup/restore em produção e monitoramento.
+
+[Desktop/PDV]
+- Aplicação WPF net8.0-windows com terminal, cockpit, venda local, outbox JSON e janela de emissão manual NF-e.
+- Usa API local padrão http://192.168.1.72:5012 e API pública https://api.nexumaltivon.com.br.
+- Pendente: sincronização definitiva PDV->API, autenticação do terminal, assinatura fiscal/certificado e impressora fiscal real.
+
+12) DIAGRAMA 3 - PROJETO COMPLETO, FUNCIONAL E OPERACIONAL MULTIEMPRESARIAL
+------------------------------------------------------------------------
+ECOSSISTEMA MULTIEMPRESARIAL COMPLETO - ESTADO ALVO
+|
++-- HOLDING / GRUPO NEXUM ALTIVON
+|   |
+|   +-- Cadastro de empresas do grupo
+|   |   +-- Matriz / filiais / parceiros fiscais / emitentes preferenciais
+|   |   +-- Endpoints: GET/POST /api/erp/empresas
+|   |   +-- Tabelas: erp_empresas_grupo, lojas, configuracoes_sistema
+|   |
+|   +-- Governanca corporativa
+|   |   +-- Painel executivo, dicionario de dados, ciclo operacional, indicadores e alertas
+|   |   +-- Endpoints: /api/gestao-corporativa/*, /api/dashboard/resumo, /api/admin/*
+|   |
+|   +-- Vendas multiempresa
+|   |   +-- Loja virtual + marketplace + PDV + pedidos internos
+|   |   +-- Endpoints: /api/produtos, /api/categorias, /api/pedidos, /api/pdv/cockpit
+|   |   +-- Resultado: pedido com cliente, estoque reservado, financeiro gerado, fiscal preparado e logística cotada
+|   |
+|   +-- Compras e abastecimento
+|   |   +-- Solicitação -> cotação -> pedido de compra -> entrada -> estoque -> financeiro a pagar
+|   |   +-- Endpoints: /api/compras/painel, /api/compras/solicitacoes, /api/compras/cotacoes, /api/compras/pedidos, /api/compras/pedidos/{id}/entradas
+|   |
+|   +-- Fiscal inteligente
+|   |   +-- Roteamento por empresa, tributação, margem, origem/destino, modelo fiscal e ambiente
+|   |   +-- Endpoints: /api/fiscal/simular-roteamento, /api/fiscal/preparar-emissao-manual, /api/fiscal/pedidos, /api/fiscal/pdv/configuracoes
+|   |   +-- Resultado: NF-e/NFC-e/SAT/MFe emitida/autorizada com certificado e contingência
+|   |
+|   +-- Financeiro corporativo
+|   |   +-- Contas a pagar/receber, boletos, caixa, DRE, fluxo, baixas, conciliação bancária
+|   |   +-- Endpoints: /api/financeiro/lancamentos, /api/erp/genesis/financeiro/*
+|   |   +-- Resultado: receitas/despesas conciliadas por empresa, loja, canal e centro de custo
+|   |
+|   +-- Logística e fulfillment
+|   |   +-- Frete, coleta, etiqueta, rastreio, transporte e margem por rota
+|   |   +-- Endpoints: /api/frete/cotar, /api/logistica/roteamento, /api/pedidos/{id}/logistica
+|   |
+|   +-- CRM / relacionamento
+|   |   +-- Leads, clientes, área cliente, atendimento, notificações e funil
+|   |   +-- Endpoints: /api/crm/leads, /api/clientes, /api/clientes/portal/me
+|   |
+|   +-- Integrações externas
+|   |   +-- Mercado Pago, Melhor Envio, Mercado Livre, Shopify, CJ Dropshipping, SMTP, bancos
+|   |   +-- Endpoints: /api/integracoes/status, /api/integracoes/diagnostico, /api/integracoes/testar/{slug}, /api/webhooks/*
+|   |
+|   +-- Operação local / lojas físicas
+|       +-- Desktop WPF/PDV, venda balcão, emissão fiscal, contingência offline, outbox e sincronização
+|       +-- Componentes: NexumAltivon.Desktop + API local 5012 + API pública + banco central
+|
++-- FLUXO FINAL OPERACIONAL
+    Cliente/PDV/Marketplace
+        -> Produto/Categoria/Loja
+        -> Carrinho/Checkout/Pedido
+        -> Pagamento/Gateway/Webhook
+        -> Estoque/Compras/Reposicao
+        -> Fiscal/Roteamento/Emissao
+        -> Logistica/Frete/Rastreio
+        -> Financeiro/Receita/Baixa/Conciliacao
+        -> CRM/Notificacao/Retencao
+        -> BI/Gestao Corporativa/DRE/Margem
+
+13) RISCOS OBJETIVOS IDENTIFICADOS
+------------------------------------------------------------------------
+- Concentração de regra de negócio em Program.cs da API principal: risco alto de manutenção e regressão.
+- Controllers e serviços existem, mas não são todos compilados pelo csproj da API principal: risco de falsa sensação de endpoint pronto.
+- Frontend consome alguns endpoints ausentes no Program.cs principal: risco de erro 404 em produção.
+- Segredos reais ou realistas aparecem em arquivos de configuração: risco crítico de segurança; tratar como vazados e rotacionar.
+- Produção Docker não inclui banco; depende de banco externo e secrets corretos.
+- Nginx de produção expõe apenas HTTP no compose; TLS precisa estar resolvido por proxy externo ou configuração adicional.
+- Documentos operacionais referenciados não estão todos presentes no ZIP.
+- Integrações externas estão majoritariamente preparadas, mas dependem de credenciais e homologação transacional real.
+- API root ERP, API nested e pasta NexumAltivon_ERP indicam três linhas arquiteturais sobrepostas; precisa consolidação formal.
+- Não há evidência de suíte automatizada de testes dentro do ZIP analisado.
+
+14) INVENTARIO COMPLETO DE ARQUIVOS POR SETOR
+------------------------------------------------------------------------
+[01_FRONTEND_REACT_PUBLICACAO_WEB] - 125 arquivo(s)
+- NexumAltivon_Front-End/.env.example
+- NexumAltivon_Front-End/.npmrc
+- NexumAltivon_Front-End/components.json
+- NexumAltivon_Front-End/craco.config.js
+- NexumAltivon_Front-End/jsconfig.json
+- NexumAltivon_Front-End/package-lock.json
+- NexumAltivon_Front-End/package.json
+- NexumAltivon_Front-End/postcss.config.js
+- NexumAltivon_Front-End/tailwind.config.js
+- NexumAltivon_Front-End/public/.htaccess
+- NexumAltivon_Front-End/public/404.html
+- NexumAltivon_Front-End/public/CNAME
+- NexumAltivon_Front-End/public/admin-painel.html
+- NexumAltivon_Front-End/public/api-runtime.json
+- NexumAltivon_Front-End/public/confirmar-cadastro.html
+- NexumAltivon_Front-End/public/index.html
+- NexumAltivon_Front-End/public/nexum-admin-integration.js
+- NexumAltivon_Front-End/public/nexum-integration.js
+- NexumAltivon_Front-End/public/web.config
+- NexumAltivon_Front-End/public/area-cliente/index.html
+- NexumAltivon_Front-End/public/contato/index.html
+- NexumAltivon_Front-End/public/dashboard/index.html
+- NexumAltivon_Front-End/public/dashboard/cadastros/categorias/index.html
+- NexumAltivon_Front-End/public/dashboard/cadastros/clientes/index.html
+- NexumAltivon_Front-End/public/dashboard/cadastros/fornecedores/index.html
+- NexumAltivon_Front-End/public/dashboard/cadastros/produtos/index.html
+- NexumAltivon_Front-End/public/dashboard/erp-compras/index.html
+- NexumAltivon_Front-End/public/dashboard/erp-financeiro/index.html
+- NexumAltivon_Front-End/public/dashboard/erp-fiscal/index.html
+- NexumAltivon_Front-End/public/dashboard/erp-logistica/index.html
+- NexumAltivon_Front-End/public/dashboard/erp-vendas/index.html
+- NexumAltivon_Front-End/public/dashboard/pedidos/index.html
+- NexumAltivon_Front-End/public/imagens/homepage/Logo-2.png
+- NexumAltivon_Front-End/public/imagens/homepage/banner-atendimento.svg
+- NexumAltivon_Front-End/public/imagens/homepage/banner-ecommerce.svg
+- NexumAltivon_Front-End/public/imagens/homepage/banner-marcas.svg
+- NexumAltivon_Front-End/public/imagens/homepage/logo-grupo-nexum-altivon.svg
+- NexumAltivon_Front-End/public/imagens/homepage/loja-chronos.svg
+- NexumAltivon_Front-End/public/imagens/homepage/loja-estruturaline.svg
+- NexumAltivon_Front-End/public/imagens/homepage/loja-geracao-top.svg
+- NexumAltivon_Front-End/public/imagens/homepage/loja-gran-festas.svg
+- NexumAltivon_Front-End/public/imagens/homepage/loja-gran-tur.svg
+- NexumAltivon_Front-End/public/imagens/homepage/loja-moda-mim.svg
+- NexumAltivon_Front-End/public/institucional/index.html
+- NexumAltivon_Front-End/public/lojas/index.html
+- NexumAltivon_Front-End/public/politica-privacidade/index.html
+- NexumAltivon_Front-End/public/politica-reembolso/index.html
+- NexumAltivon_Front-End/scripts/postbuild-pages.js
+- NexumAltivon_Front-End/src/App.css
+- NexumAltivon_Front-End/src/App.js
+- NexumAltivon_Front-End/src/constants.js
+- NexumAltivon_Front-End/src/index.css
+- NexumAltivon_Front-End/src/index.js
+- NexumAltivon_Front-End/src/components/CheckoutSteps.js
+- NexumAltivon_Front-End/src/components/Footer.js
+- NexumAltivon_Front-End/src/components/GlobalActions.js
+- NexumAltivon_Front-End/src/components/Navbar.js
+- NexumAltivon_Front-End/src/components/ProductCard.js
+- NexumAltivon_Front-End/src/components/ui/accordion.jsx
+- NexumAltivon_Front-End/src/components/ui/alert-dialog.jsx
+- NexumAltivon_Front-End/src/components/ui/alert.jsx
+- NexumAltivon_Front-End/src/components/ui/aspect-ratio.jsx
+- NexumAltivon_Front-End/src/components/ui/avatar.jsx
+- NexumAltivon_Front-End/src/components/ui/badge.jsx
+- NexumAltivon_Front-End/src/components/ui/breadcrumb.jsx
+- NexumAltivon_Front-End/src/components/ui/button.jsx
+- NexumAltivon_Front-End/src/components/ui/calendar.jsx
+- NexumAltivon_Front-End/src/components/ui/card.jsx
+- NexumAltivon_Front-End/src/components/ui/carousel.jsx
+- NexumAltivon_Front-End/src/components/ui/checkbox.jsx
+- NexumAltivon_Front-End/src/components/ui/collapsible.jsx
+- NexumAltivon_Front-End/src/components/ui/command.jsx
+- NexumAltivon_Front-End/src/components/ui/context-menu.jsx
+- NexumAltivon_Front-End/src/components/ui/dialog.jsx
+- NexumAltivon_Front-End/src/components/ui/drawer.jsx
+- NexumAltivon_Front-End/src/components/ui/dropdown-menu.jsx
+- NexumAltivon_Front-End/src/components/ui/form.jsx
+- NexumAltivon_Front-End/src/components/ui/hover-card.jsx
+- NexumAltivon_Front-End/src/components/ui/input-otp.jsx
+- NexumAltivon_Front-End/src/components/ui/input.jsx
+- NexumAltivon_Front-End/src/components/ui/label.jsx
+- NexumAltivon_Front-End/src/components/ui/menubar.jsx
+- NexumAltivon_Front-End/src/components/ui/navigation-menu.jsx
+- NexumAltivon_Front-End/src/components/ui/pagination.jsx
+- NexumAltivon_Front-End/src/components/ui/popover.jsx
+- NexumAltivon_Front-End/src/components/ui/progress.jsx
+- NexumAltivon_Front-End/src/components/ui/radio-group.jsx
+- NexumAltivon_Front-End/src/components/ui/resizable.jsx
+- NexumAltivon_Front-End/src/components/ui/scroll-area.jsx
+- NexumAltivon_Front-End/src/components/ui/select.jsx
+- NexumAltivon_Front-End/src/components/ui/separator.jsx
+- NexumAltivon_Front-End/src/components/ui/sheet.jsx
+- NexumAltivon_Front-End/src/components/ui/skeleton.jsx
+- NexumAltivon_Front-End/src/components/ui/slider.jsx
+- NexumAltivon_Front-End/src/components/ui/sonner.jsx
+- NexumAltivon_Front-End/src/components/ui/switch.jsx
+- NexumAltivon_Front-End/src/components/ui/table.jsx
+- NexumAltivon_Front-End/src/components/ui/tabs.jsx
+- NexumAltivon_Front-End/src/components/ui/textarea.jsx
+- NexumAltivon_Front-End/src/components/ui/toast.jsx
+- NexumAltivon_Front-End/src/components/ui/toaster.jsx
+- NexumAltivon_Front-End/src/components/ui/toggle-group.jsx
+- NexumAltivon_Front-End/src/components/ui/toggle.jsx
+- NexumAltivon_Front-End/src/components/ui/tooltip.jsx
+- NexumAltivon_Front-End/src/context/AuthContext.js
+- NexumAltivon_Front-End/src/context/CartContext.js
+- NexumAltivon_Front-End/src/hooks/use-toast.js
+- NexumAltivon_Front-End/src/lib/utils.js
+- NexumAltivon_Front-End/src/pages/AcompanharPedido.js
+- NexumAltivon_Front-End/src/pages/AreaCliente.js
+- NexumAltivon_Front-End/src/pages/Carrinho.js
+- NexumAltivon_Front-End/src/pages/Checkout.js
+- NexumAltivon_Front-End/src/pages/Contato.js
+- NexumAltivon_Front-End/src/pages/Dashboard.js
+- NexumAltivon_Front-End/src/pages/Home.js
+- NexumAltivon_Front-End/src/pages/Institucional.js
+- NexumAltivon_Front-End/src/pages/Login.js
+- NexumAltivon_Front-End/src/pages/Lojas.js
+- NexumAltivon_Front-End/src/pages/PoliticaPrivacidade.js
+- NexumAltivon_Front-End/src/pages/PoliticaReembolso.js
+- NexumAltivon_Front-End/src/pages/ProdutoDetalhe.js
+- NexumAltivon_Front-End/src/pages/Produtos.js
+- NexumAltivon_Front-End/src/services/api.js
+- NexumAltivon_Front-End/src/utils/formatters.js
+- NexumAltivon_Front-End/src/utils/validation.js
+
+[02_BACKEND_API_COMMERCE_ERP] - 111 arquivo(s)
+- NexumAltivon_Back-End/NexumAltivon.API.csproj
+- NexumAltivon_Back-End/Program_ERP.cs
+- NexumAltivon_Back-End/appsettings.ERP.json
+- NexumAltivon_Back-End/API/Program.cs
+- NexumAltivon_Back-End/API/appsettings.PrivateProduction.template.json
+- NexumAltivon_Back-End/API/appsettings.json
+- NexumAltivon_Back-End/API/Configurations/HangfireAuthorizationFilter.cs
+- NexumAltivon_Back-End/API/Configurations/IntegrationExtensions.cs
+- NexumAltivon_Back-End/API/Configurations/ServiceExtensions.cs
+- NexumAltivon_Back-End/API/Controllers/AuthController.cs
+- NexumAltivon_Back-End/API/Controllers/CarrinhoController.cs
+- NexumAltivon_Back-End/API/Controllers/CheckoutController.cs
+- NexumAltivon_Back-End/API/Controllers/ClientesController.cs
+- NexumAltivon_Back-End/API/Controllers/CrmController.cs
+- NexumAltivon_Back-End/API/Controllers/FinanceiroController.cs
+- NexumAltivon_Back-End/API/Controllers/IntegracoesController.cs
+- NexumAltivon_Back-End/API/Controllers/LojasController.cs
+- NexumAltivon_Back-End/API/Controllers/PagamentoController.cs
+- NexumAltivon_Back-End/API/Controllers/PedidosController.cs
+- NexumAltivon_Back-End/API/Controllers/ProdutosController.cs
+- NexumAltivon_Back-End/API/Controllers/WebhookController.cs
+- NexumAltivon_Back-End/API/Controllers/Admin/DashboardController.cs
+- NexumAltivon_Back-End/API/Controllers/ERP/ErpDashboardController.cs
+- NexumAltivon_Back-End/API/DTOs/ApiResponse.cs
+- NexumAltivon_Back-End/API/DTOs/AuthDtos.cs
+- NexumAltivon_Back-End/API/DTOs/CarrinhoDtos.cs
+- NexumAltivon_Back-End/API/DTOs/CheckoutDtos.cs
+- NexumAltivon_Back-End/API/DTOs/ClienteDtos.cs
+- NexumAltivon_Back-End/API/DTOs/CrmDtos.cs
+- NexumAltivon_Back-End/API/DTOs/DropshippingDtos.cs
+- NexumAltivon_Back-End/API/DTOs/ErpSyncDtos.cs
+- NexumAltivon_Back-End/API/DTOs/LogisticaDtos.cs
+- NexumAltivon_Back-End/API/DTOs/LojaDtos.cs
+- NexumAltivon_Back-End/API/DTOs/MarketplaceDtos.cs
+- NexumAltivon_Back-End/API/DTOs/PagamentoDtos.cs
+- NexumAltivon_Back-End/API/DTOs/PedidoDtos.cs
+- NexumAltivon_Back-End/API/DTOs/ProdutoDtos.cs
+- NexumAltivon_Back-End/API/DTOs/Admin/DashboardDtos.cs
+- NexumAltivon_Back-End/API/Data/NexumDbContext.cs
+- NexumAltivon_Back-End/API/Database/2026-06-29-genesisgest-original-schema.sql
+- NexumAltivon_Back-End/API/ERP/FiscalRouting/FiscalRoutingEngine.cs
+- NexumAltivon_Back-End/API/ERP/FiscalRouting/FiscalRoutingModels.cs
+- NexumAltivon_Back-End/API/ERP/SharedData/GenesisDbContext.cs
+- NexumAltivon_Back-End/API/ERP/SharedData/GenesisFinanceDtos.cs
+- NexumAltivon_Back-End/API/ERP/SharedData/GenesisFinanceModels.cs
+- NexumAltivon_Back-End/API/ERP/SharedData/GenesisFinanceReferenciaDtos.cs
+- NexumAltivon_Back-End/API/ERP/SharedData/GenesisFinanceService.cs
+- NexumAltivon_Back-End/API/ERP/SharedData/GenesisFinanceWriteDtos.cs
+- NexumAltivon_Back-End/API/ERP/SharedData/GenesisPdvDtos.cs
+- NexumAltivon_Back-End/API/ERP/SharedData/GenesisPdvService.cs
+- NexumAltivon_Back-End/API/ERP/SharedData/GenesisRhDtos.cs
+- NexumAltivon_Back-End/API/ERP/SharedData/GenesisRhService.cs
+- NexumAltivon_Back-End/API/ERP/SharedData/GenesisRhWriteDtos.cs
+- NexumAltivon_Back-End/API/Mappings/MappingProfile.cs
+- NexumAltivon_Back-End/API/Middleware/ApiHealthCheck.cs
+- NexumAltivon_Back-End/API/Middleware/AuditoriaMiddleware.cs
+- NexumAltivon_Back-End/API/Middleware/AuthValidators.cs
+- NexumAltivon_Back-End/API/Middleware/ExceptionMiddleware.cs
+- NexumAltivon_Back-End/API/Middleware/RateLimitingMiddleware.cs
+- NexumAltivon_Back-End/API/Models/Carrinho.cs
+- NexumAltivon_Back-End/API/Models/CarrinhoCheckoutPagamento.cs
+- NexumAltivon_Back-End/API/Models/Categoria.cs
+- NexumAltivon_Back-End/API/Models/Cliente.cs
+- NexumAltivon_Back-End/API/Models/ConfiguracaoSistema.cs
+- NexumAltivon_Back-End/API/Models/CrmAtendimento.cs
+- NexumAltivon_Back-End/API/Models/CrmLead.cs
+- NexumAltivon_Back-End/API/Models/Cupom.cs
+- NexumAltivon_Back-End/API/Models/DropshippingConfig.cs
+- NexumAltivon_Back-End/API/Models/EmpresaGrupo.cs
+- NexumAltivon_Back-End/API/Models/Endereco.cs
+- NexumAltivon_Back-End/API/Models/Envio.cs
+- NexumAltivon_Back-End/API/Models/Financeiro.cs
+- NexumAltivon_Back-End/API/Models/Fiscal.cs
+- NexumAltivon_Back-End/API/Models/Fornecedor.cs
+- NexumAltivon_Back-End/API/Models/IntegracoesModels.cs
+- NexumAltivon_Back-End/API/Models/LogAuditoria.cs
+- NexumAltivon_Back-End/API/Models/Loja.cs
+- NexumAltivon_Back-End/API/Models/Marketplace.cs
+- NexumAltivon_Back-End/API/Models/Notificacao.cs
+- NexumAltivon_Back-End/API/Models/Pagamento.cs
+- NexumAltivon_Back-End/API/Models/Pedido.cs
+- NexumAltivon_Back-End/API/Models/PedidoItem.cs
+- NexumAltivon_Back-End/API/Models/Produto.cs
+- NexumAltivon_Back-End/API/Models/Transportadora.cs
+- NexumAltivon_Back-End/API/Models/Usuario.cs
+- NexumAltivon_Back-End/API/Services/AuthService.cs
+- NexumAltivon_Back-End/API/Services/CarrinhoService.cs
+- NexumAltivon_Back-End/API/Services/CheckoutService.cs
+- NexumAltivon_Back-End/API/Services/ClienteService.cs
+- NexumAltivon_Back-End/API/Services/ConfiguracaoService.cs
+- NexumAltivon_Back-End/API/Services/CrmService.cs
+- NexumAltivon_Back-End/API/Services/DropshippingService.cs
+- NexumAltivon_Back-End/API/Services/ErpDashboardService.cs
+- NexumAltivon_Back-End/API/Services/ErpSyncService.cs
+- NexumAltivon_Back-End/API/Services/FinanceiroService.cs
+- NexumAltivon_Back-End/API/Services/FreteService.cs
+- NexumAltivon_Back-End/API/Services/IErpDashboardService.cs
+- NexumAltivon_Back-End/API/Services/Interfaces.cs
+- NexumAltivon_Back-End/API/Services/LogAuditoriaService.cs
+- NexumAltivon_Back-End/API/Services/LogisticaService.cs
+- NexumAltivon_Back-End/API/Services/LojaService.cs
+- NexumAltivon_Back-End/API/Services/MarketplaceHubService.cs
+- NexumAltivon_Back-End/API/Services/MarketplaceSyncService.cs
+- NexumAltivon_Back-End/API/Services/MelhorEnvioService.cs
+- NexumAltivon_Back-End/API/Services/MercadoLivreService.cs
+- NexumAltivon_Back-End/API/Services/MercadoPagoService.cs
+- NexumAltivon_Back-End/API/Services/NotificacaoService.cs
+- NexumAltivon_Back-End/API/Services/PedidoService.cs
+- NexumAltivon_Back-End/API/Services/ProdutoService.cs
+- NexumAltivon_Back-End/API/Services/Admin/AdminDashboardService.cs
+- NexumAltivon_Back-End/Database/nexum_altivon_schema.sql
+
+[03_ERP_GENESISGEST_SEPARADO] - 53 arquivo(s)
+- NexumAltivon_ERP/DTOs/CRM/AtividadeDtos.cs
+- NexumAltivon_ERP/DTOs/CRM/CampanhaDtos.cs
+- NexumAltivon_ERP/DTOs/CRM/PipelineDtos.cs
+- NexumAltivon_ERP/DTOs/Estoque/MovimentacaoEstoqueDtos.cs
+- NexumAltivon_ERP/DTOs/Financeiro/BancoDtos.cs
+- NexumAltivon_ERP/DTOs/Financeiro/ContaPagarDtos.cs
+- NexumAltivon_ERP/DTOs/Financeiro/ContaReceberDtos.cs
+- NexumAltivon_ERP/DTOs/Financeiro/DREDtos.cs
+- NexumAltivon_ERP/DTOs/Financeiro/FluxoCaixaDtos.cs
+- NexumAltivon_ERP/DTOs/Financeiro/PlanoContasDtos.cs
+- NexumAltivon_ERP/DTOs/Fiscal/ConfiguracaoFiscalDtos.cs
+- NexumAltivon_ERP/DTOs/Fiscal/NFeDtos.cs
+- NexumAltivon_ERP/Data/GenesisDbContext.cs
+- NexumAltivon_ERP/Models/CRM/Atividade.cs
+- NexumAltivon_ERP/Models/CRM/Campanha.cs
+- NexumAltivon_ERP/Models/CRM/InteracaoTicket.cs
+- NexumAltivon_ERP/Models/CRM/LeadCRM.cs
+- NexumAltivon_ERP/Models/CRM/Oportunidade.cs
+- NexumAltivon_ERP/Models/CRM/Pipeline.cs
+- NexumAltivon_ERP/Models/CRM/SegmentoCliente.cs
+- NexumAltivon_ERP/Models/CRM/TicketSuporte.cs
+- NexumAltivon_ERP/Models/Estoque/AlertaEstoque.cs
+- NexumAltivon_ERP/Models/Estoque/Inventario.cs
+- NexumAltivon_ERP/Models/Estoque/ItemInventario.cs
+- NexumAltivon_ERP/Models/Estoque/Kardex.cs
+- NexumAltivon_ERP/Models/Estoque/LocalEstoque.cs
+- NexumAltivon_ERP/Models/Estoque/MovimentacaoEstoque.cs
+- NexumAltivon_ERP/Models/Estoque/ProdutoFornecedor.cs
+- NexumAltivon_ERP/Models/Estoque/TransferenciaEstoque.cs
+- NexumAltivon_ERP/Models/Financeiro/Banco.cs
+- NexumAltivon_ERP/Models/Financeiro/CentroCusto.cs
+- NexumAltivon_ERP/Models/Financeiro/ConciliacaoBancaria.cs
+- NexumAltivon_ERP/Models/Financeiro/ContaBancaria.cs
+- NexumAltivon_ERP/Models/Financeiro/ContaPagar.cs
+- NexumAltivon_ERP/Models/Financeiro/ContaReceber.cs
+- NexumAltivon_ERP/Models/Financeiro/DRE.cs
+- NexumAltivon_ERP/Models/Financeiro/FluxoCaixa.cs
+- NexumAltivon_ERP/Models/Financeiro/MovimentacaoBancaria.cs
+- NexumAltivon_ERP/Models/Financeiro/PlanoContas.cs
+- NexumAltivon_ERP/Models/Fiscal/CFOP.cs
+- NexumAltivon_ERP/Models/Fiscal/ConfiguracaoFiscal.cs
+- NexumAltivon_ERP/Models/Fiscal/Imposto.cs
+- NexumAltivon_ERP/Models/Fiscal/ItemNFe.cs
+- NexumAltivon_ERP/Models/Fiscal/NFCe.cs
+- NexumAltivon_ERP/Models/Fiscal/NFe.cs
+- NexumAltivon_ERP/Models/Fiscal/SPED.cs
+- NexumAltivon_ERP/Models/Fiscal/Sintegra.cs
+- NexumAltivon_ERP/Services/Financeiro/BancoService.cs
+- NexumAltivon_ERP/Services/Financeiro/ContaPagarService.cs
+- NexumAltivon_ERP/Services/Financeiro/ContaReceberService.cs
+- NexumAltivon_ERP/Services/Financeiro/DREService.cs
+- NexumAltivon_ERP/Services/Financeiro/FluxoCaixaService.cs
+- NexumAltivon_ERP/Services/Financeiro/PlanoContasService.cs
+
+[04_DESKTOP_WPF_PDV] - 18 arquivo(s)
+- NexumAltivon.Desktop/App.xaml
+- NexumAltivon.Desktop/App.xaml.cs
+- NexumAltivon.Desktop/MainWindow.xaml
+- NexumAltivon.Desktop/MainWindow.xaml.cs
+- NexumAltivon.Desktop/ManualNfeWindow.xaml
+- NexumAltivon.Desktop/ManualNfeWindow.xaml.cs
+- NexumAltivon.Desktop/NexumAltivon.Desktop.csproj
+- NexumAltivon.Desktop/PdvSaleWindow.xaml
+- NexumAltivon.Desktop/PdvSaleWindow.xaml.cs
+- NexumAltivon.Desktop/Models/DesktopModule.cs
+- NexumAltivon.Desktop/Models/OrganizationNode.cs
+- NexumAltivon.Desktop/Models/PdvCartItem.cs
+- NexumAltivon.Desktop/Models/PdvPaymentLine.cs
+- NexumAltivon.Desktop/Models/PdvSaleDraft.cs
+- NexumAltivon.Desktop/Models/TerminalProfile.cs
+- NexumAltivon.Desktop/Models/WorkstationAction.cs
+- NexumAltivon.Desktop/Services/DesktopApiClient.cs
+- NexumAltivon.Desktop/Services/LocalOutboxService.cs
+
+[05_BANCO_SQL_MIGRACOES] - 5 arquivo(s)
+- Database/2026-06-19-corrigir-clientes-confirmacao-email.sql
+- Database/2026-06-19-normalizar-enums-operacionais.sql
+- Database/2026-06-19-sincronizar-6-lojas-operacao.sql
+- Database/erp_schema_update.sql
+- Database/erp_update_schema.sql
+
+[06_INFRA_DOCKER_NGINX] - 9 arquivo(s)
+- docker/.env.example
+- docker/Dockerfile.api
+- docker/Dockerfile.frontend
+- docker/docker-compose.prod.yml
+- docker/docker-compose.yml
+- docker/nginx/frontend.conf
+- docker/nginx/nginx.conf
+- docker/scripts/backup-mysql.sh
+- docker/scripts/restore-mysql.sh
+
+[07_CICD_GITHUB_ACTIONS] - 4 arquivo(s)
+- .github/workflows/Pages.yml
+- .github/workflows/ci-cd.yml
+- .github/workflows/dotnet-desktop.yml
+- .github/workflows/npm-publish-github-packages.yml
+
+[08_DOCUMENTACAO] - 2 arquivo(s)
+- docs/AGENTS.md
+- docs/README.md
+
+[09_ARQUIVOS_MORTOS_LEGADO] - 5 arquivo(s)
+- Arquivos_Mortos/frontend-legado-20260629/README.md
+- Arquivos_Mortos/frontend-legado-20260629/admin-index-mock-legado.html
+- Arquivos_Mortos/frontend-legado-20260629/frontend-index-legado.html
+- Arquivos_Mortos/frontend-legado-20260629/landing-raiz-legado.html
+- Arquivos_Mortos/frontend-legado-20260629/public-landing-legado.html
+
+[10_ERP_RAIZ_ASPNET_CONTROLLER_BASED] - 37 arquivo(s)
+- NexumAltivon.ERP.csproj
+- NexumAltivon.ERP.sln
+- Program.cs
+- Configurations/ErpMappingProfile.cs
+- Configurations/HangfireAuthorizationFilter.cs
+- Configurations/ServiceExtensions.cs
+- Controllers/CrmController.cs
+- Controllers/ErpDashboardController.cs
+- Controllers/EstoqueController.cs
+- Controllers/FinanceiroController.cs
+- Controllers/FiscalController.cs
+- Controllers/FornecedoresController.cs
+- Controllers/RelatoriosController.cs
+- Controllers/SyncController.cs
+- DTOs/CrmDtos.cs
+- DTOs/ErpDtos.cs
+- DTOs/FinanceiroDtos.cs
+- DTOs/OperacionalDtos.cs
+- Data/ErpDbContext.cs
+- Data/NexumDbContext.cs
+- Data/NexumDbContext_ERP.cs
+- Models/CrmFornecedorModels.cs
+- Models/CrmModels.cs
+- Models/EstoqueModels.cs
+- Models/FinanceiroModels.cs
+- Models/FiscalEstoqueModels.cs
+- Models/FiscalModels.cs
+- Models/SharedModels.cs
+- Models/SyncModels.cs
+- Properties/launchSettings.json
+- Services/CrmService.cs
+- Services/EstoqueService.cs
+- Services/FinanceiroService.cs
+- Services/FiscalService.cs
+- Services/FornecedorService.cs
+- Services/RelatorioService.cs
+- Services/SyncErpService.cs
+
+[11_SCRIPTS_OPERACIONAIS] - 11 arquivo(s)
+- ABRIR-ERP-DESKTOP.cmd
+- INSTALAR-ATALHO-ERP-DESKTOP.cmd
+- .snakeflow/trigger-precommit
+- .snakeflow/trigger-precommit.cmd
+- .snakeflow/trigger-quality
+- .snakeflow/trigger-quality.cmd
+- scripts/INSTALAR-GUARDIAN-API-5012-SERVIDOR.cmd
+- scripts/server/APLICAR-API-5012-SERVIDOR.cmd
+- scripts/server/INSTALAR-BOOT-SERVIDOR-NEXUM.cmd
+- scripts/server/NEXUM-GUARDIAN-CMD-5012.cmd
+- scripts/server/START-SERVICE-TUNNEL-CLOUDFLARE.cmd
+
+[12_PUBLICACAO_ESTATICA_RAIZ] - 19 arquivo(s)
+- .htaccess
+- .nojekyll
+- 404.html
+- CNAME
+- _github-pages-challenge-corporativogna-lrc
+- admin-painel.html
+- api-runtime.json
+- asset-manifest.json
+- github-pages-challenge-corporativogna-lrc
+- index.fallback.html
+- index.html
+- nexum-admin-integration.js
+- nexum-integration.js
+- web.config
+- static/css/main.b044b9e2.css
+- static/css/main.b044b9e2.css.map
+- static/js/main.b42d8c62.js
+- static/js/main.b42d8c62.js.LICENSE.txt
+- static/js/main.b42d8c62.js.map
+
+[13_CONFIG_RAIZ_APOIO] - 10 arquivo(s)
+- .dockerignore
+- .gitignore
+- AGENTS.md
+- NuGet.Config
+- README.md
+- README_2.md
+- appsettings.json
+- settings.VisualStudio.json
+- .vscode/extensions.json
+- .vscode/settings.json
+
+15) CONCLUSAO OBJETIVA
+------------------------------------------------------------------------
+O projeto possui uma base enterprise avançada, com front, back, banco, ERP, desktop, CI/CD e infraestrutura já estruturados. O maior ponto de atenção não é ausência de código, mas alinhamento operacional: consolidar qual API é a oficial, garantir que todos os endpoints consumidos estejam publicados no build principal, remover/rotacionar segredos, homologar integrações reais, fechar HTTPS/observabilidade e validar o fluxo ponta a ponta multiempresa: cadastro -> venda -> pagamento -> estoque -> fiscal -> logística -> financeiro -> BI.
