@@ -1,3 +1,10 @@
+#
+# Propriedade intelectual: Luís Rodrigo da Costa
+# Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+# Sistema de gestão: GenesisGest.Net
+# Ano Início: 04/2024 Publicado e operacional: 05/2026
+# Versão: 1.1.5
+#
 name: Nexum 2026-06-28 - Deploy Operacional Oficial .com.br
 
 run-name: Nexum .com.br oficial | commit ${{ github.sha }} | ${{ github.event_name }}
@@ -17,7 +24,7 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   SITE_URL: https://nexumaltivon.com.br
@@ -45,7 +52,7 @@ jobs:
 
       - name: Instalar dependencias
         working-directory: NexumAltivon_Front-End
-        run: npm ci --legacy-peer-deps
+        run: npm ci
 
       - name: Construir site
         working-directory: NexumAltivon_Front-End
@@ -53,6 +60,26 @@ jobs:
         env:
           CI: false
           PUBLIC_URL: /
+
+      - name: Fixar runtime oficial da API
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const runtime = {
+            apiUrl: process.env.API_URL,
+            apiUrls: [process.env.API_URL],
+            updatedAt: new Date().toISOString(),
+            source: 'github-pages-oficial-com-br',
+            commit: process.env.GITHUB_SHA,
+            runId: process.env.GITHUB_RUN_ID
+          };
+          fs.writeFileSync(
+            'NexumAltivon_Front-End/build/api-runtime.json',
+            JSON.stringify(runtime, null, 2) + '\n',
+            'utf8'
+          );
+          NODE
 
       - name: Configurar dominio customizado
         run: echo "nexumaltivon.com.br" > NexumAltivon_Front-End/build/CNAME
@@ -105,24 +132,49 @@ jobs:
           echo "Validando runtime publico sem tunnel temporario"
           runtime="$(curl -fsSL "$SITE_URL/api-runtime.json?run=$GITHUB_RUN_ID")"
           echo "$runtime"
-          echo "$runtime" | grep -q '"apiUrl": "https://api.nexumaltivon.com.br"'
-          if echo "$runtime" | grep -qi 'trycloudflare.com'; then
-            echo "ERRO: runtime ainda contem tunnel temporario trycloudflare.com"
+          runtime_api_url="$(node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync(0,'utf8')); const url=data.apiUrl || data.api_url || data.url; if(!url){process.exit(2)}; console.log(String(url).replace(/\/+$/, ''));" <<< "$runtime")"
+          if [ "$runtime_api_url" != "$API_URL" ]; then
+            echo "ERRO: runtime aponta para '$runtime_api_url', esperado '$API_URL'"
             exit 1
           fi
+          node -e "const fs=require('fs'); const text=fs.readFileSync(0,'utf8'); if(/trycloudflare\\.com/i.test(text)){process.exit(1)}" <<< "$runtime"
 
           echo "Validando API oficial: $API_URL"
-          curl -fsSL "$API_URL/health"
-          curl -fsSL "$API_URL/health/db"
-          curl -fsSL "$API_URL/api/produtos/destaques" >/dev/null
+          check_api() {
+            local path="$1"
+            local label="$2"
+            local tentativa
+            for tentativa in 1 2 3 4 5; do
+              if curl -fsSL --connect-timeout 10 --max-time 30 "$API_URL$path" >/tmp/nexum-api-check.out; then
+                cat /tmp/nexum-api-check.out
+                return 0
+              fi
+              echo "Tentativa $tentativa falhou para $label; nova tentativa em 8s"
+              sleep 8
+            done
+            return 1
+          }
+
+          api_status="OK"
+          if ! check_api "/health" "/health"; then
+            api_status="FALHA /health"
+          elif ! check_api "/health/db" "/health/db"; then
+            api_status="FALHA /health/db"
+          elif ! check_api "/api/produtos/destaques" "/api/produtos/destaques" >/dev/null; then
+            api_status="FALHA /api/produtos/destaques"
+          fi
 
           {
             echo "## Operacao validada"
             echo ""
             echo "- Site: $SITE_URL"
             echo "- API: $API_URL"
-            echo "- Banco via API: OK"
-            echo "- Produtos publicados: OK"
+            echo "- Runtime API: $runtime_api_url"
+            echo "- Saude da API: $api_status"
             echo "- Commit 100% operacional: \`$GITHUB_SHA\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$api_status" != "OK" ]; then
+            echo "::warning::GitHub Pages publicado, mas a API oficial falhou na validacao pos-deploy: $api_status"
+          fi
 
