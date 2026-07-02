@@ -1,3 +1,8 @@
+REM Propriedade intelectual: Luís Rodrigo da Costa
+REM Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+REM Sistema de gestão: GenesisGest.Net
+REM Ano Início: 04/2024 Publicado e operacional: 05/2026
+REM Versão: 1.1.5
 @echo off
 setlocal EnableExtensions DisableDelayedExpansion
 title Nexum Altivon - Aplicar API 5012 no Servidor
@@ -27,6 +32,13 @@ if errorlevel 1 (
 
 if not exist "%PUBLISH_SOURCE%\NexumAltivon.API.dll" (
   echo ERRO: publicacao nova nao encontrada.
+  exit /b 1
+)
+
+findstr /I /C:"server=localhost;port=3309" "%PUBLISH_SOURCE%\appsettings.json" >nul 2>&1
+if not errorlevel 1 (
+  echo ERRO: publicacao ainda aponta MySQL para localhost:3309.
+  echo Corrija appsettings.json para 192.168.1.72:3309 antes de aplicar no runtime.
   exit /b 1
 )
 
@@ -69,6 +81,23 @@ exit /b 1
 :OK_LOCAL
 echo OK: API local ativa em 5012.
 curl.exe -i http://127.0.0.1:5012/health --max-time 15
+curl.exe -fsS http://127.0.0.1:5012/health/db --max-time 15 >nul
+if errorlevel 1 (
+  echo ERRO: API subiu, mas nao conectou ao banco nexum_altivon.
+  echo Verifique ConnectionStrings__DefaultConnection e MySQL 192.168.1.72:3309.
+  exit /b 1
+)
+curl.exe -fsS http://127.0.0.1:5012/health/db/genesis --max-time 15 >nul
+if errorlevel 1 (
+  echo ERRO: API subiu, mas nao conectou ao banco genesis_bd.
+  echo Verifique ConnectionStrings__GenesisConnection e MySQL 192.168.1.72:3309.
+  exit /b 1
+)
+curl.exe -fsS http://127.0.0.1:5012/api/produtos/destaques --max-time 15 >nul
+if errorlevel 1 (
+  echo ERRO: API subiu, mas produtos/destaques ainda falha.
+  exit /b 1
+)
 curl.exe -i http://127.0.0.1:5012/api/pdv/cockpit --max-time 15
 echo Validando rota corporativa nova...
 curl.exe -i http://127.0.0.1:5012/api/gestao-corporativa/dicionario-dados --max-time 15 | findstr /C:"401" /C:"200" >nul
