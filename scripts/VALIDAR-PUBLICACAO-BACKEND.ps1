@@ -97,7 +97,8 @@ $lojaId = 0
 try {
     $lojasResponse = Invoke-WebRequest -Method GET -Uri "$api/api/lojas" -TimeoutSec $TimeoutSec -UseBasicParsing
     $lojasPayload = $lojasResponse.Content | ConvertFrom-Json
-    $firstLoja = @($lojasPayload.data)[0]
+    $lojasData = if ($null -ne $lojasPayload.dados) { $lojasPayload.dados } elseif ($null -ne $lojasPayload.data) { $lojasPayload.data } else { @() }
+    $firstLoja = @($lojasData)[0]
     if ($firstLoja -and $firstLoja.id) {
         $lojaId = [int]$firstLoja.id
     }

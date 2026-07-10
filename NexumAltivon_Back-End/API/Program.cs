@@ -471,11 +471,12 @@ app.MapPost("/api/auth/login", async (
     if (usuario is not null && BCrypt.Net.BCrypt.Verify(request.Senha, usuario.SenhaHash))
     {
         usuario.UltimoLogin = DateTime.UtcNow;
+        usuario.TokenRefresh = GenerateRefreshToken();
         usuario.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
         var perfil = usuario.Perfil.ToString();
-        var usuarioResponse = CreateLoginResponse(usuario.Id, usuario.Nome, usuario.Email, perfil, issuer, audience, signingKey, expirationHours);
+        var usuarioResponse = CreateLoginResponse(usuario.Id, usuario.Nome, usuario.Email, perfil, issuer, audience, signingKey, expirationHours, usuario.TokenRefresh);
         return Results.Ok(ApiResponse<LoginResponse>.Ok(usuarioResponse, "Login realizado com sucesso."));
     }
 
@@ -522,6 +523,71 @@ app.MapPost("/api/auth/login", async (
 })
 .AllowAnonymous()
 .WithName("Login");
+
+app.MapPost("/api/auth/refresh", async (
+    RefreshTokenRequest request,
+    IConfiguration configuration,
+    IServiceProvider services,
+    ILoggerFactory loggerFactory,
+    CancellationToken ct) =>
+{
+    var token = TrimOrNull(request.ResolveToken());
+    var refreshToken = TrimOrNull(request.ResolveRefreshToken());
+    if (token is null || refreshToken is null)
+    {
+        return Results.BadRequest(ApiResponse<LoginResponse>.Erro("Token e refresh token sao obrigatorios."));
+    }
+
+    var expirationHours = configuration.GetValue("JwtSettings:ExpirationHours", 24);
+    var principal = ValidateExpiredJwtToken(token, issuer, audience, signingKey);
+    var email = NormalizeEmail(principal?.FindFirstValue(ClaimTypes.Email) ?? principal?.FindFirstValue(JwtRegisteredClaimNames.Email));
+    if (string.IsNullOrWhiteSpace(email))
+    {
+        return Results.Unauthorized();
+    }
+
+    NexumDbContext db;
+    try
+    {
+        db = services.GetRequiredService<NexumDbContext>();
+    }
+    catch (Exception ex)
+    {
+        loggerFactory
+            .CreateLogger("AuthRefresh")
+            .LogError(ex, "NexumDbContext indisponivel durante rotacao de refresh token.");
+
+        return Results.Problem(
+            "Banco de dados indisponivel para renovar sessao.",
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
+    var usuario = await db.Usuarios
+        .FirstOrDefaultAsync(item => item.Email == email && item.Ativo && item.TokenRefresh == refreshToken, ct);
+    if (usuario is null)
+    {
+        return Results.Unauthorized();
+    }
+
+    usuario.TokenRefresh = GenerateRefreshToken();
+    usuario.UpdatedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync(ct);
+
+    var response = CreateLoginResponse(
+        usuario.Id,
+        usuario.Nome,
+        usuario.Email,
+        usuario.Perfil.ToString(),
+        issuer,
+        audience,
+        signingKey,
+        expirationHours,
+        usuario.TokenRefresh);
+
+    return Results.Ok(ApiResponse<LoginResponse>.Ok(response, "Sessao renovada com sucesso."));
+})
+.AllowAnonymous()
+.WithName("RefreshAuthToken");
 
 app.MapPost("/api/sistema/validar-token", async (
     ValidacaoTokenRequest request,
@@ -619,6 +685,28 @@ app.MapGet("/api/admin/dashboard/kpis", [Authorize(Policy = "Gerente")] async (
     .WithName("DashboardKpis")
     ;
 
+app.MapGet("/api/relatorios/vendas", [Authorize(Policy = "Gerente")] async (
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var dashboard = await BuildAdminDashboardAsync(db, ct);
+    var relatorio = new RelatorioVendasDto(
+        dashboard.Kpis.FaturamentoHoje,
+        dashboard.Kpis.FaturamentoMes,
+        dashboard.Kpis.FaturamentoAno,
+        dashboard.Kpis.PedidosHoje,
+        dashboard.Kpis.PedidosMes,
+        dashboard.Kpis.TicketMedio,
+        dashboard.FaturamentoSemanal,
+        dashboard.FaturamentoMensal,
+        dashboard.VendasPorLoja,
+        dashboard.ProdutosMaisVendidos);
+
+    return Results.Ok(ApiResponse<RelatorioVendasDto>.Ok(relatorio, "Relatorio de vendas consolidado."));
+})
+.WithName("RelatorioVendas")
+;
+
 app.MapGet("/api/admin/genesisgest/schema-status", [Authorize(Policy = "Gerente")] async (
     NexumDbContext db,
     CancellationToken ct) =>
@@ -650,6 +738,31 @@ app.MapGet("/api/lojas", async (NexumDbContext db, CancellationToken ct) =>
 })
 .AllowAnonymous()
 .WithName("Lojas")
+;
+
+app.MapGet("/api/lojas/{id:int}", async (int id, NexumDbContext db, CancellationToken ct) =>
+{
+    var loja = await db.Lojas
+        .AsNoTracking()
+        .Where(item => item.Id == id)
+        .Select(item => new LojaDto(
+            item.Id,
+            item.Nome,
+            item.Slug,
+            item.Segmento,
+            item.Descricao,
+            item.CorPrimaria,
+            item.CorSecundaria,
+            item.Ativa,
+            item.OrdemExibicao))
+        .FirstOrDefaultAsync(ct);
+
+    return loja is null
+        ? Results.NotFound(ApiResponse<string>.Erro("Loja nao encontrada."))
+        : Results.Ok(ApiResponse<LojaDto>.Ok(loja));
+})
+.AllowAnonymous()
+.WithName("LojaPorId")
 ;
 
 app.MapGet("/api/site/configuracoes/publico", async (NexumDbContext db, CancellationToken ct) =>
@@ -2398,6 +2511,50 @@ app.MapGet("/api/pedidos", [Authorize(Policy = "Gerente")] async (NexumDbContext
 .WithName("Pedidos")
 ;
 
+app.MapGet("/api/pedidos/{id:int}", [Authorize(Policy = "Gerente")] async (
+    int id,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var pedido = await db.Pedidos
+        .AsNoTracking()
+        .Include(item => item.Pagamentos)
+        .FirstOrDefaultAsync(item => item.Id == id, ct);
+
+    if (pedido is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Pedido nao encontrado."));
+    }
+
+    var pagamentoAtual = pedido.Pagamentos?
+        .OrderByDescending(item => item.CreatedAt)
+        .FirstOrDefault();
+
+    var dto = new PedidoLojaDto(
+        pedido.Id,
+        pedido.NumeroPedido,
+        pedido.Total,
+        FormatStatusPedido(pedido.Status),
+        pedido.CreatedAt,
+        FormatStatusPagamento(pedido.StatusPagamento),
+        pedido.MeioPagamento,
+        pedido.GatewayPagamento,
+        pedido.GatewayTransacaoId,
+        pedido.FreteValor,
+        pedido.FreteMetodo,
+        pedido.FreteTransportadora,
+        pedido.FretePrazoDias,
+        pedido.FreteCodigoRastreio,
+        BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId),
+        pagamentoAtual?.Parcelas ?? 1,
+        pagamentoAtual?.PixQrcode,
+        pagamentoAtual?.BoletoUrl);
+
+    return Results.Ok(ApiResponse<PedidoLojaDto>.Ok(dto));
+})
+.WithName("PedidoPorId")
+;
+
 app.MapGet("/api/financeiro/lancamentos", [Authorize(Policy = "Financeiro")] async (
     int? pedidoId,
     string? tipo,
@@ -2448,6 +2605,54 @@ app.MapGet("/api/financeiro/lancamentos", [Authorize(Policy = "Financeiro")] asy
     return Results.Ok(ApiResponse<List<FinanceiroLancamentoDto>>.Ok(lancamentos));
 })
 .WithName("FinanceiroLancamentos")
+;
+
+app.MapGet("/api/financeiro/faturamento", [Authorize(Policy = "Financeiro")] async (
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var hoje = DateTime.UtcNow.Date;
+    var inicioMes = new DateTime(hoje.Year, hoje.Month, 1);
+    var inicioAno = new DateTime(hoje.Year, 1, 1);
+
+    var receitasConfirmadas = db.Financeiros.AsNoTracking()
+        .Where(item => item.Tipo == TipoLancamento.Receita && item.Status == StatusLancamento.Pago);
+
+    var despesasConfirmadas = db.Financeiros.AsNoTracking()
+        .Where(item => item.Tipo == TipoLancamento.Despesa && item.Status == StatusLancamento.Pago);
+
+    var receitaHoje = await receitasConfirmadas
+        .Where(item => (item.DataPagamento ?? item.CreatedAt) >= hoje)
+        .SumAsync(item => item.Valor, ct);
+    var receitaMes = await receitasConfirmadas
+        .Where(item => (item.DataPagamento ?? item.CreatedAt) >= inicioMes)
+        .SumAsync(item => item.Valor, ct);
+    var receitaAno = await receitasConfirmadas
+        .Where(item => (item.DataPagamento ?? item.CreatedAt) >= inicioAno)
+        .SumAsync(item => item.Valor, ct);
+    var despesasMes = await despesasConfirmadas
+        .Where(item => (item.DataPagamento ?? item.CreatedAt) >= inicioMes)
+        .SumAsync(item => item.Valor, ct);
+    var pendenteReceber = await db.Financeiros.AsNoTracking()
+        .Where(item => item.Tipo == TipoLancamento.Receita && (item.Status == StatusLancamento.Pendente || item.Status == StatusLancamento.Atrasado))
+        .SumAsync(item => item.Valor, ct);
+    var pendentePagar = await db.Financeiros.AsNoTracking()
+        .Where(item => item.Tipo == TipoLancamento.Despesa && (item.Status == StatusLancamento.Pendente || item.Status == StatusLancamento.Atrasado))
+        .SumAsync(item => item.Valor, ct);
+
+    var resumo = new FinanceiroFaturamentoDto(
+        receitaHoje,
+        receitaMes,
+        receitaAno,
+        despesasMes,
+        receitaMes - despesasMes,
+        pendenteReceber,
+        pendentePagar,
+        DateTime.UtcNow);
+
+    return Results.Ok(ApiResponse<FinanceiroFaturamentoDto>.Ok(resumo, "Faturamento financeiro consolidado."));
+})
+.WithName("FinanceiroFaturamento")
 ;
 
 app.MapPost("/api/financeiro/lancamentos", [Authorize(Policy = "Financeiro")] async (
@@ -5287,7 +5492,8 @@ static LoginResponse CreateLoginResponse(
     string issuer,
     string audience,
     SymmetricSecurityKey signingKey,
-    int expirationHours)
+    int expirationHours,
+    string? refreshToken = null)
 {
     var expiresAt = DateTime.UtcNow.AddHours(expirationHours);
     var claims = new[]
@@ -5309,9 +5515,48 @@ static LoginResponse CreateLoginResponse(
 
     return new LoginResponse(
         new JwtSecurityTokenHandler().WriteToken(token),
-        string.Empty,
+        refreshToken ?? string.Empty,
         expiresAt,
         new UsuarioDto(id, nome, email, perfil));
+}
+
+static ClaimsPrincipal? ValidateExpiredJwtToken(string token, string issuer, string audience, SymmetricSecurityKey signingKey)
+{
+    var validationParameters = new TokenValidationParameters
+    {
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = signingKey,
+        ValidateIssuer = true,
+        ValidIssuer = issuer,
+        ValidateAudience = true,
+        ValidAudience = audience,
+        ValidateLifetime = false,
+        ClockSkew = TimeSpan.Zero
+    };
+
+    try
+    {
+        return new JwtSecurityTokenHandler().ValidateToken(token, validationParameters, out var securityToken) is { } principal
+            && securityToken is JwtSecurityToken jwtToken
+            && jwtToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.Ordinal)
+            ? principal
+            : null;
+    }
+    catch (SecurityTokenException)
+    {
+        return null;
+    }
+    catch (ArgumentException)
+    {
+        return null;
+    }
+}
+
+static string GenerateRefreshToken()
+{
+    var bytes = new byte[64];
+    RandomNumberGenerator.Fill(bytes);
+    return Convert.ToBase64String(bytes);
 }
 
 static string? NormalizePhone(string? value)
@@ -9034,6 +9279,17 @@ app.Run();
 
 public sealed record LoginRequest(string Email, string Senha);
 
+public sealed class RefreshTokenRequest
+{
+    public string? Token { get; init; }
+    public string? AccessToken { get; init; }
+    public string? RefreshToken { get; init; }
+
+    public string? ResolveToken() => Token ?? AccessToken;
+
+    public string? ResolveRefreshToken() => RefreshToken;
+}
+
 public sealed record LoginResponse(string Token, string RefreshToken, DateTime ExpiraEm, UsuarioDto Usuario);
 
 public sealed record UsuarioDto(int Id, string Nome, string Email, string Perfil);
@@ -9104,6 +9360,18 @@ public sealed record VendasPorLojaDto(string LojaNome, string LojaSlug, decimal 
 
 public sealed record ProdutosMaisVendidosDto(int ProdutoId, string Nome, string? Imagem, string LojaNome, int QuantidadeVendida, decimal ReceitaTotal);
 
+public sealed record RelatorioVendasDto(
+    decimal FaturamentoHoje,
+    decimal FaturamentoMes,
+    decimal FaturamentoAno,
+    int PedidosHoje,
+    int PedidosMes,
+    decimal TicketMedio,
+    List<FaturamentoPorPeriodoDto> FaturamentoSemanal,
+    List<FaturamentoPorPeriodoDto> FaturamentoMensal,
+    List<VendasPorLojaDto> VendasPorLoja,
+    List<ProdutosMaisVendidosDto> ProdutosMaisVendidos);
+
 public sealed record ClientesRecentesDto(int Id, string Nome, string Email, string? Whatsapp, DateTime DataCadastro, int TotalPedidos, decimal TotalGasto);
 
 public sealed record PedidosRecentesDto(int Id, string NumeroPedido, string ClienteNome, decimal Total, string Status, string StatusPagamento, string? LojaNome, DateTime DataPedido);
@@ -9145,6 +9413,16 @@ public sealed record FinanceiroLancamentoStatusRequest(
     string? ContaBancaria,
     string? ComprovanteUrl,
     string? Observacoes);
+
+public sealed record FinanceiroFaturamentoDto(
+    decimal ReceitaHoje,
+    decimal ReceitaMes,
+    decimal ReceitaAno,
+    decimal DespesasMes,
+    decimal ResultadoMes,
+    decimal PendenteReceber,
+    decimal PendentePagar,
+    DateTime AtualizadoEm);
 
 public sealed record LeadsRecentesDto(int Id, string Nome, string Tipo, string Status, string Prioridade, string? Email, string? Whatsapp, DateTime DataCriacao);
 
