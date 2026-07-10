@@ -26,13 +26,13 @@ Data da apuracao: 2026-07-10.
 |---|---|---|---|
 | B1 | Solution unica compila API, ERP e Desktop | Concluido local | `NexumAltivon.ERP.sln` lista API, ERP, Desktop e projeto raiz; build Release com 0 erros e 0 avisos |
 | B2 | Controllers MVC fora do ativo e endpoints criticos sem 404 | Ajustado e publicado na branch de entrega | API oficial e Minimal API; controllers MVC removidos do projeto da API ativa no commit `4bacfe5`; smoke publico passou nos pontos obrigatorios |
-| B3 | Duplicacao massiva da raiz removida do build ativo | Parcial | Projeto raiz foi reduzido a build info e saiu do pipeline de codigo legado; deletions da raiz ainda estao no worktree e precisam triagem antes de publicar |
-| B4 | `Sys_AuditableEntity` em 100% das entidades transacionais | Parcial | Infraestrutura existe; auditoria central no DbContext existe; heranca direta ainda nao cobre todas as classes |
+| B3 | Duplicacao massiva da raiz removida do build ativo | Concluido para a raiz legacy | Diretorios legados da raiz foram removidos do build/versionamento no commit `7ccc668`; solution Release seguiu compilando com 0 erros e 0 avisos |
+| B4 | `Sys_AuditableEntity` em 100% das entidades transacionais | Parcial avancado | Commit `07a465e` aplicou tenant, soft-delete, auditoria central e `row_version` BLOB no `NexumDbContext`; heranca direta ainda nao cobre todas as classes |
 | B5 | MFA, refresh-token, tenants e workflows | Parcial | Rotas existem e compilam; tenant smoke validado; fluxo completo ainda exige teste integrado |
 | B6 | Testes com cobertura minima de 70% em Services | Pendente | Nao ha projeto de teste ativo na arvore oficial |
 | B7 | Observabilidade completa | Parcial | Health e Redis existem; Serilog/OpenTelemetry completos ainda nao foram homologados ponta a ponta |
 | B8 | Backup diario e restore-test semanal | Parcial | Backup local 2h corrigido para `D:\Nexum Altivon\NexumAltivon.com` e executado com resultado 0; restore-test em CI ainda nao comprovado |
-| B9 | EF Migrations | Parcial | Migrations do Nexum existem; `dotnet ef database update` em banco vazio ainda nao foi validado nesta apuracao |
+| B9 | EF Migrations | Parcial avancado | Commit `07a465e` versionou migrations do Nexum com `row_version` BLOB alinhado ao banco real; `dotnet ef` nao esta instalado no PATH desta maquina |
 | B10 | Secrets fora dos arquivos versionados | Parcial | Runtime local usa `runtime/api-24h/api.env.ps1`, ignorado pelo Git; ainda ha configuracoes de desenvolvimento e templates a revisar |
 | B11 | Documentacao tecnica e OpenAPI | Parcial | Docs principais existem; `/swagger/v1/swagger.json` foi ajustado para ser registrado fora de Development/Staging |
 | B12 | Compose dev com MySQL e Redis | Concluido em arquivo | `docker/docker-compose.yml` contem MySQL 8, Redis 7 e MinIO |
@@ -60,9 +60,13 @@ Data da apuracao: 2026-07-10.
 | Causa real do 502 | API nao subia porque a configuracao privada apontava para caminho externo ausente e, depois, faltava `CREATE VIEW` ao usuario de aplicacao |
 | Processo atual | `dotnet.exe NexumAltivon.API.dll` escutando `127.0.0.1:5010`, iniciado por `scripts/server/iniciar-api-oficial-24h.ps1` via task `NexumAltivonApi24h` |
 | Validacao da tarefa 24h | Concluida via log elevado: `TaskState=Running`, `TaskUser=SISTEMA`, `RunLevel=Highest`, `HealthStatus=200`; consultas nao elevadas podem retornar acesso negado/nao encontrado |
-| Revisao local de legados | Criado `Revisao_Exclusao_2026-07-10` dentro da raiz oficial; pasta ignorada pelo Git para impedir commit acidental |
-| GitHub publicado | Commit `4bacfe5 fix: solution - fechar build oficial da api` enviado para `origin/work/delivery-2026-06-13` |
+| Revisao local de legados | Nesta apuracao a pasta `Revisao_Exclusao_2026-07-10` nao existe no diretorio oficial; nao foi usada como evidencia |
+| GitHub publicado | Branch `origin/work/delivery-2026-06-13` atualizada ate `07a465e feat: api - alinhar auditoria tenant e fluxos reais` |
 | Backup local 2h | Task `NexumAltivon Backup Local 2h` corrigida de `Y:\...` para `D:\Nexum Altivon\NexumAltivon.com\scripts\backup-nexum-local-2h.ps1`; execucao manual retornou `Último resultado: 0` |
+| ERP isolado | Commit `5611329` ajustou navegacoes nullable e headers no `NexumAltivon_ERP`; `dotnet build NexumAltivon.ERP.sln -c Release` passou com 0 erros e 0 avisos |
+| API ativa | Commit `07a465e` alinhou auditoria tenant, migrations, confirmacao de cadastro, Melhor Envio real e filtros de produto publicavel; `dotnet build NexumAltivon_Back-End\NexumAltivon.API.csproj -c Release` passou com 0 erros e 0 avisos |
+| Banco local oficial | MySQL XAMPP validado em `127.0.0.1:3309`; schemas `nexum_altivon` e `genesis_bd` existem, com 212 e 47 tabelas respectivamente |
+| Catalogo publico | Consulta direta no banco confirmou 91 produtos ativos e 91 produtos publicaveis pelo filtro atual da API |
 
 ## Definition of Done
 
@@ -82,15 +86,15 @@ Data da apuracao: 2026-07-10.
 | Redis integrado e healthcheck verde | Parcial | Health Redis existe; validar em runtime de producao |
 | S3/MinIO anexos | Parcial | Servico e compose existem; validar upload/download assinado |
 | Serilog e OpenTelemetry | Pendente | Ativar logs/traces/metrics e validar exportacao |
-| EF Migrations aplicaveis em banco vazio | Parcial | Executar `dotnet ef database update` em ambiente controlado |
+| EF Migrations aplicaveis em banco vazio | Parcial avancado | Migrations foram versionadas; instalar `dotnet-ef` e executar `dotnet ef database update` em banco vazio controlado |
 | Secrets fora de arquivos versionados | Parcial | Revisar arquivos versionados e manter segredos apenas em env/User Secrets/cofre |
 | CI/CD com gate de cobertura, Sonar e migrate | Parcial | Adicionar teste/cobertura/migrate e health-check pos-deploy |
 | Compose dev sobe tudo | Nao validado nesta apuracao | Executar `docker compose up --build` em janela propria |
 | Desktop auto-update funcional | Parcial | Publicar release desktop real e validar atualizacao em maquina cliente |
 | TLS ativo sem HTTP publico puro | Parcial | Porta 443 responde; validar politica completa Cloudflare/nginx |
 | AGENTS e OpenAPI | Parcial | `AGENTS.md` atualizado; `/swagger/v1/swagger.json` respondeu 200 no smoke publico |
-| Termos proibidos no codigo ativo | Pendente | Triar ocorrencias em frontend, docs e arquivos antigos |
-| Header de IP em todos os arquivos | Pendente | Varredura achou 226 arquivos ativos sem header |
+| Termos proibidos no codigo ativo | Parcial | Blocos commitados nesta auditoria foram varridos; ainda restam Desktop, docs antigos e services legados nao compilados para triagem |
+| Header de IP em todos os arquivos | Parcial | Blocos commitados nesta auditoria receberam header; falta varredura completa nos arquivos remanescentes |
 | Fluxo cadastro a BI isolado por empresa | Pendente | Executar roteiro ponta a ponta com dados reais |
 
 ## GitHub e Commit
@@ -98,11 +102,12 @@ Data da apuracao: 2026-07-10.
 Estado apurado:
 
 - Branch local: `work/delivery-2026-06-13`.
-- Commit local e remoto atual: `4bacfe5 fix: solution - fechar build oficial da api`.
-- `origin/work/delivery-2026-06-13`: alinhado com `4bacfe5`.
+- Commit local e remoto atual: `07a465e feat: api - alinhar auditoria tenant e fluxos reais`.
+- `origin/work/delivery-2026-06-13`: alinhado com `07a465e`.
 - `origin/main`: `5cb041d46d30af0ab7da4a7f9eeda1b2a4ea983f`.
 - O estado atual da arvore ainda possui muitas alteracoes nao commitadas e nao deve ser tratado como sincronizado com `main`.
-- Total de alteracoes locais remanescentes apos o commit `4bacfe5`: 250 entradas no `git status --short --untracked-files=normal`.
+- Total de alteracoes locais remanescentes apos o commit `07a465e`: 51 entradas no `git status --short --untracked-files=normal`.
+- Commits atomicos enviados nesta rodada: `c7076d5`, `7ccc668`, `028ee9f`, `1e0a4ec`, `5611329`, `07a465e`.
 - Publicacao GitHub deve ser seletiva e auditada; publicar todo o worktree atual sem triagem pode enviar arquivos legados/falsos que o prompt bloqueia.
 
 ## Regra de continuidade
