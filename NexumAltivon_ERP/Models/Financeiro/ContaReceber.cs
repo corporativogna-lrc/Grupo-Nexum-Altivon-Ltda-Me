@@ -1,3 +1,11 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
+
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -71,9 +79,9 @@ namespace NexumAltivon_ERP.Models.Financeiro
         public DateTime? AtualizadoEm { get; set; }
 
         [ForeignKey("CentroCustoId")]
-        public CentroCusto CentroCusto { get; set; }
+        public CentroCusto? CentroCusto { get; set; }
 
         [ForeignKey("PlanoContasId")]
-        public PlanoContas PlanoContas { get; set; }
+        public PlanoContas? PlanoContas { get; set; }
     }
 }
