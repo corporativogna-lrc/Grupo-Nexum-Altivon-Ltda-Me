@@ -460,7 +460,9 @@ app.MapPost("/api/auth/login", async (
     var normalizedEmail = NormalizeEmail(request.Email);
     if (string.IsNullOrWhiteSpace(normalizedEmail))
     {
-        return Results.Unauthorized();
+        return Results.Json(
+            ApiResponse<LoginResponse>.Erro("E-mail ou senha inválidos."),
+            statusCode: StatusCodes.Status401Unauthorized);
     }
 
     var expirationHours = configuration.GetValue("JwtSettings:ExpirationHours", 24);
@@ -520,7 +522,9 @@ app.MapPost("/api/auth/login", async (
         return Results.Ok(ApiResponse<LoginResponse>.Ok(clienteResponse, "Login do cliente realizado com sucesso."));
     }
 
-    return Results.Unauthorized();
+    return Results.Json(
+        ApiResponse<LoginResponse>.Erro("E-mail ou senha inválidos."),
+        statusCode: StatusCodes.Status401Unauthorized);
 })
 .AllowAnonymous()
 .WithName("Login");

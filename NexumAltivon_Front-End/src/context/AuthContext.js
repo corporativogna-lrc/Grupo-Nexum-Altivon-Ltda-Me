@@ -1,6 +1,13 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { STORAGE_KEYS, ADMIN_ROLES } from '../constants';
+import { STORAGE_KEYS, ADMIN_ROLES, HTTP_UNAUTHORIZED } from '../constants';
 import api, { API_BASE_URL, getRuntimeApiBaseUrl } from '../services/api';
 
 const AuthContext = createContext();
@@ -12,6 +19,13 @@ const isAdminRole = (userData) => {
   return ADMIN_ROLES.some((adminRole) => adminRole.toLowerCase() === role);
 };
 const getPostLoginDestination = (userData) => (isAdminRole(userData) ? '/dashboard' : '/area-cliente');
+const getLoginErrorMessage = (error) => {
+  if (error.response?.status === HTTP_UNAUTHORIZED) {
+    return error.response?.data?.mensagem || error.response?.data?.message || 'E-mail ou senha inválidos.';
+  }
+
+  return error.response?.data?.detail || error.response?.data?.mensagem || error.response?.data?.message || 'Erro ao fazer login';
+};
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -87,7 +101,7 @@ export function AuthProvider({ children }) {
         success: false,
         error: isNetworkError
           ? `API indisponível no momento (${runtimeApiBaseUrl}). Verifique a ponte pública da API e tente novamente.`
-          : error.response?.data?.detail || error.response?.data?.mensagem || 'Erro ao fazer login'
+          : getLoginErrorMessage(error)
       };
     }
   };
