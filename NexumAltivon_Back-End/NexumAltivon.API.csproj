@@ -1,3 +1,10 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+-->
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
@@ -9,16 +16,17 @@
     <AssemblyName>NexumAltivon.API</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
+    <DefaultItemExcludes>$(DefaultItemExcludes);NexumAltivon.API.Tests\**;API\Legacy\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Include="API\Program.cs" />
     <Compile Include="API\Data\**\*.cs" />
     <Compile Include="API\ERP\**\*.cs" />
+    <Compile Include="API\Infrastructure\**\*.cs" />
     <Compile Include="API\Models\**\*.cs" />
+    <Compile Include="API\Services\AssistenteIaService.cs" />
     <Compile Include="API\Services\NotificacaoService.cs" />
-    <Compile Remove="API\Models\CarrinhoCheckoutPagamento.cs" />
-    <Compile Remove="API\Models\IntegracoesModels.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -27,8 +35,12 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
-    <Content Remove="bin\**;obj\**;wwwroot\uploads\**;appsettings.Development.json;appsettings.ERP.json" />
-    <None Remove="bin\**;obj\**;wwwroot\uploads\**;appsettings.Development.json;appsettings.ERP.json" />
+    <Content Include="API\Database\2026-06-29-genesisgest-original-schema.sql">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Remove="bin\**;obj\**;NexumAltivon.API.Tests\**;wwwroot\uploads\**;appsettings.Development.json;appsettings.ERP.json" />
+    <None Remove="bin\**;obj\**;NexumAltivon.API.Tests\**;wwwroot\uploads\**;appsettings.Development.json;appsettings.ERP.json" />
   </ItemGroup>
 
   <ItemGroup>

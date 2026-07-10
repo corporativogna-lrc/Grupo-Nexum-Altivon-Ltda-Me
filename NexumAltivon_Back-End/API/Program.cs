@@ -339,8 +339,18 @@ app.MapPost("/api/assistentes/mensagem", async (
     IAssistenteIaService assistenteIa,
     CancellationToken ct) =>
 {
-    var resposta = await assistenteIa.ResponderAsync(request, ct);
-    return Results.Ok(ApiResponse<AssistenteIaResposta>.Ok(resposta, "Mensagem processada pelo assistente."));
+    try
+    {
+        var resposta = await assistenteIa.ResponderAsync(request, ct);
+        return Results.Ok(ApiResponse<AssistenteIaResposta>.Ok(resposta, "Mensagem processada pelo assistente."));
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Problem(
+            title: "Assistente de IA indisponivel",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
 })
 .AllowAnonymous()
 .WithName("AssistentesMensagem");

@@ -73,6 +73,9 @@ runtime/
 runtime-logs/
 NexumAltivon_Back-End/wwwroot/uploads/
 
+# Revisao local de itens nao oficiais/legados
+Revisao_Exclusao_*/
+
 # Node.js (futuro front-end)
 node_modules/
 NexumAltivon_Front-End/build/
