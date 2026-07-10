@@ -31,7 +31,7 @@ Data da apuracao: 2026-07-10.
 | B5 | MFA, refresh-token, tenants e workflows | Parcial | Rotas existem e compilam; tenant smoke validado; fluxo completo ainda exige teste integrado |
 | B6 | Testes com cobertura minima de 70% em Services | Pendente | Nao ha projeto de teste ativo na arvore oficial |
 | B7 | Observabilidade completa | Parcial | Health e Redis existem; Serilog/OpenTelemetry completos ainda nao foram homologados ponta a ponta |
-| B8 | Backup diario e restore-test semanal | Parcial | Scripts e containers existem; execucao agendada e restore-test em CI ainda nao comprovados |
+| B8 | Backup diario e restore-test semanal | Parcial | Backup local 2h corrigido para `D:\Nexum Altivon\NexumAltivon.com` e executado com resultado 0; restore-test em CI ainda nao comprovado |
 | B9 | EF Migrations | Parcial | Migrations do Nexum existem; `dotnet ef database update` em banco vazio ainda nao foi validado nesta apuracao |
 | B10 | Secrets fora dos arquivos versionados | Parcial | Runtime local usa `runtime/api-24h/api.env.ps1`, ignorado pelo Git; ainda ha configuracoes de desenvolvimento e templates a revisar |
 | B11 | Documentacao tecnica e OpenAPI | Parcial | Docs principais existem; `/swagger/v1/swagger.json` foi ajustado para ser registrado fora de Development/Staging |
@@ -62,6 +62,7 @@ Data da apuracao: 2026-07-10.
 | Validacao da tarefa 24h | Pendente: `scripts/server/validar-api-oficial-24h-task.ps1` retornou que `NexumAltivonApi24h` nao existe |
 | Revisao local de legados | Criado `Revisao_Exclusao_2026-07-10` dentro da raiz oficial; pasta ignorada pelo Git para impedir commit acidental |
 | GitHub publicado | Commit `4bacfe5 fix: solution - fechar build oficial da api` enviado para `origin/work/delivery-2026-06-13` |
+| Backup local 2h | Task `NexumAltivon Backup Local 2h` corrigida de `Y:\...` para `D:\Nexum Altivon\NexumAltivon.com\scripts\backup-nexum-local-2h.ps1`; execucao manual retornou `Último resultado: 0` |
 
 ## Definition of Done
 
