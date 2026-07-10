@@ -512,10 +512,11 @@ app.MapPost("/api/auth/login", async (
         }
 
         cliente.UltimoAcesso = DateTime.UtcNow;
+        cliente.TokenRefresh = GenerateRefreshToken();
         cliente.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
-        var clienteResponse = CreateLoginResponse(cliente.Id, cliente.Nome, cliente.Email, "Cliente", issuer, audience, signingKey, expirationHours);
+        var clienteResponse = CreateLoginResponse(cliente.Id, cliente.Nome, cliente.Email, "Cliente", issuer, audience, signingKey, expirationHours, cliente.TokenRefresh);
         return Results.Ok(ApiResponse<LoginResponse>.Ok(clienteResponse, "Login do cliente realizado com sucesso."));
     }
 
@@ -564,27 +565,50 @@ app.MapPost("/api/auth/refresh", async (
 
     var usuario = await db.Usuarios
         .FirstOrDefaultAsync(item => item.Email == email && item.Ativo && item.TokenRefresh == refreshToken, ct);
-    if (usuario is null)
+    if (usuario is not null)
+    {
+        usuario.TokenRefresh = GenerateRefreshToken();
+        usuario.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+
+        var response = CreateLoginResponse(
+            usuario.Id,
+            usuario.Nome,
+            usuario.Email,
+            usuario.Perfil.ToString(),
+            issuer,
+            audience,
+            signingKey,
+            expirationHours,
+            usuario.TokenRefresh);
+
+        return Results.Ok(ApiResponse<LoginResponse>.Ok(response, "Sessao renovada com sucesso."));
+    }
+
+    var cliente = await db.Clientes
+        .FirstOrDefaultAsync(item => item.Email == email && item.Status == StatusCliente.Ativo && item.TokenRefresh == refreshToken, ct);
+    if (cliente is null)
     {
         return Results.Unauthorized();
     }
 
-    usuario.TokenRefresh = GenerateRefreshToken();
-    usuario.UpdatedAt = DateTime.UtcNow;
+    cliente.TokenRefresh = GenerateRefreshToken();
+    cliente.UltimoAcesso = DateTime.UtcNow;
+    cliente.UpdatedAt = DateTime.UtcNow;
     await db.SaveChangesAsync(ct);
 
-    var response = CreateLoginResponse(
-        usuario.Id,
-        usuario.Nome,
-        usuario.Email,
-        usuario.Perfil.ToString(),
+    var clienteResponse = CreateLoginResponse(
+        cliente.Id,
+        cliente.Nome,
+        cliente.Email,
+        "Cliente",
         issuer,
         audience,
         signingKey,
         expirationHours,
-        usuario.TokenRefresh);
+        cliente.TokenRefresh);
 
-    return Results.Ok(ApiResponse<LoginResponse>.Ok(response, "Sessao renovada com sucesso."));
+    return Results.Ok(ApiResponse<LoginResponse>.Ok(clienteResponse, "Sessao renovada com sucesso."));
 })
 .AllowAnonymous()
 .WithName("RefreshAuthToken");
@@ -7925,6 +7949,7 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS email_cliente_notificado_em DATETIME NULL;");
 
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS token_confirmacao_email VARCHAR(255) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS token_refresh VARCHAR(255) NULL;");
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS confirmado_em DATETIME NULL;");
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS status INT NOT NULL DEFAULT 3;");
 
@@ -9285,9 +9310,15 @@ public sealed class RefreshTokenRequest
     public string? AccessToken { get; init; }
     public string? RefreshToken { get; init; }
 
-    public string? ResolveToken() => Token ?? AccessToken;
+    [JsonPropertyName("access_token")]
+    public string? AccessTokenSnakeCase { get; init; }
 
-    public string? ResolveRefreshToken() => RefreshToken;
+    [JsonPropertyName("refresh_token")]
+    public string? RefreshTokenSnakeCase { get; init; }
+
+    public string? ResolveToken() => Token ?? AccessToken ?? AccessTokenSnakeCase;
+
+    public string? ResolveRefreshToken() => RefreshToken ?? RefreshTokenSnakeCase;
 }
 
 public sealed record LoginResponse(string Token, string RefreshToken, DateTime ExpiraEm, UsuarioDto Usuario);

@@ -235,19 +235,33 @@ api.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
+        const accessTokenAtual = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
         const refreshToken = localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
-        if (!refreshToken) {
+        if (!accessTokenAtual || !refreshToken) {
           return Promise.reject(error);
         }
 
         const runtimeApiBaseUrl = await getRuntimeApiBaseUrl();
         const response = await axios.post(`${runtimeApiBaseUrl}/api/auth/refresh`, {
+          token: accessTokenAtual,
+          accessToken: accessTokenAtual,
+          refreshToken,
+          access_token: accessTokenAtual,
           refresh_token: refreshToken,
         });
 
-        const { access_token } = response.data;
-        localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, access_token);
-        originalRequest.headers.Authorization = `Bearer ${access_token}`;
+        const payload = unwrapApiData(response.data);
+        const novoAccessToken = payload?.access_token || payload?.token || payload?.Token;
+        const novoRefreshToken = payload?.refresh_token || payload?.refreshToken || payload?.RefreshToken || refreshToken;
+
+        if (!novoAccessToken) {
+          throw new Error('API nao retornou token de acesso na renovacao da sessao.');
+        }
+
+        localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, novoAccessToken);
+        localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, novoRefreshToken);
+        axios.defaults.headers.common['Authorization'] = `Bearer ${novoAccessToken}`;
+        originalRequest.headers.Authorization = `Bearer ${novoAccessToken}`;
 
         return api(originalRequest);
       } catch (refreshError) {

@@ -1,3 +1,10 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -82,6 +89,10 @@ public class Cliente
     [Column("token_reset_senha")]
     [MaxLength(255)]
     public string? TokenResetSenha { get; set; }
+
+    [Column("token_refresh")]
+    [MaxLength(255)]
+    public string? TokenRefresh { get; set; }
 
     [Column("token_confirmacao_email")]
     [MaxLength(255)]
