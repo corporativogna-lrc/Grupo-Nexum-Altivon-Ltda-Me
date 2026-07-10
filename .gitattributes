@@ -1,0 +1,23 @@
+#
+# Propriedade intelectual: Luís Rodrigo da Costa
+# Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+# Sistema de gestão: GenesisGest.Net
+# Ano Início: 04/2024 Publicado e operacional: 05/2026
+# Versão: 1.1.5
+#
+
+* text=auto
+
+.gitattributes text eol=lf
+*.env text eol=lf
+*.env.example text eol=lf
+*.conf text eol=lf
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+Dockerfile* text eol=lf
+*.csproj text eol=lf
+
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf

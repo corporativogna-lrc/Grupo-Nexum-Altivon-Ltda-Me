@@ -1,3 +1,11 @@
+#
+# Propriedade intelectual: Luís Rodrigo da Costa
+# Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+# Sistema de gestão: GenesisGest.Net
+# Ano Início: 04/2024 Publicado e operacional: 05/2026
+# Versão: 1.1.5
+#
+
 version: '3.8'
 
 # ============================================
@@ -12,16 +20,18 @@ services:
     container_name: nexum-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: root_dev
-      MYSQL_DATABASE: nexum_altivon
-      MYSQL_USER: nexum_dev
-      MYSQL_PASSWORD: nexum_dev_2026
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?configure MYSQL_ROOT_PASSWORD no arquivo .env local}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-nexum_altivon}
+      MYSQL_USER: ${MYSQL_USER:?configure MYSQL_USER no arquivo .env local}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?configure MYSQL_PASSWORD no arquivo .env local}
     ports:
       - "3309:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ../NexumAltivon_Back-End/Database/nexum_altivon_schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ../Database/erp_schema_update.sql:/docker-entrypoint-initdb.d/02-erp.sql:ro
+      - ../NexumAltivon_Back-End/API/Database/2026-06-29-genesisgest-original-schema.sql:/schemas/genesisgest-original-schema.sql:ro
+      - ./scripts/init-genesisgest.sh:/docker-entrypoint-initdb.d/03-init-genesisgest.sh:ro
     networks:
       - nexum-network
     healthcheck:
@@ -42,15 +52,36 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: "http://+:8080"
-      ConnectionStrings__DefaultConnection: "Server=mysql;Port=3306;Database=nexum_altivon;Uid=nexum_dev;Pwd=nexum_dev_2026;"
-      ConnectionStrings__NexumDb: "Server=mysql;Port=3306;Database=nexum_altivon;Uid=nexum_dev;Pwd=nexum_dev_2026;"
-      JwtSettings__SecretKey: "NexumAltivon_DevSecret_2026_GenesisGest_Core_256bits!"
+      ConnectionStrings__DefaultConnection: ${API_DEFAULT_CONNECTION:?configure API_DEFAULT_CONNECTION no arquivo .env local}
+      ConnectionStrings__NexumDb: ${API_NEXUM_CONNECTION:?configure API_NEXUM_CONNECTION no arquivo .env local}
+      ConnectionStrings__GenesisConnection: ${API_GENESIS_CONNECTION:?configure API_GENESIS_CONNECTION no arquivo .env local}
+      JwtSettings__SecretKey: ${JWT_SECRET_KEY:?configure JWT_SECRET_KEY no arquivo .env local}
+      Redis__ConnectionString: ${REDIS_CONNECTION_STRING:-redis:6379}
+      Hangfire__Storage__Redis: ${REDIS_CONNECTION_STRING:-redis:6379}
+      OpenAI__Enabled: ${OPENAI_ENABLED:-false}
+      OpenAI__ApiKey: ${OPENAI_API_KEY:-}
+      OpenAI__BaseUrl: ${OPENAI_API_BASE_URL:-https://api.openai.com/v1/}
+      OpenAI__Model: ${OPENAI_MODEL:-gpt-4.1-mini}
+      OpenAI__Assistentes__yara__Model: ${OPENAI_MODEL_YARA:-gpt-4.1-mini}
+      OpenAI__Assistentes__sophia__Model: ${OPENAI_MODEL_SOPHIA:-gpt-4.1-mini}
+      Storage__Provider: ${STORAGE_PROVIDER:-local}
+      Storage__LocalRoot: ${STORAGE_LOCAL_ROOT:-/app/storage/anexos}
+      Storage__PublicBaseUrl: ${STORAGE_PUBLIC_BASE_URL:-http://localhost:5010}
+      Storage__SigningKey: ${STORAGE_SIGNING_KEY:-}
+      Storage__MaxUploadBytes: ${STORAGE_MAX_UPLOAD_BYTES:-52428800}
+      Storage__S3__Endpoint: ${S3_ENDPOINT:-http://minio:9000}
+      Storage__S3__Bucket: ${S3_BUCKET:-nexum-anexos}
+      Storage__S3__Region: ${S3_REGION:-us-east-1}
+      Storage__S3__AccessKey: ${S3_ACCESS_KEY:-nexumminio}
+      Storage__S3__SecretKey: ${S3_SECRET_KEY:-}
+      Storage__S3__ForcePathStyle: ${S3_FORCE_PATH_STYLE:-true}
     ports:
       - "5010:8080"
     networks:
       - nexum-network
     volumes:
       - ./logs:/app/logs
+      - api_storage:/app/storage/anexos
 
   frontend:
     build:
@@ -77,6 +108,91 @@ services:
     networks:
       - nexum-network
 
+  minio:
+    image: minio/minio:latest
+    container_name: nexum-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-nexumminio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?configure MINIO_ROOT_PASSWORD no arquivo .env local}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - nexum-network
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: nexum-minio-init
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "until mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD}; do
+      sleep 2;
+      done;
+      mc mb --ignore-existing -p local/$${S3_BUCKET:-nexum-anexos};
+      mc anonymous set none local/$${S3_BUCKET:-nexum-anexos};"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-nexumminio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?configure MINIO_ROOT_PASSWORD no arquivo .env local}
+      S3_BUCKET: ${S3_BUCKET:-nexum-anexos}
+    networks:
+      - nexum-network
+
+  mysql-backup:
+    image: mysql:8.0
+    container_name: nexum-mysql-backup
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_NAME: ${MYSQL_DATABASE:-nexum_altivon}
+      DB_USER: ${MYSQL_BACKUP_USER:?configure MYSQL_BACKUP_USER no arquivo .env local}
+      DB_PASS: ${MYSQL_BACKUP_PASSWORD:?configure MYSQL_BACKUP_PASSWORD no arquivo .env local}
+      RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+    command: >
+      bash -lc "while true; do
+      bash /scripts/backup-mysql.sh;
+      sleep $${BACKUP_INTERVAL_SECONDS};
+      done"
+    volumes:
+      - ./scripts:/scripts:ro
+      - mysql_backups:/backups/mysql
+    networks:
+      - nexum-network
+
+  mysql-restore-test:
+    image: mysql:8.0
+    container_name: nexum-mysql-restore-test
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_USER: ${MYSQL_BACKUP_USER:?configure MYSQL_BACKUP_USER no arquivo .env local}
+      DB_PASS: ${MYSQL_BACKUP_PASSWORD:?configure MYSQL_BACKUP_PASSWORD no arquivo .env local}
+      RESTORE_TEST_DATABASE_PREFIX: ${RESTORE_TEST_DATABASE_PREFIX:-genesisgest_restore_test}
+      RESTORE_TEST_INTERVAL_SECONDS: ${RESTORE_TEST_INTERVAL_SECONDS:-604800}
+    command: >
+      bash -lc "while true; do
+      bash /scripts/restore-test-mysql.sh;
+      sleep $${RESTORE_TEST_INTERVAL_SECONDS};
+      done"
+    volumes:
+      - ./scripts:/scripts:ro
+      - mysql_backups:/backups/mysql:ro
+    networks:
+      - nexum-network
+
   # Serviço opcional: Nginx como reverse proxy
   nginx:
     image: nginx:alpine
@@ -96,6 +212,12 @@ services:
 
 volumes:
   mysql_data:
+    driver: local
+  api_storage:
+    driver: local
+  minio_data:
+    driver: local
+  mysql_backups:
     driver: local
 
 networks:

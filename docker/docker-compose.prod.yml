@@ -1,34 +1,73 @@
-version: '3.8'
+#
+# Propriedade intelectual: Luís Rodrigo da Costa
+# Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+# Sistema de gestão: GenesisGest.Net
+# Ano Início: 04/2024 Publicado e operacional: 05/2026
+# Versão: 1.1.5
+#
 
 services:
   api:
-    image: ghcr.io/corporativogna-lrc/grupo-nexum-altivon-ltda-m-api:main
-    container_name: nexum-api
+    image: ${REGISTRY:-ghcr.io}/corporativogna-lrc/grupo-nexum-altivon-ltda-m-api:${API_IMAGE_TAG:-main}
+    container_name: ${COMPOSE_PROJECT_NAME:-nexum}-api
     restart: always
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__DefaultConnection: ${API_DEFAULT_CONNECTION}
-      ConnectionStrings__NexumDb: ${API_DEFAULT_CONNECTION}
-      JwtSettings__SecretKey: ${JWT_SECRET_KEY}
-      AdminUser__Email: ${ADMIN_EMAIL}
-      AdminUser__Password: ${ADMIN_PASSWORD}
-      AdminUser__Name: ${ADMIN_NAME}
-      AdminUser__Role: ${ADMIN_ROLE}
-      ApiSettings__CorsOrigins__0: https://www.nexumaltivon.com
-      ApiSettings__CorsOrigins__1: https://nexumaltivon.com
-      ApiSettings__CorsOrigins__2: https://admin.nexumaltivon.com
-      ApiSettings__CorsOrigins__3: https://api.nexumaltivon.com
-      ApiSettings__CorsOrigins__4: https://back.nexumaltivon.com
-      ApiSettings__CorsOrigins__5: https://erp.nexumaltivon.com
-      ApiSettings__CorsOrigins__6: https://crm.nexumaltivon.com
-      ApiSettings__CorsOrigins__7: https://pdv.nexumaltivon.com
+      ConnectionStrings__DefaultConnection: ${API_DEFAULT_CONNECTION:?configure API_DEFAULT_CONNECTION no .env de producao}
+      ConnectionStrings__NexumDb: ${API_NEXUM_CONNECTION:?configure API_NEXUM_CONNECTION no .env de producao}
+      ConnectionStrings__GenesisConnection: ${API_GENESIS_CONNECTION:?configure API_GENESIS_CONNECTION no .env de producao}
+      JwtSettings__SecretKey: ${JWT_SECRET_KEY:?configure JWT_SECRET_KEY no .env de producao}
+      Redis__ConnectionString: ${REDIS_CONNECTION_STRING:-redis:6379}
+      Hangfire__Storage__Redis: ${REDIS_CONNECTION_STRING:-redis:6379}
+      AdminUser__Email: ${ADMIN_EMAIL:?configure ADMIN_EMAIL no .env de producao}
+      AdminUser__Password: ${ADMIN_PASSWORD:?configure ADMIN_PASSWORD no .env de producao}
+      AdminUser__Name: ${ADMIN_NAME:?configure ADMIN_NAME no .env de producao}
+      AdminUser__Role: ${ADMIN_ROLE:?configure ADMIN_ROLE no .env de producao}
+      ApiSettings__CorsOrigins__0: https://www.nexumaltivon.com.br
+      ApiSettings__CorsOrigins__1: https://nexumaltivon.com.br
+      ApiSettings__CorsOrigins__2: https://admin.nexumaltivon.com.br
+      ApiSettings__CorsOrigins__3: https://api.nexumaltivon.com.br
+      ApiSettings__CorsOrigins__4: https://back.nexumaltivon.com.br
+      ApiSettings__CorsOrigins__5: https://erp.nexumaltivon.com.br
+      ApiSettings__CorsOrigins__6: https://crm.nexumaltivon.com.br
+      ApiSettings__CorsOrigins__7: https://pdv.nexumaltivon.com.br
+      ApiSettings__CorsOrigins__8: https://www.nexumaltivon.com
+      ApiSettings__CorsOrigins__9: https://nexumaltivon.com
+      ApiSettings__CorsOrigins__10: https://admin.nexumaltivon.com
+      ApiSettings__CorsOrigins__11: https://api.nexumaltivon.com
+      ApiSettings__CorsOrigins__12: https://back.nexumaltivon.com
+      ApiSettings__CorsOrigins__13: https://erp.nexumaltivon.com
+      ApiSettings__CorsOrigins__14: https://crm.nexumaltivon.com
+      ApiSettings__CorsOrigins__15: https://pdv.nexumaltivon.com
       Integracoes__MercadoPago__AccessToken: ${MP_ACCESS_TOKEN}
       Integracoes__SendGrid__ApiKey: ${SENDGRID_API_KEY}
+      OpenAI__Enabled: ${OPENAI_ENABLED:-false}
+      OpenAI__ApiKey: ${OPENAI_API_KEY}
+      OpenAI__BaseUrl: ${OPENAI_API_BASE_URL:-https://api.openai.com/v1/}
+      OpenAI__Model: ${OPENAI_MODEL:-gpt-4.1-mini}
+      OpenAI__Assistentes__yara__Model: ${OPENAI_MODEL_YARA:-gpt-4.1-mini}
+      OpenAI__Assistentes__sophia__Model: ${OPENAI_MODEL_SOPHIA:-gpt-4.1-mini}
+      Storage__Provider: ${STORAGE_PROVIDER:-local}
+      Storage__LocalRoot: ${STORAGE_LOCAL_ROOT:-/app/storage/anexos}
+      Storage__PublicBaseUrl: ${STORAGE_PUBLIC_BASE_URL:-https://api.nexumaltivon.com.br}
+      Storage__SigningKey: ${STORAGE_SIGNING_KEY:-}
+      Storage__MaxUploadBytes: ${STORAGE_MAX_UPLOAD_BYTES:-52428800}
+      Storage__S3__Endpoint: ${S3_ENDPOINT:-}
+      Storage__S3__Bucket: ${S3_BUCKET:-nexum-anexos}
+      Storage__S3__Region: ${S3_REGION:-us-east-1}
+      Storage__S3__AccessKey: ${S3_ACCESS_KEY:-}
+      Storage__S3__SecretKey: ${S3_SECRET_KEY:-}
+      Storage__S3__ForcePathStyle: ${S3_FORCE_PATH_STYLE:-true}
     expose:
       - "8080"
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - nexum-prod-network
+    volumes:
+      - api_storage:/app/storage/anexos
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -36,8 +75,8 @@ services:
       retries: 3
 
   frontend:
-    image: ghcr.io/corporativogna-lrc/grupo-nexum-altivon-ltda-m-frontend:main
-    container_name: nexum-frontend
+    image: ${REGISTRY:-ghcr.io}/corporativogna-lrc/grupo-nexum-altivon-ltda-m-frontend:${FRONTEND_IMAGE_TAG:-main}
+    container_name: ${COMPOSE_PROJECT_NAME:-nexum}-frontend
     restart: always
     expose:
       - "80"
@@ -49,10 +88,10 @@ services:
 
   nginx:
     image: nginx:1.27-alpine
-    container_name: nexum-nginx
+    container_name: ${COMPOSE_PROJECT_NAME:-nexum}-nginx
     restart: always
     ports:
-      - "80:80"
+      - "${HTTP_BIND_ADDRESS:-127.0.0.1}:${HTTP_PORT:-8080}:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
@@ -61,17 +100,87 @@ services:
     networks:
       - nexum-prod-network
 
+  redis:
+    image: redis:7-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-nexum}-redis
+    restart: always
+    command: redis-server --appendonly yes
+    expose:
+      - "6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - nexum-prod-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mysql-backup:
+    image: mysql:8.0
+    container_name: ${COMPOSE_PROJECT_NAME:-nexum}-mysql-backup
+    restart: always
+    environment:
+      DB_HOST: ${MYSQL_HOST:-192.168.1.72}
+      DB_PORT: ${MYSQL_PORT:-3309}
+      DB_NAME: ${MYSQL_DATABASE:-nexum_altivon}
+      DB_USER: ${MYSQL_BACKUP_USER:?configure MYSQL_BACKUP_USER no .env de producao}
+      DB_PASS: ${MYSQL_BACKUP_PASSWORD:?configure MYSQL_BACKUP_PASSWORD no .env de producao}
+      RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+    command: >
+      bash -lc "while true; do
+      bash /scripts/backup-mysql.sh;
+      sleep $${BACKUP_INTERVAL_SECONDS};
+      done"
+    volumes:
+      - ./scripts:/scripts:ro
+      - mysql_backups:/backups/mysql
+    networks:
+      - nexum-prod-network
+
+  mysql-restore-test:
+    image: mysql:8.0
+    container_name: ${COMPOSE_PROJECT_NAME:-nexum}-mysql-restore-test
+    restart: always
+    environment:
+      DB_HOST: ${MYSQL_HOST:-192.168.1.72}
+      DB_PORT: ${MYSQL_PORT:-3309}
+      DB_USER: ${MYSQL_BACKUP_USER:?configure MYSQL_BACKUP_USER no .env de producao}
+      DB_PASS: ${MYSQL_BACKUP_PASSWORD:?configure MYSQL_BACKUP_PASSWORD no .env de producao}
+      RESTORE_TEST_DATABASE_PREFIX: ${RESTORE_TEST_DATABASE_PREFIX:-genesisgest_restore_test}
+      RESTORE_TEST_INTERVAL_SECONDS: ${RESTORE_TEST_INTERVAL_SECONDS:-604800}
+    command: >
+      bash -lc "while true; do
+      bash /scripts/restore-test-mysql.sh;
+      sleep $${RESTORE_TEST_INTERVAL_SECONDS};
+      done"
+    volumes:
+      - ./scripts:/scripts:ro
+      - mysql_backups:/backups/mysql:ro
+    networks:
+      - nexum-prod-network
+
   watchtower:
     image: containrrr/watchtower
-    container_name: nexum-watchtower
+    container_name: ${COMPOSE_PROJECT_NAME:-nexum}-watchtower
     restart: always
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       WATCHTOWER_POLL_INTERVAL: 300
       WATCHTOWER_CLEANUP: "true"
-    command: --interval 300 nexum-api nexum-frontend nexum-nginx
+    command: --interval 300 ${COMPOSE_PROJECT_NAME:-nexum}-api ${COMPOSE_PROJECT_NAME:-nexum}-frontend ${COMPOSE_PROJECT_NAME:-nexum}-nginx
 
 networks:
   nexum-prod-network:
     driver: bridge
+
+volumes:
+  redis_data:
+    driver: local
+  api_storage:
+    driver: local
+  mysql_backups:
+    driver: local

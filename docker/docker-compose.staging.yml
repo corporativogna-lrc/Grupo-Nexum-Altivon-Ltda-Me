@@ -1,0 +1,33 @@
+#
+# Propriedade intelectual: Luís Rodrigo da Costa
+# Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+# Sistema de gestão: GenesisGest.Net
+# Ano Início: 04/2024 Publicado e operacional: 05/2026
+# Versão: 1.1.5
+#
+
+services:
+  api:
+    image: ${REGISTRY:-ghcr.io}/corporativogna-lrc/grupo-nexum-altivon-ltda-m-api:${API_IMAGE_TAG:-develop}
+    container_name: ${COMPOSE_PROJECT_NAME:-nexum-staging}-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Staging
+      ApiSettings__CorsOrigins__0: ${STAGING_FRONTEND_URL:?configure STAGING_FRONTEND_URL no .env de staging}
+      ApiSettings__CorsOrigins__1: ${STAGING_API_URL:?configure STAGING_API_URL no .env de staging}
+      ApiSettings__CorsOrigins__2: ${STAGING_ADMIN_URL:?configure STAGING_ADMIN_URL no .env de staging}
+
+  frontend:
+    image: ${REGISTRY:-ghcr.io}/corporativogna-lrc/grupo-nexum-altivon-ltda-m-frontend:${FRONTEND_IMAGE_TAG:-develop}
+    container_name: ${COMPOSE_PROJECT_NAME:-nexum-staging}-frontend
+
+  nginx:
+    container_name: ${COMPOSE_PROJECT_NAME:-nexum-staging}-nginx
+    ports:
+      - "${HTTP_BIND_ADDRESS:-127.0.0.1}:${STAGING_HTTP_PORT:-8088}:80"
+
+  redis:
+    container_name: ${COMPOSE_PROJECT_NAME:-nexum-staging}-redis
+
+  watchtower:
+    container_name: ${COMPOSE_PROJECT_NAME:-nexum-staging}-watchtower
+    command: --interval 300 ${COMPOSE_PROJECT_NAME:-nexum-staging}-api ${COMPOSE_PROJECT_NAME:-nexum-staging}-frontend ${COMPOSE_PROJECT_NAME:-nexum-staging}-nginx
