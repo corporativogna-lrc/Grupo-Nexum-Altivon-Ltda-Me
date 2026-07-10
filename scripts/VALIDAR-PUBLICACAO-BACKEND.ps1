@@ -10,7 +10,7 @@
 param(
     [string]$ApiBaseUrl = "https://api.nexumaltivon.com.br",
     [string]$SiteOrigin = "https://www.nexumaltivon.com.br",
-    [int]$TimeoutSec = 15
+    [int]$TimeoutSec = 30
 )
 
 $ErrorActionPreference = "Stop"
@@ -132,6 +132,12 @@ $checks = @(
         Allowed = @(200, 401, 403)
     },
     @{
+        Name = "OpenAPI Swagger JSON"
+        Method = "GET"
+        Url = "$api/swagger/v1/swagger.json"
+        Allowed = @(200)
+    },
+    @{
         Name = "Relatorios vendas"
         Method = "GET"
         Url = "$api/api/relatorios/vendas"
@@ -155,6 +161,30 @@ $checks = @(
         Url = "$api/api/auth/refresh"
         Allowed = @(200, 400, 401, 403)
         Body = '{"token":"invalid","refreshToken":"invalid"}'
+    },
+    @{
+        Name = "Financeiro contabil razao"
+        Method = "GET"
+        Url = "$api/api/financeiro/contabil/razao"
+        Allowed = @(200, 401, 403)
+    },
+    @{
+        Name = "Financeiro contabil conciliacao"
+        Method = "GET"
+        Url = "$api/api/financeiro/contabil/conciliacao"
+        Allowed = @(200, 401, 403)
+    },
+    @{
+        Name = "Financeiro contabil DRE"
+        Method = "GET"
+        Url = "$api/api/financeiro/contabil/dre"
+        Allowed = @(200, 401, 403)
+    },
+    @{
+        Name = "Financeiro contabil fechamento"
+        Method = "GET"
+        Url = "$api/api/financeiro/contabil/fechamento"
+        Allowed = @(200, 401, 403)
     },
     @{
         Name = "CORS frontend publicado"

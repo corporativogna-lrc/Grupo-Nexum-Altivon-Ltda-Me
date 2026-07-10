@@ -233,9 +233,10 @@ else
 app.UseCors("NexumCorsPolicy");
 app.UseStaticFiles();
 
+app.UseSwagger();
+
 if (app.Environment.IsDevelopment() || app.Environment.IsStaging())
 {
-    app.UseSwagger();
     app.UseSwaggerUI(options =>
     {
         options.SwaggerEndpoint("/swagger/v1/swagger.json", "Nexum Altivon API v1");
@@ -1415,9 +1416,35 @@ app.MapGet("/api/tenants", [Authorize(Policy = "Admin")] async (NexumDbContext d
 })
 .WithName("TenantsListar");
 
+app.MapGet("/api/tenants/{id:guid}", [Authorize(Policy = "Admin")] async (Guid id, NexumDbContext db, CancellationToken ct) =>
+{
+    var tenant = await db.Database.SqlQueryRaw<TenantDto>(
+        """
+        SELECT
+            CAST(id AS CHAR) AS Id,
+            codigo AS Codigo,
+            nome AS Nome,
+            documento AS Documento,
+            ativo AS Ativo,
+            created_at AS CriadoEm,
+            updated_at AS AtualizadoEm
+        FROM sys_tenants
+        WHERE id = {0} AND is_deleted = 0
+        LIMIT 1
+        """,
+        id.ToString())
+        .FirstOrDefaultAsync(ct);
+
+    return tenant is null
+        ? Results.NotFound(ApiResponse<TenantDto>.Erro("Tenant nao encontrado."))
+        : Results.Ok(ApiResponse<TenantDto>.Ok(tenant, "Tenant corporativo carregado."));
+})
+.WithName("TenantsObter");
+
 app.MapPost("/api/tenants", [Authorize(Policy = "Admin")] async (
     TenantUpsertRequest request,
     NexumDbContext db,
+    ClaimsPrincipal principal,
     CancellationToken ct) =>
 {
     var codigo = NormalizeBusinessKey(request.Codigo);
@@ -1427,16 +1454,18 @@ app.MapPost("/api/tenants", [Authorize(Policy = "Admin")] async (
         return Results.BadRequest(ApiResponse<TenantDto>.Erro("Codigo e nome do tenant sao obrigatorios."));
     }
 
-    var id = Guid.NewGuid().ToString();
+    var id = Guid.NewGuid();
+    var idText = id.ToString();
+    var currentUserId = GetCurrentUserGuidOrNull(principal)?.ToString();
     await db.Database.ExecuteSqlInterpolatedAsync(
         $"""
-        INSERT INTO sys_tenants (id, codigo, nome, documento, ativo, created_at, updated_at)
-        VALUES ({id}, {codigo}, {nome}, {OnlyDigitsOrNull(request.Documento)}, {request.Ativo}, UTC_TIMESTAMP(), UTC_TIMESTAMP())
+        INSERT INTO sys_tenants (id, tenant_id, codigo, nome, documento, ativo, created_by_user_id, updated_by_user_id, created_at, updated_at)
+        VALUES ({idText}, {idText}, {codigo}, {nome}, {OnlyDigitsOrNull(request.Documento)}, {request.Ativo}, {currentUserId}, {currentUserId}, UTC_TIMESTAMP(), UTC_TIMESTAMP())
         """,
         ct);
 
-    var response = new TenantDto(id, codigo, nome, OnlyDigitsOrNull(request.Documento), request.Ativo, DateTime.UtcNow, DateTime.UtcNow);
-    return Results.Created($"/api/tenants/{id}", ApiResponse<TenantDto>.Ok(response, "Tenant criado."));
+    var response = new TenantDto(idText, codigo, nome, OnlyDigitsOrNull(request.Documento), request.Ativo, DateTime.UtcNow, DateTime.UtcNow);
+    return Results.Created($"/api/tenants/{idText}", ApiResponse<TenantDto>.Ok(response, "Tenant criado."));
 })
 .WithName("TenantsCriar");
 
@@ -1444,6 +1473,7 @@ app.MapPut("/api/tenants/{id:guid}", [Authorize(Policy = "Admin")] async (
     Guid id,
     TenantUpsertRequest request,
     NexumDbContext db,
+    ClaimsPrincipal principal,
     CancellationToken ct) =>
 {
     var codigo = NormalizeBusinessKey(request.Codigo);
@@ -1453,6 +1483,7 @@ app.MapPut("/api/tenants/{id:guid}", [Authorize(Policy = "Admin")] async (
         return Results.BadRequest(ApiResponse<TenantDto>.Erro("Codigo e nome do tenant sao obrigatorios."));
     }
 
+    var currentUserId = GetCurrentUserGuidOrNull(principal)?.ToString();
     var affected = await db.Database.ExecuteSqlInterpolatedAsync(
         $"""
         UPDATE sys_tenants
@@ -1460,6 +1491,7 @@ app.MapPut("/api/tenants/{id:guid}", [Authorize(Policy = "Admin")] async (
             nome = {nome},
             documento = {OnlyDigitsOrNull(request.Documento)},
             ativo = {request.Ativo},
+            updated_by_user_id = {currentUserId},
             updated_at = UTC_TIMESTAMP()
         WHERE id = {id.ToString()} AND is_deleted = 0
         """,
@@ -1475,14 +1507,16 @@ app.MapPut("/api/tenants/{id:guid}", [Authorize(Policy = "Admin")] async (
 })
 .WithName("TenantsAtualizar");
 
-app.MapDelete("/api/tenants/{id:guid}", [Authorize(Policy = "Admin")] async (Guid id, NexumDbContext db, CancellationToken ct) =>
+app.MapDelete("/api/tenants/{id:guid}", [Authorize(Policy = "Admin")] async (Guid id, NexumDbContext db, ClaimsPrincipal principal, CancellationToken ct) =>
 {
+    var currentUserId = GetCurrentUserGuidOrNull(principal)?.ToString();
     var affected = await db.Database.ExecuteSqlInterpolatedAsync(
         $"""
         UPDATE sys_tenants
         SET ativo = 0,
             is_deleted = 1,
             deleted_at = UTC_TIMESTAMP(),
+            updated_by_user_id = {currentUserId},
             updated_at = UTC_TIMESTAMP()
         WHERE id = {id.ToString()} AND is_deleted = 0
         """,
@@ -5305,6 +5339,213 @@ app.MapPost("/api/financeiro/fechamento", [Authorize(Policy = "Financeiro")] asy
 })
 .WithName("FicoFechamentoRegistrar");
 
+app.MapGet("/api/financeiro/contabil/razao", [Authorize(Policy = "Financeiro")] async (
+    int? empresaId,
+    int? planoContaId,
+    DateTime? inicio,
+    DateTime? fim,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var razao = await db.Database.SqlQueryRaw<RazaoContabilDto>(
+        """
+        SELECT
+            l.lcn_emp_id AS EmpresaId,
+            p.prt_pct_id AS PlanoContaId,
+            l.lcn_data AS Data,
+            l.lcn_lote AS Lote,
+            p.prt_tipo AS Tipo,
+            p.prt_valor AS Valor,
+            COALESCE(p.prt_historico, l.lcn_complemento, l.lcn_historico_padrao) AS Historico,
+            l.lcn_origem_modulo AS OrigemModulo,
+            l.lcn_origem_id AS OrigemId
+        FROM cnt_partidas p
+        INNER JOIN cnt_lancamentos l ON l.lcn_id = p.prt_lcn_id
+        WHERE l.lcn_estornado = 0
+          AND ({0} IS NULL OR l.lcn_emp_id = {0})
+          AND ({1} IS NULL OR p.prt_pct_id = {1})
+          AND ({2} IS NULL OR l.lcn_data >= {2})
+          AND ({3} IS NULL OR l.lcn_data <= {3})
+        ORDER BY l.lcn_data, l.lcn_id, p.prt_id
+        LIMIT 1000
+        """,
+        (object?)empresaId ?? DBNull.Value,
+        (object?)planoContaId ?? DBNull.Value,
+        (object?)inicio?.Date ?? DBNull.Value,
+        (object?)fim?.Date ?? DBNull.Value)
+        .ToListAsync(ct);
+
+    return Results.Ok(ApiResponse<List<RazaoContabilDto>>.Ok(razao, "Razao contabil carregado.", razao.Count));
+})
+.WithName("FicoContabilRazao");
+
+app.MapGet("/api/financeiro/contabil/conciliacao", [Authorize(Policy = "Financeiro")] async (
+    DateTime? inicio,
+    DateTime? fim,
+    string? status,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var conciliacao = await db.Database.SqlQueryRaw<ConciliacaoFinanceiraDto>(
+        """
+        SELECT
+            f.id AS LancamentoFinanceiroId,
+            f.descricao AS Descricao,
+            f.valor AS Valor,
+            f.data_pagamento AS DataPagamento,
+            f.meio_pagamento AS MeioPagamento,
+            f.conta_bancaria AS ContaBancaria,
+            COALESCE(c.cnc_status, CASE WHEN f.status = 2 THEN 'PENDENTE' ELSE 'NAO_APLICAVEL' END) AS Status,
+            c.cnc_id AS ConciliacaoId,
+            c.cnc_referencia_bancaria AS ReferenciaBancaria,
+            c.cnc_data_conciliacao AS DataConciliacao
+        FROM financeiros f
+        LEFT JOIN ctb_conciliacoes c ON c.cnc_financeiro_id = f.id
+        WHERE ({0} IS NULL OR f.data_pagamento >= {0})
+          AND ({1} IS NULL OR f.data_pagamento <= {1})
+          AND ({2} IS NULL OR c.cnc_status = {2})
+        ORDER BY COALESCE(f.data_pagamento, f.created_at) DESC
+        LIMIT 500
+        """,
+        (object?)inicio ?? DBNull.Value,
+        (object?)fim ?? DBNull.Value,
+        (object?)NormalizeConciliacaoStatus(status) ?? DBNull.Value)
+        .ToListAsync(ct);
+
+    return Results.Ok(ApiResponse<List<ConciliacaoFinanceiraDto>>.Ok(conciliacao, "Conciliacao financeira carregada.", conciliacao.Count));
+})
+.WithName("FicoContabilConciliacaoListar");
+
+app.MapPost("/api/financeiro/contabil/conciliacao", [Authorize(Policy = "Financeiro")] async (
+    ConciliacaoFinanceiraRequest request,
+    NexumDbContext db,
+    ClaimsPrincipal principal,
+    CancellationToken ct) =>
+{
+    if (request.LancamentoFinanceiroId <= 0)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Lancamento financeiro e obrigatorio."));
+    }
+
+    await db.Database.ExecuteSqlInterpolatedAsync(
+        $"""
+        INSERT INTO ctb_conciliacoes
+            (cnc_financeiro_id, cnc_status, cnc_referencia_bancaria, cnc_observacoes, cnc_usuario_id, cnc_data_conciliacao)
+        VALUES
+            ({request.LancamentoFinanceiroId}, {NormalizeConciliacaoStatus(request.Status)}, {TrimOrNull(request.ReferenciaBancaria)},
+             {TrimOrNull(request.Observacoes)}, {GetCurrentUserId(principal)}, UTC_TIMESTAMP())
+        ON DUPLICATE KEY UPDATE
+            cnc_status = VALUES(cnc_status),
+            cnc_referencia_bancaria = VALUES(cnc_referencia_bancaria),
+            cnc_observacoes = VALUES(cnc_observacoes),
+            cnc_usuario_id = VALUES(cnc_usuario_id),
+            cnc_data_conciliacao = UTC_TIMESTAMP()
+        """,
+        ct);
+
+    return Results.Ok(ApiResponse<object>.Ok(new { request.LancamentoFinanceiroId }, "Conciliacao financeira registrada."));
+})
+.WithName("FicoContabilConciliacaoRegistrar");
+
+app.MapGet("/api/financeiro/contabil/dre", [Authorize(Policy = "Financeiro")] async (
+    int? empresaId,
+    string? competencia,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var dre = await db.Database.SqlQueryRaw<DreGerencialDto>(
+        """
+        SELECT
+            empresa_id AS EmpresaId,
+            competencia AS Competencia,
+            classe_conta AS ClasseConta,
+            pct_codigo AS ContaCodigo,
+            pct_nome AS ContaNome,
+            valor_debito AS ValorDebito,
+            valor_credito AS ValorCredito,
+            saldo_conta AS SaldoConta
+        FROM vw_dre_gerencial
+        WHERE ({0} IS NULL OR empresa_id = {0})
+          AND ({1} IS NULL OR competencia = {1})
+        ORDER BY competencia DESC, classe_conta, pct_codigo
+        LIMIT 1000
+        """,
+        (object?)empresaId ?? DBNull.Value,
+        (object?)TrimOrNull(competencia) ?? DBNull.Value)
+        .ToListAsync(ct);
+
+    return Results.Ok(ApiResponse<List<DreGerencialDto>>.Ok(dre, "DRE gerencial carregada.", dre.Count));
+})
+.WithName("FicoContabilDre");
+
+app.MapGet("/api/financeiro/contabil/fechamento", [Authorize(Policy = "Financeiro")] async (
+    int? empresaId,
+    DateTime? periodo,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var fechamentos = await db.Database.SqlQueryRaw<FechamentoContabilDto>(
+        """
+        SELECT
+            fec_id AS Id,
+            fec_emp_id AS EmpresaId,
+            fec_periodo AS Periodo,
+            fec_data_fechamento AS DataFechamento,
+            fec_usr_responsavel AS UsuarioResponsavelId,
+            fec_bloqueado AS Bloqueado,
+            fec_observacoes AS Observacoes
+        FROM cnt_fechamentos
+        WHERE ({0} IS NULL OR fec_emp_id = {0})
+          AND ({1} IS NULL OR fec_periodo = {1})
+        ORDER BY fec_periodo DESC, fec_id DESC
+        """,
+        (object?)empresaId ?? DBNull.Value,
+        (object?)periodo?.Date ?? DBNull.Value)
+        .ToListAsync(ct);
+
+    return Results.Ok(ApiResponse<List<FechamentoContabilDto>>.Ok(fechamentos, "Fechamentos contabeis carregados.", fechamentos.Count));
+})
+.WithName("FicoContabilFechamentoListar");
+
+app.MapPost("/api/financeiro/contabil/fechamento", [Authorize(Policy = "Financeiro")] async (
+    FechamentoContabilRequest request,
+    NexumDbContext db,
+    ClaimsPrincipal principal,
+    CancellationToken ct) =>
+{
+    if (request.EmpresaId <= 0)
+    {
+        return Results.BadRequest(ApiResponse<FechamentoContabilDto>.Erro("Empresa e obrigatoria para fechamento contabil."));
+    }
+
+    var periodo = new DateTime(request.Periodo.Year, request.Periodo.Month, 1);
+    await db.Database.ExecuteSqlInterpolatedAsync(
+        $"""
+        INSERT INTO cnt_fechamentos (fec_emp_id, fec_periodo, fec_usr_responsavel, fec_bloqueado, fec_observacoes)
+        VALUES ({request.EmpresaId}, {periodo}, {GetCurrentUserId(principal)}, {request.Bloqueado}, {TrimOrNull(request.Observacoes)})
+        ON DUPLICATE KEY UPDATE
+            fec_usr_responsavel = VALUES(fec_usr_responsavel),
+            fec_bloqueado = VALUES(fec_bloqueado),
+            fec_observacoes = VALUES(fec_observacoes),
+            fec_data_fechamento = UTC_TIMESTAMP()
+        """,
+        ct);
+
+    var fechamento = await db.Database.SqlQueryRaw<FechamentoContabilDto>(
+        """
+        SELECT fec_id AS Id, fec_emp_id AS EmpresaId, fec_periodo AS Periodo, fec_data_fechamento AS DataFechamento,
+               fec_usr_responsavel AS UsuarioResponsavelId, fec_bloqueado AS Bloqueado, fec_observacoes AS Observacoes
+        FROM cnt_fechamentos
+        WHERE fec_emp_id = {0} AND fec_periodo = {1}
+        """,
+        request.EmpresaId,
+        periodo)
+        .FirstAsync(ct);
+
+    return Results.Ok(ApiResponse<FechamentoContabilDto>.Ok(fechamento, "Fechamento contabil registrado."));
+})
+.WithName("FicoContabilFechamentoRegistrar");
+
 app.MapGet("/api/fiscal/sped", [Authorize(Policy = "Fiscal")] async (
     int? empresaId,
     string? tipo,
@@ -8484,6 +8725,14 @@ static int GetCurrentUserId(ClaimsPrincipal principal)
         ?? "0";
 
     return int.TryParse(idRaw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id) ? id : 0;
+}
+
+static Guid? GetCurrentUserGuidOrNull(ClaimsPrincipal principal)
+{
+    var idRaw = principal.FindFirstValue(JwtRegisteredClaimNames.Sub)
+        ?? principal.FindFirstValue(ClaimTypes.NameIdentifier);
+
+    return Guid.TryParse(idRaw, out var id) && id != Guid.Empty ? id : null;
 }
 
 static UsuarioAcessoDto ToUsuarioAcessoDto(Usuario usuario) =>
@@ -12542,25 +12791,50 @@ static async Task EnsurePlatformSsoSchemaAsync(NexumDbContext db)
         """
         CREATE TABLE IF NOT EXISTS sys_tenants (
             id CHAR(36) NOT NULL,
+            tenant_id CHAR(36) NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
             codigo VARCHAR(80) NOT NULL,
             nome VARCHAR(180) NOT NULL,
             documento VARCHAR(20) NULL,
             ativo TINYINT(1) NOT NULL DEFAULT 1,
+            row_version BLOB NULL,
+            created_by_user_id CHAR(36) NULL,
+            updated_by_user_id CHAR(36) NULL,
             is_deleted TINYINT(1) NOT NULL DEFAULT 0,
             deleted_at DATETIME NULL,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             UNIQUE KEY ux_sys_tenants_codigo (codigo),
+            KEY ix_sys_tenants_tenant_deleted (tenant_id, is_deleted),
             KEY ix_sys_tenants_ativo (ativo, is_deleted)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         """);
 
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE sys_tenants ADD COLUMN IF NOT EXISTS tenant_id CHAR(36) NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001';");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE sys_tenants ADD COLUMN IF NOT EXISTS row_version BLOB NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE sys_tenants ADD COLUMN IF NOT EXISTS created_by_user_id CHAR(36) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE sys_tenants ADD COLUMN IF NOT EXISTS updated_by_user_id CHAR(36) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE sys_tenants ADD COLUMN IF NOT EXISTS deleted_at DATETIME NULL;");
+    var tenantDeletedIndexExists = await db.Database.SqlQueryRaw<int>(
+        """
+        SELECT COUNT(*) AS Value
+        FROM information_schema.statistics
+        WHERE table_schema = DATABASE()
+          AND table_name = 'sys_tenants'
+          AND index_name = 'ix_sys_tenants_tenant_deleted'
+        """)
+        .SingleAsync();
+    if (tenantDeletedIndexExists == 0)
+    {
+        await db.Database.ExecuteSqlRawAsync("CREATE INDEX ix_sys_tenants_tenant_deleted ON sys_tenants (tenant_id, is_deleted);");
+    }
+
     await db.Database.ExecuteSqlRawAsync(
         """
-        INSERT INTO sys_tenants (id, codigo, nome, documento, ativo)
-        VALUES ('00000000-0000-0000-0000-000000000001', 'GRUPO-NEXUM-ALTIVON', 'Grupo Nexum Altivon', NULL, 1)
+        INSERT INTO sys_tenants (id, tenant_id, codigo, nome, documento, ativo)
+        VALUES ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'GRUPO-NEXUM-ALTIVON', 'Grupo Nexum Altivon', NULL, 1)
         ON DUPLICATE KEY UPDATE
+            tenant_id = VALUES(tenant_id),
             nome = VALUES(nome),
             ativo = 1,
             is_deleted = 0,
