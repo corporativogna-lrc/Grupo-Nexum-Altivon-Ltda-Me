@@ -55,11 +55,11 @@ Data da apuracao: 2026-07-10.
 | Rotas de banco ativas | Runtime oficial usa `127.0.0.1:3309/nexum_altivon` e `127.0.0.1:3309/genesis_bd`; `health/db` e `health/db/genesis` retornaram 200 local e publico |
 | Configuracoes versionadas da API | `API/appsettings.json` e template privado nao carregam mais `192.168.1.72`, porta `3306` ou segredos aparentes; sem env privado, a API falha de forma clara |
 | EF Core design-time | Factory de migrations usa XAMPP local `127.0.0.1:3309` quando nao houver connection string real por ambiente |
-| Inicializacao fixa | Pendente de execucao elevada: a validacao atual nao encontrou a tarefa `NexumAltivonApi24h`; script oficial existe em `scripts/server/instalar-api-oficial-24h-task.ps1` e exige PowerShell administrador |
+| Inicializacao fixa | Task `NexumAltivonApi24h` instalada e em execucao como `SISTEMA`, `RunLevel Highest`, conforme `runtime-logs/api-24h-task-query.log` gerado pela execucao elevada |
 | Porta publica interna | API escutando `127.0.0.1:5010`; Cloudflared permanece apontado para esta porta |
 | Causa real do 502 | API nao subia porque a configuracao privada apontava para caminho externo ausente e, depois, faltava `CREATE VIEW` ao usuario de aplicacao |
-| Processo atual | API responde em `127.0.0.1:5010`, mas o processo atual nao esta vinculado a task/servico Nexum visivel nesta sessao |
-| Validacao da tarefa 24h | Pendente: `scripts/server/validar-api-oficial-24h-task.ps1` retornou que `NexumAltivonApi24h` nao existe |
+| Processo atual | `dotnet.exe NexumAltivon.API.dll` escutando `127.0.0.1:5010`, iniciado por `scripts/server/iniciar-api-oficial-24h.ps1` via task `NexumAltivonApi24h` |
+| Validacao da tarefa 24h | Concluida via log elevado: `TaskState=Running`, `TaskUser=SISTEMA`, `RunLevel=Highest`, `HealthStatus=200`; consultas nao elevadas podem retornar acesso negado/nao encontrado |
 | Revisao local de legados | Criado `Revisao_Exclusao_2026-07-10` dentro da raiz oficial; pasta ignorada pelo Git para impedir commit acidental |
 | GitHub publicado | Commit `4bacfe5 fix: solution - fechar build oficial da api` enviado para `origin/work/delivery-2026-06-13` |
 | Backup local 2h | Task `NexumAltivon Backup Local 2h` corrigida de `Y:\...` para `D:\Nexum Altivon\NexumAltivon.com\scripts\backup-nexum-local-2h.ps1`; execucao manual retornou `Último resultado: 0` |
