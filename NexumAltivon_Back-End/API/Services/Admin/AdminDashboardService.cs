@@ -1,3 +1,10 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
 using Microsoft.EntityFrameworkCore;
 using NexumAltivon.API.Data;
 using NexumAltivon.API.DTOs.Admin;
@@ -73,16 +80,15 @@ public class AdminDashboardService : IAdminDashboardService
             .Where(c => c.Status == StatusCliente.Ativo)
             .CountAsync();
 
-        var produtosAtivos = await _context.Produtos
-            .Where(p => p.Ativo)
+        var produtosAtivos = await ProdutosPublicaveis()
             .CountAsync();
 
-        var produtosEstoqueBaixo = await _context.Produtos
-            .Where(p => p.Ativo && p.EstoqueAtual <= p.EstoqueMinimo)
+        var produtosEstoqueBaixo = await ProdutosPublicaveis()
+            .Where(p => p.EstoqueAtual <= p.EstoqueMinimo)
             .CountAsync();
 
-        var produtosSemEstoque = await _context.Produtos
-            .Where(p => p.Ativo && p.EstoqueAtual == 0)
+        var produtosSemEstoque = await ProdutosPublicaveis()
+            .Where(p => p.EstoqueAtual == 0)
             .CountAsync();
 
         var leadsNovos = await _context.CrmLeads
@@ -98,8 +104,7 @@ public class AdminDashboardService : IAdminDashboardService
             .CountAsync();
 
         var ticketMedio = todosPedidos.Any() ? todosPedidos.Average(p => p.Total) : 0;
-        var totalVisitas = 1000; // Placeholder - integrar com analytics futuramente
-        var taxaConversao = totalVisitas > 0 ? (decimal)todosPedidos.Count / totalVisitas * 100 : 0;
+        var taxaConversao = 0m;
 
         return new DashboardKpiDto
         {
@@ -296,4 +301,20 @@ public class AdminDashboardService : IAdminDashboardService
             })
             .ToListAsync();
     }
+
+    private IQueryable<Produto> ProdutosPublicaveis() =>
+        _context.Produtos.Where(produto =>
+            produto.Ativo &&
+            produto.LojaId > 0 &&
+            produto.CategoriaId.HasValue &&
+            !string.IsNullOrEmpty(produto.Nome) &&
+            !string.IsNullOrEmpty(produto.Sku) &&
+            !string.IsNullOrEmpty(produto.Slug) &&
+            (!string.IsNullOrEmpty(produto.DescricaoCurta) || !string.IsNullOrEmpty(produto.DescricaoLonga)) &&
+            !string.IsNullOrEmpty(produto.ImagemPrincipal) &&
+            produto.Preco > 0 &&
+            produto.Peso > 0 &&
+            produto.Altura > 0 &&
+            produto.Largura > 0 &&
+            produto.Comprimento > 0);
 }

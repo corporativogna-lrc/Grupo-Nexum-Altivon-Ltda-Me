@@ -1,3 +1,10 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
 namespace NexumAltivon.API.DTOs;
 
 public class ClienteDto
@@ -12,6 +19,7 @@ public class ClienteDto
     public bool Vip { get; set; }
     public int PontosFidelidade { get; set; }
     public string Status { get; set; } = "Ativo";
+    public DateTime? ConfirmadoEm { get; set; }
     public DateTime CreatedAt { get; set; }
     public List<EnderecoDto>? Enderecos { get; set; }
 }
@@ -32,6 +40,8 @@ public class CriarClienteDto
 public class AtualizarClienteDto
 {
     public string Nome { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string? CpfCnpj { get; set; }
     public string? Telefone { get; set; }
     public string? Whatsapp { get; set; }
     public bool Newsletter { get; set; }

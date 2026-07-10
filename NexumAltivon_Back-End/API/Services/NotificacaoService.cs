@@ -1,4 +1,11 @@
-﻿using System;
+﻿/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
+using System;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text;
@@ -13,8 +20,8 @@ namespace NexumAltivon.API.Services
     {
         Task EnviarConfirmacaoPedidoAsync(Cliente cliente, Pedido pedido);
         Task EnviarConfirmacaoPagamentoAsync(Cliente cliente, Pedido pedido);
-        Task EnviarAcompanhamentoLogisticoAsync(Cliente cliente, Pedido pedido);
         Task EnviarNotaFiscalEmitidaAsync(Cliente cliente, Pedido pedido, Fiscal fiscal);
+        Task EnviarConfirmacaoCadastroAsync(Cliente cliente, string linkConfirmacao);
         Task EnviarNotificacaoWhatsAppAsync(string? telefone, string mensagem);
         Task EnviarEmailAsync(string? destinatario, string assunto, string corpoHtml);
         Task EnviarAlertaEstoqueBaixoAsync(Produto produto);
@@ -29,6 +36,7 @@ namespace NexumAltivon.API.Services
         private readonly string? _sendGridKey;
         private readonly string _fromEmail;
         private readonly string _fromName;
+        private readonly string _salesAdminEmail;
         private readonly bool _whatsappAtivo;
         private readonly string? _whatsappApiUrl;
         private readonly string? _whatsappApiKey;
@@ -41,7 +49,8 @@ namespace NexumAltivon.API.Services
             _sendGridKey = _config["Integracoes:SendGrid:ApiKey"];
             _fromEmail = _config["Integracoes:SendGrid:FromEmail"] ?? "corporativo.gna@gmail.com";
             _fromName = _config["Integracoes:SendGrid:FromName"] ?? "Grupo Nexum Altivon";
-            _whatsappAtivo = bool.Parse(_config["Integracoes:WhatsApp:Ativo"] ?? "false");
+            _salesAdminEmail = _config["Alertas:VendaEmailAdmin"] ?? "corporativo.gna@gmail.com";
+            _whatsappAtivo = bool.TryParse(_config["Integracoes:WhatsApp:Ativo"], out var whatsappAtivo) && whatsappAtivo;
             _whatsappApiUrl = _config["Integracoes:WhatsApp:ApiUrl"];
             _whatsappApiKey = _config["Integracoes:WhatsApp:ApiKey"];
         }
@@ -71,7 +80,7 @@ h1 {{ color: #C9A227; font-size: 24px; }}
 </div>
 <p>Assim que o pagamento for confirmado, iniciaremos a separaÃ§Ã£o do seu pedido.</p>
 <div class='footer'>
-<p>Grupo Nexum Altivon<br>www.nexumaltivon.com</p>
+<p>Grupo Nexum Altivon<br>nexumaltivon.com.br</p>
 </div>
 </div>
 </body>
@@ -99,45 +108,37 @@ h1 {{ color: #C9A227; }}
 <p>O pagamento do pedido <strong>{pedido.NumeroPedido}</strong> foi confirmado.</p>
 <p><strong>Valor pago:</strong> R$ {pedido.Total:N2}</p>
 <p>Seu pedido agora estÃ¡ em <strong>separaÃ§Ã£o</strong> e em breve serÃ¡ enviado.</p>
-<p>Acompanhe o status pelo site: <a href='https://www.nexumaltivon.com/pedidos/{pedido.NumeroPedido}' style='color:#C9A227'>Meus Pedidos</a></p>
+<p>Acompanhe o status pelo site: <a href='https://nexumaltivon.com.br/pedidos/{pedido.NumeroPedido}' style='color:#C9A227'>Meus Pedidos</a></p>
 </div>
 </body>
 </html>";
 
             await EnviarEmailAsync(cliente.Email, assunto, corpo);
+            await EnviarEmailAsync(_salesAdminEmail, $"[COPIA] {assunto}", corpo);
         }
 
-        public async Task EnviarAcompanhamentoLogisticoAsync(Cliente cliente, Pedido pedido)
+        public async Task EnviarConfirmacaoCadastroAsync(Cliente cliente, string linkConfirmacao)
         {
-            var assunto = $"Acompanhamento logistico - Pedido {pedido.NumeroPedido}";
-            var transportadora = string.IsNullOrWhiteSpace(pedido.FreteTransportadora) ? "Transportadora em definicao" : pedido.FreteTransportadora;
-            var servico = string.IsNullOrWhiteSpace(pedido.FreteMetodo) ? "Frete selecionado no checkout" : pedido.FreteMetodo;
-            var prazo = pedido.FretePrazoDias > 0 ? $"{pedido.FretePrazoDias} dia(s) uteis apos a postagem" : "Prazo em confirmacao";
-            var rastreio = string.IsNullOrWhiteSpace(pedido.FreteCodigoRastreio) ? "Sera enviado assim que a etiqueta/postagem for gerada" : pedido.FreteCodigoRastreio;
-
+            var assunto = $"Confirme seu cadastro - Nexum Altivon";
             var corpo = $@"
 <!DOCTYPE html>
 <html>
 <body style='font-family:Arial,sans-serif;background:#f6f3ea;color:#1f1f1f;padding:0;margin:0;'>
 <div style='max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #d7c38a;padding:28px;'>
-<h1 style='margin-top:0;color:#8a6d1f;'>Acompanhamento logistico</h1>
-<p>Ola <strong>{cliente.Nome}</strong>,</p>
-<p>Seu pedido <strong>{pedido.NumeroPedido}</strong> ja esta registrado para acompanhamento logistico.</p>
-<div style='background:#faf7ef;border:1px solid #e4d8b7;padding:18px;margin:20px 0;'>
-<p><strong>Status do pedido:</strong> {pedido.Status}</p>
-<p><strong>Status do pagamento:</strong> {pedido.StatusPagamento}</p>
-<p><strong>Transportadora:</strong> {transportadora}</p>
-<p><strong>Servico:</strong> {servico}</p>
-<p><strong>Frete:</strong> R$ {pedido.FreteValor:N2}</p>
-<p><strong>Prazo:</strong> {prazo}</p>
-<p><strong>Rastreio:</strong> {rastreio}</p>
-</div>
-<p>Acompanhe pelo site: <a href='https://www.nexumaltivon.com/pedidos/{pedido.NumeroPedido}' style='color:#8a6d1f;'>Area do Cliente</a></p>
+<h1 style='margin-top:0;color:#8a6d1f;'>Confirme seu cadastro</h1>
+<p>Olá <strong>{cliente.Nome}</strong>,</p>
+<p>Recebemos seu cadastro na Nexum Altivon e ele está pronto para ativação.</p>
+<p>Para liberar o acesso da sua área do cliente, clique no botão abaixo:</p>
+<p><a href='{linkConfirmacao}' style='display:inline-block;background:#c9a227;color:#000;padding:14px 22px;border-radius:8px;text-decoration:none;font-weight:bold;'>Confirmar cadastro</a></p>
+<p>Se o botão não abrir, copie e cole este endereço no navegador:</p>
+<p style='word-break:break-all;'><a href='{linkConfirmacao}'>{linkConfirmacao}</a></p>
+<p>Depois da confirmação, você poderá entrar normalmente com seu e-mail e senha.</p>
 </div>
 </body>
 </html>";
 
             await EnviarEmailAsync(cliente.Email, assunto, corpo);
+            await EnviarEmailAsync(_salesAdminEmail, $"[COPIA] {assunto}", corpo);
         }
 
         public async Task EnviarNotaFiscalEmitidaAsync(Cliente cliente, Pedido pedido, Fiscal fiscal)
@@ -167,16 +168,21 @@ h1 {{ color: #C9A227; }}
 </div>
 <p>Voce pode acompanhar o pedido pela area do cliente no site.</p>
 <p>Se quiser, responda este e-mail ou fale com nosso atendimento.</p>
-</div>
+            </div>
 </body>
 </html>";
 
             await EnviarEmailAsync(cliente.Email, assunto, corpo);
+            await EnviarEmailAsync(_salesAdminEmail, $"[COPIA] {assunto}", corpo);
         }
 
         public async Task EnviarNotificacaoWhatsAppAsync(string? telefone, string mensagem)
         {
             if (!_whatsappAtivo || string.IsNullOrEmpty(telefone)) return;
+            if (string.IsNullOrWhiteSpace(_whatsappApiUrl))
+            {
+                throw new InvalidOperationException("Integracoes:WhatsApp:Ativo está habilitado, mas Integracoes:WhatsApp:ApiUrl nao foi configurada.");
+            }
 
             try
             {
@@ -189,9 +195,16 @@ h1 {{ color: #C9A227; }}
                     text = mensagem
                 };
 
-                // Stub para API genÃ©rica de WhatsApp (ex: Evolution API, WPPConnect, etc.)
-                // Em produÃ§Ã£o, substituir pela URL real do gateway WhatsApp
-                var response = await _httpClient.PostAsJsonAsync(_whatsappApiUrl, request);
+                using var httpRequest = new HttpRequestMessage(HttpMethod.Post, _whatsappApiUrl)
+                {
+                    Content = JsonContent.Create(request)
+                };
+                if (!string.IsNullOrWhiteSpace(_whatsappApiKey))
+                {
+                    httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _whatsappApiKey);
+                }
+
+                var response = await _httpClient.SendAsync(httpRequest);
                 if (!response.IsSuccessStatusCode)
                     _logger.LogWarning("Falha ao enviar WhatsApp: {Status}", response.StatusCode);
             }
@@ -207,14 +220,12 @@ h1 {{ color: #C9A227; }}
             {
                 if (string.IsNullOrWhiteSpace(destinatario))
                 {
-                    _logger.LogWarning("Tentativa de envio de e-mail ignorada por destinatário vazio. Assunto: {Assunto}", assunto);
-                    return;
+                    throw new InvalidOperationException($"Destinatario obrigatorio para envio de e-mail. Assunto: {assunto}");
                 }
 
                 if (string.IsNullOrEmpty(_sendGridKey))
                 {
-                    _logger.LogWarning("SendGrid nÃ£o configurado. E-mail simulado para {Email}: {Assunto}", destinatario, assunto);
-                    return;
+                    throw new InvalidOperationException("Integracoes:SendGrid:ApiKey nao configurada. Envio real de e-mail bloqueado para evitar sucesso falso.");
                 }
 
                 var sendGridRequest = new
@@ -241,12 +252,13 @@ h1 {{ color: #C9A227; }}
                 if (!response.IsSuccessStatusCode)
                 {
                     var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("SendGrid erro: {Error}", error);
+                    throw new InvalidOperationException($"SendGrid recusou o envio para {destinatario}. Status={(int)response.StatusCode}. Corpo={error}");
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Erro ao enviar e-mail para {Destinatario}", destinatario);
+                throw;
             }
         }
 

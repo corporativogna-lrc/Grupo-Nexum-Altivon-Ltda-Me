@@ -1,11 +1,29 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
+
 using NexumAltivon.API.Models;
+using NexumAltivon.API.Infrastructure.Tenancy;
 using Microsoft.EntityFrameworkCore;
+using System.Linq.Expressions;
 
 namespace NexumAltivon.API.Data;
 
 public class NexumDbContext : DbContext
 {
-    public NexumDbContext(DbContextOptions<NexumDbContext> options) : base(options) { }
+    private readonly ITenantContext? _tenantContext;
+
+    public NexumDbContext(DbContextOptions<NexumDbContext> options, ITenantContext? tenantContext = null) : base(options)
+    {
+        _tenantContext = tenantContext;
+    }
+
+    public Guid CurrentTenantId => _tenantContext?.TenantId ?? TenantContext.DefaultTenantId;
+    public Guid? CurrentUserId => _tenantContext?.UserId;
 
     // DbSets
     public DbSet<Usuario> Usuarios { get; set; } = null!;
@@ -133,6 +151,62 @@ public class NexumDbContext : DbContext
             .HasForeignKey(a => a.LeadId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        modelBuilder.Entity<Usuario>()
+            .Property(usuario => usuario.Perfil)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Cupom>()
+            .Property(cupom => cupom.Tipo)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Endereco>()
+            .Property(endereco => endereco.Tipo)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<CrmAtendimento>()
+            .Property(atendimento => atendimento.Tipo)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<CrmAtendimento>()
+            .Property(atendimento => atendimento.Status)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Envio>()
+            .Property(envio => envio.StatusEnvio)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Financeiro>()
+            .Property(lancamento => lancamento.Tipo)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Financeiro>()
+            .Property(lancamento => lancamento.Status)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Fiscal>()
+            .Property(fiscal => fiscal.StatusNfe)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<LogAuditoria>()
+            .Property(log => log.Acao)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<LogAuditoria>()
+            .Property(log => log.UsuarioTipo)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Notificacao>()
+            .Property(notificacao => notificacao.Tipo)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<Notificacao>()
+            .Property(notificacao => notificacao.DestinatarioTipo)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<ConfiguracaoSistema>()
+            .Property(configuracao => configuracao.Tipo)
+            .HasConversion<string>();
+
         modelBuilder.Entity<CrmLead>()
             .Property(lead => lead.Origem)
             .HasConversion<string>();
@@ -161,6 +235,14 @@ public class NexumDbContext : DbContext
             .Property(pedido => pedido.Origem)
             .HasConversion<string>();
 
+        modelBuilder.Entity<PedidoItem>()
+            .Property(item => item.TipoFulfillment)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<PedidoItem>()
+            .Property(item => item.StatusItem)
+            .HasConversion<string>();
+
         modelBuilder.Entity<Pagamento>()
             .Property(pagamento => pagamento.Metodo)
             .HasConversion<string>();
@@ -178,10 +260,6 @@ public class NexumDbContext : DbContext
             .HasConversion<string>();
 
         modelBuilder.Entity<DropshippingConfig>()
-            .Property(config => config.Tipo)
-            .HasConversion<string>();
-
-        modelBuilder.Entity<ConfiguracaoSistema>()
             .Property(config => config.Tipo)
             .HasConversion<string>();
 
@@ -271,5 +349,138 @@ public class NexumDbContext : DbContext
             new DropshippingConfig { Id = 4, Nome = "Cartpanda HUB", Slug = "cartpanda", Tipo = TipoDropshipping.Cartpanda, Ativo = false },
             new DropshippingConfig { Id = 5, Nome = "Nuvemshop HUB", Slug = "nuvemshop", Tipo = TipoDropshipping.Nuvemshop, Ativo = false }
         );
+
+        ConfigureAuditShadowProperties(modelBuilder);
+    }
+
+    public override int SaveChanges()
+    {
+        ApplyAuditShadowValues();
+        return base.SaveChanges();
+    }
+
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        ApplyAuditShadowValues();
+        return base.SaveChangesAsync(cancellationToken);
+    }
+
+    private void ApplyAuditShadowValues()
+    {
+        var utcNow = DateTime.UtcNow;
+        var tenantId = CurrentTenantId;
+        var userId = CurrentUserId;
+
+        foreach (var entry in ChangeTracker.Entries().Where(item => item.State is EntityState.Added or EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.Metadata.ClrType == typeof(Sys_AuditableEntity))
+            {
+                continue;
+            }
+
+            var rowVersion = Guid.NewGuid().ToByteArray();
+
+            if (entry.State == EntityState.Added)
+            {
+                SetPropertyValue(entry, "TenantId", tenantId);
+                SetPropertyValue(entry, "CreatedAt", utcNow);
+                SetPropertyValue(entry, "CreatedByUserId", userId);
+                SetPropertyValue(entry, "RowVersion", rowVersion);
+            }
+
+            if (entry.State == EntityState.Modified)
+            {
+                SetPropertyValue(entry, "UpdatedAt", utcNow);
+                SetPropertyValue(entry, "UpdatedByUserId", userId);
+                SetPropertyValue(entry, "RowVersion", rowVersion);
+            }
+
+            if (entry.State == EntityState.Deleted)
+            {
+                entry.State = EntityState.Modified;
+                SetPropertyValue(entry, "IsDeleted", true);
+                SetPropertyValue(entry, "DeletedAt", utcNow);
+                SetPropertyValue(entry, "UpdatedAt", utcNow);
+                SetPropertyValue(entry, "UpdatedByUserId", userId);
+                SetPropertyValue(entry, "RowVersion", rowVersion);
+            }
+        }
+    }
+
+    private static void SetPropertyValue(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry, string propertyName, object? value)
+    {
+        var property = entry.Metadata.FindProperty(propertyName);
+        if (property is null)
+        {
+            return;
+        }
+
+        if (!property.IsShadowProperty())
+        {
+            var clrProperty = entry.Entity.GetType().GetProperty(propertyName);
+            if (clrProperty is not null && clrProperty.CanWrite)
+            {
+                clrProperty.SetValue(entry.Entity, value);
+            }
+
+            return;
+        }
+
+        entry.Property(propertyName).CurrentValue = value;
+    }
+
+    private void ConfigureAuditShadowProperties(ModelBuilder modelBuilder)
+    {
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            var clrType = entityType.ClrType;
+            if (clrType is null || clrType == typeof(Sys_AuditableEntity) || entityType.IsOwned())
+            {
+                continue;
+            }
+
+            var entity = modelBuilder.Entity(clrType);
+            entity.Property<Guid>("TenantId")
+                .HasColumnName("tenant_id")
+                .HasDefaultValue(TenantContext.DefaultTenantId);
+            entity.Property<byte[]>("RowVersion")
+                .HasColumnName("row_version")
+                .HasColumnType("blob")
+                .IsConcurrencyToken();
+            entity.Property<Guid?>("CreatedByUserId")
+                .HasColumnName("created_by_user_id");
+            entity.Property<Guid?>("UpdatedByUserId")
+                .HasColumnName("updated_by_user_id");
+            entity.Property<bool>("IsDeleted")
+                .HasColumnName("is_deleted")
+                .HasDefaultValue(false);
+            entity.Property<DateTime?>("DeletedAt")
+                .HasColumnName("deleted_at");
+            entity.HasIndex("TenantId", "IsDeleted")
+                .HasDatabaseName($"ix_{entityType.GetTableName()}_tenant_deleted");
+            entity.HasQueryFilter(BuildTenantSoftDeleteFilter(clrType));
+        }
+    }
+
+    private LambdaExpression BuildTenantSoftDeleteFilter(Type clrType)
+    {
+        var parameter = Expression.Parameter(clrType, "entity");
+        var isDeleted = Expression.Call(
+            typeof(EF),
+            nameof(EF.Property),
+            new[] { typeof(bool) },
+            parameter,
+            Expression.Constant("IsDeleted"));
+        var tenantId = Expression.Call(
+            typeof(EF),
+            nameof(EF.Property),
+            new[] { typeof(Guid) },
+            parameter,
+            Expression.Constant("TenantId"));
+        var currentTenantId = Expression.Property(Expression.Constant(this), nameof(CurrentTenantId));
+        var notDeleted = Expression.Equal(isDeleted, Expression.Constant(false));
+        var sameTenant = Expression.Equal(tenantId, currentTenantId);
+
+        return Expression.Lambda(Expression.AndAlso(notDeleted, sameTenant), parameter);
     }
 }

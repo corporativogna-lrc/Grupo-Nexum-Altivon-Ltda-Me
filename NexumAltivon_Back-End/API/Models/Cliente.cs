@@ -1,3 +1,10 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -74,7 +81,7 @@ public class Cliente
     public int PontosFidelidade { get; set; } = 0;
 
     [Column("status")]
-    public StatusCliente Status { get; set; } = StatusCliente.Ativo;
+    public StatusCliente Status { get; set; } = StatusCliente.Pendente;
 
     [Column("ultimo_acesso")]
     public DateTime? UltimoAcesso { get; set; }
@@ -83,18 +90,15 @@ public class Cliente
     [MaxLength(255)]
     public string? TokenResetSenha { get; set; }
 
-    [Column("token_expira_em")]
-    public DateTime? TokenExpiraEm { get; set; }
-
-    [Column("email_verificado_em")]
-    public DateTime? EmailVerificadoEm { get; set; }
-
     [Column("token_confirmacao_email")]
     [MaxLength(255)]
     public string? TokenConfirmacaoEmail { get; set; }
 
-    [Column("token_confirmacao_expira_em")]
-    public DateTime? TokenConfirmacaoExpiraEm { get; set; }
+    [Column("confirmado_em")]
+    public DateTime? ConfirmadoEm { get; set; }
+
+    [Column("token_expira_em")]
+    public DateTime? TokenExpiraEm { get; set; }
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

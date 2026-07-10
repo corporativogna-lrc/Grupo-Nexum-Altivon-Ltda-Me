@@ -1,3 +1,10 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -110,6 +117,18 @@ public class Produto
     [Column("seo_keywords")]
     [MaxLength(255)]
     public string? SeoKeywords { get; set; }
+
+    [Column("codigo_barras")]
+    [MaxLength(64)]
+    public string? CodigoBarras { get; set; }
+
+    [Column("qr_code")]
+    [MaxLength(500)]
+    public string? QrCode { get; set; }
+
+    [Column("identificacao_estoque")]
+    [MaxLength(500)]
+    public string? IdentificacaoEstoque { get; set; }
 
     [Column("destaque")]
     public bool Destaque { get; set; } = false;

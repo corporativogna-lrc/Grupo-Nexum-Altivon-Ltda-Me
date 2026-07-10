@@ -1,3 +1,10 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -24,22 +31,6 @@ namespace NexumAltivon.API.DTOs
         public List<OpcaoFreteDto> OpcoesFrete { get; set; } = new();
         public string Status { get; set; }
         public DateTime CriadoEm { get; set; }
-    }
-
-    public class EnderecoDto
-    {
-        public int EnderecoId { get; set; }
-        public string Apelido { get; set; }
-        public string Destinatario { get; set; }
-        public string Cep { get; set; }
-        public string Logradouro { get; set; }
-        public string Numero { get; set; }
-        public string Complemento { get; set; }
-        public string Bairro { get; set; }
-        public string Cidade { get; set; }
-        public string Estado { get; set; }
-        public string Telefone { get; set; }
-        public bool Principal { get; set; }
     }
 
     public class ResumoCheckoutDto
