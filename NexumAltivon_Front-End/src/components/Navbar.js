@@ -1,13 +1,29 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
+
 import { Link, NavLink } from 'react-router-dom';
 import { BarChart3, ChevronDown, LayoutDashboard, LogOut, Menu, Search, ShoppingBag, User, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
+import { siteAPI, unwrapApiData } from '../services/api';
+
+const fallbackLogo = '/imagens/homepage/Logo-2.png';
+const resolveLogo = (logo) => {
+  const value = String(logo || '').trim();
+  return value && !value.includes('logo-grupo-nexum-altivon.svg') ? value : fallbackLogo;
+};
 
 const navItems = [
   { to: '/', label: 'Início' },
   { to: '/produtos', label: 'Catálogo' },
   { to: '/lojas', label: 'Lojas' },
+  { to: '/acompanhar-pedido', label: 'Pedido' },
   { to: '/contato', label: 'Contato' },
 ];
 
@@ -17,6 +33,11 @@ export default function Navbar() {
   const { logout, isAuthenticated, isAdmin, user } = useAuth();
   const { getItemCount } = useCart();
   const itemCount = getItemCount();
+  const [branding, setBranding] = useState({
+    siteName: 'Grupo Nexum Altivon',
+    subtitle: 'Participações societárias',
+    logo: fallbackLogo,
+  });
   const displayName = useMemo(() => {
     const rawName = String(user?.nome || user?.name || user?.email || '').trim();
     return rawName ? rawName.split(' ')[0] : 'Conta';
@@ -28,20 +49,46 @@ export default function Navbar() {
       isActive ? 'bg-[#C9A227] text-black' : 'text-zinc-200 hover:bg-white/10 hover:text-[#E8D5A3]'
     }`;
 
+  useEffect(() => {
+    let active = true;
+
+    siteAPI
+      .getPublicConfig()
+      .then((response) => {
+        const config = unwrapApiData(response.data) || {};
+        if (!active) return;
+        setBranding({
+          siteName: config.siteNome || config.siteName || 'Grupo Nexum Altivon',
+          subtitle: config.siteSubtitulo || config.siteSubtitle || 'Participações societárias',
+          logo: resolveLogo(config.siteLogo),
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <header className="sticky top-0 z-50 border-b border-[#2A2A2A] bg-[#0A0A0A]/95 text-white backdrop-blur-xl">
-      <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        <Link to="/" className="flex items-center gap-3" aria-label="Nexum Altivon">
-          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#C9A227] text-sm font-black tracking-wide text-black shadow-sm">
-            NA
-          </div>
-          <div className="leading-tight">
-            <p className="text-base font-black tracking-wide text-[#C9A227]">Nexum Altivon</p>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">Grupo Commerce</p>
+      <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between gap-3 px-3 sm:px-6 lg:px-8">
+        <Link to="/" className="flex min-w-0 items-center gap-2 sm:gap-3" aria-label="Grupo Nexum Altivon">
+          <img
+            src={branding.logo}
+            alt="Logotipo Grupo Nexum Altivon"
+            className="h-12 w-12 shrink-0 rounded-xl bg-[#C9A227] object-contain p-1 shadow-sm sm:h-14 sm:w-14"
+            onError={(event) => {
+              event.currentTarget.src = fallbackLogo;
+            }}
+          />
+          <div className="min-w-0 leading-tight">
+            <p className="max-w-[132px] truncate text-sm font-black tracking-wide text-[#C9A227] sm:max-w-none sm:text-base">{branding.siteName}</p>
+            <p className="max-w-[132px] truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400 sm:max-w-none sm:text-xs">{branding.subtitle}</p>
           </div>
         </Link>
 
-        <nav className="hidden items-center gap-1 rounded-full border border-[#2A2A2A] bg-black/30 p-1 shadow-sm md:flex">
+        <nav className="hidden items-center gap-1 rounded-full border border-[#2A2A2A] bg-black/30 p-1 shadow-sm lg:flex">
           {navItems.map((item) => (
             <NavLink key={item.to} to={item.to} className={navClass} data-testid={`nav-${item.label.toLowerCase()}`}>
               {item.label}
@@ -49,7 +96,7 @@ export default function Navbar() {
           ))}
         </nav>
 
-        <div className="hidden items-center gap-2 md:flex">
+        <div className="hidden items-center gap-2 lg:flex">
           <Link
             to="/produtos"
             className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#2A2A2A] text-zinc-300 transition hover:border-[#C9A227] hover:text-[#C9A227]"
@@ -60,17 +107,19 @@ export default function Navbar() {
           </Link>
           <Link
             to="/carrinho"
-            className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#2A2A2A] text-zinc-300 transition hover:border-[#C9A227] hover:text-[#C9A227]"
-            aria-label="Carrinho"
-            title="Carrinho"
+            className="inline-flex items-center gap-2 rounded-full border border-[#2A2A2A] px-4 py-2 text-sm font-black text-zinc-200 transition hover:border-[#C9A227] hover:text-[#E8D5A3]"
+            aria-label={`Carrinho (${itemCount} itens)`}
+            title={`Carrinho (${itemCount} itens)`}
             data-testid="nav-cart"
           >
             <ShoppingBag size={19} />
-            {itemCount > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1 text-xs font-bold text-white">
-                {itemCount}
-              </span>
-            )}
+            <span>Carrinho</span>
+            <span
+              className="inline-flex min-w-6 items-center justify-center rounded-full bg-rose-600 px-2 py-0.5 text-xs font-black text-white"
+              data-testid="nav-cart-count"
+            >
+              {itemCount}
+            </span>
           </Link>
 
           {isAuthenticated ? (
@@ -140,17 +189,36 @@ export default function Navbar() {
           )}
         </div>
 
-        <button
-          onClick={() => setIsOpen((value) => !value)}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#2A2A2A] text-[#C9A227] md:hidden"
-          aria-label="Abrir menu"
-        >
-          {isOpen ? <X size={20} /> : <Menu size={20} />}
-        </button>
+        <div className="flex shrink-0 items-center gap-2 lg:hidden">
+          <Link
+            to="/carrinho"
+            className="inline-flex items-center gap-2 rounded-full border border-[#2A2A2A] px-3 py-2 text-xs font-black text-zinc-200 transition hover:border-[#C9A227] hover:text-[#E8D5A3]"
+            aria-label={`Carrinho (${itemCount} itens)`}
+            title={`Carrinho (${itemCount} itens)`}
+            data-testid="nav-cart-mobile"
+          >
+            <ShoppingBag size={17} />
+            <span>Carrinho</span>
+            <span
+              className="inline-flex min-w-6 items-center justify-center rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-black text-white"
+              data-testid="nav-cart-count-mobile"
+            >
+              {itemCount}
+            </span>
+          </Link>
+
+          <button
+            onClick={() => setIsOpen((value) => !value)}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#2A2A2A] text-[#C9A227]"
+            aria-label="Abrir menu"
+          >
+            {isOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
       </div>
 
       {isOpen && (
-        <div className="border-t border-[#2A2A2A] bg-[#0A0A0A] px-4 py-4 shadow-xl md:hidden">
+        <div className="border-t border-[#2A2A2A] bg-[#0A0A0A] px-4 py-4 shadow-xl lg:hidden">
           <div className="space-y-1">
             {navItems.map((item) => (
               <NavLink

@@ -1,9 +1,17 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
+
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
-import { lojaAPI, clienteAPI, freteAPI, pedidoAPI } from '../services/api';
-import { fallbackCategories } from '../data/mockStore';
+import { lojaAPI, clienteAPI, freteAPI, pedidoAPI, unwrapApiData } from '../services/api';
+import { isValidCpfCnpj, normalizeCep } from '../utils/validation';
 import {
   StepDadosPessoais,
   StepEndereco,
@@ -54,7 +62,7 @@ export default function Checkout() {
   const [clientePortal, setClientePortal] = useState(null);
 
   const [dadosCliente, setDadosCliente] = useState({
-    nome: '', email: '', cpf: '', telefone: ''
+    nome: '', email: '', cpf: '', telefone: '', senha: '', confirmarSenha: ''
   });
 
   const [endereco, setEndereco] = useState({
@@ -65,6 +73,13 @@ export default function Checkout() {
   const [lojaId, setLojaId] = useState('');
   const [metodoPagamento, setMetodoPagamento] = useState('cartao');
   const [parcelas, setParcelas] = useState(1);
+  const [dadosCartao, setDadosCartao] = useState({
+    numero: '',
+    nomeTitular: '',
+    validade: '',
+    cvv: '',
+    cpfTitular: '',
+  });
   const [freteSelecionado, setFreteSelecionado] = useState('padrao');
   const [freteOptions, setFreteOptions] = useState([
     { id: 'retirada', nome: 'Retirada / combinar entrega', transportadora: 'Nexum Altivon', prazo: 0, valor: 0 },
@@ -75,18 +90,14 @@ export default function Checkout() {
   const loadLojas = useCallback(async () => {
     try {
       const response = await lojaAPI.getAll();
-      const lojasApi = Array.isArray(response.data) ? response.data : [];
+      const lojasApi = Array.isArray(unwrapApiData(response.data)) ? unwrapApiData(response.data) : [];
       setLojas(lojasApi);
-      if (lojasApi.length > 0) setLojaId(lojasApi[0].id);
+      if (lojasApi.length > 0) setLojaId(String(lojasApi[0].id));
     } catch (err) {
       if (process.env.NODE_ENV === 'development') console.error(err);
-      const fallbackLojas = fallbackCategories.map((categoria, index) => ({
-        id: categoria.id,
-        nome: categoria.nome,
-        slug: categoria.id,
-      }));
-      setLojas(fallbackLojas);
-      if (fallbackLojas.length > 0) setLojaId(fallbackLojas[0].id);
+      setLojas([]);
+      setLojaId('');
+      setError('Lojas indisponíveis no momento. Verifique a API antes de concluir o pedido.');
     }
   }, []);
 
@@ -169,7 +180,8 @@ export default function Checkout() {
           })),
         });
 
-        const cotacoes = Array.isArray(response.data) ? response.data : [];
+        const cotacoesData = unwrapApiData(response.data);
+        const cotacoes = Array.isArray(cotacoesData) ? cotacoesData : [];
         if (!cancelled && cotacoes.length > 0) {
           const mapped = [
             { id: 'retirada', nome: 'Retirada / combinar entrega', transportadora: 'Nexum Altivon', prazo: 0, valor: 0 },
@@ -177,7 +189,7 @@ export default function Checkout() {
               id: cotacao.codigo,
               nome: cotacao.nome,
               transportadora: cotacao.transportadora,
-              prazo: cotacao.prazo_dias,
+              prazo: cotacao.prazoDias ?? cotacao.prazo_dias,
               valor: cotacao.valor,
             })),
           ];
@@ -204,36 +216,45 @@ export default function Checkout() {
     setCheckoutInfo('');
 
     try {
+      if (!dadosCliente.nome.trim() || !dadosCliente.email.trim()) {
+        throw new Error('Preencha nome e e-mail antes de concluir.');
+      }
+      if (dadosCliente.cpf && !isValidCpfCnpj(dadosCliente.cpf)) {
+        throw new Error('CPF/CNPJ inválido.');
+      }
+      if (!clientePortal) {
+        if (!dadosCliente.senha || dadosCliente.senha.length < 8) {
+          throw new Error('Crie uma senha com pelo menos 8 caracteres para liberar o acesso do cliente.');
+        }
+        if (dadosCliente.senha !== dadosCliente.confirmarSenha) {
+          throw new Error('A confirmação da senha não confere.');
+        }
+      }
+
       let clienteId = clientePortal?.id;
-      let enderecoClienteId = null;
-      const enderecoPayload = {
-        tipo: 'Entrega',
-        apelido: 'Checkout',
-        cep: endereco.cep?.trim(),
-        logradouro: endereco.logradouro?.trim(),
-        numero: endereco.numero?.trim(),
-        complemento: endereco.complemento?.trim() || null,
-        bairro: endereco.bairro?.trim() || null,
-        cidade: endereco.cidade?.trim() || null,
-        estado: endereco.estado?.trim() || null,
-        padrao: true,
-      };
 
       if (clienteId) {
         setCheckoutInfo('Pedido vinculado diretamente ao cadastro do cliente logado.');
       } else {
-        const clienteVerificacao = await clienteAPI.verificarCadastro({
-          email: dadosCliente.email,
-          cpf: dadosCliente.cpf,
-        });
+        try {
+          const clienteVerificacao = await clienteAPI.verificarCadastro({
+            email: dadosCliente.email,
+            cpf: dadosCliente.cpf,
+          });
 
-        clienteId = clienteVerificacao.data?.cliente?.id;
-        if (clienteId) {
-          setCheckoutInfo('Cliente já existente reaproveitado para não duplicar cadastro.');
-        } else {
-          const clienteRes = await clienteAPI.create(dadosCliente);
-          clienteId = clienteRes.data?.id ?? clienteRes.data?.dados?.id ?? clienteRes.data?.Dados?.id;
-          setCheckoutInfo('Novo cliente registrado e vinculado ao pedido.');
+          clienteId = clienteVerificacao.data?.cliente?.id;
+          if (clienteId) {
+            setCheckoutInfo('Cliente já existente reaproveitado para não duplicar cadastro.');
+          }
+        } catch {
+          setCheckoutInfo('Verificação de cadastro indisponível. Seguindo direto para o cadastro do cliente.');
+        }
+
+        if (!clienteId) {
+          const { confirmarSenha, ...clientePayload } = dadosCliente;
+          const clienteRes = await clienteAPI.create(clientePayload);
+          clienteId = clienteRes.data?.id ?? clienteRes.data?.dados?.id ?? clienteRes.data?.cliente?.id;
+          setCheckoutInfo('Novo cliente registrado. O link de confirmação foi enviado por e-mail antes da liberação do acesso.');
         }
       }
 
@@ -241,30 +262,11 @@ export default function Checkout() {
         throw new Error('Cliente nao confirmado pela API.');
       }
 
-      if (
-        enderecoPayload.cep &&
-        enderecoPayload.logradouro &&
-        enderecoPayload.numero &&
-        enderecoPayload.bairro &&
-        enderecoPayload.cidade &&
-        enderecoPayload.estado
-      ) {
-        try {
-          const enderecoRes = await clienteAPI.adicionarEndereco(clienteId, enderecoPayload);
-          enderecoClienteId = enderecoRes.data?.id ?? enderecoRes.data?.dados?.id ?? enderecoRes.data?.Dados?.id ?? null;
-          if (enderecoClienteId) {
-            setCheckoutInfo((current) => `${current} Endereço salvo no cadastro do cliente.`);
-          }
-        } catch {
-          // Se falhar ao persistir o endereço, seguimos com o pedido para não travar a venda.
-        }
-      }
-
       const pedidoData = {
         cliente_id: clienteId,
         loja_id: lojaId,
         itens: cart.map(item => ({
-          produto_id: item.id,
+          produtoId: String(item.slug || item.sku || item.id),
           quantidade: item.quantity
         })),
         cupom_codigo: cupomAplicado?.codigo,
@@ -272,16 +274,18 @@ export default function Checkout() {
         metodo_pagamento: metodoPagamento,
         parcelas: metodoPagamento === 'cartao' ? parcelas : 1,
         gateway_pagamento: mapGatewayLabel(metodoPagamento),
+        dados_cartao: metodoPagamento === 'cartao' ? dadosCartao : undefined,
         frete_valor: frete.valor,
-        frete_metodo: frete.nome,
+        frete_metodo: frete.id,
         frete_transportadora: frete.transportadora,
-        frete_prazo_dias: frete.prazo,
-        endereco_entrega_id: enderecoClienteId,
+        frete_prazo_dias: frete.prazo
       };
 
-      const pedidoRes = await pedidoAPI.create(pedidoData);
-      const pedidoCriadoApi = pedidoRes.data?.dados ?? pedidoRes.data?.Dados ?? pedidoRes.data?.data ?? pedidoRes.data;
-      setPedidoCriado(pedidoCriadoApi);
+      const pedidoRes = await pedidoAPI.create({
+        ...pedidoData,
+        loja_id: String(lojaId),
+      });
+      setPedidoCriado(pedidoRes.data);
 
       clearCart();
       setStep(4);
@@ -296,8 +300,40 @@ export default function Checkout() {
 
   // Success page
   if (step === 4 && pedidoCriado) {
-    return <CheckoutSuccess pedido={pedidoCriado} onContinue={() => navigate('/')} />;
+    return <CheckoutSuccess pedido={pedidoCriado} clienteEmail={dadosCliente.email} onContinue={() => navigate('/')} />;
   }
+
+  const nextFromDadosPessoais = () => {
+    if (!dadosCliente.nome.trim() || !dadosCliente.email.trim()) {
+      setError('Preencha nome e e-mail antes de continuar.');
+      return;
+    }
+    if (dadosCliente.cpf && !isValidCpfCnpj(dadosCliente.cpf)) {
+      setError('CPF/CNPJ inválido.');
+      return;
+    }
+    if (!clientePortal) {
+      if (!dadosCliente.senha || dadosCliente.senha.length < 8) {
+        setError('Crie uma senha com pelo menos 8 caracteres.');
+        return;
+      }
+      if (dadosCliente.senha !== dadosCliente.confirmarSenha) {
+        setError('A confirmação da senha não confere.');
+        return;
+      }
+    }
+    setError('');
+    setStep(2);
+  };
+
+  const nextFromEndereco = () => {
+    if (!normalizeCep(endereco.cep)) {
+      setError('Informe um CEP válido.');
+      return;
+    }
+    setError('');
+    setStep(3);
+  };
 
   return (
     <div className="min-h-screen bg-[#050505] py-12 text-white">
@@ -333,7 +369,8 @@ export default function Checkout() {
               <StepDadosPessoais
                 dadosCliente={dadosCliente}
                 setDadosCliente={setDadosCliente}
-                onNext={() => setStep(2)}
+                exigeSenha={!clientePortal}
+                onNext={nextFromDadosPessoais}
               />
             )}
             {step === 2 && (
@@ -341,7 +378,7 @@ export default function Checkout() {
                 endereco={endereco}
                 setEndereco={setEndereco}
                 onBack={() => setStep(1)}
-                onNext={() => setStep(3)}
+                onNext={nextFromEndereco}
               />
             )}
             {step === 3 && (
@@ -353,6 +390,8 @@ export default function Checkout() {
                 setMetodoPagamento={setMetodoPagamento}
                 parcelas={parcelas}
                 setParcelas={setParcelas}
+                dadosCartao={dadosCartao}
+                setDadosCartao={setDadosCartao}
                 freteOptions={freteOptions}
                 freteSelecionado={freteSelecionado}
                 setFreteSelecionado={setFreteSelecionado}

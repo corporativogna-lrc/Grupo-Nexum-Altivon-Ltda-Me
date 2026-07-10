@@ -1,9 +1,47 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
+
+import { Link } from 'react-router-dom';
 import { User, MapPin, CreditCard } from 'lucide-react';
 import { getPagamentoLabel } from '../utils/formatters';
+import { fetchCepAddress, normalizeCep } from '../utils/validation';
+
+function getLojaPrefix(loja) {
+  const valorComparacao = [
+    loja?.tipo,
+    loja?.origem,
+    loja?.segmento,
+    loja?.nome,
+    loja?.slug,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  if (valorComparacao.includes('parceiro')) return 'Pr';
+  if (valorComparacao.includes('dropship') || valorComparacao.includes('dropi') || valorComparacao.includes('cj')) return 'Ds';
+  return 'Lj';
+}
+
+function formatLojaLabel(loja) {
+  if (!loja) return '';
+  const prefixo = getLojaPrefix(loja);
+  return `${prefixo} ${loja.id} - ${loja.nome}`;
+}
 
 // Step 1: Dados Pessoais
-export function StepDadosPessoais({ dadosCliente, setDadosCliente, onNext }) {
-  const isValid = dadosCliente.nome && dadosCliente.email;
+export function StepDadosPessoais({ dadosCliente, setDadosCliente, exigeSenha = true, onNext }) {
+  const senhaValida = !exigeSenha || (
+    dadosCliente.senha &&
+    dadosCliente.senha.length >= 8 &&
+    dadosCliente.senha === dadosCliente.confirmarSenha
+  );
+  const isValid = dadosCliente.nome && dadosCliente.email && senhaValida;
 
   return (
     <div>
@@ -43,6 +81,28 @@ export function StepDadosPessoais({ dadosCliente, setDadosCliente, onNext }) {
           onChange={(e) => setDadosCliente({ ...dadosCliente, telefone: e.target.value })}
           className="w-full rounded-xl border border-[#2A2A2A] bg-[#080808] px-4 py-3 text-white outline-none placeholder:text-[#777] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20"
         />
+        {exigeSenha && (
+          <div className="grid gap-4 md:grid-cols-2">
+            <input
+              type="password"
+              required
+              placeholder="Criar senha de acesso *"
+              value={dadosCliente.senha}
+              onChange={(e) => setDadosCliente({ ...dadosCliente, senha: e.target.value })}
+              className="w-full rounded-xl border border-[#2A2A2A] bg-[#080808] px-4 py-3 text-white outline-none placeholder:text-[#777] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20"
+              data-testid="checkout-senha"
+            />
+            <input
+              type="password"
+              required
+              placeholder="Confirmar senha *"
+              value={dadosCliente.confirmarSenha}
+              onChange={(e) => setDadosCliente({ ...dadosCliente, confirmarSenha: e.target.value })}
+              className="w-full rounded-xl border border-[#2A2A2A] bg-[#080808] px-4 py-3 text-white outline-none placeholder:text-[#777] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20"
+              data-testid="checkout-confirmar-senha"
+            />
+          </div>
+        )}
       </div>
       <button
         onClick={onNext}
@@ -66,6 +126,24 @@ export function StepEndereco({ endereco, setEndereco, onBack, onNext }) {
     endereco.cidade &&
     endereco.estado;
 
+  const handleCepBlur = async () => {
+    const cep = normalizeCep(endereco.cep);
+    if (cep.length !== 8) return;
+
+    try {
+      const autoEndereco = await fetchCepAddress(cep);
+      if (!autoEndereco) return;
+
+      setEndereco((current) => ({
+        ...current,
+        ...autoEndereco,
+        cep: autoEndereco.cep || cep,
+      }));
+    } catch {
+      // Mantém o preenchimento manual se a consulta externa falhar.
+    }
+  };
+
   return (
     <div>
       <h2 className="mb-4 flex items-center text-2xl font-black text-white">
@@ -74,6 +152,7 @@ export function StepEndereco({ endereco, setEndereco, onBack, onNext }) {
       <div className="grid grid-cols-2 gap-4">
         <input type="text" required placeholder="CEP *" value={endereco.cep}
           onChange={(e) => setEndereco({ ...endereco, cep: e.target.value })}
+          onBlur={handleCepBlur}
           className="rounded-xl border border-[#2A2A2A] bg-[#080808] px-4 py-3 text-white placeholder:text-[#777]" />
         <input type="text" required placeholder="Logradouro *" value={endereco.logradouro}
           onChange={(e) => setEndereco({ ...endereco, logradouro: e.target.value })}
@@ -116,6 +195,8 @@ export function StepPagamento({
   setMetodoPagamento,
   parcelas,
   setParcelas,
+  dadosCartao,
+  setDadosCartao,
   freteOptions = [],
   freteSelecionado,
   setFreteSelecionado,
@@ -126,6 +207,15 @@ export function StepPagamento({
   const metodos = ['cartao', 'pix', 'boleto', 'debito', 'deposito'];
   const formatPrice = (price) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
+  const cartaoValido =
+    metodoPagamento !== 'cartao' ||
+    Boolean(
+      dadosCartao?.numero &&
+        dadosCartao?.nomeTitular &&
+        dadosCartao?.validade &&
+        dadosCartao?.cvv &&
+        dadosCartao?.cpfTitular,
+    );
 
   return (
     <div>
@@ -138,7 +228,7 @@ export function StepPagamento({
         <select value={lojaId} onChange={(e) => setLojaId(e.target.value)}
           className="w-full rounded-xl border border-[#2A2A2A] bg-[#080808] px-4 py-3 text-white">
           {lojas.map((loja) => (
-            <option key={loja.id} value={loja.id}>{loja.nome}</option>
+            <option key={loja.id} value={loja.id}>{formatLojaLabel(loja)}</option>
           ))}
         </select>
       </div>
@@ -203,6 +293,49 @@ export function StepPagamento({
           <p className="mt-2 text-xs font-semibold text-[#A0A0A0]">
             O pedido já grava as parcelas para o financeiro e para a integração real do gateway.
           </p>
+
+          <div className="mt-4 space-y-3 rounded-2xl border border-[#2A2A2A] bg-[#080808] p-4">
+            <p className="text-sm font-black uppercase tracking-[0.14em] text-[#C9A227]">Dados do cartão</p>
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="Número do cartão"
+              value={dadosCartao.numero}
+              onChange={(e) => setDadosCartao({ ...dadosCartao, numero: e.target.value })}
+              className="w-full rounded-xl border border-[#2A2A2A] bg-[#111111] px-4 py-3 text-white outline-none placeholder:text-[#777] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20"
+            />
+            <input
+              type="text"
+              placeholder="Nome do titular"
+              value={dadosCartao.nomeTitular}
+              onChange={(e) => setDadosCartao({ ...dadosCartao, nomeTitular: e.target.value })}
+              className="w-full rounded-xl border border-[#2A2A2A] bg-[#111111] px-4 py-3 text-white outline-none placeholder:text-[#777] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20"
+            />
+            <div className="grid gap-3 md:grid-cols-2">
+              <input
+                type="text"
+                placeholder="Validade MM/AA"
+                value={dadosCartao.validade}
+                onChange={(e) => setDadosCartao({ ...dadosCartao, validade: e.target.value })}
+                className="w-full rounded-xl border border-[#2A2A2A] bg-[#111111] px-4 py-3 text-white outline-none placeholder:text-[#777] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20"
+              />
+              <input
+                type="password"
+                inputMode="numeric"
+                placeholder="CVV"
+                value={dadosCartao.cvv}
+                onChange={(e) => setDadosCartao({ ...dadosCartao, cvv: e.target.value })}
+                className="w-full rounded-xl border border-[#2A2A2A] bg-[#111111] px-4 py-3 text-white outline-none placeholder:text-[#777] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20"
+              />
+            </div>
+            <input
+              type="text"
+              placeholder="CPF do titular"
+              value={dadosCartao.cpfTitular}
+              onChange={(e) => setDadosCartao({ ...dadosCartao, cpfTitular: e.target.value })}
+              className="w-full rounded-xl border border-[#2A2A2A] bg-[#111111] px-4 py-3 text-white outline-none placeholder:text-[#777] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20"
+            />
+          </div>
         </div>
       )}
 
@@ -210,7 +343,7 @@ export function StepPagamento({
         <button onClick={onBack} className="rounded-full border border-[#2A2A2A] bg-[#080808] px-6 py-3 font-bold text-[#D8D8D8] hover:border-[#C9A227]">
           ← Voltar
         </button>
-        <button onClick={onConfirm} disabled={loading}
+        <button onClick={onConfirm} disabled={loading || !cartaoValido}
           className="flex-1 rounded-full bg-[#C9A227] px-6 py-3 font-black text-black transition hover:bg-[#FFD95A] disabled:opacity-50"
           data-testid="finalizar-pedido-btn">
           {loading ? 'Processando...' : 'Confirmar Pedido'}
@@ -276,9 +409,12 @@ export function CheckoutStepper({ step }) {
 }
 
 // Success page
-export function CheckoutSuccess({ pedido, onContinue }) {
+export function CheckoutSuccess({ pedido, clienteEmail, onContinue }) {
   const formatPrice = (price) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
+  const acompanharPedidoUrl = `/acompanhar-pedido?pedido=${encodeURIComponent(pedido.numero_pedido || '')}${
+    clienteEmail ? `&email=${encodeURIComponent(clienteEmail)}` : ''
+  }`;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#050505] py-12 text-white">
@@ -339,10 +475,18 @@ export function CheckoutSuccess({ pedido, onContinue }) {
           )}
         </div>
 
-        <button onClick={onContinue}
-          className="rounded-full bg-[#C9A227] px-8 py-3 font-black text-black hover:bg-[#FFD95A]">
-          Voltar para a Loja
-        </button>
+        <div className="flex flex-col justify-center gap-3 sm:flex-row">
+          <Link
+            to={acompanharPedidoUrl}
+            className="rounded-full border border-[#C9A227]/40 px-8 py-3 font-black text-[#E8D5A3] transition hover:border-[#E8D5A3] hover:text-white"
+          >
+            Acompanhar Pedido
+          </Link>
+          <button onClick={onContinue}
+            className="rounded-full bg-[#C9A227] px-8 py-3 font-black text-black hover:bg-[#FFD95A]">
+            Voltar para a Loja
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -1,39 +1,58 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
 import axios from 'axios';
 import { HTTP_UNAUTHORIZED, STORAGE_KEYS } from '../constants';
 
-const PUBLIC_API_URL = 'https://api.nexumaltivon.com';
+const PUBLIC_API_URL = 'https://api.nexumaltivon.com.br';
 const RUNTIME_API_CONFIG_URL = '/api-runtime.json';
 const RUNTIME_CACHE_KEY = 'nexum_api_runtime_url';
+const RUNTIME_URL_TTL_MS = 30 * 1000;
 
 let runtimeApiUrlPromise = null;
 let runtimeApiUrlResolvedAt = 0;
 const apiHealthCache = new Map();
-const RUNTIME_URL_TTL_MS = 30 * 1000;
-const LAN_OR_IP_HOST_RE = /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.|\d{1,3}(\.\d{1,3}){3}$)/;
-
-const isLocalOrLanHost = (hostname = '') => (
-  hostname === ''
-  || hostname === 'localhost'
-  || hostname === '127.0.0.1'
-  || LAN_OR_IP_HOST_RE.test(hostname)
-);
-
-const getDefaultApiUrl = () => {
-  if (typeof window === 'undefined') return 'http://localhost:5010';
-
-  const { hostname, origin, protocol } = window.location;
-
-  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '') return 'http://localhost:5010';
-  if (isLocalOrLanHost(hostname) || protocol === 'http:') return origin;
-  return PUBLIC_API_URL;
-};
-
-export const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || getDefaultApiUrl();
-const API_URL = `${API_BASE_URL}/api`;
 
 const normalizeApiUrl = (value) => {
   const url = String(value || '').trim().replace(/\/+$/, '');
   return /^https?:\/\//i.test(url) ? url : '';
+};
+
+const getDefaultApiUrl = () => {
+  if (typeof window === 'undefined') return 'http://127.0.0.1:5010';
+
+  const { hostname } = window.location;
+  const isLocalhost =
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname === '';
+
+  return isLocalhost ? 'http://192.168.1.72:5010' : PUBLIC_API_URL;
+};
+
+export const API_BASE_URL = normalizeApiUrl(process.env.REACT_APP_BACKEND_URL) || getDefaultApiUrl();
+const API_URL = `${API_BASE_URL}/api`;
+
+const collectRuntimeApiUrls = (config) => {
+  const values = [
+    config?.apiUrl,
+    config?.api_url,
+    config?.apiBaseUrl,
+    config?.API_BASE_URL,
+    config?.API_URL,
+    config?.backendUrl,
+    config?.url,
+    ...(Array.isArray(config?.apiUrls) ? config.apiUrls : []),
+    ...(Array.isArray(config?.api_urls) ? config.api_urls : []),
+    ...(Array.isArray(config?.fallbacks) ? config.fallbacks : []),
+  ];
+
+  return [...new Set(values.map(normalizeApiUrl).filter(Boolean))];
 };
 
 const canUseApiUrl = async (baseUrl, force = false) => {
@@ -65,11 +84,12 @@ const canUseApiUrl = async (baseUrl, force = false) => {
 
 const isLocalApi = () => {
   if (typeof window === 'undefined') return true;
-  return isLocalOrLanHost(window.location.hostname);
+  const { hostname } = window.location;
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '';
 };
 
 export const getRuntimeApiBaseUrl = async ({ force = false } = {}) => {
-  if (process.env.REACT_APP_BACKEND_URL || isLocalApi()) return API_BASE_URL;
+  if (isLocalApi()) return API_BASE_URL;
   if (force) {
     runtimeApiUrlPromise = null;
     runtimeApiUrlResolvedAt = 0;
@@ -78,8 +98,6 @@ export const getRuntimeApiBaseUrl = async ({ force = false } = {}) => {
   if (runtimeApiUrlPromise && Date.now() - runtimeApiUrlResolvedAt < RUNTIME_URL_TTL_MS) {
     return runtimeApiUrlPromise;
   }
-
-  runtimeApiUrlPromise = null;
 
   runtimeApiUrlPromise = (async () => {
     const cached = normalizeApiUrl(localStorage.getItem(RUNTIME_CACHE_KEY));
@@ -93,17 +111,16 @@ export const getRuntimeApiBaseUrl = async ({ force = false } = {}) => {
 
       if (response.ok) {
         const config = await response.json();
-        const runtimeUrl = normalizeApiUrl(config.apiUrl || config.api_url || config.url);
-        if (runtimeUrl) {
-          candidates.push(runtimeUrl);
-        }
+        candidates.push(...collectRuntimeApiUrls(config));
       }
     } catch {
-      // Mantém a última ponte funcional em cache quando a configuração pública oscila.
+      // Mantem a ultima ponte funcional em cache quando a configuracao publica oscila.
     }
 
     if (cached) candidates.push(cached);
     candidates.push(API_BASE_URL);
+    candidates.push(PUBLIC_API_URL);
+    candidates.push('https://api.nexumaltivon.com');
 
     for (const candidate of [...new Set(candidates.filter(Boolean))]) {
       if (await canUseApiUrl(candidate, force)) {
@@ -117,7 +134,6 @@ export const getRuntimeApiBaseUrl = async ({ force = false } = {}) => {
   })();
 
   runtimeApiUrlResolvedAt = Date.now();
-
   return runtimeApiUrlPromise;
 };
 
@@ -131,9 +147,6 @@ const normalizeRecord = (record) => {
     categoria_id: record.categoria_id ?? record.categoriaId,
     subcategoria_id: record.subcategoria_id ?? record.subcategoriaId,
     categoria_pai_id: record.categoria_pai_id ?? record.categoriaPaiId,
-    nivel: record.nivel ?? record.Nivel,
-    caminho: record.caminho ?? record.Caminho,
-    ordem: record.ordem ?? record.Ordem,
     cpf: record.cpf ?? record.cpfCnpj ?? record.cpf_cnpj,
     documento: record.documento ?? record.cnpj ?? record.cpfCnpj ?? record.cpf_cnpj,
     numero_pedido: record.numero_pedido ?? record.numeroPedido,
@@ -141,14 +154,17 @@ const normalizeRecord = (record) => {
     meio_pagamento: record.meio_pagamento ?? record.meioPagamento,
     gateway_pagamento: record.gateway_pagamento ?? record.gatewayPagamento,
     gateway_transacao_id: record.gateway_transacao_id ?? record.gatewayTransacaoId,
-    parcelas: record.parcelas ?? record.Parcelas,
     pix_qrcode: record.pix_qrcode ?? record.pixQrcode,
     payment_url: record.payment_url ?? record.paymentUrl,
     frete_valor: record.frete_valor ?? record.freteValor,
     frete_metodo: record.frete_metodo ?? record.freteMetodo,
     frete_transportadora: record.frete_transportadora ?? record.freteTransportadora,
     frete_prazo_dias: record.frete_prazo_dias ?? record.fretePrazoDias,
+    frete_codigo_rastreio: record.frete_codigo_rastreio ?? record.freteCodigoRastreio,
     instrucao_pagamento: record.instrucao_pagamento ?? record.instrucaoPagamento,
+    cliente_nome: record.cliente_nome ?? record.clienteNome,
+    updated_at: record.updated_at ?? record.updatedAt,
+    created_at: record.created_at ?? record.createdAt,
     configurada: record.configurada ?? record.Configurada,
     operacional: record.operacional ?? record.Operacional,
     detalhe: record.detalhe ?? record.Detalhe,
@@ -157,7 +173,6 @@ const normalizeRecord = (record) => {
     referencia: record.referencia ?? record.Referencia,
     ambiente: record.ambiente ?? record.Ambiente,
     prazo_dias: record.prazo_dias ?? record.prazoDias ?? record.PrazoDias,
-    created_at: record.created_at ?? record.createdAt,
     desconto_percentual: record.desconto_percentual ?? record.descontoPercentual,
     desconto_valor: record.desconto_valor ?? record.descontoValor,
     valor_minimo: record.valor_minimo ?? record.valorMinimo,
@@ -177,17 +192,18 @@ const normalizeData = (data) => {
 
 export const unwrapApiData = (data) => {
   if (!data || typeof data !== 'object') return data;
-  return normalizeData(data.dados ?? data.Dados ?? data.data ?? data);
+  return normalizeData(data.dados ?? data.Dados ?? data.data ?? data.Data ?? data);
 };
 
 const api = axios.create({
   baseURL: API_URL,
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
+    Accept: 'application/json',
   },
 });
 
-// Add token to requests
 api.interceptors.request.use(async (config) => {
   const runtimeApiBaseUrl = await getRuntimeApiBaseUrl();
   config.baseURL = `${runtimeApiBaseUrl}/api`;
@@ -199,7 +215,6 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-// Handle token refresh
 api.interceptors.response.use(
   (response) => ({
     ...response,
@@ -215,23 +230,41 @@ api.interceptors.response.use(
       return api(originalRequest);
     }
 
-    if (error.response?.status === HTTP_UNAUTHORIZED && !originalRequest._retry) {
+    if (error.response?.status === HTTP_UNAUTHORIZED && originalRequest && !originalRequest._retry) {
       originalRequest._retry = true;
 
       try {
         const refreshToken = localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
+        if (!refreshToken) {
+          return Promise.reject(error);
+        }
+
         const runtimeApiBaseUrl = await getRuntimeApiBaseUrl();
+        const accessTokenAtual = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
         const response = await axios.post(`${runtimeApiBaseUrl}/api/auth/refresh`, {
+          token: accessTokenAtual,
+          access_token: accessTokenAtual,
           refresh_token: refreshToken,
+          refreshToken,
         });
 
-        const { access_token } = response.data;
-        localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, access_token);
-        originalRequest.headers.Authorization = `Bearer ${access_token}`;
+        const payload = unwrapApiData(response.data) || {};
+        const accessToken = payload.access_token || payload.accessToken || payload.token || payload.Token;
+        const nextRefreshToken = payload.refresh_token || payload.refreshToken || payload.RefreshToken || refreshToken;
+
+        if (!accessToken) {
+          return Promise.reject(error);
+        }
+
+        localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
+        localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, nextRefreshToken);
+        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
 
         return api(originalRequest);
       } catch (refreshError) {
-        localStorage.clear();
+        localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+        localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
+        localStorage.removeItem(STORAGE_KEYS.USER);
         window.location.href = '/login';
         return Promise.reject(refreshError);
       }
@@ -241,52 +274,81 @@ api.interceptors.response.use(
   }
 );
 
-// API Methods
-export const lojaAPI = {
-  getAll: () => api.get('/lojas'),
-  getById: (id) => api.get(`/lojas/${id}`),
-};
+const buildResourceApi = (resourcePath) => ({
+  listar: (params) => api.get(resourcePath, { params }),
+  getAll: (params) => api.get(resourcePath, { params }),
+  obter: (id) => api.get(`${resourcePath}/${id}`),
+  getById: (id) => api.get(`${resourcePath}/${id}`),
+  criar: (data) => api.post(resourcePath, data),
+  create: (data) => api.post(resourcePath, data),
+  atualizar: (id, data) => api.put(`${resourcePath}/${id}`, data),
+  update: (id, data) => api.put(`${resourcePath}/${id}`, data),
+  excluir: (id) => api.delete(`${resourcePath}/${id}`),
+  delete: (id) => api.delete(`${resourcePath}/${id}`),
+});
+
+export const lojaAPI = buildResourceApi('/lojas');
 
 export const siteAPI = {
+  obterConfiguracao: () => api.get('/site/configuracoes/publico'),
   getPublicConfig: () => api.get('/site/configuracoes/publico'),
+  listarConfiguracoes: () => api.get('/site/configuracoes'),
   getAll: () => api.get('/site/configuracoes'),
+  atualizarConfiguracao: (payload) => api.put('/site/configuracoes', payload?.itens ? payload : { itens: payload }),
   update: (itens) => api.put('/site/configuracoes', { itens }),
 };
 
 export const produtoAPI = {
-  getAll: (params) => api.get('/produtos', { params }),
-  getDestaques: () => api.get('/produtos/destaques'),
-  getById: (id) => api.get(`/produtos/${id}`),
-  create: (data) => api.post('/produtos', data),
-  update: (id, data) => api.put(`/produtos/${id}`, data),
+  ...buildResourceApi('/produtos'),
+  destaques: (limite = 5) => api.get('/produtos/destaques', { params: { limite } }),
+  getDestaques: (limite = 5) => api.get('/produtos/destaques', { params: { limite } }),
+  porCategoria: (categoriaId) => api.get('/produtos', { params: { categoriaId } }),
+  precosPorLoja: (id) => api.get(`/produtos/${id}/precos-por-loja`),
   uploadImagem: (data) => api.post('/uploads/produtos/imagens', data),
 };
 
-export const categoriaAPI = {
-  getAll: () => api.get('/categorias'),
-  create: (data) => api.post('/categorias', data),
-};
+export const categoriaAPI = buildResourceApi('/categorias');
 
 export const pedidoAPI = {
-  getAll: (params) => api.get('/pedidos', { params }),
-  getById: (id) => api.get(`/pedidos/${id}`),
-  create: (data) => api.post('/pedidos', data),
-  updateStatus: (id, status) => api.put(`/pedidos/${id}/status`, { novo_status: status }),
+  ...buildResourceApi('/pedidos'),
+  criarCheckout: (data) => api.post('/pedidos', data),
+  acompanhar: (params) => api.get('/pedidos/acompanhar', { params }),
+  updateStatus: (id, status) => api.put(`/pedidos/${id}/status`, { novo_status: status, status }),
+  atualizarStatus: (id, status) => api.put(`/pedidos/${id}/status`, { novo_status: status, status }),
+  avancarFluxo: (id) => api.post(`/pedidos/${id}/fluxo-operacional`),
+  updateLogistica: (id, data) => api.put(`/pedidos/${id}/logistica`, data),
 };
 
 export const clienteAPI = {
-  getAll: () => api.get('/clientes'),
+  ...buildResourceApi('/clientes'),
   verificarCadastro: (params) => api.get('/clientes/verificar', { params }),
-  create: (data) => api.post('/clientes', data),
-  adicionarEndereco: (clienteId, data) => api.post(`/clientes/${clienteId}/enderecos`, data),
-  confirmarEmail: (token) => api.get('/clientes/confirmar-email', { params: { token } }),
+  cadastrar: (data) => api.post('/clientes', data),
+  confirmarEmail: (token) => api.get('/clientes/confirmar', { params: { token } }),
+  confirmarCadastro: (token) => api.get('/clientes/confirmar', { params: { token } }),
   reenviarConfirmacao: (email) => api.post('/clientes/reenviar-confirmacao', { email }),
   getPortal: () => api.get('/clientes/portal/me'),
+  criarEndereco: (data) => api.post('/clientes/portal/enderecos', data),
+  atualizarEndereco: (id, data) => api.put(`/clientes/portal/enderecos/${id}`, data),
+  definirEnderecoPrincipal: (id) => api.put(`/clientes/portal/enderecos/${id}/principal`),
+  removerEndereco: (id) => api.delete(`/clientes/portal/enderecos/${id}`),
+};
+
+export const cupomAPI = {
+  validar: (codigo) => api.get(`/cupons/${codigo}`),
 };
 
 export const fornecedorAPI = {
-  getAll: () => api.get('/fornecedores'),
-  create: (data) => api.post('/fornecedores', data),
+  ...buildResourceApi('/fornecedores'),
+};
+
+export const comprasAPI = {
+  getPainel: () => api.get('/compras/painel'),
+  registrarSolicitacao: (data) => api.post('/compras/solicitacoes', data),
+  atualizarSolicitacaoStatus: (id, data) => api.patch(`/compras/solicitacoes/${id}/status`, data),
+  registrarCotacao: (data) => api.post('/compras/cotacoes', data),
+  criarPedido: (data) => api.post('/compras/pedidos', data),
+  atualizarPedidoStatus: (id, data) => api.patch(`/compras/pedidos/${id}/status`, data),
+  registrarEntrada: (id, data) => api.post(`/compras/pedidos/${id}/entradas`, data),
 };
 
 export const empresaGrupoAPI = {
@@ -296,11 +358,12 @@ export const empresaGrupoAPI = {
 
 export const fiscalAPI = {
   getPedidos: () => api.get('/fiscal/pedidos'),
+  updatePedidoStatus: (id, status) => api.put(`/fiscal/pedidos/${id}/status`, { novo_status: status, status }),
   getPdvConfiguracoes: () => api.get('/fiscal/pdv/configuracoes'),
   simularRoteamento: (data) => api.post('/fiscal/simular-roteamento', data),
   prepararEmissaoManual: (data) => api.post('/fiscal/preparar-emissao-manual', data),
   salvarRascunhoManual: (data) => api.post('/fiscal/rascunho-manual', data),
-  obterRascunhoManual: () => api.get('/fiscal/rascunho-manual'),
+  getRascunhoManual: () => api.get('/fiscal/rascunho-manual'),
 };
 
 export const leadAPI = {
@@ -312,14 +375,23 @@ export const leadAPI = {
 
 export const dashboardAPI = {
   getResumo: () => api.get('/dashboard/resumo'),
+  getCorporativoPainel: () => api.get('/gestao-corporativa/painel'),
+  getDicionarioDados: () => api.get('/gestao-corporativa/dicionario-dados'),
+  getCicloOperacional: () => api.get('/gestao-corporativa/ciclo-operacional'),
   getRelatorioVendas: (dataInicio, dataFim) =>
     api.get('/relatorios/vendas', {
       params: { data_inicio: dataInicio, data_fim: dataFim },
     }),
 };
 
+export const pdvAPI = {
+  getCockpit: () => api.get('/pdv/cockpit'),
+};
+
 export const financeiroAPI = {
   getLancamentos: (tipo) => api.get('/financeiro/lancamentos', { params: { tipo } }),
+  createLancamento: (data) => api.post('/financeiro/lancamentos', data),
+  updateLancamentoStatus: (id, data) => api.patch(`/financeiro/lancamentos/${id}/status`, data),
   getFaturamento: (dataInicio, dataFim) =>
     api.get('/financeiro/faturamento', {
       params: { data_inicio: dataInicio, data_fim: dataFim },
@@ -333,9 +405,16 @@ export const integracoesAPI = {
   testar: (slug) => api.post(`/integracoes/testar/${slug}`),
 };
 
+export const assistenteAPI = {
+  enviarMensagem: (data) => api.post('/assistentes/mensagem', data),
+};
+
 export const freteAPI = {
   cotar: (data) => api.post('/frete/cotar', data),
 };
 
-export default api;
+export const logisticaAPI = {
+  rotear: (data) => api.post('/logistica/roteamento', data),
+};
 
+export default api;

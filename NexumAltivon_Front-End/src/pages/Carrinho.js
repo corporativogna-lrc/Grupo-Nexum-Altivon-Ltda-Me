@@ -1,8 +1,15 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
 import { useCart } from '../context/CartContext';
 import { Link, useNavigate } from 'react-router-dom';
 import { Trash2, Plus, Minus, ShoppingBag } from 'lucide-react';
 import { useState } from 'react';
-import api from '../services/api';
+import api, { produtoAPI } from '../services/api';
 
 export default function Carrinho() {
   const { cart, removeFromCart, updateQuantity, getTotal, clearCart } = useCart();
@@ -10,6 +17,7 @@ export default function Carrinho() {
   const [cupom, setCupom] = useState('');
   const [cupomAplicado, setCupomAplicado] = useState(null);
   const [error, setError] = useState('');
+  const [validatingCart, setValidatingCart] = useState(false);
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -52,9 +60,45 @@ export default function Carrinho() {
   const desconto = calcularDesconto();
   const total = subtotal - desconto;
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (cart.length === 0) return;
-    navigate('/checkout', { state: { cupomAplicado } });
+    setError('');
+    setValidatingCart(true);
+
+    try {
+      let houveAjuste = false;
+
+      await Promise.all(cart.map(async (item) => {
+        try {
+          const response = await produtoAPI.getById(item.id);
+          const produtoAtual = response.data?.dados || response.data?.data || response.data;
+          const estoqueAtual = Number(produtoAtual?.estoque || 0);
+
+          if (!produtoAtual || estoqueAtual <= 0) {
+            removeFromCart(item.id);
+            houveAjuste = true;
+            return;
+          }
+
+          if (item.quantity > estoqueAtual) {
+            updateQuantity(item.id, estoqueAtual);
+            houveAjuste = true;
+          }
+        } catch {
+          removeFromCart(item.id);
+          houveAjuste = true;
+        }
+      }));
+
+      if (houveAjuste) {
+        setError('O carrinho foi atualizado porque um item não está mais liberado para venda.');
+        return;
+      }
+
+      navigate('/checkout', { state: { cupomAplicado } });
+    } finally {
+      setValidatingCart(false);
+    }
   };
 
   if (cart.length === 0) {
@@ -140,8 +184,13 @@ export default function Carrinho() {
               </div>
             </div>
 
-            <button onClick={handleCheckout} className="mt-6 w-full rounded-full bg-[#C9A227] py-3 font-black text-black transition hover:bg-[#FFD95A]" data-testid="checkout-btn">
-              Finalizar Compra
+            <button
+              onClick={handleCheckout}
+              disabled={validatingCart}
+              className="mt-6 w-full rounded-full bg-[#C9A227] py-3 font-black text-black transition hover:bg-[#FFD95A] disabled:opacity-50"
+              data-testid="checkout-btn"
+            >
+              {validatingCart ? 'Validando carrinho...' : 'Finalizar Compra'}
             </button>
           </div>
         </div>

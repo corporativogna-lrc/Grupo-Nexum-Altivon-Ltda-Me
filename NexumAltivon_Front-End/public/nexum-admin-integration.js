@@ -1,11 +1,38 @@
-﻿/**
- * Nexum Altivon - IntegraÃ§Ã£o COMPLETA do Painel Admin
- * Todos os botÃµes, comandos, cadastros e seÃ§Ãµes operacionais
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
  */
 (function() {
   'use strict';
 
-  const API_URL = window.location.origin + '/api';
+  const PUBLIC_API_BASE_URL = 'https://api.nexumaltivon.com.br';
+  const LOCAL_API_BASE_URL = 'http://192.168.1.72:5010';
+  const API_RUNTIME_STORAGE_KEY = 'nexum_api_runtime_url';
+
+  function normalizeApiBaseUrl(value) {
+    const url = String(value || '').trim().replace(/\/+$/, '');
+    return /^https?:\/\//i.test(url) ? url : '';
+  }
+
+  function isLocalHost() {
+    const hostname = window.location.hostname;
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '';
+  }
+
+  function getConfiguredApiBaseUrl() {
+    const explicit =
+      normalizeApiBaseUrl(window.NEXUM_API_BASE_URL) ||
+      normalizeApiBaseUrl(window.NEXUM_API_URL) ||
+      normalizeApiBaseUrl(localStorage.getItem(API_RUNTIME_STORAGE_KEY));
+
+    return explicit || (isLocalHost() ? LOCAL_API_BASE_URL : PUBLIC_API_BASE_URL);
+  }
+
+  const API_BASE_URL = getConfiguredApiBaseUrl();
+  const API_URL = `${API_BASE_URL}/api`;
   const STORAGE_TOKEN = 'nexum_admin_token';
   const STORAGE_USER = 'nexum_admin_user';
 

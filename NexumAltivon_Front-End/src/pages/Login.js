@@ -1,8 +1,14 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LogIn, Mail } from 'lucide-react';
-import { clienteAPI } from '../services/api';
+import { Eye, EyeOff, LogIn } from 'lucide-react';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -11,45 +17,25 @@ export default function Login() {
   const [senha, setSenha] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [reenviarStatus, setReenviarStatus] = useState({ loading: false, message: '', tone: '' });
+  const [showSenha, setShowSenha] = useState(false);
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [mfaCode, setMfaCode] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    const result = await login(email, senha);
+    const result = await login(email, senha, mfaCode.trim());
 
     if (result.success) {
       navigate(result.destination || '/dashboard');
     } else {
+      setMfaRequired(Boolean(result.mfaRequired));
       setError(result.error);
     }
 
     setLoading(false);
-  };
-
-  const handleReenviarConfirmacao = async () => {
-    if (!email.trim()) {
-      setReenviarStatus({ loading: false, message: 'Informe o e-mail para reenviar o link.', tone: 'error' });
-      return;
-    }
-
-    setReenviarStatus({ loading: true, message: '', tone: '' });
-    try {
-      await clienteAPI.reenviarConfirmacao(email.trim());
-      setReenviarStatus({
-        loading: false,
-        message: 'Se houver um cadastro pendente, um novo link foi enviado.',
-        tone: 'success',
-      });
-    } catch (requestError) {
-      setReenviarStatus({
-        loading: false,
-        message: requestError.response?.data?.mensagem || requestError.response?.data?.detail || 'Não foi possível reenviar agora.',
-        tone: 'error',
-      });
-    }
   };
 
   return (
@@ -85,68 +71,57 @@ export default function Login() {
 
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">Senha</label>
-            <input
-              type="password"
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              required
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-              placeholder="••••••••"
-              data-testid="senha-input"
-            />
+            <div className="flex items-center gap-2 rounded-lg border border-gray-300 focus-within:ring-2 focus-within:ring-amber-500">
+              <input
+                type={showSenha ? 'text' : 'password'}
+                value={senha}
+                onChange={(e) => setSenha(e.target.value)}
+                required
+                className="w-full rounded-lg px-4 py-3 outline-none"
+                placeholder="••••••••"
+                data-testid="senha-input"
+              />
+              <button
+                type="button"
+                onClick={() => setShowSenha((current) => !current)}
+                className="mr-2 inline-flex h-10 w-10 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-gray-900"
+                aria-label={showSenha ? 'Ocultar senha' : 'Mostrar senha'}
+                title={showSenha ? 'Ocultar senha' : 'Mostrar senha'}
+              >
+                {showSenha ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
+
+          {mfaRequired && (
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Código MFA</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                required
+                className="w-full rounded-lg border border-gray-300 px-4 py-3 tracking-[0.35em] outline-none focus:ring-2 focus:ring-amber-500"
+                placeholder="000000"
+                data-testid="mfa-code-input"
+              />
+            </div>
+          )}
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || (mfaRequired && mfaCode.trim().length < 6)}
             className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white py-3 rounded-lg font-semibold transition disabled:opacity-50"
             data-testid="login-submit"
           >
-            {loading ? 'Entrando...' : 'Entrar'}
+            {loading ? 'Entrando...' : mfaRequired ? 'Validar MFA' : 'Entrar'}
           </button>
 
           <div className="text-center">
             <Link to="/" className="text-amber-600 hover:underline">← Voltar para Home</Link>
           </div>
         </form>
-
-        <section className="rounded-2xl border border-white/10 bg-black/30 p-6 text-white">
-          <h3 className="text-lg font-bold">Não recebeu o e-mail de confirmação?</h3>
-          <p className="mt-2 text-sm text-gray-300">
-            Informe o mesmo e-mail do cadastro para solicitar um novo link e liberar sua área do cliente.
-          </p>
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-            <label className="flex min-w-0 flex-1 items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-4 py-3">
-              <Mail className="text-amber-400" size={18} />
-              <input
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                className="w-full bg-transparent text-white outline-none"
-                placeholder="seu@email.com"
-              />
-            </label>
-            <button
-              type="button"
-              onClick={handleReenviarConfirmacao}
-              disabled={reenviarStatus.loading}
-              className="rounded-lg bg-amber-500 px-5 py-3 font-semibold text-black transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {reenviarStatus.loading ? 'Reenviando...' : 'Reenviar link'}
-            </button>
-          </div>
-          {reenviarStatus.message && (
-            <div
-              className={`mt-4 rounded-lg border px-4 py-3 text-sm ${
-                reenviarStatus.tone === 'success'
-                  ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
-                  : 'border-red-400/30 bg-red-500/10 text-red-200'
-              }`}
-            >
-              {reenviarStatus.message}
-            </div>
-          )}
-        </section>
 
       </div>
     </div>

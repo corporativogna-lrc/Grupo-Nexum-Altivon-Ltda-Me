@@ -1,4 +1,11 @@
-﻿<!DOCTYPE html>
+﻿<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+-->
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -772,7 +779,7 @@
                 </div>
             </div>
 
-            <!-- OUTRAS SEÃ‡Ã•ES (PLACEHOLDERS) -->
+            <!-- SEÃ‡Ã•ES COMPLEMENTARES -->
             <div id="section-pedidos" class="section-content" style="display:none;">
                 <h1 class="page-title">Pedidos</h1>
                 <p class="page-subtitle">GestÃ£o completa de todos os pedidos do grupo</p>
@@ -853,7 +860,7 @@
                 </div>
             </div>
 
-            <!-- PLACEHOLDER PARA OUTRAS SEÃ‡Ã•ES -->
+            <!-- SEÃ‡Ã•ES OPERACIONAIS -->
             <div id="section-lojas" class="section-content" style="display:none;">
                 <h1 class="page-title">Lojas</h1>
                 <p class="page-subtitle">Gerenciamento das 6 lojas do grupo societÃ¡rio</p>
@@ -877,9 +884,9 @@
     <script>
         // ===== CONFIGURAÃ‡ÃƒO DA API =====
         const RUNTIME_API_CONFIG_URL = '../api-runtime.json';
-        const PUBLIC_API_URL = 'https://api.nexumaltivon.com';
+        const PUBLIC_API_URL = 'https://api.nexumaltivon.com.br';
         const API_BASE = window.location.protocol === 'file:' || window.location.hostname === 'localhost'
-            ? 'http://localhost:5012/api'
+            ? 'http://localhost:5010/api'
             : null;
         const TOKEN_KEY = 'nexum_admin_token';
         const USER_KEY = 'nexum_admin_user';
@@ -1008,89 +1015,7 @@
             weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
         });
 
-        // ===== ESTRUTURA PADRAO DO PAINEL =====
-        const mockDashboard = {
-            kpis: {
-                faturamentoHoje: 2847.50,
-                faturamentoMes: 45230.80,
-                faturamentoAno: 387450.00,
-                pedidosHoje: 12,
-                pedidosMes: 186,
-                pedidosPendentes: 23,
-                pedidosEnviados: 45,
-                pedidosEntregues: 892,
-                clientesNovosMes: 34,
-                clientesAtivos: 1247,
-                totalClientes: 3856,
-                ticketMedio: 243.50,
-                taxaConversao: 3.2,
-                produtosAtivos: 1245,
-                produtosEstoqueBaixo: 18,
-                produtosSemEstoque: 5,
-                leadsNovos: 12,
-                leadsConvertidos: 8,
-                leadsEmAtendimento: 15
-            },
-            faturamentoSemanal: [
-                { periodo: '17/05', faturamento: 1850.00, quantidadePedidos: 8 },
-                { periodo: '18/05', faturamento: 2340.50, quantidadePedidos: 10 },
-                { periodo: '19/05', faturamento: 1560.00, quantidadePedidos: 6 },
-                { periodo: '20/05', faturamento: 3120.80, quantidadePedidos: 13 },
-                { periodo: '21/05', faturamento: 2780.00, quantidadePedidos: 11 },
-                { periodo: '22/05', faturamento: 1950.00, quantidadePedidos: 8 },
-                { periodo: '23/05', faturamento: 2847.50, quantidadePedidos: 12 }
-            ],
-            faturamentoMensal: [
-                { periodo: 'jun/25', faturamento: 32450.00, quantidadePedidos: 142 },
-                { periodo: 'jul/25', faturamento: 38920.50, quantidadePedidos: 168 },
-                { periodo: 'ago/25', faturamento: 35670.00, quantidadePedidos: 154 },
-                { periodo: 'set/25', faturamento: 42180.80, quantidadePedidos: 182 },
-                { periodo: 'out/25', faturamento: 39850.00, quantidadePedidos: 172 },
-                { periodo: 'nov/25', faturamento: 44560.00, quantidadePedidos: 195 },
-                { periodo: 'dez/25', faturamento: 52340.00, quantidadePedidos: 228 },
-                { periodo: 'jan/26', faturamento: 28950.00, quantidadePedidos: 126 },
-                { periodo: 'fev/26', faturamento: 31240.00, quantidadePedidos: 138 },
-                { periodo: 'mar/26', faturamento: 36780.00, quantidadePedidos: 162 },
-                { periodo: 'abr/26', faturamento: 41250.00, quantidadePedidos: 178 },
-                { periodo: 'mai/26', faturamento: 45230.80, quantidadePedidos: 186 }
-            ],
-            vendasPorLoja: [
-                { lojaNome: 'GeraÃ§Ã£o Top+', lojaSlug: 'geracao-top', faturamento: 98560.00, pedidos: 412, ticketMedio: 239.22, percentual: 25.4 },
-                { lojaNome: 'Moda Mim', lojaSlug: 'moda-mim', faturamento: 72340.00, pedidos: 298, ticketMedio: 242.75, percentual: 18.7 },
-                { lojaNome: 'Chronos', lojaSlug: 'chronos', faturamento: 67890.00, pedidos: 245, ticketMedio: 277.10, percentual: 17.5 },
-                { lojaNome: 'Grann-Tur', lojaSlug: 'grann-tur', faturamento: 54230.00, pedidos: 198, ticketMedio: 273.89, percentual: 14.0 },
-                { lojaNome: 'Estruturaline', lojaSlug: 'estruturaline', faturamento: 45670.00, pedidos: 156, ticketMedio: 292.76, percentual: 11.8 },
-                { lojaNome: 'Gran-fest-festas', lojaSlug: 'gran-fest', faturamento: 48760.00, pedidos: 187, ticketMedio: 260.75, percentual: 12.6 }
-            ],
-            produtosMaisVendidos: [
-                { produtoId: 1, nome: 'Smartphone Galaxy S24', imagem: null, lojaNome: 'GeraÃ§Ã£o Top+', quantidadeVendida: 142, receitaTotal: 213400.00 },
-                { produtoId: 2, nome: 'RelÃ³gio Chronos Elite', imagem: null, lojaNome: 'Chronos', quantidadeVendida: 98, receitaTotal: 78400.00 },
-                { produtoId: 3, nome: 'Mala de Viagem Premium', imagem: null, lojaNome: 'Grann-Tur', quantidadeVendida: 87, receitaTotal: 43500.00 },
-                { produtoId: 4, nome: 'Vestido Floral VerÃ£o', imagem: null, lojaNome: 'Moda Mim', quantidadeVendida: 76, receitaTotal: 22800.00 },
-                { produtoId: 5, nome: 'Kit Festa Premium', imagem: null, lojaNome: 'Gran-fest-festas', quantidadeVendida: 65, receitaTotal: 19500.00 }
-            ],
-            clientesRecentes: [
-                { id: 1, nome: 'Ana Carolina Silva', email: 'ana.silva@email.com', whatsapp: '(14) 99876-5432', dataCadastro: '2026-05-23T14:30:00', totalPedidos: 3, totalGasto: 1250.00 },
-                { id: 2, nome: 'Bruno Oliveira', email: 'bruno.oliveira@email.com', whatsapp: '(14) 99765-4321', dataCadastro: '2026-05-23T10:15:00', totalPedidos: 1, totalGasto: 450.00 },
-                { id: 3, nome: 'Carla Mendes', email: 'carla.mendes@email.com', whatsapp: '(14) 99654-3210', dataCadastro: '2026-05-22T18:45:00', totalPedidos: 5, totalGasto: 2340.00 },
-                { id: 4, nome: 'Diego Souza', email: 'diego.souza@email.com', whatsapp: '(14) 99543-2109', dataCadastro: '2026-05-22T09:20:00', totalPedidos: 2, totalGasto: 890.00 },
-                { id: 5, nome: 'Elisa Ferreira', email: 'elisa.ferreira@email.com', whatsapp: '(14) 99432-1098', dataCadastro: '2026-05-21T16:00:00', totalPedidos: 1, totalGasto: 320.00 }
-            ],
-            pedidosRecentes: [
-                { id: 1, numeroPedido: 'NX2605230001', clienteNome: 'Ana Carolina Silva', total: 450.00, status: 'Pago', statusPagamento: 'Aprovado', lojaNome: 'GeraÃ§Ã£o Top+', dataPedido: '2026-05-23T15:30:00' },
-                { id: 2, numeroPedido: 'NX2605230002', clienteNome: 'Bruno Oliveira', total: 890.00, status: 'EmSeparacao', statusPagamento: 'Aprovado', lojaNome: 'Moda Mim', dataPedido: '2026-05-23T14:10:00' },
-                { id: 3, numeroPedido: 'NX2605230003', clienteNome: 'Carla Mendes', total: 1250.00, status: 'Pendente', statusPagamento: 'Aguardando', lojaNome: 'Chronos', dataPedido: '2026-05-23T11:45:00' },
-                { id: 4, numeroPedido: 'NX2605220008', clienteNome: 'Diego Souza', total: 320.00, status: 'Enviado', statusPagamento: 'Aprovado', lojaNome: 'Grann-Tur', dataPedido: '2026-05-22T16:20:00' },
-                { id: 5, numeroPedido: 'NX2605220007', clienteNome: 'Elisa Ferreira', total: 670.00, status: 'Entregue', statusPagamento: 'Aprovado', lojaNome: 'Estruturaline', dataPedido: '2026-05-22T10:00:00' }
-            ],
-            leadsRecentes: [
-                { id: 1, nome: 'Fernando Lopes', tipo: 'Fornecedor', status: 'Novo', prioridade: 'Alta', email: 'fernando@fornecedor.com', whatsapp: '(11) 98765-4321', dataCriacao: '2026-05-23T13:00:00' },
-                { id: 2, nome: 'Gabriela Rocha', tipo: 'Dropshipping', status: 'EmAtendimento', prioridade: 'Media', email: 'gabriela@dropship.com', whatsapp: '(21) 97654-3210', dataCriacao: '2026-05-23T09:30:00' },
-                { id: 3, nome: 'Henrique Almeida', tipo: 'Parceiro', status: 'Qualificado', prioridade: 'Alta', email: 'henrique@parceiro.com', whatsapp: '(31) 96543-2109', dataCriacao: '2026-05-22T17:00:00' },
-                { id: 4, nome: 'Isabela Costa', tipo: 'ClienteVIP', status: 'Convertido', prioridade: 'Media', email: 'isabela@email.com', whatsapp: '(14) 95432-1098', dataCriacao: '2026-05-22T11:00:00' },
-                { id: 5, nome: 'JoÃ£o Pedro', tipo: 'Fornecedor', status: 'Novo', prioridade: 'Baixa', email: 'joao@fornecedor.com', whatsapp: '(41) 94321-0987', dataCriacao: '2026-05-21T15:00:00' }
-            ]
-        };
+        const EMPTY_SECTION_MESSAGE = 'Sem dados retornados pela API para esta seÃ§Ã£o.';
 
         // ===== RENDER KPI CARDS =====
         function renderKpis(kpis) {
@@ -1171,15 +1096,19 @@
         function initCharts(data) {
             chartInstances.forEach(chart => chart.destroy());
             chartInstances = [];
+            const faturamentoSemanal = data.faturamentoSemanal || [];
+            const faturamentoMensal = data.faturamentoMensal || [];
+            const vendasPorLoja = data.vendasPorLoja || [];
+            const produtosMaisVendidos = data.produtosMaisVendidos || [];
 
             // Faturamento Semanal
             chartInstances.push(new Chart(document.getElementById('chartFaturamentoSemanal'), {
                 type: 'line',
                 data: {
-                    labels: data.faturamentoSemanal.map(f => f.periodo),
+                    labels: faturamentoSemanal.map(f => f.periodo),
                     datasets: [{
                         label: 'Faturamento (R$)',
-                        data: data.faturamentoSemanal.map(f => f.faturamento),
+                        data: faturamentoSemanal.map(f => f.faturamento),
                         borderColor: chartColors.gold,
                         backgroundColor: chartColors.goldLight,
                         fill: true,
@@ -1207,9 +1136,9 @@
             chartInstances.push(new Chart(document.getElementById('chartVendasLoja'), {
                 type: 'doughnut',
                 data: {
-                    labels: data.vendasPorLoja.map(v => v.lojaNome),
+                    labels: vendasPorLoja.map(v => v.lojaNome),
                     datasets: [{
-                        data: data.vendasPorLoja.map(v => v.faturamento),
+                        data: vendasPorLoja.map(v => v.faturamento),
                         backgroundColor: [
                             '#1E3A5F', '#2E5A8F', '#8B1E3F', '#0F4C3A', '#4A3728', '#6B2D5C'
                         ],
@@ -1230,10 +1159,10 @@
             chartInstances.push(new Chart(document.getElementById('chartFaturamentoMensal'), {
                 type: 'bar',
                 data: {
-                    labels: data.faturamentoMensal.map(f => f.periodo),
+                    labels: faturamentoMensal.map(f => f.periodo),
                     datasets: [{
                         label: 'Faturamento',
-                        data: data.faturamentoMensal.map(f => f.faturamento),
+                        data: faturamentoMensal.map(f => f.faturamento),
                         backgroundColor: chartColors.gold,
                         borderRadius: 6,
                         barThickness: 20
@@ -1256,10 +1185,10 @@
             chartInstances.push(new Chart(document.getElementById('chartProdutosTop'), {
                 type: 'bar',
                 data: {
-                    labels: data.produtosMaisVendidos.map(p => p.nome.substring(0, 20) + '...'),
+                    labels: produtosMaisVendidos.map(p => p.nome.substring(0, 20) + '...'),
                     datasets: [{
                         label: 'Qtd. Vendida',
-                        data: data.produtosMaisVendidos.map(p => p.quantidadeVendida),
+                        data: produtosMaisVendidos.map(p => p.quantidadeVendida),
                         backgroundColor: chartColors.success,
                         borderRadius: 6,
                         barThickness: 25
@@ -1276,7 +1205,7 @@
         }
 
         // ===== LOJAS GRID =====
-        function renderLojas(data = mockDashboard) {
+        function renderLojas(data) {
             const lojas = (data.vendasPorLoja || []).map((loja, index) => ({
                 nome: loja.lojaNome,
                 slug: loja.lojaSlug,
@@ -1286,16 +1215,12 @@
                 faturamento: loja.faturamento
             }));
 
-            const fallbackLojas = [
-                { nome: 'Grann-Tur', slug: 'grann-tur', segmento: 'Viagens & Turismo', cor: '#1E3A5F', pedidos: 198, faturamento: 54230 },
-                { nome: 'Chronos', slug: 'chronos', segmento: 'RelÃ³gios & AcessÃ³rios', cor: '#2E5A8F', pedidos: 245, faturamento: 67890 },
-                { nome: 'Moda Mim', slug: 'moda-mim', segmento: 'Moda & VestuÃ¡rio', cor: '#8B1E3F', pedidos: 298, faturamento: 72340 },
-                { nome: 'GeraÃ§Ã£o Top+', slug: 'geracao-top', segmento: 'Tecnologia & Gadgets', cor: '#0F4C3A', pedidos: 412, faturamento: 98560 },
-                { nome: 'Estruturaline', slug: 'estruturaline', segmento: 'ConstruÃ§Ã£o & Estruturas', cor: '#4A3728', pedidos: 156, faturamento: 45670 },
-                { nome: 'Gran-fest-festas', slug: 'gran-fest', segmento: 'Festas & Eventos', cor: '#6B2D5C', pedidos: 187, faturamento: 48760 }
-            ];
+            if (!lojas.length) {
+                document.getElementById('lojasGrid').innerHTML = `<div class="chart-card">${EMPTY_SECTION_MESSAGE}</div>`;
+                return;
+            }
 
-            document.getElementById('lojasGrid').innerHTML = (lojas.length ? lojas : fallbackLojas).map(l => `
+            document.getElementById('lojasGrid').innerHTML = lojas.map(l => `
                 <div class="chart-card" style="border-left:4px solid ${l.cor};">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
                         <div>
@@ -1325,12 +1250,19 @@
         }
 
         // ===== FINANCEIRO KPIs =====
-        function renderFinanceiroKpis() {
+        function renderFinanceiroKpis(data) {
+            const dashboardKpis = data.kpis || {};
+            const formatCurrency = (value) => Number.isFinite(Number(value))
+                ? 'R$ ' + Number(value).toLocaleString('pt-BR', {minimumFractionDigits: 2})
+                : 'N/D';
+            const formatNumber = (value) => Number.isFinite(Number(value))
+                ? Number(value).toLocaleString('pt-BR')
+                : 'N/D';
             const kpis = [
-                { label: 'Receitas do MÃªs', value: 'R$ 45.230,80', change: '+8.5%', positive: true, icon: 'fa-arrow-up', color: 'kpi-success' },
-                { label: 'Despesas do MÃªs', value: 'R$ 18.450,20', change: '-2.3%', positive: true, icon: 'fa-arrow-down', color: 'kpi-danger' },
-                { label: 'Lucro LÃ­quido', value: 'R$ 26.780,60', change: '+15.2%', positive: true, icon: 'fa-chart-line', color: 'kpi-info' },
-                { label: 'Margem de Lucro', value: '59.2%', change: '+3.1%', positive: true, icon: 'fa-percent', color: 'kpi-warning' }
+                { label: 'Faturamento do MÃªs', value: formatCurrency(dashboardKpis.faturamentoMes), icon: 'fa-arrow-up', color: 'kpi-success' },
+                { label: 'Pedidos do MÃªs', value: formatNumber(dashboardKpis.pedidosMes), icon: 'fa-shopping-cart', color: 'kpi-info' },
+                { label: 'Ticket MÃ©dio', value: formatCurrency(dashboardKpis.ticketMedio), icon: 'fa-chart-line', color: 'kpi-warning' },
+                { label: 'Clientes Ativos', value: formatNumber(dashboardKpis.clientesAtivos), icon: 'fa-users', color: 'kpi-success' }
             ];
 
             document.getElementById('kpiFinanceiro').innerHTML = kpis.map(k => `
@@ -1342,64 +1274,28 @@
                         </div>
                     </div>
                     <div class="kpi-value">${k.value}</div>
-                    <div class="kpi-change ${k.positive ? 'positive' : 'negative'}">
-                        <i class="fas ${k.positive ? 'fa-arrow-up' : 'fa-arrow-down'}"></i> ${k.change}
-                    </div>
                 </div>
             `).join('');
         }
 
         // ===== CONFIGURAÃ‡Ã•ES =====
         function renderConfiguracoes() {
-            const configs = [
-                { grupo: 'Geral', items: [
-                    { chave: 'site_nome', label: 'Nome do Site', valor: 'Grupo Nexum Altivon', tipo: 'texto' },
-                    { chave: 'site_url', label: 'URL Oficial', valor: 'https://www.nexumaltivon.com', tipo: 'texto' },
-                    { chave: 'site_email', label: 'E-mail de Contato', valor: 'corporativo.gna@gmail.com', tipo: 'texto' }
-                ]},
-                { grupo: 'Pagamento', items: [
-                    { chave: 'gateway_principal', label: 'Gateway Principal', valor: 'Mercado Pago', tipo: 'select' },
-                    { chave: 'parcelamento_max', label: 'MÃ¡x. Parcelas', valor: '12', tipo: 'numero' },
-                    { chave: 'parcelas_sem_juros', label: 'Parcelas Sem Juros', valor: '6', tipo: 'numero' }
-                ]},
-                { grupo: 'Frete', items: [
-                    { chave: 'frete_gratis_min', label: 'Frete GrÃ¡tis (mÃ­nimo)', valor: 'R$ 299,00', tipo: 'moeda' },
-                    { chave: 'frete_padrao', label: 'MÃ©todo PadrÃ£o', valor: 'Melhor Envio', tipo: 'select' }
-                ]},
-                { grupo: 'Marketing', items: [
-                    { chave: 'recuperacao_carrinho', label: 'RecuperaÃ§Ã£o de Carrinho', valor: 'Ativo', tipo: 'booleano' },
-                    { chave: 'cashback', label: 'Sistema de Cashback', valor: 'Inativo', tipo: 'booleano' }
-                ]}
-            ];
-
-            document.getElementById('configGrid').innerHTML = configs.map(c => `
+            document.getElementById('configGrid').innerHTML = `
                 <div class="chart-card">
                     <div class="chart-header">
-                        <span class="chart-title">${c.grupo}</span>
+                        <span class="chart-title">ConfiguraÃ§Ãµes</span>
                     </div>
-                    <div style="display:flex;flex-direction:column;gap:15px;">
-                        ${c.items.map(i => `
-                            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--gray-light);">
-                                <div>
-                                    <div style="font-size:0.8rem;font-weight:600;">${i.label}</div>
-                                    <div style="font-size:0.75rem;color:var(--text-muted);">${i.chave}</div>
-                                </div>
-                                <div style="display:flex;align-items:center;gap:10px;">
-                                    <span style="font-size:0.85rem;font-weight:600;color:var(--gold);">${i.valor}</span>
-                                    <button class="btn btn-outline" style="padding:4px 10px;font-size:0.7rem;"><i class="fas fa-edit"></i></button>
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
+                    <p style="color:var(--text-muted);line-height:1.7;">${EMPTY_SECTION_MESSAGE}</p>
                 </div>
-            `).join('');
+            `;
         }
 
         // ===== BADGES =====
-        function updateBadges(data = mockDashboard) {
-            document.getElementById('badge-pedidos').textContent = data.kpis.pedidosPendentes;
-            document.getElementById('badge-produtos').textContent = data.kpis.produtosEstoqueBaixo;
-            document.getElementById('badge-crm').textContent = data.kpis.leadsNovos;
+        function updateBadges(data) {
+            const kpis = data.kpis || {};
+            document.getElementById('badge-pedidos').textContent = kpis.pedidosPendentes ?? 'N/D';
+            document.getElementById('badge-produtos').textContent = kpis.produtosEstoqueBaixo ?? 'N/D';
+            document.getElementById('badge-crm').textContent = kpis.leadsNovos ?? 'N/D';
         }
 
         // ===== INIT =====
