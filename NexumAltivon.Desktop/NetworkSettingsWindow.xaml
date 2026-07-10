@@ -1,0 +1,125 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ -->
+<Window x:Class="NexumAltivon.Desktop.NetworkSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GenesisGest.Net - Grade de rede e terminais"
+        Width="980"
+        Height="680"
+        MinWidth="860"
+        MinHeight="620"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        Background="{StaticResource ShellBackground}"
+        FontFamily="Segoe UI">
+    <Window.Resources>
+        <Style x:Key="PanelCard" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackground}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="18" />
+            <Setter Property="Padding" Value="18" />
+        </Style>
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{StaticResource AccentGold}" />
+            <Setter Property="Foreground" Value="#080704" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="16,10" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+        <Style x:Key="GhostButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{StaticResource PanelSurface}" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="Padding" Value="16,10" />
+        </Style>
+        <Style TargetType="DataGrid">
+            <Setter Property="Background" Value="{StaticResource PanelSurface}" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="GridLinesVisibility" Value="Horizontal" />
+            <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="RowBackground" Value="#0C1729" />
+            <Setter Property="AlternatingRowBackground" Value="#111D30" />
+        </Style>
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="{StaticResource AccentGold}" />
+            <Setter Property="Foreground" Value="#080704" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Padding" Value="8" />
+        </Style>
+    </Window.Resources>
+
+    <DockPanel Margin="22">
+        <Border DockPanel.Dock="Top" Style="{StaticResource PanelCard}" Margin="0,0,0,16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="GRADE DE REDE DO TERMINAL" Foreground="{StaticResource AccentGold}" FontSize="12" FontWeight="Bold" />
+                    <TextBlock Text="Endpoints, token e variáveis de ambiente" Foreground="{StaticResource TextPrimary}" FontSize="26" FontWeight="Bold" Margin="0,6,0,0" />
+                    <TextBlock Text="{Binding Summary}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                    <Button Content="Testar conexões" Style="{StaticResource GhostButton}" Click="TestConnections_Click" Margin="0,0,10,0" />
+                    <Button Content="Salvar no terminal" Style="{StaticResource PrimaryButton}" Click="SaveEnvironment_Click" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Border Style="{StaticResource PanelCard}" Margin="0,0,0,16">
+                <UniformGrid Columns="4">
+                    <StackPanel Margin="0,0,10,0">
+                        <TextBlock Text="Loja" Foreground="{StaticResource TextSecondary}" />
+                        <TextBox Text="{Binding Terminal.StoreCode, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Margin="0,0,10,0">
+                        <TextBlock Text="Terminal" Foreground="{StaticResource TextSecondary}" />
+                        <TextBox Text="{Binding Terminal.TerminalCode, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Margin="0,0,10,0">
+                        <TextBlock Text="Operador" Foreground="{StaticResource TextSecondary}" />
+                        <TextBox Text="{Binding Terminal.OperatorName, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="Token do terminal" Foreground="{StaticResource TextSecondary}" />
+                        <PasswordBox x:Name="TokenBox" PasswordChanged="TokenBox_PasswordChanged" />
+                    </StackPanel>
+                </UniformGrid>
+            </Border>
+
+            <DataGrid Grid.Row="1"
+                      ItemsSource="{Binding Endpoints}"
+                      AutoGenerateColumns="False"
+                      CanUserAddRows="False"
+                      CanUserDeleteRows="False"
+                      HeadersVisibility="Column">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Função" Binding="{Binding Name}" Width="180" IsReadOnly="True" />
+                    <DataGridTextColumn Header="Variável" Binding="{Binding EnvironmentVariable}" Width="230" IsReadOnly="True" />
+                    <DataGridTextColumn Header="Valor configurado" Binding="{Binding Value, UpdateSourceTrigger=PropertyChanged}" Width="*" />
+                    <DataGridTextColumn Header="Origem" Binding="{Binding Source}" Width="120" IsReadOnly="True" />
+                    <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="170" IsReadOnly="True" />
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <Border Grid.Row="2" Style="{StaticResource PanelCard}" Margin="0,16,0,0">
+                <TextBlock Text="{Binding ResultMessage}" Foreground="{StaticResource AccentGold}" TextWrapping="Wrap" FontWeight="SemiBold" />
+            </Border>
+        </Grid>
+    </DockPanel>
+</Window>

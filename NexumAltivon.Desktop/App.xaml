@@ -1,17 +1,71 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ -->
 <Application x:Class="NexumAltivon.Desktop.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-        <SolidColorBrush x:Key="ShellBackground" Color="#08111F" />
-        <SolidColorBrush x:Key="PanelBackground" Color="#101B30" />
-        <SolidColorBrush x:Key="PanelBorder" Color="#22314D" />
-        <SolidColorBrush x:Key="TextPrimary" Color="#F8FAFC" />
-        <SolidColorBrush x:Key="TextSecondary" Color="#B8C4D6" />
-        <SolidColorBrush x:Key="AccentBlue" Color="#38BDF8" />
-        <SolidColorBrush x:Key="AccentGreen" Color="#22C55E" />
-        <SolidColorBrush x:Key="AccentAmber" Color="#F59E0B" />
-        <SolidColorBrush x:Key="AccentRose" Color="#FB7185" />
-        <SolidColorBrush x:Key="AccentViolet" Color="#8B5CF6" />
+        <SolidColorBrush x:Key="ShellBackground" Color="#050505" />
+        <SolidColorBrush x:Key="PanelBackground" Color="#11100D" />
+        <SolidColorBrush x:Key="PanelSurface" Color="#17150F" />
+        <SolidColorBrush x:Key="PanelElevated" Color="#211D12" />
+        <SolidColorBrush x:Key="PanelBorder" Color="#3A311C" />
+        <SolidColorBrush x:Key="TextPrimary" Color="#FFF7DE" />
+        <SolidColorBrush x:Key="TextSecondary" Color="#C7BA92" />
+        <SolidColorBrush x:Key="TextMuted" Color="#887C5B" />
+        <SolidColorBrush x:Key="AccentBlue" Color="#D7B528" />
+        <SolidColorBrush x:Key="AccentGold" Color="#D7B528" />
+        <SolidColorBrush x:Key="AccentGoldDark" Color="#9A7413" />
+        <SolidColorBrush x:Key="AccentGreen" Color="#2F9E44" />
+        <SolidColorBrush x:Key="AccentAmber" Color="#E6A817" />
+        <SolidColorBrush x:Key="AccentRose" Color="#D95C4B" />
+        <SolidColorBrush x:Key="AccentViolet" Color="#A782D9" />
+
+        <Style TargetType="TextBox">
+            <Setter Property="Padding" Value="11" />
+            <Setter Property="Background" Value="{StaticResource PanelSurface}" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CaretBrush" Value="{StaticResource AccentGold}" />
+            <Setter Property="SelectionBrush" Value="{StaticResource AccentGoldDark}" />
+        </Style>
+
+        <Style TargetType="PasswordBox">
+            <Setter Property="Padding" Value="11" />
+            <Setter Property="Background" Value="{StaticResource PanelSurface}" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CaretBrush" Value="{StaticResource AccentGold}" />
+        </Style>
+
+        <Style TargetType="ComboBox">
+            <Setter Property="Padding" Value="9" />
+            <Setter Property="Background" Value="{StaticResource PanelSurface}" />
+            <Setter Property="Foreground" Value="#101010" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+        </Style>
+
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="14,9" />
+            <Setter Property="Background" Value="{StaticResource PanelElevated}" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+
+        <Style TargetType="TabItem">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="Padding" Value="18,10" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
     </Application.Resources>
 </Application>

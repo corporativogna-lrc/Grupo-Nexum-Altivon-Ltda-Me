@@ -8,11 +8,11 @@
 
 namespace NexumAltivon.Desktop.Models;
 
-public sealed class DesktopModule
+public sealed class WorkstationAction
 {
     public string Title { get; init; } = string.Empty;
     public string Detail { get; init; } = string.Empty;
-    public string Status { get; init; } = string.Empty;
+    public string Route { get; init; } = string.Empty;
     public string Accent { get; init; } = "#38BDF8";
-    public string ActionText { get; init; } = "Abrir";
+    public string Status { get; init; } = "Disponível";
 }

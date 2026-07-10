@@ -1,3 +1,11 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
+
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.ComponentModel;
@@ -8,8 +16,7 @@ namespace NexumAltivon.Desktop;
 
 public partial class ManualNfeWindow : Window, INotifyPropertyChanged
 {
-    private static readonly Uri ApiBaseUri = new(
-        System.Environment.GetEnvironmentVariable("NEXUM_API_URL") ?? "https://api.nexumaltivon.com");
+    private const string ApiBaseUrl = "http://192.168.1.72:5010";
 
     private string _empresaEmissora = "Grupo Nexum Altivon Ltda. Me.";
     private string _cnpjEmissor = "";
@@ -54,7 +61,7 @@ public partial class ManualNfeWindow : Window, INotifyPropertyChanged
     {
         try
         {
-            using var http = new HttpClient { BaseAddress = ApiBaseUri };
+            using var http = new HttpClient { BaseAddress = new Uri(ApiBaseUrl) };
             var request = BuildRequest();
 
             using var response = await http.PostAsJsonAsync("/api/fiscal/preparar-emissao-manual", request);
@@ -89,7 +96,7 @@ public partial class ManualNfeWindow : Window, INotifyPropertyChanged
     {
         try
         {
-            using var http = new HttpClient { BaseAddress = ApiBaseUri };
+            using var http = new HttpClient { BaseAddress = new Uri(ApiBaseUrl) };
             var request = BuildRequest();
             using var response = await http.PostAsJsonAsync("/api/fiscal/rascunho-manual", request);
 
