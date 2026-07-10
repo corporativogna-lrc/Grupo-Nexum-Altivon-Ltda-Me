@@ -25,8 +25,8 @@ Data da apuracao: 2026-07-10.
 | ID | Requisito | Status real | Evidencia objetiva |
 |---|---|---|---|
 | B1 | Solution unica compila API, ERP e Desktop | Concluido local | `NexumAltivon.ERP.sln` lista API, ERP, Desktop e projeto raiz; build Release com 0 erros e 0 avisos |
-| B2 | Controllers MVC fora do ativo e endpoints criticos sem 404 | Ajustado | API oficial e Minimal API; controllers preservados em `NexumAltivon_Back-End/API/Legacy`; smoke publico passou nos pontos obrigatorios |
-| B3 | Duplicacao massiva da raiz removida do build ativo | Ajustado local | Pastas legadas aparecem como removidas no Git e preservadas fora do pipeline ativo |
+| B2 | Controllers MVC fora do ativo e endpoints criticos sem 404 | Ajustado e publicado na branch de entrega | API oficial e Minimal API; controllers MVC removidos do projeto da API ativa no commit `4bacfe5`; smoke publico passou nos pontos obrigatorios |
+| B3 | Duplicacao massiva da raiz removida do build ativo | Parcial | Projeto raiz foi reduzido a build info e saiu do pipeline de codigo legado; deletions da raiz ainda estao no worktree e precisam triagem antes de publicar |
 | B4 | `Sys_AuditableEntity` em 100% das entidades transacionais | Parcial | Infraestrutura existe; auditoria central no DbContext existe; heranca direta ainda nao cobre todas as classes |
 | B5 | MFA, refresh-token, tenants e workflows | Parcial | Rotas existem e compilam; tenant smoke validado; fluxo completo ainda exige teste integrado |
 | B6 | Testes com cobertura minima de 70% em Services | Pendente | Nao ha projeto de teste ativo na arvore oficial |
@@ -55,11 +55,13 @@ Data da apuracao: 2026-07-10.
 | Rotas de banco ativas | Runtime oficial usa `127.0.0.1:3309/nexum_altivon` e `127.0.0.1:3309/genesis_bd`; `health/db` e `health/db/genesis` retornaram 200 local e publico |
 | Configuracoes versionadas da API | `API/appsettings.json` e template privado nao carregam mais `192.168.1.72`, porta `3306` ou segredos aparentes; sem env privado, a API falha de forma clara |
 | EF Core design-time | Factory de migrations usa XAMPP local `127.0.0.1:3309` quando nao houver connection string real por ambiente |
-| Inicializacao fixa | Tarefa `NexumAltivonApi24h` registrada como `SISTEMA`, `RunLevel Highest`, chamando o script oficial dentro do projeto |
+| Inicializacao fixa | Pendente de execucao elevada: a validacao atual nao encontrou a tarefa `NexumAltivonApi24h`; script oficial existe em `scripts/server/instalar-api-oficial-24h-task.ps1` e exige PowerShell administrador |
 | Porta publica interna | API escutando `127.0.0.1:5010`; Cloudflared permanece apontado para esta porta |
 | Causa real do 502 | API nao subia porque a configuracao privada apontava para caminho externo ausente e, depois, faltava `CREATE VIEW` ao usuario de aplicacao |
-| Processo atual | `dotnet.exe NexumAltivon.API.dll` executando em PowerShell oculto pelo script oficial iniciado pela tarefa `NexumAltivonApi24h` |
-| Validacao elevada da tarefa | `runtime-logs/api-24h-task-query.log`: `TaskState=Running`, `HealthStatus=200`, `ListenerCommand=dotnet.exe NexumAltivon.API.dll` |
+| Processo atual | API responde em `127.0.0.1:5010`, mas o processo atual nao esta vinculado a task/servico Nexum visivel nesta sessao |
+| Validacao da tarefa 24h | Pendente: `scripts/server/validar-api-oficial-24h-task.ps1` retornou que `NexumAltivonApi24h` nao existe |
+| Revisao local de legados | Criado `Revisao_Exclusao_2026-07-10` dentro da raiz oficial; pasta ignorada pelo Git para impedir commit acidental |
+| GitHub publicado | Commit `4bacfe5 fix: solution - fechar build oficial da api` enviado para `origin/work/delivery-2026-06-13` |
 
 ## Definition of Done
 
@@ -69,7 +71,7 @@ Data da apuracao: 2026-07-10.
 | `dotnet test` com cobertura >= 70% nos Services | Pendente | `dotnet test` retornou 0, mas nao ha projeto de teste ativo; criar projeto real e gate de cobertura |
 | `npm run build` no frontend | Concluido local | Manter validacao antes de publicar |
 | Todos os endpoints faltantes da Secao 7 com payload real | Parcial | Completar por setor e validar via HTTP |
-| Frontend sem 404 nos endpoints consumidos | Parcial | Smoke publico dos pontos criticos passou; CORS de login retornou 204; falta varredura completa do frontend |
+| Frontend sem 404 nos endpoints consumidos | Parcial | Smoke publico dos pontos criticos passou em 2026-07-10: `/health`, `/api/lojas`, `/api/lojas/1`, `/swagger/v1/swagger.json`, aliases FICO e CORS sem 404; falta varredura completa do frontend |
 | Multitenancy e soft-delete em 100% das entidades | Parcial | Migrar entidades legadas e validar isolamento por tenant |
 | MFA TOTP funcional | Parcial | Executar teste integrado enable, verify e login com MFA |
 | NF-e/NFC-e SEFAZ homologacao | Pendente | Integrar certificado real e validar emissao em homologacao |
@@ -85,7 +87,7 @@ Data da apuracao: 2026-07-10.
 | Compose dev sobe tudo | Nao validado nesta apuracao | Executar `docker compose up --build` em janela propria |
 | Desktop auto-update funcional | Parcial | Publicar release desktop real e validar atualizacao em maquina cliente |
 | TLS ativo sem HTTP publico puro | Parcial | Porta 443 responde; validar politica completa Cloudflare/nginx |
-| AGENTS e OpenAPI | Parcial | `AGENTS.md` atualizado; OpenAPI ajustado no codigo e precisa publicar nova API |
+| AGENTS e OpenAPI | Parcial | `AGENTS.md` atualizado; `/swagger/v1/swagger.json` respondeu 200 no smoke publico |
 | Termos proibidos no codigo ativo | Pendente | Triar ocorrencias em frontend, docs e arquivos antigos |
 | Header de IP em todos os arquivos | Pendente | Varredura achou 226 arquivos ativos sem header |
 | Fluxo cadastro a BI isolado por empresa | Pendente | Executar roteiro ponta a ponta com dados reais |
@@ -95,11 +97,11 @@ Data da apuracao: 2026-07-10.
 Estado apurado:
 
 - Branch local: `work/delivery-2026-06-13`.
-- Commit local base: `b7e138b8a7eb34a74ddeac5a2d96d77dcb756c70`.
-- `origin/work/delivery-2026-06-13`: mesmo commit base.
+- Commit local e remoto atual: `4bacfe5 fix: solution - fechar build oficial da api`.
+- `origin/work/delivery-2026-06-13`: alinhado com `4bacfe5`.
 - `origin/main`: `5cb041d46d30af0ab7da4a7f9eeda1b2a4ea983f`.
 - O estado atual da arvore ainda possui muitas alteracoes nao commitadas e nao deve ser tratado como sincronizado com `main`.
-- Total de alteracoes locais apuradas em 2026-07-10: 281 entradas no `git status --short`.
+- Total de alteracoes locais remanescentes apos o commit `4bacfe5`: 250 entradas no `git status --short --untracked-files=normal`.
 - Publicacao GitHub deve ser seletiva e auditada; publicar todo o worktree atual sem triagem pode enviar arquivos legados/falsos que o prompt bloqueia.
 
 ## Regra de continuidade
