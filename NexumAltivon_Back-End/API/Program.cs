@@ -208,7 +208,8 @@ app.Lifetime.ApplicationStarted.Register(() =>
         }
         catch (Exception ex)
         {
-            app.Logger.LogWarning(ex, "Operational schema check failed. API will continue running.");
+            app.Logger.LogCritical(ex, "Operational schema check failed. API startup will be stopped.");
+            app.Lifetime.StopApplication();
         }
     });
 });
@@ -7609,6 +7610,7 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
 
     var produtosSemIdentificacao = await db.Produtos
         .Where(produto => string.IsNullOrEmpty(produto.CodigoBarras) || string.IsNullOrEmpty(produto.QrCode) || string.IsNullOrEmpty(produto.IdentificacaoEstoque))
+        .OrderBy(produto => produto.Id)
         .Take(500)
         .ToListAsync();
 
