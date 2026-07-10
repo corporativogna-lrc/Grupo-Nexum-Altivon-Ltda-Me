@@ -283,7 +283,7 @@ if ($existingTask -and $existingTask.State -eq "Running") {
     Start-Sleep -Seconds 5
 }
 
-$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$launcherPath`""
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launcherPath`""
 $triggers = @(
     (New-ScheduledTaskTrigger -AtStartup),
     (New-ScheduledTaskTrigger -AtLogOn)
