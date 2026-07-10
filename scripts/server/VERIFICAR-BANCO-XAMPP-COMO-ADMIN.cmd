@@ -8,5 +8,5 @@ REM Versão: 1.1.5
 setlocal
 
 set "SCRIPT_DIR=%~dp0"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%instalar-api-24h-servidor.ps1" %*
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%verificar-banco-xampp.ps1" %*
 exit /b %ERRORLEVEL%
