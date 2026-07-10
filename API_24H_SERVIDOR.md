@@ -42,26 +42,20 @@ O instalador:
 - cria a tarefa automática `NexumAltivonApi24h`;
 - testa `/health` na porta `5010` antes de concluir.
 
-## Instalação por pacote pronto
+## Validação operacional oficial
 
-Quando o pacote já estiver publicado no compartilhamento do servidor, execute no próprio servidor como Administrador:
-
-```cmd
-INSTALAR-API-24H-PACOTE-COMO-ADMIN.cmd
-```
-
-Este caminho é o mais rápido quando o desenvolvimento foi feito em outra máquina: o pacote já contém a API compilada e só instala a operação 24h no servidor.
-
-Pacote corrigido para a unidade certa do servidor:
-
-```cmd
-Y:\NexumAltivon_API_24H_Y_FIX\INSTALAR-API-24H-PACOTE-COMO-ADMIN.cmd
-```
-
-Para gerar esse pacote no compartilhamento do servidor:
+Após instalar ou reparar a API 24h, validar a tarefa oficial no próprio servidor:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\server\criar-pacote-api-24h-servidor.ps1
+powershell -ExecutionPolicy Bypass -File "D:\Nexum Altivon\NexumAltivon.com\scripts\server\validar-api-oficial-24h-task.ps1"
+```
+
+Esse validador confere a tarefa `NexumAltivonApi24h`, o processo real do `dotnet`, a porta `5010` e o `/health` local antes de considerar a API operacional.
+
+Para reinstalar a tarefa oficial quando necessário, executar como Administrador:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "D:\Nexum Altivon\NexumAltivon.com\scripts\server\instalar-api-oficial-24h-task.ps1"
 ```
 
 ## Configuração privada
@@ -84,7 +78,7 @@ Rotas fisicas de dados MySQL/MariaDB que o instalador valida no servidor apos a 
 - `D:\xampp\mysql\data\nexum_altivon`
 - `D:\xampp\mysql\data\genesis_bd`
 
-As rotas `Y:\xampp\mysql\data\nexum_altivon` e `Y:\xampp\mysql\data\genesis_bd` continuam sendo a referencia operacional compartilhada informada para o projeto, mas o serviço Windows deve usar o caminho fisico local `D:\xampp` para evitar falha de permissao em conta `LocalSystem`.
+Rotas de unidade mapeada ou compartilhamento de rede nao sao dependencia operacional da API 24h. O serviço Windows deve usar o caminho fisico local `D:\xampp` para evitar falha de permissao em conta `LocalSystem`.
 
 A porta oficial local do MySQL/MariaDB e `3309`.
 

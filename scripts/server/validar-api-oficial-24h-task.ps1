@@ -9,37 +9,113 @@
 [CmdletBinding()]
 param(
     [string]$TaskName = "NexumAltivonApi24h",
-    [string]$ProjectRoot = "D:\Nexum Altivon\NexumAltivon.com"
+    [string]$ProjectRoot = "D:\Nexum Altivon\NexumAltivon.com",
+    [string]$ApiUrl = "http://127.0.0.1:5010"
 )
 
 $ErrorActionPreference = "Stop"
 
 $resolvedProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
-$logPath = Join-Path $resolvedProjectRoot "runtime-logs\api-24h-task-query.log"
+$runtimeLogDirectory = Join-Path $resolvedProjectRoot "runtime-logs"
+New-Item -ItemType Directory -Path $runtimeLogDirectory -Force | Out-Null
+$logPath = Join-Path $runtimeLogDirectory "api-24h-task-query.log"
 
-$task = Get-ScheduledTask -TaskName $TaskName
-$info = Get-ScheduledTaskInfo -TaskName $TaskName
-$listener = Get-NetTCPConnection -LocalPort 5010 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+$task = $null
+$info = $null
+$taskError = $null
+
+try {
+    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
+    $info = Get-ScheduledTaskInfo -TaskName $TaskName -ErrorAction Stop
+} catch {
+    $taskError = $_.Exception.Message
+}
+
+$apiUri = [Uri]$ApiUrl
+if ($apiUri.Port -le 0) {
+    throw "A URL da API nao informa porta valida: $ApiUrl"
+}
+
+$listener = $null
+$listenerError = $null
+try {
+    $listener = Get-NetTCPConnection -LocalPort $apiUri.Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+} catch {
+    $listenerError = $_.Exception.Message
+}
+
 $process = if ($listener) { Get-CimInstance Win32_Process -Filter "ProcessId = $($listener.OwningProcess)" } else { $null }
 $parent = if ($process) { Get-CimInstance Win32_Process -Filter "ProcessId = $($process.ParentProcessId)" } else { $null }
-$health = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:5010/health" -TimeoutSec 15
+
+$health = $null
+$healthError = $null
+try {
+    $health = Invoke-WebRequest -UseBasicParsing -Uri "$ApiUrl/health" -TimeoutSec 15
+} catch {
+    $healthError = $_.Exception.Message
+}
+
+$validationErrors = New-Object System.Collections.Generic.List[string]
+
+if (-not $task) {
+    $validationErrors.Add("A tarefa '$TaskName' nao foi lida pelo usuario atual. Execute este validador em PowerShell como Administrador para confirmar a tarefa elevada.")
+} else {
+    if ($task.State -ne "Running") {
+        $validationErrors.Add("A tarefa '$TaskName' nao esta em execucao. Estado atual: $($task.State).")
+    }
+
+    if ($task.Principal.RunLevel -ne "Highest") {
+        $validationErrors.Add("A tarefa '$TaskName' nao esta configurada com RunLevel Highest. Valor atual: $($task.Principal.RunLevel).")
+    }
+
+    if ($task.Principal.UserId -notin @("SISTEMA", "SYSTEM", "NT AUTHORITY\SYSTEM")) {
+        $validationErrors.Add("A tarefa '$TaskName' nao esta configurada para usuario de sistema. Usuario atual: $($task.Principal.UserId).")
+    }
+}
+
+if (-not $listener) {
+    $validationErrors.Add("Nao existe processo escutando a porta local $($apiUri.Port).")
+}
+
+if (-not $process) {
+    $validationErrors.Add("Nao foi possivel identificar o processo dono da porta $($apiUri.Port).")
+} elseif ([string]::IsNullOrWhiteSpace($process.CommandLine)) {
+    $validationErrors.Add("O processo dono da porta $($apiUri.Port) foi identificado, mas a linha de comando nao foi lida pelo usuario atual. Execute em PowerShell como Administrador para confirmar NexumAltivon.API.dll.")
+} elseif ($process.CommandLine -notmatch "NexumAltivon\.API\.dll") {
+    $validationErrors.Add("O processo da porta $($apiUri.Port) nao aponta para NexumAltivon.API.dll. CommandLine: $($process.CommandLine)")
+}
+
+if (-not $health) {
+    $validationErrors.Add("O healthcheck local falhou em $ApiUrl/health. Erro: $healthError")
+} elseif ($health.StatusCode -ne 200) {
+    $validationErrors.Add("O healthcheck local retornou status inesperado: $($health.StatusCode).")
+}
 
 $result = [pscustomobject]@{
     CheckedAt = (Get-Date).ToString("s")
-    TaskName = $task.TaskName
-    TaskState = $task.State
-    TaskUser = $task.Principal.UserId
-    RunLevel = $task.Principal.RunLevel
-    LastRunTime = $info.LastRunTime
-    LastTaskResult = $info.LastTaskResult
-    NextRunTime = $info.NextRunTime
+    ValidationSucceeded = ($validationErrors.Count -eq 0)
+    ValidationErrors = ($validationErrors -join " | ")
+    TaskQueryError = $taskError
+    ListenerQueryError = $listenerError
+    HealthError = $healthError
+    TaskName = if ($task) { $task.TaskName } else { $TaskName }
+    TaskState = if ($task) { $task.State } else { $null }
+    TaskUser = if ($task) { $task.Principal.UserId } else { $null }
+    RunLevel = if ($task) { $task.Principal.RunLevel } else { $null }
+    LastRunTime = if ($info) { $info.LastRunTime } else { $null }
+    LastTaskResult = if ($info) { $info.LastTaskResult } else { $null }
+    NextRunTime = if ($info) { $info.NextRunTime } else { $null }
     ListenerPid = if ($listener) { $listener.OwningProcess } else { $null }
     ListenerCommand = if ($process) { $process.CommandLine } else { $null }
     ParentPid = if ($process) { $process.ParentProcessId } else { $null }
     ParentCommand = if ($parent) { $parent.CommandLine } else { $null }
-    HealthStatus = $health.StatusCode
-    HealthBody = $health.Content
+    HealthStatus = if ($health) { $health.StatusCode } else { $null }
+    HealthBody = if ($health) { $health.Content } else { $null }
 }
 
 $result | Format-List | Out-String | Set-Content -LiteralPath $logPath -Encoding UTF8
 $result | Format-List
+
+if ($validationErrors.Count -gt 0) {
+    throw "Validacao da API oficial 24h falhou: $($validationErrors -join ' ') Log: $logPath"
+}

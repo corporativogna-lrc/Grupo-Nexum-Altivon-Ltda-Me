@@ -1,3 +1,11 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+-->
+
 # Produção - status atual
 
 Última atualização manual: 2026-06-02 02:45 BRT.
@@ -14,8 +22,8 @@
 
 Antes e depois de qualquer alteração em produção, executar:
 
-```cmd
-scripts\check-production.cmd
+```powershell
+powershell -ExecutionPolicy Bypass -File "D:\Nexum Altivon\NexumAltivon.com\scripts\VALIDAR-PUBLICACAO-BACKEND.ps1" -TimeoutSec 45
 ```
 
 ## Critério para publicar
