@@ -60,7 +60,7 @@ function Stop-ApiPortOwner {
     $listeners = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
     foreach ($listener in $listeners) {
         $pidToStop = [int]$listener.OwningProcess
-        Write-Step "Parando processo dono da porta $Port: PID $pidToStop."
+        Write-Step "Parando processo dono da porta ${Port}: PID $pidToStop."
         Stop-Process -Id $pidToStop -Force -ErrorAction Stop
     }
 
