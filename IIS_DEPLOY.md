@@ -1,106 +1,83 @@
-# Publicacao em servidor local (Windows + IIS) - Nexum Altivon
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+-->
 
-Este guia serve para colocar `www.nexumaltivon.com` e `api.nexumaltivon.com` (e os demais subdominios) online usando um servidor Windows local com IIS.
+# Publicacao Windows Local
 
-> Importante: o IP `192.168.x.x` e outros IPs privados nao funcionam na Internet. DNS publico precisa apontar para um IP publico OU voce precisa usar um tunel (Cloudflare Tunnel).
+Este guia registra o fluxo operacional aceito para publicar o frontend e a API em servidor Windows local, mantendo banco e segredos privados.
 
-## 1) Escolha como expor o servidor local
+## Premissas
 
-### Opcao A (direto na internet): IP publico + Port Forwarding
+- Projeto oficial em `D:\Nexum Altivon\NexumAltivon.com`.
+- API oficial em `127.0.0.1:5010`.
+- Banco MySQL/MariaDB XAMPP em `127.0.0.1:3309`.
+- Dominios liberados na Cloudflare: `nexumaltivon.com.br` e `nexumaltivon.com`.
+- Processo de exposicao publica preferencial: Cloudflare Tunnel ou proxy local com TLS.
 
-Use esta opcao somente se o seu link tiver **IP publico** e voce conseguir abrir as portas no roteador.
+## Frontend
 
-Checklist:
-- IP do servidor LAN fixo (ex.: `192.168.1.72`) reservado no roteador (DHCP reservation).
-- Port forwarding no roteador:
-  - WAN `80`  -> `192.168.1.72:80`
-  - WAN `443` -> `192.168.1.72:443`
-- Firewall do Windows liberando `80` e `443` (somente para IIS).
-- DNS no Wix apontando `@` e subdominios para o seu **IP publico**.
+Publicar o build do React em site estatico do IIS ou hospedagem equivalente.
 
-### Opcao B (recomendado p/ CGNAT e IP dinamico): Cloudflare Tunnel
+Validacao:
 
-Use esta opcao se:
-- seu provedor usa CGNAT (port forwarding nao funciona), OU
-- seu IP publico muda com frequencia, OU
-- voce quer evitar abrir portas no roteador.
+```powershell
+cd "D:\Nexum Altivon\NexumAltivon.com\NexumAltivon_Front-End"
+npm run build
+```
 
-Resumo:
-- Voce instala o `cloudflared` no servidor Windows
-- Cria um Tunnel no Cloudflare
-- Aponta cada hostname (www/api/back/erp/crm/pdv) para `<UUID>.cfargotunnel.com` via CNAME
-- O Tunnel encaminha para `http://localhost:80` (IIS) e `http://localhost:5000` (API) ou o que voce definir.
+O frontend deve apontar para `https://api.nexumaltivon.com.br`.
 
-> Atenção (importante): para usar hostnames personalizados com Cloudflare Tunnel, o DNS/rota desses hostnames precisa estar na **mesma conta Cloudflare**. Em geral isso exige o dominio no Cloudflare DNS (trocar nameservers) ou um setup partial (CNAME setup), que costuma ser Business/Enterprise.
+## API
 
-## 2) Preparar o IIS (uma vez)
+A API oficial deve rodar como processo local invisivel ao usuario, preferencialmente por tarefa agendada ou servico Windows.
 
-1. Instale o IIS (Windows Features).
-2. Instale o **ASP.NET Core Hosting Bundle** compativel com o runtime do projeto.
-3. Reinicie o IIS (ou o servidor) apos instalar o bundle.
+Validacao da tarefa oficial:
 
-## 3) Publicar o Front-End (www + erp/crm/pdv/admin provisoriamente)
+```powershell
+powershell -ExecutionPolicy Bypass -File "D:\Nexum Altivon\NexumAltivon.com\scripts\server\validar-api-oficial-24h-task.ps1"
+```
 
-O front-end ja possui pasta `build/` dentro de `NexumAltivon_Front-End`.
+Validacao publica:
 
-No IIS:
-- Crie um Site: `Nexum-Frontend`
-- Physical Path: `...\NexumAltivon_Front-End\build`
-- Binding HTTP: `*:80` Hostname `www.nexumaltivon.com`
-- (Opcional) Adicione bindings adicionais no mesmo Site:
-  - `erp.nexumaltivon.com`
-  - `crm.nexumaltivon.com`
-  - `pdv.nexumaltivon.com`
-  - `admin.nexumaltivon.com`
+```powershell
+powershell -ExecutionPolicy Bypass -File "D:\Nexum Altivon\NexumAltivon.com\scripts\VALIDAR-PUBLICACAO-BACKEND.ps1" -TimeoutSec 45
+```
 
-> Isso permite deixar os modulos "no ar" imediatamente, mesmo que eles ainda redirecionem/compartilhem o mesmo front-end por enquanto.
+## Variaveis Privadas
 
-## 4) Publicar a API (api + back)
+Configurar fora do Git:
 
-No servidor Windows (PowerShell/cmd):
-1. Publique a API:
-   - Projeto: `NexumAltivon_Back-End\NexumAltivon.API.csproj`
-   - Saida sugerida: `C:\inetpub\nexum-api\`
+- `ConnectionStrings__DefaultConnection`
+- `ConnectionStrings__NexumDb`
+- `ConnectionStrings__GenesisConnection`
+- `JwtSettings__SecretKey`
+- `Integracoes__MercadoPago__AccessToken`
+- `Integracoes__SendGrid__ApiKey`
+- `OpenAI__ApiKey`
+- `Redis__ConnectionString`
 
-2. No IIS:
-   - Crie um Site: `Nexum-Api`
-   - Physical Path: `C:\inetpub\nexum-api\`
-   - App Pool: `No Managed Code`
-   - Binding HTTP: `*:80` Hostname `api.nexumaltivon.com`
-   - Adicione tambem Hostname `back.nexumaltivon.com` (mesma API)
+## Banco
 
-3. Configure as variaveis de ambiente/secrets no servidor (nao versionar senhas):
-   - Connection string MySQL
-   - JWT secret
-   - Admin user (email/senha)
-   - Mercado Pago / SendGrid, etc.
+O banco oficial local deve permanecer em:
 
-## 5) DNS no Wix (apontamentos)
+- `D:\xampp\mysql\data\nexum_altivon`
+- `D:\xampp\mysql\data\genesis_bd`
 
-### Se estiver usando Opcao A (IP publico + port forwarding)
+Validar:
 
-Crie registros `A` apontando para o seu IP publico:
-- `@` -> `IP_PUBLICO`
-- `www` -> `IP_PUBLICO`
-- `api` -> `IP_PUBLICO`
-- `back` -> `IP_PUBLICO`
-- `erp` -> `IP_PUBLICO`
-- `crm` -> `IP_PUBLICO`
-- `pdv` -> `IP_PUBLICO`
-- `admin` -> `IP_PUBLICO`
+```powershell
+powershell -ExecutionPolicy Bypass -File "D:\Nexum Altivon\NexumAltivon.com\scripts\server\verificar-banco-xampp.ps1"
+```
 
-### Se estiver usando Opcao B (Cloudflare Tunnel)
+## Criterio de Liberacao
 
-Em geral voce criara `CNAME` apontando para `<UUID>.cfargotunnel.com` para cada hostname que vai passar pelo Tunnel (ex.: `www`, `api`, `back`, etc.).
-
-## 6) Validacao rapida
-
-Valide de fora da rede (ex.: 4G do celular):
-- `https://www.nexumaltivon.com`
-- `https://api.nexumaltivon.com/health`
-
-## 7) Regras de seguranca (nao negociar)
-
-- Nao exponha o MySQL na internet. O MySQL deve ficar apenas na rede local/VPN.
-- Use HTTPS antes de trafegar login/checkout/pagamentos.
-- Nao coloque tokens/senhas em repositorio.
+- Solution Release compila sem avisos e sem erros.
+- Frontend build compila sem erro.
+- API responde `/health`.
+- Banco responde via healthcheck.
+- Login administrativo e cliente funcionam pelo portal publico.
+- Nenhum segredo real entra no repositorio.
