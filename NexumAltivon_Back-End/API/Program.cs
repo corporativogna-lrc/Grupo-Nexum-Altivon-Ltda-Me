@@ -25,6 +25,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using MySqlConnector;
 using NexumAltivon.API.Data;
 using NexumAltivon.API.ERP.FiscalRouting;
 using NexumAltivon.API.ERP.SharedData;
@@ -66,7 +67,14 @@ if (connectionString is not null)
 {
     var serverVersion = new MySqlServerVersion(new Version(8, 0, 0));
     builder.Services.AddDbContext<NexumDbContext>(options =>
-        options.UseMySql(connectionString, serverVersion));
+        options.UseMySql(
+            connectionString,
+            serverVersion,
+            mySqlOptions =>
+            {
+                mySqlOptions.EnableRetryOnFailure(5, TimeSpan.FromSeconds(2), null);
+                mySqlOptions.CommandTimeout(30);
+            }));
 }
 else
 {
@@ -78,7 +86,14 @@ if (genesisConnectionString is not null)
 {
     var genesisServerVersion = new MySqlServerVersion(new Version(8, 0, 0));
     builder.Services.AddDbContext<GenesisDbContext>(options =>
-        options.UseMySql(genesisConnectionString, genesisServerVersion));
+        options.UseMySql(
+            genesisConnectionString,
+            genesisServerVersion,
+            mySqlOptions =>
+            {
+                mySqlOptions.EnableRetryOnFailure(5, TimeSpan.FromSeconds(2), null);
+                mySqlOptions.CommandTimeout(30);
+            }));
 }
 else
 {
@@ -249,49 +264,11 @@ app.UseMiddleware<TenantResolverMiddleware>();
 app.UseAuthorization();
 
 app.MapGet("/health", () => Results.Text("Healthy", "text/plain"));
-app.MapGet("/health/db", async (IServiceProvider services, CancellationToken ct) =>
-{
-    if (string.IsNullOrWhiteSpace(connectionString))
-    {
-        return Results.Ok(new { status = "sem_banco_configurado" });
-    }
+app.MapGet("/health/db", (CancellationToken ct) =>
+    CheckMySqlHealthAsync(connectionString, "sem_banco_configurado", "nexum_altivon", ct));
 
-    try
-    {
-        using var scope = services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<NexumDbContext>();
-        var canConnect = await db.Database.CanConnectAsync(ct);
-        return canConnect
-            ? Results.Ok(new { status = "Healthy" })
-            : Results.Problem("Banco configurado, mas sem conexão.");
-    }
-    catch (Exception ex)
-    {
-        return Results.Problem(ex.Message);
-    }
-});
-
-app.MapGet("/health/db/genesis", async (IServiceProvider services, CancellationToken ct) =>
-{
-    if (string.IsNullOrWhiteSpace(genesisConnectionString))
-    {
-        return Results.Ok(new { status = "sem_genesis_configurado" });
-    }
-
-    try
-    {
-        using var scope = services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<GenesisDbContext>();
-        var canConnect = await db.Database.CanConnectAsync(ct);
-        return canConnect
-            ? Results.Ok(new { status = "Healthy" })
-            : Results.Problem("Genesis configurado, mas sem conexão.");
-    }
-    catch (Exception ex)
-    {
-        return Results.Problem(ex.Message);
-    }
-});
+app.MapGet("/health/db/genesis", (CancellationToken ct) =>
+    CheckMySqlHealthAsync(genesisConnectionString, "sem_genesis_configurado", "genesis_bd", ct));
 
 app.MapGet("/health/redis", async (IConfiguration configuration, CancellationToken ct) =>
 {
@@ -9970,6 +9947,71 @@ static string? ResolveConfiguredConnectionString(IConfiguration configuration, p
     return null;
 }
 
+static async Task<IResult> CheckMySqlHealthAsync(
+    string? configuredConnectionString,
+    string emptyConfigurationStatus,
+    string expectedDatabase,
+    CancellationToken ct)
+{
+    if (string.IsNullOrWhiteSpace(configuredConnectionString))
+    {
+        return Results.Ok(new { status = emptyConfigurationStatus });
+    }
+
+    try
+    {
+        var connectionBuilder = new MySqlConnectionStringBuilder(configuredConnectionString)
+        {
+            ConnectionTimeout = 5,
+            DefaultCommandTimeout = 5,
+            Pooling = false
+        };
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(5));
+
+        await using var connection = new MySqlConnection(connectionBuilder.ConnectionString);
+        await connection.OpenAsync(timeoutCts.Token);
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT DATABASE(), 1";
+        command.CommandTimeout = 5;
+
+        await using var reader = await command.ExecuteReaderAsync(timeoutCts.Token);
+        if (!await reader.ReadAsync(timeoutCts.Token))
+        {
+            return Results.Problem(
+                title: $"Falha no healthcheck do banco {expectedDatabase}.",
+                detail: "A consulta de validacao nao retornou linha.",
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        var currentDatabase = reader.GetString(0);
+        var probe = reader.GetInt32(1);
+
+        return string.Equals(currentDatabase, expectedDatabase, StringComparison.OrdinalIgnoreCase) && probe == 1
+            ? Results.Ok(new { status = "Healthy", database = currentDatabase })
+            : Results.Problem(
+                title: $"Falha no healthcheck do banco {expectedDatabase}.",
+                detail: $"Conexao abriu no banco '{currentDatabase}', mas era esperado '{expectedDatabase}'.",
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+    {
+        return Results.Problem(
+            title: $"Timeout no healthcheck do banco {expectedDatabase}.",
+            detail: "A conexao MySQL nao respondeu em ate 5 segundos.",
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(
+            title: $"Falha no healthcheck do banco {expectedDatabase}.",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+}
+
 static string[] GetCorsOrigins(IConfiguration configuration)
 {
     var configured = configuration.GetSection("ApiSettings:CorsOrigins").Get<string[]>() ?? Array.Empty<string>();
@@ -9982,15 +10024,7 @@ static string[] GetCorsOrigins(IConfiguration configuration)
         "https://back.nexumaltivon.com.br",
         "https://erp.nexumaltivon.com.br",
         "https://crm.nexumaltivon.com.br",
-        "https://pdv.nexumaltivon.com.br",
-        "https://nexumaltivon.com",
-        "https://www.nexumaltivon.com",
-        "https://admin.nexumaltivon.com",
-        "https://api.nexumaltivon.com",
-        "https://back.nexumaltivon.com",
-        "https://erp.nexumaltivon.com",
-        "https://crm.nexumaltivon.com",
-        "https://pdv.nexumaltivon.com"
+        "https://pdv.nexumaltivon.com.br"
     };
 
     return configured

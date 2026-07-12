@@ -8,9 +8,8 @@
   ],
   "apiUrl": "https://api.nexumaltivon.com.br",
   "apiUrls": [
-    "https://api.nexumaltivon.com.br",
-    "https://api.nexumaltivon.com"
+    "https://api.nexumaltivon.com.br"
   ],
-  "updatedAt": "2026-07-06T00:00:00-03:00",
-  "source": "repository-runtime-cloudflare"
+  "updatedAt": "2026-07-12T00:00:00-03:00",
+  "source": "repository-runtime-oficial"
 }

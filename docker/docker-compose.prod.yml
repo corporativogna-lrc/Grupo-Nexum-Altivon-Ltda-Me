@@ -32,14 +32,6 @@ services:
       ApiSettings__CorsOrigins__5: https://erp.nexumaltivon.com.br
       ApiSettings__CorsOrigins__6: https://crm.nexumaltivon.com.br
       ApiSettings__CorsOrigins__7: https://pdv.nexumaltivon.com.br
-      ApiSettings__CorsOrigins__8: https://www.nexumaltivon.com
-      ApiSettings__CorsOrigins__9: https://nexumaltivon.com
-      ApiSettings__CorsOrigins__10: https://admin.nexumaltivon.com
-      ApiSettings__CorsOrigins__11: https://api.nexumaltivon.com
-      ApiSettings__CorsOrigins__12: https://back.nexumaltivon.com
-      ApiSettings__CorsOrigins__13: https://erp.nexumaltivon.com
-      ApiSettings__CorsOrigins__14: https://crm.nexumaltivon.com
-      ApiSettings__CorsOrigins__15: https://pdv.nexumaltivon.com
       Integracoes__MercadoPago__AccessToken: ${MP_ACCESS_TOKEN}
       Integracoes__SendGrid__ApiKey: ${SENDGRID_API_KEY}
       OpenAI__Enabled: ${OPENAI_ENABLED:-false}

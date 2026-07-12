@@ -67,14 +67,21 @@ export function AuthProvider({ children }) {
       };
     } catch (error) {
       const isNetworkError = !error.response;
-      const runtimeApiBaseUrl = isNetworkError
-        ? await getRuntimeApiBaseUrl().catch(() => API_BASE_URL)
-        : API_BASE_URL;
+      let runtimeApiBaseUrl = API_BASE_URL;
+      let runtimeErrorDetail = '';
+
+      if (isNetworkError) {
+        try {
+          runtimeApiBaseUrl = await getRuntimeApiBaseUrl({ force: true });
+        } catch (runtimeError) {
+          runtimeErrorDetail = runtimeError.message;
+        }
+      }
 
       return {
         success: false,
         error: isNetworkError
-          ? `API indisponível no momento (${runtimeApiBaseUrl}). Verifique a ponte pública da API e tente novamente.`
+          ? `API indisponível no momento (${runtimeApiBaseUrl}). ${runtimeErrorDetail || 'Verifique a ponte pública da API e tente novamente.'}`
           : error.response?.data?.detail || error.response?.data?.mensagem || 'Erro ao fazer login'
       };
     }

@@ -32,7 +32,7 @@ const getDefaultApiUrl = () => {
     hostname === '::1' ||
     hostname === '';
 
-  return isLocalhost ? 'http://192.168.1.72:5010' : PUBLIC_API_URL;
+  return isLocalhost ? 'http://127.0.0.1:5010' : PUBLIC_API_URL;
 };
 
 export const API_BASE_URL = normalizeApiUrl(process.env.REACT_APP_BACKEND_URL) || getDefaultApiUrl();
@@ -49,7 +49,6 @@ const collectRuntimeApiUrls = (config) => {
     config?.url,
     ...(Array.isArray(config?.apiUrls) ? config.apiUrls : []),
     ...(Array.isArray(config?.api_urls) ? config.api_urls : []),
-    ...(Array.isArray(config?.fallbacks) ? config.fallbacks : []),
   ];
 
   return [...new Set(values.map(normalizeApiUrl).filter(Boolean))];
@@ -113,14 +112,13 @@ export const getRuntimeApiBaseUrl = async ({ force = false } = {}) => {
         const config = await response.json();
         candidates.push(...collectRuntimeApiUrls(config));
       }
-    } catch {
-      // Mantem a ultima ponte funcional em cache quando a configuracao publica oscila.
+    } catch (error) {
+      console.error('Falha ao carregar api-runtime.json publico.', error);
     }
 
     if (cached) candidates.push(cached);
     candidates.push(API_BASE_URL);
     candidates.push(PUBLIC_API_URL);
-    candidates.push('https://api.nexumaltivon.com');
 
     for (const candidate of [...new Set(candidates.filter(Boolean))]) {
       if (await canUseApiUrl(candidate, force)) {
@@ -130,7 +128,7 @@ export const getRuntimeApiBaseUrl = async ({ force = false } = {}) => {
     }
 
     localStorage.removeItem(RUNTIME_CACHE_KEY);
-    return API_BASE_URL;
+    throw new Error(`Nenhuma URL oficial da API respondeu em /health. URLs verificadas: ${[...new Set(candidates.filter(Boolean))].join(', ')}`);
   })();
 
   runtimeApiUrlResolvedAt = Date.now();

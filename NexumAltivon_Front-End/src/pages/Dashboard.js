@@ -84,13 +84,6 @@ const empresaGrupoHighlights = [
   'A base fica pronta para roteamento inteligente de NF-e entre empresas do grupo e parceiras.',
 ];
 
-const plannedModules = [
-  { label: 'Lojas', icon: Building2, section: 'Gestão' },
-  { label: 'Cupons', icon: CreditCard, section: 'Marketing & CRM' },
-  { label: 'Marketing', icon: TrendingUp, section: 'Marketing & CRM' },
-  { label: 'Configurações', icon: Cog, section: 'Sistema' },
-];
-
 const erpModules = [
   {
     title: 'Financeiro',
@@ -150,18 +143,6 @@ const erpModules = [
   },
 ];
 
-const fallbackIntegracoes = [
-  { nome: 'E-commerce e API', slug: 'ecommerce', status: 'Operacional', detalhe: 'Catálogo, clientes, pedidos, estoque e painel usam a API operacional.', configurada: true, ambiente: 'Produção' },
-  { nome: 'Dropshipping', slug: 'dropshipping', status: 'Aguardando cadastros', detalhe: 'Roteamento depende dos fornecedores e produtos vinculados.', configurada: false, ambiente: 'Produção assistida' },
-  { nome: 'Shopify', slug: 'shopify', status: 'Aguardando conexão', detalhe: 'Canal preparado para receber domínio da loja, token Admin API e webhooks.', configurada: false, ambiente: 'Staging privado' },
-  { nome: 'CJ Dropshipping', slug: 'cjdropshipping', status: 'Aguardando conexão', detalhe: 'Canal preparado para receber endpoint, token e vínculo de catálogo.', configurada: false, ambiente: 'Staging privado' },
-  { nome: 'Logística e Fretes', slug: 'logistica', status: 'Aguardando credenciais', detalhe: 'Frete está registrado no checkout; cotação e etiqueta dependem da transportadora.', configurada: false, ambiente: 'Sandbox' },
-  { nome: 'Gateways de pagamento', slug: 'gateways', status: 'Aguardando credenciais', detalhe: 'Pedido registra método; cobrança real depende do token e webhook.', configurada: false, ambiente: 'Não configurado' },
-  { nome: 'Certificado NF-e', slug: 'certificado', status: 'Aguardando configuração', detalhe: 'O emissor fiscal está pronto para A1 ou A3, mas depende do certificado da empresa.', configurada: false, ambiente: 'Servidor local' },
-  { nome: 'Marketplaces', slug: 'marketplaces', status: 'Aguardando credenciais', detalhe: 'Sincronização de catálogo e pedidos depende da autorização externa.', configurada: false, ambiente: 'Integração externa' },
-  { nome: 'Bancos e conciliação', slug: 'bancaria', status: 'Planejado', detalhe: 'Conciliação depende da definição do banco e convênio.', configurada: false, ambiente: 'Não configurado' },
-];
-
 const integrationGuides = {
   ecommerce: {
     description: 'Operação central de catálogo, clientes, pedidos, estoque e painel administrativo.',
@@ -171,7 +152,7 @@ const integrationGuides = {
   dropshipping: {
     description: 'Roteamento de produtos e pedidos para fornecedores parceiros.',
     requirements: ['Fornecedor ativo', 'Produto vinculado ao fornecedor', 'Regra de custo, prazo e comissão'],
-    nextTest: 'Vincular um produto real a um fornecedor e simular o envio do pedido.',
+    nextTest: 'Vincular um produto real a um fornecedor e executar o roteamento do pedido.',
   },
   shopify: {
     description: 'Canal privado para sincronizar catálogo, estoque e pedidos da Shopify com a operação Nexum.',
@@ -240,19 +221,6 @@ const integrationCredentialCategoryMap = {
   mercadolivre: ['marketplace'],
   bancaria: ['bancaria'],
 };
-
-const fallbackClientes = [
-  { id: 1, nome: 'Ana Carolina Silva', email: 'ana.silva@email.com', telefone: '(14) 99876-5432', cpf: '123.456.789-00' },
-  { id: 2, nome: 'Bruno Oliveira', email: 'bruno.oliveira@email.com', telefone: '(14) 99765-4321', cpf: '234.567.890-11' },
-  { id: 3, nome: 'Carla Mendes', email: 'carla.mendes@email.com', telefone: '(14) 99654-3210', cpf: '345.678.901-22' },
-];
-
-const fallbackFornecedores = [
-  { id: 1, nome: 'Chronos Imports', documento: '12.345.678/0001-90', email: 'comercial@chronosimports.com', telefone: '(11) 3030-1122', categoria: 'Relogios' },
-  { id: 2, nome: 'Luxury Cases Brasil', documento: '98.765.432/0001-10', email: 'vendas@luxurycases.com', telefone: '(21) 4040-2211', categoria: 'Acessorios' },
-];
-
-const fallbackEmpresasGrupo = [];
 
 const emptyProduto = {
   id: '',
@@ -389,7 +357,7 @@ const emptyFiscalManualForm = {
 };
 const emptySiteConfigForm = {
   site_nome: 'Grupo Nexum Altivon',
-  site_url: 'https://www.nexumaltivon.com',
+  site_url: 'https://www.nexumaltivon.com.br',
   site_logo: '/assets/logo-2.jpg',
   site_email_contato: 'corporativo.gna@gmail.com',
   site_telefone: '(14) 99673-1879',
@@ -401,7 +369,7 @@ const emptySiteConfigForm = {
   home_intro_titulo: 'Uma Nova Era Começa',
   home_intro_texto_1: 'A Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro.',
   home_intro_texto_2: 'Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso.',
-  home_intro_badge: 'www.nexumaltivon.com',
+  home_intro_badge: 'www.nexumaltivon.com.br',
   home_footer_texto: 'Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas.',
   home_quality_items: '["Curadoria rigorosa de fornecedores","Atendimento humano e especializado","Política de devolução simplificada","Preços justos e acessíveis"]',
   home_partner_cards: '[{"title":"Parceiros de Vendas","text":"Lojas físicas ou online podem ampliar seus horizontes de venda com nossa infraestrutura comercial e operação integrada.","cta":"Quero Vender","href":"https://wa.me/5514996731879?text=Olá! Tenho interesse em ser parceiro de vendas do Grupo Nexum Altivon.","icon":"Store"}]',
@@ -451,7 +419,6 @@ const siteConfigSections = [
 ];
 const pedidoStatusOptions = ['Pendente', 'Processando', 'Enviado', 'Entregue', 'Cancelado'];
 const leadStatusOptions = ['Novo', 'Contato', 'Qualificado', 'Negociacao', 'Ganho', 'Perdido'];
-const allowDemoData = process.env.REACT_APP_ALLOW_DEMO_DATA === 'true';
 const emptyResumo = {
   pedidos_hoje: 0,
   total_clientes: 0,
@@ -474,16 +441,22 @@ const chart = [
 
 const normalizeText = (value) => String(value ?? '').trim().toLowerCase();
 const normalizeDocument = (value) => String(value ?? '').replace(/\D/g, '');
-const safeJsonParse = (value, fallback) => {
+const getApiErrorMessage = (error, defaultMessage) =>
+  error.response?.data?.detail ||
+  error.response?.data?.mensagem ||
+  error.message ||
+  defaultMessage;
+
+const safeJsonParse = (value, defaultValue) => {
   try {
     return JSON.parse(String(value ?? ''));
   } catch {
-    return fallback;
+    return defaultValue;
   }
 };
-const formatSiteConfigJsonForForm = (value, fallback) => {
+const formatSiteConfigJsonForForm = (value, defaultValue) => {
   if (typeof value !== 'string' || !value.trim()) {
-    return fallback;
+    return defaultValue;
   }
 
   try {
@@ -700,7 +673,7 @@ export default function Dashboard() {
   const [fornecedores, setFornecedores] = useState([]);
   const [empresasGrupo, setEmpresasGrupo] = useState([]);
   const [fiscalPedidos, setFiscalPedidos] = useState([]);
-  const [integracoes, setIntegracoes] = useState(fallbackIntegracoes);
+  const [integracoes, setIntegracoes] = useState([]);
   const [credenciaisModelo, setCredenciaisModelo] = useState([]);
   const [siteConfigItems, setSiteConfigItems] = useState([]);
   const [siteConfigForm, setSiteConfigForm] = useState(emptySiteConfigForm);
@@ -720,11 +693,13 @@ export default function Dashboard() {
   const [leadForm, setLeadForm] = useState(emptyLead);
   const [empresaGrupoForm, setEmpresaGrupoForm] = useState(emptyEmpresaGrupo);
   const [formStatus, setFormStatus] = useState('');
+  const [loadError, setLoadError] = useState('');
   const sophiaEmail = siteConfigForm.site_sophia_email || siteConfigForm.site_email_contato || 'corporativo.gna@gmail.com';
   const sophiaMailTo = `mailto:${encodeURIComponent(sophiaEmail)}?subject=Sophia%20-%20Apoio%20administrativo&body=Ol%C3%A1%20Sophia%2C%20preciso%20de%20apoio%20administrativo%20por%20mensagem%20instant%C3%A2nea%20para%20d%C3%BAvidas%20internas%20e%20solu%C3%A7%C3%B5es%20operacionais.`;
 
   const loadData = useCallback(async () => {
     try {
+      setLoadError('');
       const [resumoRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, empresasGrupoRes, fiscalPedidosRes, integracoesRes, credenciaisRes, siteConfigRes, fiscalDraftRes] = await Promise.all([
         dashboardAPI.getResumo(),
         pedidoAPI.getAll(),
@@ -733,26 +708,24 @@ export default function Dashboard() {
         categoriaAPI.getAll(),
         clienteAPI.getAll(),
         fornecedorAPI.getAll(),
-        empresaGrupoAPI.getAll().catch(() => ({ data: [] })),
-        fiscalAPI.getPedidos().catch(() => ({ data: [] })),
-        integracoesAPI.getDiagnostico()
-          .catch(() => integracoesAPI.getStatus())
-          .catch(() => ({ data: fallbackIntegracoes })),
-        integracoesAPI.getCredenciaisModelo().catch(() => ({ data: [] })),
-        siteAPI.getAll().catch(() => ({ data: [] })),
-        fiscalAPI.obterRascunhoManual().catch(() => ({ data: {} })),
+        empresaGrupoAPI.getAll(),
+        fiscalAPI.getPedidos(),
+        integracoesAPI.getDiagnostico(),
+        integracoesAPI.getCredenciaisModelo(),
+        siteAPI.getAll(),
+        fiscalAPI.getRascunhoManual(),
       ]);
       if (resumoRes.data) setResumo(resumoRes.data);
-      if (Array.isArray(pedidosRes.data) && pedidosRes.data.length > 0) setPedidos(pedidosRes.data);
-      if (Array.isArray(leadsRes.data) && leadsRes.data.length > 0) setLeads(leadsRes.data);
-      if (Array.isArray(produtosRes.data) && produtosRes.data.length > 0) setProdutos(produtosRes.data);
-      if (Array.isArray(categoriasRes.data) && categoriasRes.data.length > 0) setCategorias(categoriasRes.data);
-      if (Array.isArray(clientesRes.data) && clientesRes.data.length > 0) setClientes(clientesRes.data);
-      if (Array.isArray(fornecedoresRes.data) && fornecedoresRes.data.length > 0) setFornecedores(fornecedoresRes.data);
-      if (Array.isArray(empresasGrupoRes.data) && empresasGrupoRes.data.length > 0) setEmpresasGrupo(empresasGrupoRes.data);
-      if (Array.isArray(fiscalPedidosRes.data) && fiscalPedidosRes.data.length > 0) setFiscalPedidos(fiscalPedidosRes.data);
-      if (Array.isArray(integracoesRes.data) && integracoesRes.data.length > 0) setIntegracoes(integracoesRes.data);
-      if (Array.isArray(credenciaisRes.data) && credenciaisRes.data.length > 0) setCredenciaisModelo(credenciaisRes.data);
+      setPedidos(Array.isArray(pedidosRes.data) ? pedidosRes.data : []);
+      setLeads(Array.isArray(leadsRes.data) ? leadsRes.data : []);
+      setProdutos(Array.isArray(produtosRes.data) ? produtosRes.data : []);
+      setCategorias(Array.isArray(categoriasRes.data) ? categoriasRes.data : []);
+      setClientes(Array.isArray(clientesRes.data) ? clientesRes.data : []);
+      setFornecedores(Array.isArray(fornecedoresRes.data) ? fornecedoresRes.data : []);
+      setEmpresasGrupo(Array.isArray(empresasGrupoRes.data) ? empresasGrupoRes.data : []);
+      setFiscalPedidos(Array.isArray(fiscalPedidosRes.data) ? fiscalPedidosRes.data : []);
+      setIntegracoes(Array.isArray(integracoesRes.data) ? integracoesRes.data : []);
+      setCredenciaisModelo(Array.isArray(credenciaisRes.data) ? credenciaisRes.data : []);
       if (Array.isArray(siteConfigRes.data) && siteConfigRes.data.length > 0) {
         setSiteConfigItems(siteConfigRes.data);
         setSiteConfigForm((current) =>
@@ -796,9 +769,9 @@ export default function Dashboard() {
         }));
       }
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Erro:', error);
-      }
+      const message = getApiErrorMessage(error, 'Não foi possível carregar o painel administrativo.');
+      setLoadError(message);
+      console.error('Falha ao carregar painel administrativo:', error);
     } finally {
       setLoading(false);
     }
@@ -1232,8 +1205,7 @@ export default function Dashboard() {
           <nav className="mt-8 space-y-5 overflow-y-auto pb-6">
             {navSections.map((section) => {
               const activeItems = tabs.filter((tab) => tab.section === section);
-              const futureItems = plannedModules.filter((module) => module.section === section);
-              if (activeItems.length === 0 && futureItems.length === 0) return null;
+              if (activeItems.length === 0) return null;
 
               return (
                 <div key={section}>
@@ -1254,21 +1226,6 @@ export default function Dashboard() {
                           <Icon size={18} />
                           <span>{tab.label}</span>
                           {tab.badge && <span className="ml-auto rounded-full bg-emerald-600 px-2 py-0.5 text-[0.62rem] uppercase text-white">{tab.badge}</span>}
-                        </button>
-                      );
-                    })}
-                    {futureItems.map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <button
-                          key={item.label}
-                          type="button"
-                          className="flex w-full cursor-not-allowed items-center gap-3 border-l-4 border-transparent px-3 py-3 text-left text-sm font-semibold text-zinc-700"
-                          title="Módulo em estruturação"
-                        >
-                          <Icon size={18} />
-                          <span>{item.label}</span>
-                          <span className="ml-auto rounded-full border border-zinc-700 px-2 py-0.5 text-[0.62rem] uppercase text-zinc-600">{item.track || 'breve'}</span>
                         </button>
                       );
                     })}
@@ -1361,6 +1318,11 @@ export default function Dashboard() {
             </div>
           ) : (
             <>
+              {loadError && (
+                <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-5 py-4 text-sm font-bold text-red-800">
+                  {loadError}
+                </div>
+              )}
               {activeTab === 'overview' && (
                 <div className="space-y-6">
                   <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
@@ -1378,7 +1340,7 @@ export default function Dashboard() {
                           E-commerce, dropshipping, logística, gateways de pagamento e módulos empresariais conectados pelo canal de API.
                         </p>
                       </div>
-                      <span className="rounded-full bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-800">API em produção temporária</span>
+                      <span className="rounded-full bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-800">API pública conectada</span>
                     </div>
                     <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                       {[
@@ -2435,13 +2397,13 @@ export default function Dashboard() {
                             </div>
                             <div className="min-w-0">
                               <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{siteConfigForm.site_nome || 'Grupo Nexum Altivon'}</p>
-                              <p className="mt-1 truncate text-sm font-semibold text-slate-600">{siteConfigForm.site_url || 'https://www.nexumaltivon.com'}</p>
+                              <p className="mt-1 truncate text-sm font-semibold text-slate-600">{siteConfigForm.site_url || 'https://www.nexumaltivon.com.br'}</p>
                             </div>
                           </div>
                           <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
                             <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Banner</p>
                             <p className="mt-2 text-sm font-semibold text-slate-700">{siteConfigForm.home_intro_titulo || 'Uma Nova Era Começa'}</p>
-                            <p className="mt-1 text-sm text-slate-500">{siteConfigForm.home_intro_badge || 'www.nexumaltivon.com'}</p>
+                            <p className="mt-1 text-sm text-slate-500">{siteConfigForm.home_intro_badge || 'www.nexumaltivon.com.br'}</p>
                           </div>
                           <div className="grid gap-3 sm:grid-cols-3">
                             <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">

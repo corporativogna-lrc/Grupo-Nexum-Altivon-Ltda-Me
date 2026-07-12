@@ -9,7 +9,7 @@
   'use strict';
 
   const PUBLIC_API_BASE_URL = 'https://api.nexumaltivon.com.br';
-  const LOCAL_API_BASE_URL = 'http://192.168.1.72:5010';
+  const LOCAL_API_BASE_URL = 'http://127.0.0.1:5010';
   const API_RUNTIME_STORAGE_KEY = 'nexum_api_runtime_url';
 
   function normalizeApiBaseUrl(value) {
@@ -146,8 +146,18 @@
         if (!allProducts) {
           try {
             const res = await fetch(`${API_URL}/produtos?limit=100`);
+            if (!res.ok) {
+              throw new Error(`API retornou HTTP ${res.status} ao buscar produtos.`);
+            }
             allProducts = await res.json();
-          } catch { allProducts = []; }
+            if (!Array.isArray(allProducts)) {
+              throw new Error('API retornou payload invalido para produtos.');
+            }
+          } catch (error) {
+            console.error('[Nexum] Falha real ao buscar produtos:', error);
+            results.innerHTML = '<p style="color:#ef4444;text-align:center;padding:20px;">API indisponivel para busca de produtos. Verifique a API publica.</p>';
+            return;
+          }
         }
 
         const filtered = allProducts.filter(p =>
@@ -211,10 +221,18 @@
     const origem = panel ? getOrigem(panel.id) : 'Website';
     const data = new FormData(form);
 
-    const nome = data.get('Nome') || data.get('Empresa') || 'Sem nome';
-    const email = data.get('Email') || `${String(nome).toLowerCase().replace(/\s/g,'')}@nexumcontato.com`;
+    const nome = String(data.get('Nome') || data.get('Empresa') || '').trim();
+    const email = String(data.get('Email') || '').trim();
     const telefone = data.get('Telefone') || '';
     const empresa = data.get('Empresa') || '';
+
+    if (!nome) {
+      throw new Error('Informe o nome ou empresa para registrar o lead.');
+    }
+
+    if (!email) {
+      throw new Error('Informe o e-mail para registrar o lead.');
+    }
 
     const extras = [];
     for (const [key, value] of data.entries()) {
