@@ -27,6 +27,51 @@ $privateConfig = Join-Path $resolvedProjectRoot "runtime\api-24h\api.env.ps1"
 $apiDll = Join-Path $resolvedProjectRoot "runtime\api-24h\api\NexumAltivon.API.dll"
 $logPath = Join-Path $resolvedProjectRoot "runtime-logs\api-24h-task-install.log"
 
+New-Item -ItemType Directory -Path (Split-Path -Parent $logPath) -Force | Out-Null
+
+function Write-InstallStep {
+    param([Parameter(Mandatory = $true)][string]$Message)
+
+    $line = "[$((Get-Date).ToString('s'))] $Message"
+    Write-Output $line
+    Add-Content -LiteralPath $logPath -Value $line -Encoding UTF8
+}
+
+function Wait-OfficialApiStartup {
+    param(
+        [Parameter(Mandatory = $true)][int]$Port,
+        [Parameter(Mandatory = $true)][string]$HealthUrl,
+        [int]$TimeoutSeconds = 180
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $lastError = "Aguardando primeira tentativa."
+
+    while ((Get-Date) -lt $deadline) {
+        $listener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($listener) {
+            try {
+                $health = Invoke-WebRequest -UseBasicParsing -Uri $HealthUrl -TimeoutSec 20
+                if ($health.StatusCode -ge 200 -and $health.StatusCode -le 299) {
+                    Write-InstallStep "API oficial respondeu $HealthUrl HTTP $($health.StatusCode) na porta $Port."
+                    return $listener
+                }
+
+                $lastError = "Health retornou HTTP $($health.StatusCode)."
+            } catch {
+                $lastError = $_.Exception.Message
+            }
+        } else {
+            $lastError = "Porta $Port ainda sem listener."
+        }
+
+        Write-InstallStep "Aguardando API oficial em $HealthUrl. Ultimo estado: $lastError"
+        Start-Sleep -Seconds 2
+    }
+
+    throw "A API oficial nao ficou pronta em $HealthUrl dentro de $TimeoutSeconds segundos. Ultimo estado: $lastError"
+}
+
 if (-not (Test-Path -LiteralPath $startScript -PathType Leaf)) {
     throw "Script oficial de inicializacao nao encontrado em $startScript."
 }
@@ -64,10 +109,13 @@ Register-ScheduledTask `
     -Description "GenesisGest.Net Nexum Altivon API oficial 24h em http://127.0.0.1:5010." `
     -Force | Out-Null
 
+Write-InstallStep "Tarefa $TaskName registrada como SYSTEM."
+
 $existingApiProcesses = Get-CimInstance Win32_Process -Filter "Name = 'dotnet.exe'" |
     Where-Object { $_.CommandLine -like "*NexumAltivon.API.dll*" }
 
 foreach ($process in $existingApiProcesses) {
+    Write-InstallStep "Parando processo API anterior PID $($process.ProcessId)."
     Stop-Process -Id $process.ProcessId -Force -ErrorAction Stop
 }
 
@@ -75,6 +123,7 @@ $existingStartWrappers = Get-CimInstance Win32_Process -Filter "Name = 'powershe
     Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like "*iniciar-api-oficial-24h.ps1*" }
 
 foreach ($process in $existingStartWrappers) {
+    Write-InstallStep "Parando wrapper anterior da API PID $($process.ProcessId)."
     Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
 }
 
@@ -88,13 +137,9 @@ for ($i = 0; $i -lt 20; $i++) {
 }
 
 Start-ScheduledTask -TaskName $TaskName
-Start-Sleep -Seconds 15
+Write-InstallStep "Tarefa $TaskName iniciada. Aguardando porta 5010 e health real."
 
-$listener = Get-NetTCPConnection -LocalPort 5010 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($null -eq $listener) {
-    $info = Get-ScheduledTaskInfo -TaskName $TaskName
-    throw "Tarefa $TaskName registrada, mas a API nao abriu a porta 5010. LastTaskResult=$($info.LastTaskResult)."
-}
+$listener = Wait-OfficialApiStartup -Port 5010 -HealthUrl "$ApiUrl/health"
 
 $taskInfo = Get-ScheduledTaskInfo -TaskName $TaskName
 $listenerProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $($listener.OwningProcess)"
