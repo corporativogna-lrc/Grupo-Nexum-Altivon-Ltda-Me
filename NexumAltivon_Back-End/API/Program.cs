@@ -9953,6 +9953,8 @@ static async Task<IResult> CheckMySqlHealthAsync(
     string expectedDatabase,
     CancellationToken ct)
 {
+    const int healthProbeTimeoutSeconds = 10;
+
     if (string.IsNullOrWhiteSpace(configuredConnectionString))
     {
         return Results.Ok(new { status = emptyConfigurationStatus });
@@ -9962,20 +9964,23 @@ static async Task<IResult> CheckMySqlHealthAsync(
     {
         var connectionBuilder = new MySqlConnectionStringBuilder(configuredConnectionString)
         {
-            ConnectionTimeout = 5,
-            DefaultCommandTimeout = 5,
-            Pooling = false
+            ConnectionTimeout = healthProbeTimeoutSeconds,
+            DefaultCommandTimeout = healthProbeTimeoutSeconds,
+            Pooling = true,
+            MinimumPoolSize = 0,
+            MaximumPoolSize = 8,
+            ConnectionIdleTimeout = 60
         };
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(5));
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(healthProbeTimeoutSeconds));
 
         await using var connection = new MySqlConnection(connectionBuilder.ConnectionString);
         await connection.OpenAsync(timeoutCts.Token);
 
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT DATABASE(), 1";
-        command.CommandTimeout = 5;
+        command.CommandTimeout = healthProbeTimeoutSeconds;
 
         await using var reader = await command.ExecuteReaderAsync(timeoutCts.Token);
         if (!await reader.ReadAsync(timeoutCts.Token))
@@ -10000,7 +10005,7 @@ static async Task<IResult> CheckMySqlHealthAsync(
     {
         return Results.Problem(
             title: $"Timeout no healthcheck do banco {expectedDatabase}.",
-            detail: "A conexao MySQL nao respondeu em ate 5 segundos.",
+            detail: $"A conexao MySQL nao respondeu em ate {healthProbeTimeoutSeconds} segundos.",
             statusCode: StatusCodes.Status503ServiceUnavailable);
     }
     catch (Exception ex)

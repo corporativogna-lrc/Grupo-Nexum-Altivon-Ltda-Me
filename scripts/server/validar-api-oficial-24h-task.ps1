@@ -55,6 +55,53 @@ try {
     $healthError = $_.Exception.Message
 }
 
+function Test-OfficialEndpoint {
+    param(
+        [Parameter(Mandatory = $true)][string]$Endpoint,
+        [int]$Attempts = 4,
+        [int]$TimeoutSeconds = 20
+    )
+
+    $lastError = $null
+    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+        try {
+            $response = Invoke-WebRequest -UseBasicParsing -Uri $Endpoint -TimeoutSec $TimeoutSeconds
+            if ($response.StatusCode -ge 200 -and $response.StatusCode -le 299) {
+                return [pscustomobject]@{
+                    Endpoint = $Endpoint
+                    Succeeded = $true
+                    StatusCode = $response.StatusCode
+                    Attempts = $attempt
+                    Error = $null
+                }
+            }
+
+            $lastError = "HTTP $($response.StatusCode)"
+        } catch {
+            $lastError = $_.Exception.Message
+        }
+
+        if ($attempt -lt $Attempts) {
+            Start-Sleep -Seconds 2
+        }
+    }
+
+    return [pscustomobject]@{
+        Endpoint = $Endpoint
+        Succeeded = $false
+        StatusCode = $null
+        Attempts = $Attempts
+        Error = $lastError
+    }
+}
+
+$endpointResults = @(
+    Test-OfficialEndpoint -Endpoint "$ApiUrl/health"
+    Test-OfficialEndpoint -Endpoint "$ApiUrl/health/db"
+    Test-OfficialEndpoint -Endpoint "$ApiUrl/health/db/genesis"
+    Test-OfficialEndpoint -Endpoint "$ApiUrl/api/site/configuracoes/publico"
+)
+
 $validationErrors = New-Object System.Collections.Generic.List[string]
 
 if (-not $task) {
@@ -91,6 +138,12 @@ if (-not $health) {
     $validationErrors.Add("O healthcheck local retornou status inesperado: $($health.StatusCode).")
 }
 
+foreach ($endpointResult in $endpointResults) {
+    if (-not $endpointResult.Succeeded) {
+        $validationErrors.Add("Endpoint oficial $($endpointResult.Endpoint) falhou apos $($endpointResult.Attempts) tentativa(s). Erro: $($endpointResult.Error)")
+    }
+}
+
 $result = [pscustomobject]@{
     CheckedAt = (Get-Date).ToString("s")
     ValidationSucceeded = ($validationErrors.Count -eq 0)
@@ -111,6 +164,7 @@ $result = [pscustomobject]@{
     ParentCommand = if ($parent) { $parent.CommandLine } else { $null }
     HealthStatus = if ($health) { $health.StatusCode } else { $null }
     HealthBody = if ($health) { $health.Content } else { $null }
+    EndpointChecks = ($endpointResults | ConvertTo-Json -Compress)
 }
 
 $result | Format-List | Out-String | Set-Content -LiteralPath $logPath -Encoding UTF8

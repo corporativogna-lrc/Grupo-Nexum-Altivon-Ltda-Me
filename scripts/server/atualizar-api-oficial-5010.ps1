@@ -80,6 +80,36 @@ function Stop-ApiPortOwner {
     }
 }
 
+function Invoke-OfficialEndpointValidation {
+    param(
+        [Parameter(Mandatory = $true)][string]$Endpoint,
+        [int]$Attempts = 5,
+        [int]$TimeoutSeconds = 25
+    )
+
+    $lastError = $null
+    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+        Write-Step "Validando endpoint $Endpoint tentativa $attempt de $Attempts."
+        try {
+            $response = Invoke-WebRequest -UseBasicParsing -Uri $Endpoint -TimeoutSec $TimeoutSeconds
+            if ($response.StatusCode -ge 200 -and $response.StatusCode -le 299) {
+                Write-Step "Endpoint $Endpoint OK HTTP $($response.StatusCode)."
+                return
+            }
+
+            $lastError = "HTTP $($response.StatusCode)"
+        } catch {
+            $lastError = $_.Exception.Message
+        }
+
+        if ($attempt -lt $Attempts) {
+            Start-Sleep -Seconds 2
+        }
+    }
+
+    throw "Endpoint $Endpoint falhou apos $Attempts tentativa(s). Ultimo erro: $lastError"
+}
+
 Write-Step "Inicio da atualizacao oficial da API em $ApiUrl."
 
 Stop-ApiPortOwner -Port 5010
@@ -113,12 +143,7 @@ $endpoints = @(
 )
 
 foreach ($endpoint in $endpoints) {
-    Write-Step "Validando endpoint $endpoint."
-    $response = Invoke-WebRequest -UseBasicParsing -Uri $endpoint -TimeoutSec 20
-    if ($response.StatusCode -lt 200 -or $response.StatusCode -gt 299) {
-        throw "Endpoint $endpoint retornou HTTP $($response.StatusCode)."
-    }
-    Write-Step "Endpoint $endpoint OK HTTP $($response.StatusCode)."
+    Invoke-OfficialEndpointValidation -Endpoint $endpoint
 }
 
 $listener = Get-NetTCPConnection -LocalPort 5010 -State Listen -ErrorAction Stop | Select-Object -First 1
