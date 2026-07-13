@@ -212,6 +212,11 @@ builder.Services.AddHttpClient("mercado-livre", client =>
     client.BaseAddress = new Uri("https://api.mercadolibre.com/");
     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 });
+builder.Services.AddHttpClient("marketplace-sync", client =>
+{
+    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("GenesisGest.Net/1.1.5");
+});
 builder.Services.AddHttpClient("fiscal-sefaz", client =>
 {
     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -6451,6 +6456,11 @@ app.MapGet("/api/integracoes/credenciais-modelo", [Authorize(Policy = "Gerente")
         new("Mercado Livre", "marketplace", "MercadoLivre__ClientSecret", "Segredo do aplicativo Mercado Livre.", true),
         new("Mercado Livre", "marketplace", "MercadoLivre__RedirectUri", "URL de retorno cadastrada exatamente no Mercado Livre.", true),
         new("Mercado Livre", "marketplace", "MercadoLivre__AccessToken", "Token do vendedor após autorizar o aplicativo.", false),
+        new("Mercado Livre", "marketplace", "MercadoLivre__SellerId / MercadoLivre__CategoriaPadrao", "Seller ID e categoria padrão para sincronização real de pedidos/produtos.", true),
+        new("B2W/Americanas", "marketplace", "B2W__EndpointBase / B2W__AccessToken / B2W__SellerId", "Credenciais e endpoint real do seller center B2W/Americanas.", true),
+        new("B2W/Americanas", "marketplace", "B2W__PedidosPath / B2W__ProdutosPath", "Rotas reais para pedidos e produtos, aceitando {sellerId}.", true),
+        new("Via Marketplace", "marketplace", "Via__EndpointBase / Via__AccessToken / Via__SellerId", "Credenciais e endpoint real do seller center Via.", true),
+        new("Via Marketplace", "marketplace", "Via__PedidosPath / Via__ProdutosPath", "Rotas reais para pedidos e produtos, aceitando {sellerId}.", true),
         new("Fiscal SEFAZ", "fiscal", "FiscalSefaz__Provider", "Nome do provedor de emissão autorizado para NF-e/NFC-e.", true),
         new("Fiscal SEFAZ", "fiscal", "FiscalSefaz__EndpointBase", "Endpoint base real do emissor fiscal homologado ou produção.", true),
         new("Fiscal SEFAZ", "fiscal", "FiscalSefaz__Token", "Token privado do emissor fiscal externo.", true),
@@ -6478,6 +6488,27 @@ app.MapPost("/api/integracoes/testar/{slug}", [Authorize(Policy = "Gerente")] as
     return Results.Ok(ApiResponse<IntegracaoDiagnosticoDto>.Ok(resultado, $"Teste executado para {resultado.Nome}."));
 })
 .WithName("TestarIntegracao")
+;
+
+app.MapPost("/api/marketplaces/{canal}/sync", [Authorize(Policy = "Gerente")] async (
+    string canal,
+    MarketplaceSyncRequest request,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct) =>
+{
+    var resultado = await ExecutarMarketplaceSyncAsync(canal, request, configuration, db, httpClientFactory, ct);
+    if (resultado.Sucesso)
+    {
+        return Results.Ok(ApiResponse<MarketplaceSyncResultadoDto>.Ok(resultado, "Sincronizacao marketplace confirmada por provedor externo."));
+    }
+
+    return Results.Json(
+        new ApiResponse<MarketplaceSyncResultadoDto>(false, "Sincronizacao marketplace bloqueada ou recusada. Nenhum sucesso foi registrado sem provedor real.", resultado, resultado.Pendencias),
+        statusCode: resultado.Configurada ? StatusCodes.Status502BadGateway : StatusCodes.Status424FailedDependency);
+})
+.WithName("MarketplaceSync")
 ;
 
 app.MapPost("/api/frete/cotar", async (
@@ -11698,6 +11729,398 @@ static string? TryExtractJsonPath(string json, params string[] path)
     }
 }
 
+static async Task<MarketplaceSyncResultadoDto> ExecutarMarketplaceSyncAsync(
+    string canal,
+    MarketplaceSyncRequest request,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct)
+{
+    var canalNormalizado = NormalizeMarketplaceChannel(canal);
+    if (canalNormalizado is null)
+    {
+        return new MarketplaceSyncResultadoDto(false, canal, "pull", "pedidos", false, false, 0, 0, 0, null, ["Canal marketplace suportado: mercadolivre, b2w ou via."], DateTime.UtcNow);
+    }
+
+    var direcao = NormalizeMarketplaceDirection(request.Direcao);
+    var entidade = string.IsNullOrWhiteSpace(request.Entidade) ? "pedidos" : request.Entidade.Trim().ToLowerInvariant();
+    var limite = Math.Clamp(request.Limite ?? 20, 1, 100);
+    var marketplace = await ResolveMarketplaceConfigAsync(db, canalNormalizado, ct);
+    var syncConfig = ResolveMarketplaceSyncConfiguration(configuration, marketplace, canalNormalizado, request, limite);
+    var produtoIds = request.ProdutoIds?.Where(id => id > 0).Distinct().ToList() ?? [];
+    var produtosQuery = db.Produtos.AsNoTracking().Where(produto => produto.Ativo && produto.Preco > 0);
+    if (produtoIds.Count > 0)
+    {
+        produtosQuery = produtosQuery.Where(produto => produtoIds.Contains(produto.Id));
+    }
+
+    var produtos = await produtosQuery
+        .OrderBy(produto => produto.Id)
+        .Take(limite)
+        .ToListAsync(ct);
+    var sincronizaPedidos = ShouldSyncMarketplacePedidos(direcao, entidade);
+    var sincronizaProdutos = ShouldSyncMarketplaceProdutos(direcao, entidade);
+    var configuradaParaOperacao = syncConfig.Pendencias.Count == 0 &&
+        (!sincronizaPedidos || syncConfig.PedidosEndpoint is not null) &&
+        (!sincronizaProdutos || syncConfig.ProdutosEndpoint is not null);
+    var pendencias = ValidateMarketplaceSyncRequest(syncConfig, direcao, entidade, sincronizaPedidos, sincronizaProdutos, produtos, produtoIds);
+    if (pendencias.Count > 0)
+    {
+        return new MarketplaceSyncResultadoDto(false, canalNormalizado, direcao, entidade, configuradaParaOperacao, false, produtos.Count, 0, 0, syncConfig.ProviderHost, pendencias, DateTime.UtcNow);
+    }
+
+    var externosLidos = 0;
+    var externosEnviados = 0;
+    var operacoesExecutadas = new List<string>();
+    var client = httpClientFactory.CreateClient(canalNormalizado == "mercadolivre" ? "mercado-livre" : "marketplace-sync");
+
+    if (sincronizaPedidos)
+    {
+        var pedidoResult = await SendMarketplaceRequestAsync(client, HttpMethod.Get, syncConfig.PedidosEndpoint!, syncConfig.Token!, null, ct);
+        if (!pedidoResult.Sucesso)
+        {
+            return new MarketplaceSyncResultadoDto(false, canalNormalizado, direcao, entidade, configuradaParaOperacao, false, produtos.Count, externosLidos, externosEnviados, syncConfig.ProviderHost, pedidoResult.Pendencias, DateTime.UtcNow);
+        }
+
+        externosLidos = CountMarketplaceJsonItems(pedidoResult.Body);
+        operacoesExecutadas.Add($"pedidos_lidos={externosLidos.ToString(CultureInfo.InvariantCulture)}");
+    }
+
+    if (sincronizaProdutos)
+    {
+        var payload = BuildMarketplaceProductPayload(canalNormalizado, produtos, request.CategoriaExterna);
+        var produtoResult = await SendMarketplaceRequestAsync(client, HttpMethod.Post, syncConfig.ProdutosEndpoint!, syncConfig.Token!, payload, ct);
+        if (!produtoResult.Sucesso)
+        {
+            return new MarketplaceSyncResultadoDto(false, canalNormalizado, direcao, entidade, configuradaParaOperacao, false, produtos.Count, externosLidos, externosEnviados, syncConfig.ProviderHost, produtoResult.Pendencias, DateTime.UtcNow);
+        }
+
+        externosEnviados = produtos.Count;
+        operacoesExecutadas.Add($"produtos_enviados={externosEnviados.ToString(CultureInfo.InvariantCulture)}");
+    }
+
+    if (marketplace is not null)
+    {
+        marketplace.UltimaSincronizacao = DateTime.UtcNow;
+        marketplace.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+    }
+
+    return new MarketplaceSyncResultadoDto(true, canalNormalizado, direcao, entidade, configuradaParaOperacao, true, produtos.Count, externosLidos, externosEnviados, syncConfig.ProviderHost, operacoesExecutadas, DateTime.UtcNow);
+}
+
+static async Task<Marketplace?> ResolveMarketplaceConfigAsync(NexumDbContext db, string canalNormalizado, CancellationToken ct)
+{
+    var aliases = canalNormalizado switch
+    {
+        "mercadolivre" => new[] { "mercadolivre", "mercado-livre", "mercado livre" },
+        "b2w" => new[] { "b2w", "americanas" },
+        "via" => new[] { "via", "viavarejo", "casasbahia", "ponto" },
+        _ => [canalNormalizado]
+    };
+
+    return await db.Marketplaces
+        .FirstOrDefaultAsync(item =>
+            item.Ativo &&
+            (aliases.Contains(item.Slug.ToLower()) || aliases.Contains(item.Nome.ToLower())), ct);
+}
+
+static MarketplaceSyncConfiguration ResolveMarketplaceSyncConfiguration(
+    IConfiguration configuration,
+    Marketplace? marketplace,
+    string canalNormalizado,
+    MarketplaceSyncRequest request,
+    int limite)
+{
+    var pendencias = new List<string>();
+    var token = ResolveMarketplaceToken(configuration, marketplace, canalNormalizado);
+    var sellerId = ResolveMarketplaceSellerId(configuration, marketplace, canalNormalizado);
+    var endpointBase = ResolveMarketplaceEndpointBase(configuration, canalNormalizado);
+    var pedidosPath = ResolveMarketplacePath(configuration, canalNormalizado, "PedidosPath");
+    var produtosPath = ResolveMarketplacePath(configuration, canalNormalizado, "ProdutosPath");
+
+    if (canalNormalizado == "mercadolivre")
+    {
+        endpointBase ??= "https://api.mercadolibre.com/";
+        pedidosPath ??= "orders/search?seller={sellerId}&order.status=paid&limit={limite}";
+        produtosPath ??= "items";
+    }
+
+    if (!IsConfiguredSecret(token))
+    {
+        pendencias.Add($"Configure {MarketplaceConfigPrefix(canalNormalizado)}__AccessToken real.");
+    }
+
+    if (!IsConfiguredSecret(sellerId))
+    {
+        pendencias.Add($"Configure {MarketplaceConfigPrefix(canalNormalizado)}__SellerId real.");
+    }
+
+    if (!IsConfiguredSecret(endpointBase))
+    {
+        pendencias.Add($"Configure {MarketplaceConfigPrefix(canalNormalizado)}__EndpointBase real.");
+    }
+
+    if (!Uri.TryCreate((endpointBase ?? string.Empty).TrimEnd('/') + "/", UriKind.Absolute, out var baseUri))
+    {
+        pendencias.Add("EndpointBase do marketplace nao e uma URL absoluta valida.");
+    }
+
+    var pedidosEndpoint = BuildMarketplaceEndpoint(baseUri, pedidosPath, sellerId, limite);
+    var produtosEndpoint = BuildMarketplaceEndpoint(baseUri, produtosPath, sellerId, limite);
+
+    return new MarketplaceSyncConfiguration(
+        canalNormalizado,
+        endpointBase,
+        pedidosEndpoint,
+        produtosEndpoint,
+        token,
+        sellerId,
+        baseUri?.Host,
+        pendencias.Distinct(StringComparer.OrdinalIgnoreCase).ToList());
+}
+
+static List<string> ValidateMarketplaceSyncRequest(
+    MarketplaceSyncConfiguration syncConfig,
+    string direcao,
+    string entidade,
+    bool sincronizaPedidos,
+    bool sincronizaProdutos,
+    List<Produto> produtos,
+    List<int> produtoIds)
+{
+    var pendencias = new List<string>(syncConfig.Pendencias);
+    if (entidade is not ("pedidos" or "produtos" or "catalogo" or "todos"))
+    {
+        pendencias.Add("Entidade suportada: pedidos, produtos, catalogo ou todos.");
+    }
+
+    if (!sincronizaPedidos && !sincronizaProdutos)
+    {
+        pendencias.Add("Combinacao de direcao e entidade nao executa sincronizacao real. Use pull/pedidos, push/produtos, push/catalogo ou bidirecional/todos.");
+    }
+
+    if (sincronizaPedidos)
+    {
+        if (syncConfig.PedidosEndpoint is null)
+        {
+            pendencias.Add($"Configure {MarketplaceConfigPrefix(syncConfig.Canal)}__PedidosPath real.");
+        }
+    }
+
+    if (sincronizaProdutos)
+    {
+        if (syncConfig.ProdutosEndpoint is null)
+        {
+            pendencias.Add($"Configure {MarketplaceConfigPrefix(syncConfig.Canal)}__ProdutosPath real.");
+        }
+
+        if (produtoIds.Count == 0)
+        {
+            pendencias.Add("Envio de produtos exige produto_ids explicitos para evitar publicacao acidental.");
+        }
+
+        if (produtos.Count == 0)
+        {
+            pendencias.Add("Nenhum produto ativo/publicavel encontrado para os produto_ids informados.");
+        }
+
+        if (syncConfig.Canal == "mercadolivre" && string.IsNullOrWhiteSpace(produtos.FirstOrDefault()?.Nome))
+        {
+            pendencias.Add("Produto Mercado Livre exige titulo real.");
+        }
+    }
+
+    return pendencias.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+}
+
+static bool ShouldSyncMarketplacePedidos(string direcao, string entidade) =>
+    (direcao is "pull" or "bidirecional") && (entidade is "pedidos" or "todos");
+
+static bool ShouldSyncMarketplaceProdutos(string direcao, string entidade) =>
+    (direcao is "push" or "bidirecional") && (entidade is "produtos" or "catalogo" or "todos");
+
+static async Task<MarketplaceHttpResult> SendMarketplaceRequestAsync(
+    HttpClient client,
+    HttpMethod method,
+    Uri endpoint,
+    string token,
+    object? payload,
+    CancellationToken ct)
+{
+    try
+    {
+        using var request = new HttpRequestMessage(method, endpoint);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        if (payload is not null)
+        {
+            request.Content = JsonContent.Create(payload, options: new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        }
+
+        using var response = await client.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            return new MarketplaceHttpResult(false, body, [$"Marketplace retornou HTTP {(int)response.StatusCode} em {endpoint.Host}."]);
+        }
+
+        return new MarketplaceHttpResult(true, body, []);
+    }
+    catch (Exception ex)
+    {
+        return new MarketplaceHttpResult(false, null, [$"Falha real ao chamar marketplace externo: {ex.Message}"]);
+    }
+}
+
+static object BuildMarketplaceProductPayload(string canalNormalizado, List<Produto> produtos, string? categoriaExterna)
+{
+    if (canalNormalizado == "mercadolivre")
+    {
+        var produto = produtos.First();
+        return new
+        {
+            title = produto.Nome,
+            category_id = categoriaExterna,
+            price = produto.PrecoPromocional ?? produto.Preco,
+            currency_id = "BRL",
+            available_quantity = Math.Max(0, produto.EstoqueAtual - produto.EstoqueReservado),
+            buying_mode = "buy_it_now",
+            listing_type_id = "gold_special",
+            condition = "new"
+        };
+    }
+
+    return new
+    {
+        produtos = produtos.Select(produto => new
+        {
+            sku = produto.Sku,
+            nome = produto.Nome,
+            descricao = produto.DescricaoLonga ?? produto.DescricaoCurta,
+            preco = produto.PrecoPromocional ?? produto.Preco,
+            estoque = Math.Max(0, produto.EstoqueAtual - produto.EstoqueReservado),
+            peso = produto.Peso,
+            altura = produto.Altura,
+            largura = produto.Largura,
+            comprimento = produto.Comprimento,
+            codigo_barras = produto.CodigoBarras
+        }).ToList()
+    };
+}
+
+static Uri? BuildMarketplaceEndpoint(Uri? baseUri, string? path, string? sellerId, int limite)
+{
+    if (baseUri is null || !IsConfiguredSecret(path))
+    {
+        return null;
+    }
+
+    var resolved = path!
+        .Replace("{sellerId}", Uri.EscapeDataString(sellerId ?? string.Empty), StringComparison.OrdinalIgnoreCase)
+        .Replace("{seller_id}", Uri.EscapeDataString(sellerId ?? string.Empty), StringComparison.OrdinalIgnoreCase)
+        .Replace("{limite}", limite.ToString(CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase)
+        .Replace("{limit}", limite.ToString(CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase);
+
+    return Uri.TryCreate(resolved, UriKind.Absolute, out var absolute)
+        ? absolute
+        : new Uri(baseUri, resolved.TrimStart('/'));
+}
+
+static int CountMarketplaceJsonItems(string? body)
+{
+    if (string.IsNullOrWhiteSpace(body))
+    {
+        return 0;
+    }
+
+    try
+    {
+        using var document = JsonDocument.Parse(body);
+        var root = document.RootElement;
+        if (root.ValueKind == JsonValueKind.Array)
+        {
+            return root.GetArrayLength();
+        }
+
+        foreach (var name in new[] { "results", "orders", "items", "produtos", "pedidos", "data" })
+        {
+            if (root.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.Array)
+            {
+                return property.GetArrayLength();
+            }
+        }
+
+        return root.ValueKind == JsonValueKind.Object ? 1 : 0;
+    }
+    catch
+    {
+        return 0;
+    }
+}
+
+static string? ResolveMarketplaceToken(IConfiguration configuration, Marketplace? marketplace, string canalNormalizado) =>
+    GetIntegrationValue(
+        configuration,
+        $"{MarketplaceConfigPrefix(canalNormalizado)}:AccessToken",
+        $"Integracoes:{MarketplaceConfigPrefix(canalNormalizado)}:AccessToken",
+        $"{MarketplaceConfigPrefix(canalNormalizado)}:Token",
+        $"Integracoes:{MarketplaceConfigPrefix(canalNormalizado)}:Token") ?? marketplace?.AccessToken;
+
+static string? ResolveMarketplaceSellerId(IConfiguration configuration, Marketplace? marketplace, string canalNormalizado) =>
+    GetIntegrationValue(
+        configuration,
+        $"{MarketplaceConfigPrefix(canalNormalizado)}:SellerId",
+        $"Integracoes:{MarketplaceConfigPrefix(canalNormalizado)}:SellerId",
+        $"{MarketplaceConfigPrefix(canalNormalizado)}:ShopId",
+        $"Integracoes:{MarketplaceConfigPrefix(canalNormalizado)}:ShopId") ?? marketplace?.SellerId;
+
+static string? ResolveMarketplaceEndpointBase(IConfiguration configuration, string canalNormalizado) =>
+    GetIntegrationValue(
+        configuration,
+        $"{MarketplaceConfigPrefix(canalNormalizado)}:EndpointBase",
+        $"Integracoes:{MarketplaceConfigPrefix(canalNormalizado)}:EndpointBase",
+        $"{MarketplaceConfigPrefix(canalNormalizado)}:ApiEndpoint",
+        $"Integracoes:{MarketplaceConfigPrefix(canalNormalizado)}:ApiEndpoint");
+
+static string? ResolveMarketplacePath(IConfiguration configuration, string canalNormalizado, string key) =>
+    GetIntegrationValue(
+        configuration,
+        $"{MarketplaceConfigPrefix(canalNormalizado)}:{key}",
+        $"Integracoes:{MarketplaceConfigPrefix(canalNormalizado)}:{key}");
+
+static string MarketplaceConfigPrefix(string canalNormalizado) =>
+    canalNormalizado switch
+    {
+        "mercadolivre" => "MercadoLivre",
+        "b2w" => "B2W",
+        "via" => "Via",
+        _ => canalNormalizado
+    };
+
+static string? NormalizeMarketplaceChannel(string? canal)
+{
+    var normalized = NormalizeIntegrationSlug(canal ?? string.Empty);
+    return normalized switch
+    {
+        "mercadolivre" or "ml" => "mercadolivre",
+        "b2w" or "americanas" => "b2w",
+        "via" or "viavarejo" or "casasbahia" or "ponto" => "via",
+        _ => null
+    };
+}
+
+static string NormalizeMarketplaceDirection(string? direcao)
+{
+    var normalized = NormalizeIntegrationSlug(direcao ?? "pull");
+    return normalized switch
+    {
+        "push" or "envio" or "enviar" => "push",
+        "bidirectional" or "bidirecional" or "ambos" => "bidirecional",
+        _ => "pull"
+    };
+}
+
 static void ApplyMercadoPagoStatus(string status, Pagamento pagamento)
 {
     var normalized = status.Trim().ToLowerInvariant();
@@ -16302,6 +16725,49 @@ public sealed record IntegracaoCredencialDto(
     string Chave,
     string Uso,
     bool Obrigatoria);
+
+public sealed record MarketplaceSyncRequest(
+    [property: JsonPropertyName("direcao")] string? Direcao,
+    [property: JsonPropertyName("entidade")] string? Entidade,
+    [property: JsonPropertyName("limite")] int? Limite,
+    [property: JsonPropertyName("produto_ids")] List<int>? ProdutoIds,
+    [property: JsonPropertyName("categoria_externa")] string? CategoriaExterna,
+    [property: JsonPropertyName("forcar")] bool? Forcar);
+
+public sealed record MarketplaceSyncResultadoDto(
+    bool Sucesso,
+    string Canal,
+    string Direcao,
+    string Entidade,
+    bool Configurada,
+    bool Operacional,
+    int ProdutosLocaisElegiveis,
+    int RegistrosExternosLidos,
+    int ProdutosExternosEnviados,
+    string? ProviderHost,
+    List<string> Pendencias,
+    DateTime ExecutadoEm);
+
+public sealed record MarketplaceSyncConfiguration(
+    string Canal,
+    string? EndpointBase,
+    Uri? PedidosEndpoint,
+    Uri? ProdutosEndpoint,
+    string? Token,
+    string? SellerId,
+    string? ProviderHost,
+    List<string> Pendencias)
+{
+    public bool Configurada => PedidosEndpoint is not null &&
+        !string.IsNullOrWhiteSpace(Token) &&
+        !string.IsNullOrWhiteSpace(SellerId) &&
+        Pendencias.Count == 0;
+}
+
+public sealed record MarketplaceHttpResult(
+    bool Sucesso,
+    string? Body,
+    List<string> Pendencias);
 
 public sealed record SiteConfiguracaoItemDto(
     int Id,
