@@ -14,6 +14,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Data;
 using System.Text;
 using System.Text.Json;
@@ -210,6 +211,11 @@ builder.Services.AddHttpClient("mercado-livre", client =>
 {
     client.BaseAddress = new Uri("https://api.mercadolibre.com/");
     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+});
+builder.Services.AddHttpClient("fiscal-sefaz", client =>
+{
+    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("GenesisGest.Net/1.1.5");
 });
 builder.Services.AddHttpClient("Notificacoes", client =>
 {
@@ -6445,6 +6451,14 @@ app.MapGet("/api/integracoes/credenciais-modelo", [Authorize(Policy = "Gerente")
         new("Mercado Livre", "marketplace", "MercadoLivre__ClientSecret", "Segredo do aplicativo Mercado Livre.", true),
         new("Mercado Livre", "marketplace", "MercadoLivre__RedirectUri", "URL de retorno cadastrada exatamente no Mercado Livre.", true),
         new("Mercado Livre", "marketplace", "MercadoLivre__AccessToken", "Token do vendedor após autorizar o aplicativo.", false),
+        new("Fiscal SEFAZ", "fiscal", "FiscalSefaz__Provider", "Nome do provedor de emissão autorizado para NF-e/NFC-e.", true),
+        new("Fiscal SEFAZ", "fiscal", "FiscalSefaz__EndpointBase", "Endpoint base real do emissor fiscal homologado ou produção.", true),
+        new("Fiscal SEFAZ", "fiscal", "FiscalSefaz__Token", "Token privado do emissor fiscal externo.", true),
+        new("Fiscal SEFAZ", "fiscal", "FiscalSefaz__EmitirNfePath / FiscalSefaz__EmitirNfcePath", "Rotas reais do provedor para transmissão de NF-e e NFC-e.", true),
+        new("Fiscal SEFAZ", "fiscal", "FiscalSefaz__CancelarPath / FiscalSefaz__InutilizarPath / FiscalSefaz__CartaCorrecaoPath", "Rotas reais do provedor para eventos fiscais.", false),
+        new("Certificado NF-e", "fiscal", "CertificadoNFe__Tipo / CertificadoNFe__Cnpj", "Tipo A1/A3 e CNPJ do certificado fiscal da empresa emitente.", true),
+        new("Certificado NF-e", "fiscal", "CertificadoNFe__ArquivoPfx / CertificadoNFe__Senha", "Arquivo PFX e senha quando o certificado for A1.", false),
+        new("Certificado NF-e", "fiscal", "CertificadoNFe__Thumbprint", "Identificador do certificado instalado quando o certificado for A3.", false),
         new("Integrações bancárias", "bancaria", "Banco__Provider / Banco__ClientId / Banco__ClientSecret", "Credenciais do banco ou PSP escolhido para conciliação.", false)
     };
 
@@ -7520,6 +7534,15 @@ app.MapPut("/api/fiscal/pedidos/{id}/status", [Authorize(Policy = "Gerente")] as
     }
 
     var statusAnterior = fiscal.StatusNfe;
+
+    if (novoStatus is StatusNfe.Emitida or StatusNfe.Autorizada &&
+        (string.IsNullOrWhiteSpace(fiscal.ChaveAcesso) ||
+         string.IsNullOrWhiteSpace(fiscal.Protocolo) ||
+         fiscal.DataEmissao is null))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Status fiscal de emissao/autorizacao exige chave, protocolo e data gerados por provedor SEFAZ real. Use /api/fiscal/nfe/emitir ou /api/fiscal/nfce/emitir."));
+    }
+
     fiscal.StatusNfe = novoStatus;
     fiscal.UpdatedAt = DateTime.UtcNow;
 
@@ -7554,6 +7577,76 @@ app.MapPut("/api/fiscal/pedidos/{id}/status", [Authorize(Policy = "Gerente")] as
     return Results.Ok(ApiResponse<string>.Ok("Status fiscal atualizado com sucesso."));
 })
 .WithName("AtualizarStatusFiscal")
+;
+
+app.MapPost("/api/fiscal/nfe/emitir", [Authorize(Policy = "Fiscal")] async (
+    FiscalEmissaoRequest request,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct) =>
+    await EmitirDocumentoFiscalAsync("NFe", request, configuration, db, httpClientFactory, ct))
+.WithName("FiscalNfeEmitir")
+;
+
+app.MapPost("/api/fiscal/nfce/emitir", [Authorize(Policy = "Fiscal")] async (
+    FiscalEmissaoRequest request,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct) =>
+    await EmitirDocumentoFiscalAsync("NFCe", request, configuration, db, httpClientFactory, ct))
+.WithName("FiscalNfceEmitir")
+;
+
+app.MapPost("/api/fiscal/nfe/cancelar", [Authorize(Policy = "Fiscal")] async (
+    FiscalOperacaoRequest request,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct) =>
+    await ExecutarOperacaoDocumentoFiscalAsync("NFe", "cancelar", request, configuration, db, httpClientFactory, ct))
+.WithName("FiscalNfeCancelar")
+;
+
+app.MapPost("/api/fiscal/nfce/cancelar", [Authorize(Policy = "Fiscal")] async (
+    FiscalOperacaoRequest request,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct) =>
+    await ExecutarOperacaoDocumentoFiscalAsync("NFCe", "cancelar", request, configuration, db, httpClientFactory, ct))
+.WithName("FiscalNfceCancelar")
+;
+
+app.MapPost("/api/fiscal/nfe/inutilizar", [Authorize(Policy = "Fiscal")] async (
+    FiscalOperacaoRequest request,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct) =>
+    await ExecutarOperacaoDocumentoFiscalAsync("NFe", "inutilizar", request, configuration, db, httpClientFactory, ct))
+.WithName("FiscalNfeInutilizar")
+;
+
+app.MapPost("/api/fiscal/nfce/inutilizar", [Authorize(Policy = "Fiscal")] async (
+    FiscalOperacaoRequest request,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct) =>
+    await ExecutarOperacaoDocumentoFiscalAsync("NFCe", "inutilizar", request, configuration, db, httpClientFactory, ct))
+.WithName("FiscalNfceInutilizar")
+;
+
+app.MapPost("/api/fiscal/nfe/cartacorrecao", [Authorize(Policy = "Fiscal")] async (
+    FiscalOperacaoRequest request,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct) =>
+    await ExecutarOperacaoDocumentoFiscalAsync("NFe", "cartacorrecao", request, configuration, db, httpClientFactory, ct))
+.WithName("FiscalNfeCartaCorrecao")
 ;
 
 app.MapPost("/api/fiscal/simular-roteamento", [Authorize(Policy = "Gerente")] async (
@@ -7745,6 +7838,997 @@ app.MapGet("/api/fiscal/rascunho-manual", [Authorize(Policy = "Gerente")] async 
 })
 .WithName("FiscalObterRascunhoManual")
 ;
+
+static async Task<IResult> EmitirDocumentoFiscalAsync(
+    string modeloDocumento,
+    FiscalEmissaoRequest request,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct)
+{
+    var modelo = NormalizeFiscalModel(modeloDocumento);
+    var fiscal = await LoadFiscalAggregateAsync(db, request.FiscalId, request.PedidoId, ct);
+    if (fiscal is null && request.PedidoId is not null)
+    {
+        fiscal = await CreateFiscalFromPedidoAsync(db, request.PedidoId.Value, request.EmpresaGrupoId, modelo, ct);
+    }
+
+    if (fiscal is null)
+    {
+        return Results.NotFound(ApiResponse<FiscalOperacaoResultadoDto>.Erro("Informe um fiscal_id ou pedido_id existente para emissao fiscal."));
+    }
+
+    if (fiscal.Pedido is null)
+    {
+        return Results.BadRequest(ApiResponse<FiscalOperacaoResultadoDto>.Erro("Registro fiscal sem pedido vinculado. Corrija o cadastro antes da emissao."));
+    }
+
+    if (fiscal.StatusNfe == StatusNfe.Autorizada && request.ForceReissue != true)
+    {
+        return Results.Conflict(ApiResponse<FiscalOperacaoResultadoDto>.Erro("Documento fiscal ja autorizado. Reemissao exige force_reissue=true e decisao operacional registrada."));
+    }
+
+    var empresa = await ResolveFiscalCompanyAsync(db, fiscal, request.EmpresaGrupoId, ct);
+    var certificado = TestCertificadoNFe(configuration);
+    var pendencias = ValidateFiscalEmission(fiscal, fiscal.Pedido, empresa, certificado, modelo);
+    var provider = ResolveFiscalProviderConfiguration(configuration, modelo, "emitir");
+    pendencias.AddRange(provider.Pendencias);
+
+    if (pendencias.Count > 0)
+    {
+        var bloqueio = BuildFiscalOperationResult(
+            false,
+            fiscal,
+            modelo,
+            "emitir",
+            provider.Provider,
+            provider.Endpoint?.Host,
+            null,
+            pendencias,
+            DateTime.UtcNow);
+
+        fiscal.StatusAutomacao = "Emissao bloqueada por pendencia operacional real.";
+        fiscal.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+
+        return Results.Json(
+            new ApiResponse<FiscalOperacaoResultadoDto>(false, "Emissao fiscal bloqueada. Nenhum sucesso foi registrado.", bloqueio, pendencias),
+            statusCode: StatusCodes.Status424FailedDependency);
+    }
+
+    var payload = BuildFiscalEmissionPayload(fiscal, fiscal.Pedido, empresa!, certificado, modelo, request);
+    var providerResult = await SendFiscalProviderRequestAsync(provider, payload, httpClientFactory, ct);
+
+    if (!providerResult.HttpSucceeded)
+    {
+        var falha = BuildFiscalOperationResult(
+            false,
+            fiscal,
+            modelo,
+            "emitir",
+            provider.Provider,
+            provider.Endpoint?.Host,
+            providerResult.StatusCode,
+            providerResult.Pendencias,
+            DateTime.UtcNow);
+
+        fiscal.StatusAutomacao = "Provedor fiscal recusou a emissao.";
+        fiscal.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+
+        return Results.Json(
+            new ApiResponse<FiscalOperacaoResultadoDto>(false, "Provedor fiscal recusou a emissao. Banco preservado sem sucesso fiscal.", falha, providerResult.Pendencias),
+            statusCode: StatusCodes.Status502BadGateway);
+    }
+
+    var parsed = ParseFiscalProviderResponse(providerResult.Body);
+    ApplyFiscalEmissionResult(fiscal, empresa!, modelo, parsed, providerResult);
+    await db.SaveChangesAsync(ct);
+
+    var resultado = BuildFiscalOperationResult(
+        true,
+        fiscal,
+        modelo,
+        "emitir",
+        provider.Provider,
+        provider.Endpoint?.Host,
+        providerResult.StatusCode,
+        parsed.Pendencias,
+        DateTime.UtcNow);
+
+    return Results.Ok(ApiResponse<FiscalOperacaoResultadoDto>.Ok(resultado, fiscal.StatusNfe == StatusNfe.Autorizada
+        ? "Documento fiscal autorizado por provedor externo."
+        : "Documento fiscal transmitido ao provedor externo."));
+}
+
+static async Task<IResult> ExecutarOperacaoDocumentoFiscalAsync(
+    string modeloDocumento,
+    string operacaoDocumento,
+    FiscalOperacaoRequest request,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct)
+{
+    var modelo = NormalizeFiscalModel(modeloDocumento);
+    var operacao = NormalizeFiscalOperation(operacaoDocumento);
+    var fiscal = await LoadFiscalAggregateAsync(db, request.FiscalId, request.PedidoId, ct);
+    if (fiscal is null)
+    {
+        return Results.NotFound(ApiResponse<FiscalOperacaoResultadoDto>.Erro("Operacao fiscal exige fiscal_id ou pedido_id com documento gravado."));
+    }
+
+    var empresa = await ResolveFiscalCompanyAsync(db, fiscal, request.EmpresaGrupoId, ct);
+    var pendencias = ValidateFiscalEvent(fiscal, empresa, modelo, operacao, request);
+    var provider = ResolveFiscalProviderConfiguration(configuration, modelo, operacao);
+    pendencias.AddRange(provider.Pendencias);
+
+    if (pendencias.Count > 0)
+    {
+        var bloqueio = BuildFiscalOperationResult(
+            false,
+            fiscal,
+            modelo,
+            operacao,
+            provider.Provider,
+            provider.Endpoint?.Host,
+            null,
+            pendencias,
+            DateTime.UtcNow);
+
+        return Results.Json(
+            new ApiResponse<FiscalOperacaoResultadoDto>(false, "Operacao fiscal bloqueada. Nenhum sucesso foi registrado.", bloqueio, pendencias),
+            statusCode: StatusCodes.Status424FailedDependency);
+    }
+
+    var payload = BuildFiscalEventPayload(fiscal, empresa!, modelo, operacao, request);
+    var providerResult = await SendFiscalProviderRequestAsync(provider, payload, httpClientFactory, ct);
+
+    if (!providerResult.HttpSucceeded)
+    {
+        var falha = BuildFiscalOperationResult(
+            false,
+            fiscal,
+            modelo,
+            operacao,
+            provider.Provider,
+            provider.Endpoint?.Host,
+            providerResult.StatusCode,
+            providerResult.Pendencias,
+            DateTime.UtcNow);
+
+        return Results.Json(
+            new ApiResponse<FiscalOperacaoResultadoDto>(false, "Provedor fiscal recusou a operacao. Banco preservado sem sucesso fiscal.", falha, providerResult.Pendencias),
+            statusCode: StatusCodes.Status502BadGateway);
+    }
+
+    var parsed = ParseFiscalProviderResponse(providerResult.Body);
+    ApplyFiscalEventResult(fiscal, operacao, parsed, providerResult, request);
+    await db.SaveChangesAsync(ct);
+
+    var resultado = BuildFiscalOperationResult(
+        true,
+        fiscal,
+        modelo,
+        operacao,
+        provider.Provider,
+        provider.Endpoint?.Host,
+        providerResult.StatusCode,
+        parsed.Pendencias,
+        DateTime.UtcNow);
+
+    return Results.Ok(ApiResponse<FiscalOperacaoResultadoDto>.Ok(resultado, "Operacao fiscal confirmada pelo provedor externo."));
+}
+
+static async Task<Fiscal?> LoadFiscalAggregateAsync(NexumDbContext db, int? fiscalId, int? pedidoId, CancellationToken ct)
+{
+    var query = db.Fiscais
+        .Include(item => item.Pedido)
+            .ThenInclude(pedido => pedido!.Cliente)
+        .Include(item => item.Pedido)
+            .ThenInclude(pedido => pedido!.EnderecoEntrega)
+        .Include(item => item.Pedido)
+            .ThenInclude(pedido => pedido!.Itens!)
+                .ThenInclude(item => item.Produto)
+        .AsQueryable();
+
+    if (fiscalId is not null)
+    {
+        return await query.FirstOrDefaultAsync(item => item.Id == fiscalId.Value, ct);
+    }
+
+    if (pedidoId is not null)
+    {
+        return await query.FirstOrDefaultAsync(item => item.PedidoId == pedidoId.Value, ct);
+    }
+
+    return null;
+}
+
+static async Task<Fiscal?> CreateFiscalFromPedidoAsync(NexumDbContext db, int pedidoId, int? empresaGrupoId, string modeloDocumento, CancellationToken ct)
+{
+    var pedido = await db.Pedidos
+        .Include(item => item.Cliente)
+        .Include(item => item.EnderecoEntrega)
+        .Include(item => item.Itens!)
+            .ThenInclude(item => item.Produto)
+        .FirstOrDefaultAsync(item => item.Id == pedidoId, ct);
+
+    if (pedido is null)
+    {
+        return null;
+    }
+
+    var empresa = empresaGrupoId is not null
+        ? await db.EmpresasGrupo.FirstOrDefaultAsync(item => item.Id == empresaGrupoId.Value && item.Ativa, ct)
+        : await db.EmpresasGrupo
+            .Where(item => item.Ativa && item.PermiteNfeSaida)
+            .OrderByDescending(item => item.EmitentePreferencial)
+            .ThenBy(item => item.PrioridadeFiscal)
+            .FirstOrDefaultAsync(ct);
+
+    var fiscal = new Fiscal
+    {
+        PedidoId = pedido.Id,
+        EmpresaGrupoId = empresa?.Id,
+        EmpresaEmitente = empresa?.RazaoSocial,
+        CodigoEmpresaEmitente = empresa?.CodigoEmpresa,
+        CnpjEmitente = empresa?.Cnpj,
+        NumeroNfe = modeloDocumento == "NFCe" ? empresa?.ProximaNfceNumero?.ToString(CultureInfo.InvariantCulture) : empresa?.ProximaNfeNumero?.ToString(CultureInfo.InvariantCulture),
+        Serie = modeloDocumento == "NFCe" ? empresa?.SerieNfce : empresa?.SerieNfe,
+        ValorTotal = pedido.Total,
+        Cfop = string.Equals(empresa?.Estado, pedido.EnderecoEntrega?.Estado, StringComparison.OrdinalIgnoreCase)
+            ? empresa?.CfopPadraoInterno
+            : empresa?.CfopPadraoInterestadual,
+        NaturezaOperacao = empresa?.NaturezaOperacaoPadrao ?? "Venda de mercadoria",
+        ModeloDocumento = modeloDocumento,
+        AmbienteDocumento = modeloDocumento == "NFCe" ? empresa?.AmbienteNfce ?? empresa?.AmbienteNfe : empresa?.AmbienteNfe,
+        StatusNfe = StatusNfe.Pendente,
+        StatusAutomacao = "Pre-emissao fiscal criada a partir do pedido real.",
+        ResumoRoteamento = empresa is null ? "Empresa emitente pendente." : $"Emitente fiscal selecionado: {empresa.RazaoSocial}.",
+        PayloadOperacao = JsonSerializer.Serialize(new
+        {
+            pedido.Id,
+            pedido.NumeroPedido,
+            pedido.Total,
+            pedido.Subtotal,
+            pedido.FreteValor,
+            cliente = pedido.Cliente is null ? null : new { pedido.Cliente.Id, pedido.Cliente.Nome, pedido.Cliente.Email, pedido.Cliente.CpfCnpj },
+            enderecoEntrega = pedido.EnderecoEntrega,
+            itens = pedido.Itens?.Select(item => new { item.ProdutoId, item.SkuProduto, item.NomeProduto, item.Quantidade, item.PrecoUnitario, item.PrecoTotal }).ToList()
+        }, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow,
+        Pedido = pedido
+    };
+
+    db.Fiscais.Add(fiscal);
+    await db.SaveChangesAsync(ct);
+    return fiscal;
+}
+
+static async Task<EmpresaGrupo?> ResolveFiscalCompanyAsync(NexumDbContext db, Fiscal fiscal, int? empresaGrupoId, CancellationToken ct)
+{
+    var id = empresaGrupoId ?? fiscal.EmpresaGrupoId;
+    if (id is not null)
+    {
+        var empresa = await db.EmpresasGrupo.FirstOrDefaultAsync(item => item.Id == id.Value && item.Ativa, ct);
+        if (empresa is not null)
+        {
+            fiscal.EmpresaGrupoId = empresa.Id;
+            fiscal.EmpresaEmitente = empresa.RazaoSocial;
+            fiscal.CodigoEmpresaEmitente = empresa.CodigoEmpresa;
+            fiscal.CnpjEmitente = empresa.Cnpj;
+            return empresa;
+        }
+    }
+
+    var cnpj = OnlyDigits(fiscal.CnpjEmitente);
+    if (!string.IsNullOrWhiteSpace(cnpj))
+    {
+        var empresaPorCnpj = await db.EmpresasGrupo.FirstOrDefaultAsync(item => item.Ativa && item.Cnpj.Replace(".", "").Replace("/", "").Replace("-", "") == cnpj, ct);
+        if (empresaPorCnpj is not null)
+        {
+            fiscal.EmpresaGrupoId = empresaPorCnpj.Id;
+            return empresaPorCnpj;
+        }
+    }
+
+    return await db.EmpresasGrupo
+        .Where(item => item.Ativa && item.PermiteNfeSaida)
+        .OrderByDescending(item => item.EmitentePreferencial)
+        .ThenBy(item => item.PrioridadeFiscal)
+        .FirstOrDefaultAsync(ct);
+}
+
+static List<string> ValidateFiscalEmission(Fiscal fiscal, Pedido pedido, EmpresaGrupo? empresa, IntegracaoDiagnosticoDto certificado, string modeloDocumento)
+{
+    var pendencias = new List<string>();
+    if (empresa is null)
+    {
+        pendencias.Add("Cadastre uma empresa emitente ativa em erp_empresas_grupo.");
+    }
+    else
+    {
+        if (!empresa.PermiteNfeSaida)
+        {
+            pendencias.Add("Empresa emitente nao permite NF-e/NFC-e de saida.");
+        }
+
+        if (string.IsNullOrWhiteSpace(empresa.Cnpj))
+        {
+            pendencias.Add("Empresa emitente sem CNPJ.");
+        }
+
+        if (string.IsNullOrWhiteSpace(empresa.InscricaoEstadual))
+        {
+            pendencias.Add("Empresa emitente sem inscricao estadual.");
+        }
+
+        if (modeloDocumento == "NFCe")
+        {
+            if (string.IsNullOrWhiteSpace(empresa.SerieNfce))
+            {
+                pendencias.Add("Empresa sem serie NFC-e configurada.");
+            }
+
+            if (empresa.ProximaNfceNumero is null or <= 0)
+            {
+                pendencias.Add("Empresa sem proximo numero NFC-e valido.");
+            }
+
+            if (string.IsNullOrWhiteSpace(empresa.NfceCsc) || string.IsNullOrWhiteSpace(empresa.NfceCscIdToken))
+            {
+                pendencias.Add("NFC-e exige CSC e id token reais da SEFAZ.");
+            }
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(empresa.SerieNfe))
+            {
+                pendencias.Add("Empresa sem serie NF-e configurada.");
+            }
+
+            if (empresa.ProximaNfeNumero is null or <= 0)
+            {
+                pendencias.Add("Empresa sem proximo numero NF-e valido.");
+            }
+        }
+    }
+
+    if (!certificado.Operacional)
+    {
+        pendencias.AddRange(certificado.Pendencias);
+    }
+
+    if (pedido.Cliente is null)
+    {
+        pendencias.Add("Pedido sem cliente carregado para destinatario fiscal.");
+    }
+    else if (string.IsNullOrWhiteSpace(pedido.Cliente.CpfCnpj))
+    {
+        pendencias.Add("Cliente destinatario sem CPF/CNPJ.");
+    }
+
+    if (pedido.EnderecoEntrega is null)
+    {
+        pendencias.Add("Pedido sem endereco de entrega fiscal.");
+    }
+    else
+    {
+        if (string.IsNullOrWhiteSpace(pedido.EnderecoEntrega.Cep)) pendencias.Add("Endereco fiscal sem CEP.");
+        if (string.IsNullOrWhiteSpace(pedido.EnderecoEntrega.Logradouro)) pendencias.Add("Endereco fiscal sem logradouro.");
+        if (string.IsNullOrWhiteSpace(pedido.EnderecoEntrega.Numero)) pendencias.Add("Endereco fiscal sem numero.");
+        if (string.IsNullOrWhiteSpace(pedido.EnderecoEntrega.Cidade)) pendencias.Add("Endereco fiscal sem cidade.");
+        if (string.IsNullOrWhiteSpace(pedido.EnderecoEntrega.Estado)) pendencias.Add("Endereco fiscal sem UF.");
+    }
+
+    if (pedido.Itens is null || pedido.Itens.Count == 0)
+    {
+        pendencias.Add("Pedido sem itens para emissao fiscal.");
+    }
+
+    if ((fiscal.ValorTotal ?? pedido.Total) <= 0)
+    {
+        pendencias.Add("Valor fiscal total precisa ser maior que zero.");
+    }
+
+    if (string.IsNullOrWhiteSpace(fiscal.Cfop) && string.IsNullOrWhiteSpace(empresa?.CfopPadraoInterno) && string.IsNullOrWhiteSpace(empresa?.CfopPadraoInterestadual))
+    {
+        pendencias.Add("CFOP fiscal nao configurado no documento nem na empresa emitente.");
+    }
+
+    return pendencias.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+}
+
+static List<string> ValidateFiscalEvent(Fiscal fiscal, EmpresaGrupo? empresa, string modeloDocumento, string operacao, FiscalOperacaoRequest request)
+{
+    var pendencias = new List<string>();
+    if (empresa is null)
+    {
+        pendencias.Add("Operacao fiscal exige empresa emitente ativa.");
+    }
+
+    if (fiscal.ModeloDocumento is not null && !string.Equals(NormalizeFiscalModel(fiscal.ModeloDocumento), modeloDocumento, StringComparison.OrdinalIgnoreCase))
+    {
+        pendencias.Add($"Documento fiscal gravado como {fiscal.ModeloDocumento}; rota solicitada para {modeloDocumento}.");
+    }
+
+    if (operacao is "cancelar" or "cartacorrecao")
+    {
+        if (string.IsNullOrWhiteSpace(fiscal.ChaveAcesso) && string.IsNullOrWhiteSpace(request.ChaveAcesso))
+        {
+            pendencias.Add("Operacao exige chave de acesso autorizada.");
+        }
+
+        if (operacao == "cancelar" && string.IsNullOrWhiteSpace(request.Motivo))
+        {
+            pendencias.Add("Cancelamento exige motivo fiscal.");
+        }
+
+        if (operacao == "cartacorrecao" && string.IsNullOrWhiteSpace(request.TextoCorrecao))
+        {
+            pendencias.Add("Carta de correcao exige texto de correcao.");
+        }
+    }
+
+    if (operacao == "inutilizar")
+    {
+        if (string.IsNullOrWhiteSpace(request.Serie) && string.IsNullOrWhiteSpace(fiscal.Serie))
+        {
+            pendencias.Add("Inutilizacao exige serie fiscal.");
+        }
+
+        if (request.NumeroInicial is null or <= 0)
+        {
+            pendencias.Add("Inutilizacao exige numero_inicial positivo.");
+        }
+
+        if (request.NumeroFinal is null or <= 0)
+        {
+            pendencias.Add("Inutilizacao exige numero_final positivo.");
+        }
+
+        if (request.NumeroInicial is not null && request.NumeroFinal is not null && request.NumeroFinal < request.NumeroInicial)
+        {
+            pendencias.Add("numero_final nao pode ser menor que numero_inicial.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Motivo))
+        {
+            pendencias.Add("Inutilizacao exige motivo fiscal.");
+        }
+    }
+
+    return pendencias.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+}
+
+static FiscalProviderConfiguration ResolveFiscalProviderConfiguration(IConfiguration configuration, string modeloDocumento, string operacao)
+{
+    var provider = GetIntegrationValue(
+        configuration,
+        "FiscalSefaz:Provider",
+        "Integracoes:FiscalSefaz:Provider",
+        "NFeIo:Provider",
+        "DFe:Provider") ?? "FiscalSefaz";
+    var endpointBase = GetIntegrationValue(
+        configuration,
+        "FiscalSefaz:EndpointBase",
+        "Integracoes:FiscalSefaz:EndpointBase",
+        "NFeIo:EndpointBase",
+        "Integracoes:NFeIo:EndpointBase",
+        "DFe:EndpointBase",
+        "Integracoes:DFe:EndpointBase");
+    var token = GetIntegrationValue(
+        configuration,
+        "FiscalSefaz:Token",
+        "Integracoes:FiscalSefaz:Token",
+        "NFeIo:Token",
+        "Integracoes:NFeIo:Token",
+        "DFe:Token",
+        "Integracoes:DFe:Token");
+
+    var operationPath = ResolveFiscalOperationPath(configuration, modeloDocumento, operacao);
+    var pendencias = new List<string>();
+    Uri? endpoint = null;
+
+    if (!IsConfiguredSecret(endpointBase))
+    {
+        pendencias.Add("Configure FiscalSefaz__EndpointBase ou provedor equivalente com endpoint real.");
+    }
+
+    if (!IsConfiguredSecret(operationPath))
+    {
+        pendencias.Add($"Configure a rota real do provedor para {modeloDocumento}/{operacao}.");
+    }
+
+    if (!IsConfiguredSecret(token))
+    {
+        pendencias.Add("Configure FiscalSefaz__Token ou token equivalente do provedor fiscal.");
+    }
+
+    if (pendencias.Count == 0)
+    {
+        endpoint = BuildFiscalProviderEndpoint(endpointBase!, operationPath!);
+        if (endpoint is null)
+        {
+            pendencias.Add("Endpoint fiscal configurado nao e uma URL valida.");
+        }
+    }
+
+    return new FiscalProviderConfiguration(provider, endpoint, token, pendencias);
+}
+
+static string? ResolveFiscalOperationPath(IConfiguration configuration, string modeloDocumento, string operacao)
+{
+    var modelKey = modeloDocumento == "NFCe" ? "Nfce" : "Nfe";
+    var operationKey = operacao switch
+    {
+        "emitir" => $"Emitir{modelKey}Path",
+        "cancelar" => "CancelarPath",
+        "inutilizar" => "InutilizarPath",
+        "cartacorrecao" => "CartaCorrecaoPath",
+        _ => $"{operacao}Path"
+    };
+
+    return GetIntegrationValue(
+        configuration,
+        $"FiscalSefaz:{operationKey}",
+        $"Integracoes:FiscalSefaz:{operationKey}",
+        $"NFeIo:{operationKey}",
+        $"Integracoes:NFeIo:{operationKey}",
+        $"DFe:{operationKey}",
+        $"Integracoes:DFe:{operationKey}");
+}
+
+static Uri? BuildFiscalProviderEndpoint(string endpointBase, string operationPath)
+{
+    if (Uri.TryCreate(operationPath, UriKind.Absolute, out var absolute))
+    {
+        return absolute;
+    }
+
+    if (!Uri.TryCreate(endpointBase.TrimEnd('/') + "/", UriKind.Absolute, out var baseUri))
+    {
+        return null;
+    }
+
+    return new Uri(baseUri, operationPath.TrimStart('/'));
+}
+
+static object BuildFiscalEmissionPayload(
+    Fiscal fiscal,
+    Pedido pedido,
+    EmpresaGrupo empresa,
+    IntegracaoDiagnosticoDto certificado,
+    string modeloDocumento,
+    FiscalEmissaoRequest request)
+{
+    return new
+    {
+        sistema = new { nome = "GenesisGest.Net", versao = "1.1.5" },
+        operacao = "emitir",
+        modelo = modeloDocumento,
+        ambiente = modeloDocumento == "NFCe" ? empresa.AmbienteNfce ?? empresa.AmbienteNfe : empresa.AmbienteNfe,
+        fiscal = new
+        {
+            fiscal.Id,
+            fiscal.PedidoId,
+            fiscal.NumeroNfe,
+            fiscal.Serie,
+            fiscal.Cfop,
+            fiscal.NaturezaOperacao,
+            fiscal.ValorTotal,
+            fiscal.ResumoRoteamento
+        },
+        emitente = new
+        {
+            empresa.Id,
+            empresa.RazaoSocial,
+            empresa.NomeFantasia,
+            empresa.Cnpj,
+            empresa.InscricaoEstadual,
+            empresa.InscricaoMunicipal,
+            empresa.RegimeTributario,
+            empresa.Crt,
+            empresa.CnaePrincipal,
+            empresa.Cep,
+            empresa.Logradouro,
+            empresa.Numero,
+            empresa.Complemento,
+            empresa.Bairro,
+            empresa.Cidade,
+            empresa.Estado,
+            serie = modeloDocumento == "NFCe" ? empresa.SerieNfce : empresa.SerieNfe,
+            numero = modeloDocumento == "NFCe" ? empresa.ProximaNfceNumero : empresa.ProximaNfeNumero
+        },
+        destinatario = pedido.Cliente is null ? null : new
+        {
+            pedido.Cliente.Id,
+            pedido.Cliente.Nome,
+            pedido.Cliente.Email,
+            Documento = pedido.Cliente.CpfCnpj,
+            InscricaoEstadual = pedido.Cliente.RgIe,
+            pedido.Cliente.Telefone,
+            Endereco = pedido.EnderecoEntrega
+        },
+        pedido = new
+        {
+            pedido.Id,
+            pedido.NumeroPedido,
+            pedido.Subtotal,
+            pedido.Desconto,
+            pedido.FreteValor,
+            pedido.Total,
+            pedido.MeioPagamento,
+            pedido.GatewayPagamento,
+            pedido.DataPagamento,
+            pedido.CreatedAt
+        },
+        itens = pedido.Itens?.Select((item, index) => new
+        {
+            numeroItem = index + 1,
+            item.ProdutoId,
+            item.SkuProduto,
+            item.NomeProduto,
+            item.Quantidade,
+            item.PrecoUnitario,
+            item.PrecoTotal,
+            item.DescontoItem,
+            codigoBarras = item.Produto?.CodigoBarras,
+            ncm = empresa.NcmPadrao,
+            cfop = fiscal.Cfop ?? empresa.CfopPadraoInterno ?? empresa.CfopPadraoInterestadual
+        }).ToList(),
+        certificado = new
+        {
+            certificado.Status,
+            certificado.Referencia
+        },
+        solicitacao = new
+        {
+            request.ForceReissue,
+            request.ObservacaoOperacional
+        }
+    };
+}
+
+static object BuildFiscalEventPayload(Fiscal fiscal, EmpresaGrupo empresa, string modeloDocumento, string operacao, FiscalOperacaoRequest request)
+{
+    return new
+    {
+        sistema = new { nome = "GenesisGest.Net", versao = "1.1.5" },
+        operacao,
+        modelo = modeloDocumento,
+        ambiente = modeloDocumento == "NFCe" ? empresa.AmbienteNfce ?? empresa.AmbienteNfe : empresa.AmbienteNfe,
+        fiscal = new
+        {
+            fiscal.Id,
+            fiscal.PedidoId,
+            fiscal.NumeroNfe,
+            fiscal.Serie,
+            fiscal.ChaveAcesso,
+            fiscal.Protocolo,
+            fiscal.StatusNfe,
+            fiscal.ValorTotal
+        },
+        emitente = new
+        {
+            empresa.Id,
+            empresa.RazaoSocial,
+            empresa.Cnpj,
+            empresa.InscricaoEstadual,
+            empresa.Estado
+        },
+        evento = new
+        {
+            chaveAcesso = request.ChaveAcesso ?? fiscal.ChaveAcesso,
+            protocolo = request.Protocolo ?? fiscal.Protocolo,
+            request.Motivo,
+            request.NumeroInicial,
+            request.NumeroFinal,
+            serie = request.Serie ?? fiscal.Serie,
+            request.TextoCorrecao
+        }
+    };
+}
+
+static async Task<FiscalProviderResult> SendFiscalProviderRequestAsync(
+    FiscalProviderConfiguration provider,
+    object payload,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct)
+{
+    if (provider.Endpoint is null || !IsConfiguredSecret(provider.Token))
+    {
+        return new FiscalProviderResult(false, null, null, ["Provedor fiscal sem endpoint/token operacional."], null);
+    }
+
+    try
+    {
+        var client = httpClientFactory.CreateClient("fiscal-sefaz");
+        using var request = new HttpRequestMessage(HttpMethod.Post, provider.Endpoint);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", provider.Token);
+        request.Content = JsonContent.Create(payload, options: new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        using var response = await client.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            return new FiscalProviderResult(
+                false,
+                (int)response.StatusCode,
+                body,
+                [$"Provedor fiscal retornou HTTP {(int)response.StatusCode}."],
+                ReadResponseSnippet(body));
+        }
+
+        return new FiscalProviderResult(true, (int)response.StatusCode, body, [], null);
+    }
+    catch (Exception ex)
+    {
+        return new FiscalProviderResult(false, null, null, [$"Falha real ao chamar provedor fiscal: {ex.Message}"], ex.GetType().Name);
+    }
+}
+
+static FiscalProviderParsedResult ParseFiscalProviderResponse(string? body)
+{
+    if (string.IsNullOrWhiteSpace(body))
+    {
+        return new FiscalProviderParsedResult(null, null, null, null, null, null, false, false, ["Provedor respondeu sem corpo JSON."]);
+    }
+
+    try
+    {
+        using var document = JsonDocument.Parse(body);
+        var root = document.RootElement;
+        var status = TryReadFirstStringRecursive(root, "status", "situacao", "situation", "state", "message", "mensagem");
+        var chave = TryReadFirstStringRecursive(root, "chaveAcesso", "chave_acesso", "accessKey", "chave", "key");
+        var protocolo = TryReadFirstStringRecursive(root, "protocolo", "protocol", "authorizationProtocol", "nProt");
+        var numero = TryReadFirstStringRecursive(root, "numero", "numeroNfe", "numero_nf", "number");
+        var serie = TryReadFirstStringRecursive(root, "serie", "series");
+        var xmlUrl = TryReadFirstStringRecursive(root, "xmlUrl", "xml_url", "xml", "urlXml");
+        var danfeUrl = TryReadFirstStringRecursive(root, "danfeUrl", "danfe_url", "pdf", "urlDanfe");
+        var statusNormalized = NormalizeStatusText(status);
+        var autorizado = statusNormalized.Contains("autoriz", StringComparison.OrdinalIgnoreCase) ||
+            statusNormalized.Contains("approved", StringComparison.OrdinalIgnoreCase) ||
+            (!string.IsNullOrWhiteSpace(chave) && !string.IsNullOrWhiteSpace(protocolo));
+        var denegado = statusNormalized.Contains("deneg", StringComparison.OrdinalIgnoreCase) ||
+            statusNormalized.Contains("rejeit", StringComparison.OrdinalIgnoreCase) ||
+            statusNormalized.Contains("reject", StringComparison.OrdinalIgnoreCase);
+
+        return new FiscalProviderParsedResult(chave, protocolo, numero, serie, xmlUrl, danfeUrl, autorizado, denegado, []);
+    }
+    catch (JsonException ex)
+    {
+        return new FiscalProviderParsedResult(null, null, null, null, null, null, false, false, [$"Resposta fiscal nao e JSON valido: {ex.Message}"]);
+    }
+}
+
+static void ApplyFiscalEmissionResult(Fiscal fiscal, EmpresaGrupo empresa, string modeloDocumento, FiscalProviderParsedResult parsed, FiscalProviderResult providerResult)
+{
+    fiscal.ModeloDocumento = modeloDocumento;
+    fiscal.EmpresaGrupoId = empresa.Id;
+    fiscal.EmpresaEmitente = empresa.RazaoSocial;
+    fiscal.CodigoEmpresaEmitente = empresa.CodigoEmpresa;
+    fiscal.CnpjEmitente = empresa.Cnpj;
+    fiscal.NumeroNfe = parsed.Numero ?? fiscal.NumeroNfe ?? (modeloDocumento == "NFCe"
+        ? empresa.ProximaNfceNumero?.ToString(CultureInfo.InvariantCulture)
+        : empresa.ProximaNfeNumero?.ToString(CultureInfo.InvariantCulture));
+    fiscal.Serie = parsed.Serie ?? fiscal.Serie ?? (modeloDocumento == "NFCe" ? empresa.SerieNfce : empresa.SerieNfe);
+    fiscal.ChaveAcesso = parsed.ChaveAcesso ?? fiscal.ChaveAcesso;
+    fiscal.Protocolo = parsed.Protocolo ?? fiscal.Protocolo;
+    fiscal.XmlUrl = IsLikelyUrl(parsed.XmlUrl) ? parsed.XmlUrl : fiscal.XmlUrl;
+    fiscal.DanfeUrl = IsLikelyUrl(parsed.DanfeUrl) ? parsed.DanfeUrl : fiscal.DanfeUrl;
+    fiscal.DataEmissao ??= DateTime.UtcNow;
+    fiscal.StatusNfe = parsed.Denegado ? StatusNfe.Denegada : parsed.Autorizado ? StatusNfe.Autorizada : StatusNfe.Emitida;
+    fiscal.DataAutorizacao = parsed.Autorizado ? DateTime.UtcNow : fiscal.DataAutorizacao;
+    fiscal.StatusAutomacao = parsed.Autorizado
+        ? "Documento autorizado por provedor fiscal externo."
+        : parsed.Denegado
+            ? "Documento denegado ou rejeitado por provedor fiscal externo."
+            : "Documento transmitido ao provedor fiscal externo; aguardando autorizacao.";
+    fiscal.PayloadOperacao = JsonSerializer.Serialize(new
+    {
+        operacao = "emitir",
+        modeloDocumento,
+        providerStatusCode = providerResult.StatusCode,
+        providerResult.ResponseSnippet,
+        parsed.ChaveAcesso,
+        parsed.Protocolo,
+        parsed.Numero,
+        parsed.Serie,
+        parsed.Autorizado,
+        parsed.Denegado,
+        executadoEm = DateTime.UtcNow
+    }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+    fiscal.UpdatedAt = DateTime.UtcNow;
+
+    if (parsed.Autorizado || fiscal.StatusNfe == StatusNfe.Emitida)
+    {
+        if (modeloDocumento == "NFCe" && empresa.ProximaNfceNumero is not null)
+        {
+            empresa.ProximaNfceNumero++;
+            empresa.UpdatedAt = DateTime.UtcNow;
+        }
+        else if (modeloDocumento == "NFe" && empresa.ProximaNfeNumero is not null)
+        {
+            empresa.ProximaNfeNumero++;
+            empresa.UpdatedAt = DateTime.UtcNow;
+        }
+    }
+}
+
+static void ApplyFiscalEventResult(Fiscal fiscal, string operacao, FiscalProviderParsedResult parsed, FiscalProviderResult providerResult, FiscalOperacaoRequest request)
+{
+    if (operacao == "cancelar")
+    {
+        fiscal.StatusNfe = StatusNfe.Cancelada;
+        fiscal.MotivoCancelamento = request.Motivo;
+        fiscal.StatusAutomacao = "Cancelamento confirmado por provedor fiscal externo.";
+    }
+    else if (operacao == "inutilizar")
+    {
+        fiscal.StatusNfe = StatusNfe.Inutilizada;
+        fiscal.StatusAutomacao = "Inutilizacao confirmada por provedor fiscal externo.";
+    }
+    else if (operacao == "cartacorrecao")
+    {
+        fiscal.StatusAutomacao = "Carta de correcao confirmada por provedor fiscal externo.";
+    }
+
+    fiscal.Protocolo = parsed.Protocolo ?? fiscal.Protocolo ?? request.Protocolo;
+    fiscal.PayloadOperacao = JsonSerializer.Serialize(new
+    {
+        operacao,
+        providerStatusCode = providerResult.StatusCode,
+        providerResult.ResponseSnippet,
+        parsed.Protocolo,
+        parsed.ChaveAcesso,
+        request.Motivo,
+        request.TextoCorrecao,
+        request.NumeroInicial,
+        request.NumeroFinal,
+        executadoEm = DateTime.UtcNow
+    }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+    fiscal.UpdatedAt = DateTime.UtcNow;
+}
+
+static FiscalOperacaoResultadoDto BuildFiscalOperationResult(
+    bool sucesso,
+    Fiscal fiscal,
+    string modeloDocumento,
+    string operacao,
+    string provider,
+    string? providerHost,
+    int? statusCode,
+    List<string> pendencias,
+    DateTime executadoEm) =>
+    new(
+        sucesso,
+        fiscal.Id,
+        fiscal.PedidoId,
+        modeloDocumento,
+        operacao,
+        fiscal.StatusNfe.ToString(),
+        fiscal.StatusAutomacao,
+        fiscal.NumeroNfe,
+        fiscal.Serie,
+        fiscal.ChaveAcesso,
+        fiscal.Protocolo,
+        fiscal.XmlUrl,
+        fiscal.DanfeUrl,
+        provider,
+        providerHost,
+        statusCode,
+        pendencias.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+        executadoEm);
+
+static string NormalizeFiscalModel(string value)
+{
+    var normalized = value.Trim().Replace("-", string.Empty, StringComparison.OrdinalIgnoreCase).ToLowerInvariant();
+    return normalized == "nfce" ? "NFCe" : "NFe";
+}
+
+static string NormalizeFiscalOperation(string value)
+{
+    var normalized = value.Trim().Replace("-", string.Empty, StringComparison.OrdinalIgnoreCase).ToLowerInvariant();
+    return normalized switch
+    {
+        "cancelamento" or "cancelar" => "cancelar",
+        "inutilizacao" or "inutilizar" => "inutilizar",
+        "cartacorrecao" or "cce" => "cartacorrecao",
+        _ => normalized
+    };
+}
+
+static string NormalizeStatusText(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return string.Empty;
+    }
+
+    var normalized = value.Normalize(NormalizationForm.FormD);
+    var builder = new StringBuilder(normalized.Length);
+    foreach (var c in normalized)
+    {
+        if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+        {
+            builder.Append(char.ToLowerInvariant(c));
+        }
+    }
+
+    return builder.ToString();
+}
+
+static string? TryReadFirstStringRecursive(JsonElement element, params string[] names)
+{
+    if (element.ValueKind == JsonValueKind.Object)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (names.Any(name => property.NameEquals(name)) &&
+                property.Value.ValueKind is JsonValueKind.String or JsonValueKind.Number)
+            {
+                var value = property.Value.ToString();
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value.Trim();
+                }
+            }
+        }
+
+        foreach (var property in element.EnumerateObject())
+        {
+            if (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
+            {
+                var nested = TryReadFirstStringRecursive(property.Value, names);
+                if (!string.IsNullOrWhiteSpace(nested))
+                {
+                    return nested;
+                }
+            }
+        }
+    }
+    else if (element.ValueKind == JsonValueKind.Array)
+    {
+        foreach (var item in element.EnumerateArray())
+        {
+            var nested = TryReadFirstStringRecursive(item, names);
+            if (!string.IsNullOrWhiteSpace(nested))
+            {
+                return nested;
+            }
+        }
+    }
+
+    return null;
+}
+
+static string? OnlyDigits(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return null;
+    }
+
+    var digits = new string(value.Where(char.IsDigit).ToArray());
+    return digits.Length == 0 ? null : digits;
+}
+
+static bool IsLikelyUrl(string? value) =>
+    Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https";
+
+static string? ReadResponseSnippet(string? body)
+{
+    if (string.IsNullOrWhiteSpace(body))
+    {
+        return null;
+    }
+
+    var normalized = body.ReplaceLineEndings(" ").Trim();
+    return normalized.Length <= 500 ? normalized : normalized[..500];
+}
 
 static string? Slugify(string? value)
 {
@@ -10179,7 +11263,39 @@ static IntegracaoDiagnosticoDto TestCertificadoNFe(IConfiguration configuration)
     {
         var arquivoExiste = !string.IsNullOrWhiteSpace(arquivoPfx) && File.Exists(arquivoPfx);
         var configurada = arquivoExiste && IsConfiguredSecret(senha);
-        var operacional = configurada && !string.IsNullOrWhiteSpace(cnpj);
+        var certificadoAberto = false;
+        var certificadoComChave = false;
+        var certificadoValido = false;
+        var detalheCertificado = string.Empty;
+
+        if (configurada)
+        {
+            try
+            {
+                using var certificado = new X509Certificate2(
+                    arquivoPfx!,
+                    senha,
+                    X509KeyStorageFlags.EphemeralKeySet | X509KeyStorageFlags.Exportable);
+                certificadoAberto = true;
+                certificadoComChave = certificado.HasPrivateKey;
+                certificadoValido = certificado.NotBefore.ToUniversalTime() <= DateTime.UtcNow &&
+                    certificado.NotAfter.ToUniversalTime() >= DateTime.UtcNow;
+                detalheCertificado = $" | Validade real: {certificado.NotAfter:yyyy-MM-dd}";
+            }
+            catch (Exception ex)
+            {
+                detalheCertificado = $" | Erro PFX: {ex.GetType().Name}";
+            }
+        }
+
+        var operacional = configurada && certificadoAberto && certificadoComChave && certificadoValido && !string.IsNullOrWhiteSpace(cnpj);
+        var pendencias = new List<string>();
+        if (!arquivoExiste) pendencias.Add("CertificadoNFe__ArquivoPfx");
+        if (!IsConfiguredSecret(senha)) pendencias.Add("CertificadoNFe__Senha");
+        if (configurada && !certificadoAberto) pendencias.Add("Certificado A1 nao abriu com a senha configurada.");
+        if (certificadoAberto && !certificadoComChave) pendencias.Add("Certificado A1 nao possui chave privada.");
+        if (certificadoAberto && !certificadoValido) pendencias.Add("Certificado A1 fora do periodo de validade.");
+        if (string.IsNullOrWhiteSpace(cnpj)) pendencias.Add("CertificadoNFe__Cnpj");
 
         return new IntegracaoDiagnosticoDto(
             "Certificado NF-e",
@@ -10189,12 +11305,12 @@ static IntegracaoDiagnosticoDto TestCertificadoNFe(IConfiguration configuration)
             operacional,
             operacional
                 ? "Certificado A1 localizado e apto para uso no emissor."
-                : "Certificado A1 ainda depende do arquivo PFX e da senha no servidor.",
+                : "Certificado A1 ainda nao esta apto para emissao real.",
             operacional
                 ? []
-                : ["CertificadoNFe__ArquivoPfx", "CertificadoNFe__Senha", "CertificadoNFe__Cnpj"],
+                : pendencias,
             DateTime.UtcNow,
-            $"Tipo: A1 | CNPJ: {cnpj ?? "nao informado"} | Validade: {validoAte ?? "nao informada"}");
+            $"Tipo: A1 | CNPJ: {cnpj ?? "nao informado"} | Validade informada: {validoAte ?? "nao informada"}{detalheCertificado}");
     }
 
     if (string.Equals(tipo, "A3", StringComparison.OrdinalIgnoreCase))
@@ -15829,6 +16945,69 @@ public sealed record FiscalManualEmissaoResponseDto(
     string? EstadoSelecionado,
     List<string> Pendencias,
     DateTime GeradoEm);
+
+public sealed record FiscalEmissaoRequest(
+    [property: JsonPropertyName("fiscal_id")] int? FiscalId,
+    [property: JsonPropertyName("pedido_id")] int? PedidoId,
+    [property: JsonPropertyName("empresa_grupo_id")] int? EmpresaGrupoId,
+    [property: JsonPropertyName("force_reissue")] bool? ForceReissue,
+    [property: JsonPropertyName("observacao_operacional")] string? ObservacaoOperacional);
+
+public sealed record FiscalOperacaoRequest(
+    [property: JsonPropertyName("fiscal_id")] int? FiscalId,
+    [property: JsonPropertyName("pedido_id")] int? PedidoId,
+    [property: JsonPropertyName("empresa_grupo_id")] int? EmpresaGrupoId,
+    [property: JsonPropertyName("chave_acesso")] string? ChaveAcesso,
+    [property: JsonPropertyName("protocolo")] string? Protocolo,
+    [property: JsonPropertyName("motivo")] string? Motivo,
+    [property: JsonPropertyName("numero_inicial")] int? NumeroInicial,
+    [property: JsonPropertyName("numero_final")] int? NumeroFinal,
+    [property: JsonPropertyName("serie")] string? Serie,
+    [property: JsonPropertyName("texto_correcao")] string? TextoCorrecao);
+
+public sealed record FiscalOperacaoResultadoDto(
+    bool Sucesso,
+    int FiscalId,
+    int PedidoId,
+    string ModeloDocumento,
+    string Operacao,
+    string StatusNfe,
+    string? StatusAutomacao,
+    string? Numero,
+    string? Serie,
+    string? ChaveAcesso,
+    string? Protocolo,
+    string? XmlUrl,
+    string? DanfeUrl,
+    string Provider,
+    string? ProviderHost,
+    int? ProviderStatusCode,
+    List<string> Pendencias,
+    DateTime ExecutadoEm);
+
+public sealed record FiscalProviderConfiguration(
+    string Provider,
+    Uri? Endpoint,
+    string? Token,
+    List<string> Pendencias);
+
+public sealed record FiscalProviderResult(
+    bool HttpSucceeded,
+    int? StatusCode,
+    string? Body,
+    List<string> Pendencias,
+    string? ResponseSnippet);
+
+public sealed record FiscalProviderParsedResult(
+    string? ChaveAcesso,
+    string? Protocolo,
+    string? Numero,
+    string? Serie,
+    string? XmlUrl,
+    string? DanfeUrl,
+    bool Autorizado,
+    bool Denegado,
+    List<string> Pendencias);
 
 public sealed record DashboardCompletoDto(
     DashboardKpiDto Kpis,
