@@ -44,7 +44,7 @@ public sealed class AssistenteIaService : IAssistenteIaService
         var mensagem = (request.Mensagem ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(mensagem))
         {
-            return new AssistenteIaResposta(persona.Nome, "Envie sua pergunta para eu ajudar de forma objetiva.", "validacao-local", DateTime.UtcNow);
+            throw new ArgumentException("Mensagem obrigatoria para acionar a central de IA.", nameof(request.Mensagem));
         }
 
         if (mensagem.Length > MaxMensagemChars)

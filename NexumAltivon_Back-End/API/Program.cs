@@ -332,6 +332,10 @@ app.MapPost("/api/assistentes/mensagem", async (
         var resposta = await assistenteIa.ResponderAsync(request, ct);
         return Results.Ok(ApiResponse<AssistenteIaResposta>.Ok(resposta, "Mensagem processada pelo assistente."));
     }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro(ex.Message));
+    }
     catch (InvalidOperationException ex)
     {
         return Results.Problem(
