@@ -48,6 +48,8 @@ Apuracao complementar de integridade funcional: 2026-07-12.
 | Validacao operacional da etapa | `dotnet build NexumAltivon.ERP.sln -c Release --no-restore -m:1 /nr:false /p:UseSharedCompilation=false` passou com 0 avisos e 0 erros apos remover a base de validacao da solution |
 | Republicacao oficial 5010 | Validacao elevada em 2026-07-13T00:53:39 confirmou task `NexumAltivonApi24h` `Running`, usuario `SISTEMA`, `RunLevel Highest`, PID `10928`, `dotnet.exe NexumAltivon.API.dll`, `/health`, `/health/db`, `/health/db/genesis` e `/api/site/configuracoes/publico` com HTTP 200 |
 | Painel administrativo React | `Dashboard.js` ajustado no commit `0b8212e` para nao exibir sucesso visual com estado local fabricado em `Site & Banners` e rascunho fiscal manual; apos salvar, a tela usa retorno/releitura real da API antes de confirmar persistencia |
+| Central de IA do site | `GlobalActions.js` ajustado no commit `5848622` para nao inventar resposta local quando a API retorna payload sem mensagem; sem resposta textual real, o chat exibe falha operacional |
+| Smoke publico painel/portal | Endpoints principais consumidos pelo painel e portal foram verificados em `https://api.nexumaltivon.com.br`: rotas publicas retornaram 200, rotas protegidas retornaram 401, nenhuma retornou 404 |
 | OpenAPI em runtime local | `/swagger/v1/swagger.json` respondeu 200 em API local com o build atual |
 | Alias FICO razao | `/api/financeiro/contabil/razao` respondeu 401 sem token, sem 404 |
 | Alias FICO conciliacao | `/api/financeiro/contabil/conciliacao` respondeu 401 sem token, sem 404 |
