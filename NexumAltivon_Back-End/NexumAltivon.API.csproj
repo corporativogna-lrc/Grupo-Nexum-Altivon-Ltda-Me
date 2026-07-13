@@ -16,7 +16,7 @@
     <AssemblyName>NexumAltivon.API</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
-    <DefaultItemExcludes>$(DefaultItemExcludes);NexumAltivon.API.Tests\**;API\Legacy\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);API\Legacy\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -39,8 +39,8 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
-    <Content Remove="bin\**;obj\**;NexumAltivon.API.Tests\**;wwwroot\uploads\**;appsettings.Development.json;appsettings.ERP.json" />
-    <None Remove="bin\**;obj\**;NexumAltivon.API.Tests\**;wwwroot\uploads\**;appsettings.Development.json;appsettings.ERP.json" />
+    <Content Remove="bin\**;obj\**;wwwroot\uploads\**;appsettings.Development.json;appsettings.ERP.json" />
+    <None Remove="bin\**;obj\**;wwwroot\uploads\**;appsettings.Development.json;appsettings.ERP.json" />
   </ItemGroup>
 
   <ItemGroup>

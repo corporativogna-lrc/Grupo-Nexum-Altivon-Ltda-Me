@@ -312,42 +312,44 @@ public class NexumDbContext : DbContext
             .Property(empresa => empresa.MargemMinimaPercentual)
             .HasPrecision(10, 4);
 
+        var seedCreatedAt = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
         // Seed alinhado ao banco de produção: Chronos já é a loja 1 e possui produtos vinculados.
         modelBuilder.Entity<Loja>().HasData(
-            new Loja { Id = 1, Nome = "Chronos", Slug = "chronos", Segmento = "Relógios & Acessórios", Descricao = "Relógios que marcam estilo", CorPrimaria = "#C9A227", CorSecundaria = "#2E5A8F", Dominio = "chronos.nexumaltivon.com", Ativa = true, OrdemExibicao = 1 },
-            new Loja { Id = 2, Nome = "Grann-Tur", Slug = "grann-tur", Segmento = "Viagens & Turismo", Descricao = "Mochilas, malas, acessórios de viagem", CorPrimaria = "#C9A227", CorSecundaria = "#1E3A5F", Dominio = "grann-tur.nexumaltivon.com", Ativa = true, OrdemExibicao = 2 },
-            new Loja { Id = 3, Nome = "Moda Mim", Slug = "moda-mim", Segmento = "Moda & Vestuário", Descricao = "Tendências que vestem a sua personalidade", CorPrimaria = "#C9A227", CorSecundaria = "#8B1E3F", Dominio = "moda-mim.nexumaltivon.com", Ativa = true, OrdemExibicao = 3 },
-            new Loja { Id = 4, Nome = "Geração Top+", Slug = "geracao-top", Segmento = "Tecnologia & Gadgets", Descricao = "Tecnologia de ponta ao alcance de todos", CorPrimaria = "#C9A227", CorSecundaria = "#0F4C3A", Dominio = "geracao-top.nexumaltivon.com", Ativa = true, OrdemExibicao = 4 },
-            new Loja { Id = 5, Nome = "Estruturaline", Slug = "estruturaline", Segmento = "Construção & Estruturas", Descricao = "Ferramentas e materiais de construção", CorPrimaria = "#C9A227", CorSecundaria = "#4A3728", Dominio = "estruturaline.nexumaltivon.com", Ativa = true, OrdemExibicao = 5 },
-            new Loja { Id = 6, Nome = "Gran-fest-festas", Slug = "gran-fest", Segmento = "Festas & Eventos", Descricao = "Decorações e utensílios para festas", CorPrimaria = "#C9A227", CorSecundaria = "#6B2D5C", Dominio = "gran-fest.nexumaltivon.com", Ativa = true, OrdemExibicao = 6 }
+            new { Id = 1, Nome = "Chronos", Slug = "chronos", Segmento = "Relógios & Acessórios", Descricao = "Relógios que marcam estilo", CorPrimaria = "#C9A227", CorSecundaria = "#2E5A8F", Dominio = "chronos.nexumaltivon.com", Ativa = true, OrdemExibicao = 1, CreatedAt = seedCreatedAt, UpdatedAt = seedCreatedAt, TenantId = TenantContext.DefaultTenantId, RowVersion = new byte[] { 1 }, IsDeleted = false },
+            new { Id = 2, Nome = "Grann-Tur", Slug = "grann-tur", Segmento = "Viagens & Turismo", Descricao = "Mochilas, malas, acessórios de viagem", CorPrimaria = "#C9A227", CorSecundaria = "#1E3A5F", Dominio = "grann-tur.nexumaltivon.com", Ativa = true, OrdemExibicao = 2, CreatedAt = seedCreatedAt, UpdatedAt = seedCreatedAt, TenantId = TenantContext.DefaultTenantId, RowVersion = new byte[] { 1 }, IsDeleted = false },
+            new { Id = 3, Nome = "Moda Mim", Slug = "moda-mim", Segmento = "Moda & Vestuário", Descricao = "Tendências que vestem a sua personalidade", CorPrimaria = "#C9A227", CorSecundaria = "#8B1E3F", Dominio = "moda-mim.nexumaltivon.com", Ativa = true, OrdemExibicao = 3, CreatedAt = seedCreatedAt, UpdatedAt = seedCreatedAt, TenantId = TenantContext.DefaultTenantId, RowVersion = new byte[] { 1 }, IsDeleted = false },
+            new { Id = 4, Nome = "Geração Top+", Slug = "geracao-top", Segmento = "Tecnologia & Gadgets", Descricao = "Tecnologia de ponta ao alcance de todos", CorPrimaria = "#C9A227", CorSecundaria = "#0F4C3A", Dominio = "geracao-top.nexumaltivon.com", Ativa = true, OrdemExibicao = 4, CreatedAt = seedCreatedAt, UpdatedAt = seedCreatedAt, TenantId = TenantContext.DefaultTenantId, RowVersion = new byte[] { 1 }, IsDeleted = false },
+            new { Id = 5, Nome = "Estruturaline", Slug = "estruturaline", Segmento = "Construção & Estruturas", Descricao = "Ferramentas e materiais de construção", CorPrimaria = "#C9A227", CorSecundaria = "#4A3728", Dominio = "estruturaline.nexumaltivon.com", Ativa = true, OrdemExibicao = 5, CreatedAt = seedCreatedAt, UpdatedAt = seedCreatedAt, TenantId = TenantContext.DefaultTenantId, RowVersion = new byte[] { 1 }, IsDeleted = false },
+            new { Id = 6, Nome = "Gran-fest-festas", Slug = "gran-fest", Segmento = "Festas & Eventos", Descricao = "Decorações e utensílios para festas", CorPrimaria = "#C9A227", CorSecundaria = "#6B2D5C", Dominio = "gran-fest.nexumaltivon.com", Ativa = true, OrdemExibicao = 6, CreatedAt = seedCreatedAt, UpdatedAt = seedCreatedAt, TenantId = TenantContext.DefaultTenantId, RowVersion = new byte[] { 1 }, IsDeleted = false }
         );
 
         // Seed inicial de transportadoras
         modelBuilder.Entity<Transportadora>().HasData(
-            new Transportadora { Id = 1, Nome = "Correios", Slug = "correios", Tipo = TipoTransportadora.Correios, Ativa = true },
-            new Transportadora { Id = 2, Nome = "Melhor Envio", Slug = "melhor-envio", Tipo = TipoTransportadora.Hub, Ativa = true },
-            new Transportadora { Id = 3, Nome = "Jadlog", Slug = "jadlog", Tipo = TipoTransportadora.Transportadora, Ativa = true },
-            new Transportadora { Id = 4, Nome = "Loggi", Slug = "loggi", Tipo = TipoTransportadora.Logistica, Ativa = true },
-            new Transportadora { Id = 5, Nome = "Kangu", Slug = "kangu", Tipo = TipoTransportadora.Hub, Ativa = true }
+            new { Id = 1, Nome = "Correios", Slug = "correios", Tipo = TipoTransportadora.Correios, ApiSandbox = true, Ativa = true, CreatedAt = seedCreatedAt, UpdatedAt = seedCreatedAt, TenantId = TenantContext.DefaultTenantId, RowVersion = new byte[] { 1 }, IsDeleted = false },
+            new { Id = 2, Nome = "Melhor Envio", Slug = "melhor-envio", Tipo = TipoTransportadora.Hub, ApiSandbox = true, Ativa = true, CreatedAt = seedCreatedAt, UpdatedAt = seedCreatedAt, TenantId = TenantContext.DefaultTenantId, RowVersion = new byte[] { 1 }, IsDeleted = false },
+            new { Id = 3, Nome = "Jadlog", Slug = "jadlog", Tipo = TipoTransportadora.Transportadora, ApiSandbox = true, Ativa = true, CreatedAt = seedCreatedAt, UpdatedAt = seedCreatedAt, TenantId = TenantContext.DefaultTenantId, RowVersion = new byte[] { 1 }, IsDeleted = false },
+            new { Id = 4, Nome = "Loggi", Slug = "loggi", Tipo = TipoTransportadora.Logistica, ApiSandbox = true, Ativa = true, CreatedAt = seedCreatedAt, UpdatedAt = seedCreatedAt, TenantId = TenantContext.DefaultTenantId, RowVersion = new byte[] { 1 }, IsDeleted = false },
+            new { Id = 5, Nome = "Kangu", Slug = "kangu", Tipo = TipoTransportadora.Hub, ApiSandbox = true, Ativa = true, CreatedAt = seedCreatedAt, UpdatedAt = seedCreatedAt, TenantId = TenantContext.DefaultTenantId, RowVersion = new byte[] { 1 }, IsDeleted = false }
         );
 
         // Seed inicial de marketplaces
         modelBuilder.Entity<Marketplace>().HasData(
-            new Marketplace { Id = 1, Nome = "Mercado Livre", Slug = "mercado-livre", Tipo = TipoMarketplace.MercadoLivre, Ativo = false },
-            new Marketplace { Id = 2, Nome = "Shopee", Slug = "shopee", Tipo = TipoMarketplace.Shopee, Ativo = false },
-            new Marketplace { Id = 3, Nome = "Amazon", Slug = "amazon", Tipo = TipoMarketplace.Amazon, Ativo = false },
-            new Marketplace { Id = 4, Nome = "Magalu", Slug = "magalu", Tipo = TipoMarketplace.Magalu, Ativo = false },
-            new Marketplace { Id = 5, Nome = "Americanas", Slug = "americanas", Tipo = TipoMarketplace.B2W, Ativo = false },
-            new Marketplace { Id = 6, Nome = "Via Varejo", Slug = "via-varejo", Tipo = TipoMarketplace.B2W, Ativo = false }
+            new { Id = 1, Nome = "Mercado Livre", Slug = "mercado-livre", Tipo = TipoMarketplace.MercadoLivre, Sandbox = true, Ativo = false, CreatedAt = seedCreatedAt, UpdatedAt = seedCreatedAt, TenantId = TenantContext.DefaultTenantId, RowVersion = new byte[] { 1 }, IsDeleted = false },
+            new { Id = 2, Nome = "Shopee", Slug = "shopee", Tipo = TipoMarketplace.Shopee, Sandbox = true, Ativo = false, CreatedAt = seedCreatedAt, UpdatedAt = seedCreatedAt, TenantId = TenantContext.DefaultTenantId, RowVersion = new byte[] { 1 }, IsDeleted = false },
+            new { Id = 3, Nome = "Amazon", Slug = "amazon", Tipo = TipoMarketplace.Amazon, Sandbox = true, Ativo = false, CreatedAt = seedCreatedAt, UpdatedAt = seedCreatedAt, TenantId = TenantContext.DefaultTenantId, RowVersion = new byte[] { 1 }, IsDeleted = false },
+            new { Id = 4, Nome = "Magalu", Slug = "magalu", Tipo = TipoMarketplace.Magalu, Sandbox = true, Ativo = false, CreatedAt = seedCreatedAt, UpdatedAt = seedCreatedAt, TenantId = TenantContext.DefaultTenantId, RowVersion = new byte[] { 1 }, IsDeleted = false },
+            new { Id = 5, Nome = "Americanas", Slug = "americanas", Tipo = TipoMarketplace.B2W, Sandbox = true, Ativo = false, CreatedAt = seedCreatedAt, UpdatedAt = seedCreatedAt, TenantId = TenantContext.DefaultTenantId, RowVersion = new byte[] { 1 }, IsDeleted = false },
+            new { Id = 6, Nome = "Via Varejo", Slug = "via-varejo", Tipo = TipoMarketplace.B2W, Sandbox = true, Ativo = false, CreatedAt = seedCreatedAt, UpdatedAt = seedCreatedAt, TenantId = TenantContext.DefaultTenantId, RowVersion = new byte[] { 1 }, IsDeleted = false }
         );
 
         // Seed inicial de dropshipping
         modelBuilder.Entity<DropshippingConfig>().HasData(
-            new DropshippingConfig { Id = 1, Nome = "AliExpress", Slug = "aliexpress", Tipo = TipoDropshipping.AliExpress, Ativo = false },
-            new DropshippingConfig { Id = 2, Nome = "CJ Dropshipping", Slug = "cj-dropshipping", Tipo = TipoDropshipping.CJDropshipping, Ativo = false },
-            new DropshippingConfig { Id = 3, Nome = "Dropi", Slug = "dropi", Tipo = TipoDropshipping.Dropi, Ativo = false },
-            new DropshippingConfig { Id = 4, Nome = "Cartpanda HUB", Slug = "cartpanda", Tipo = TipoDropshipping.Cartpanda, Ativo = false },
-            new DropshippingConfig { Id = 5, Nome = "Nuvemshop HUB", Slug = "nuvemshop", Tipo = TipoDropshipping.Nuvemshop, Ativo = false }
+            new { Id = 1, Nome = "AliExpress", Slug = "aliexpress", Tipo = TipoDropshipping.AliExpress, Ativo = false, CreatedAt = seedCreatedAt, UpdatedAt = seedCreatedAt, TenantId = TenantContext.DefaultTenantId, RowVersion = new byte[] { 1 }, IsDeleted = false },
+            new { Id = 2, Nome = "CJ Dropshipping", Slug = "cj-dropshipping", Tipo = TipoDropshipping.CJDropshipping, Ativo = false, CreatedAt = seedCreatedAt, UpdatedAt = seedCreatedAt, TenantId = TenantContext.DefaultTenantId, RowVersion = new byte[] { 1 }, IsDeleted = false },
+            new { Id = 3, Nome = "Dropi", Slug = "dropi", Tipo = TipoDropshipping.Dropi, Ativo = false, CreatedAt = seedCreatedAt, UpdatedAt = seedCreatedAt, TenantId = TenantContext.DefaultTenantId, RowVersion = new byte[] { 1 }, IsDeleted = false },
+            new { Id = 4, Nome = "Cartpanda HUB", Slug = "cartpanda", Tipo = TipoDropshipping.Cartpanda, Ativo = false, CreatedAt = seedCreatedAt, UpdatedAt = seedCreatedAt, TenantId = TenantContext.DefaultTenantId, RowVersion = new byte[] { 1 }, IsDeleted = false },
+            new { Id = 5, Nome = "Nuvemshop HUB", Slug = "nuvemshop", Tipo = TipoDropshipping.Nuvemshop, Ativo = false, CreatedAt = seedCreatedAt, UpdatedAt = seedCreatedAt, TenantId = TenantContext.DefaultTenantId, RowVersion = new byte[] { 1 }, IsDeleted = false }
         );
 
         ConfigureAuditShadowProperties(modelBuilder);
