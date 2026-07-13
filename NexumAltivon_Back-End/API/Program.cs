@@ -6521,10 +6521,19 @@ app.MapPost("/api/frete/cotar", async (
     IHttpClientFactory httpClientFactory,
     CancellationToken ct) =>
 {
-    var cotacoes = await CotarFreteAsync(request, configuration, httpClientFactory, ct);
+    List<FreteCotacaoDto> cotacoes;
+    try
+    {
+        cotacoes = await CotarFreteAsync(request, configuration, httpClientFactory, ct);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Json(ApiResponse<string>.Erro(ex.Message), statusCode: StatusCodes.Status502BadGateway);
+    }
+
     return Results.Ok(ApiResponse<List<FreteCotacaoDto>>.Ok(cotacoes, cotacoes.Any(c => c.Fonte == "Melhor Envio")
         ? "Cotacao consultada no Melhor Envio."
-        : "Cotacao operacional gerada pela tabela local ate configurar a transportadora."));
+        : "Cotacao operacional calculada pela tabela interna oficial."));
 })
 .AllowAnonymous()
 .WithName("CotarFrete")
@@ -6548,11 +6557,19 @@ app.MapPost("/api/logistica/roteamento", [Authorize(Policy = "Gerente")] async (
         return Results.BadRequest(ApiResponse<string>.Erro("Informe ao menos um item para calcular coleta, cubagem e frete."));
     }
 
-    var cotacoes = await CotarFreteAsync(
-        new FreteCotacaoRequest(request.CepOrigem, request.CepDestino, request.Itens),
-        configuration,
-        httpClientFactory,
-        ct);
+    List<FreteCotacaoDto> cotacoes;
+    try
+    {
+        cotacoes = await CotarFreteAsync(
+            new FreteCotacaoRequest(request.CepOrigem, request.CepDestino, request.Itens),
+            configuration,
+            httpClientFactory,
+            ct);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Json(ApiResponse<string>.Erro(ex.Message), statusCode: StatusCodes.Status502BadGateway);
+    }
 
     var freteSelecionado = cotacoes
         .OrderBy(item => item.Valor)
@@ -6603,7 +6620,7 @@ app.MapPost("/api/logistica/roteamento", [Authorize(Policy = "Gerente")] async (
 
     if (!cotacoes.Any(item => string.Equals(item.Fonte, "Melhor Envio", StringComparison.OrdinalIgnoreCase)))
     {
-        pendencias.Add("Cotacao usando tabela local ate credencial oficial da transportadora ficar operacional.");
+        pendencias.Add("Cotacao calculada por tabela interna oficial; credencial de transportadora externa ainda nao confirmou valor.");
     }
 
     var resumo = $"Coleta sugerida: {freteSelecionado.Transportadora} / {freteSelecionado.Nome} por R$ {freteSelecionado.Valor:F2} em {freteSelecionado.PrazoDias} dia(s). Emitente: {decision.EmpresaSelecionada?.CodigoEmpresa ?? "pendente"}. Custo total estimado: R$ {custoOperacionalTotal:F2}. Margem prevista: {margemEstimada:F2}%.";
@@ -12218,11 +12235,15 @@ static async Task<List<FreteCotacaoDto>> CotarFreteAsync(
                 {
                     return cotacoes;
                 }
+
+                throw new InvalidOperationException("Melhor Envio nao retornou cotacoes utilizaveis para o CEP informado.");
             }
+
+            throw new InvalidOperationException($"Melhor Envio recusou a cotacao de frete com HTTP {(int)response.StatusCode}.");
         }
-        catch
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {
-            // Se o provedor falhar, mantemos a venda com cotação local controlada.
+            throw new InvalidOperationException("Melhor Envio configurado, mas indisponivel para cotacao de frete.", ex);
         }
     }
 
@@ -12233,8 +12254,8 @@ static async Task<List<FreteCotacaoDto>> CotarFreteAsync(
 
     return
     [
-        new("local-padrao", "Entrega padrão Nexum", "Tabela local", freteBase, interiorSp ? 3 : 7, "Tabela local"),
-        new("local-expresso", "Entrega expressa assistida", "Tabela local", freteBase + 35m, interiorSp ? 1 : 4, "Tabela local")
+        new("interno-padrao", "Entrega padrão Nexum", "Tabela interna oficial", freteBase, interiorSp ? 3 : 7, "Tabela interna oficial"),
+        new("interno-expresso", "Entrega expressa assistida", "Tabela interna oficial", freteBase + 35m, interiorSp ? 1 : 4, "Tabela interna oficial")
     ];
 }
 
