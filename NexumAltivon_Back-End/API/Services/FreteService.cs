@@ -1,3 +1,11 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -48,7 +56,6 @@ namespace NexumAltivon.API.Services
 
         private List<OpcaoFreteDto> CalcularFreteTabelaPropria(string cepDestino, List<ItemCarrinho> itens)
         {
-            // Lógica de frete própria baseada em peso/região (fallback)
             var pesoTotal = itens.Sum(i => i.Quantidade * 0.5); // estimativa 500g por item
             var regiao = ObterRegiao(cepDestino);
             var baseFrete = regiao switch
@@ -122,8 +129,8 @@ namespace NexumAltivon.API.Services
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogWarning("Melhor Envio falhou: {Content}. Usando tabela própria.", content);
-                    return CalcularFreteTabelaPropria(cepDestino, itens);
+                    _logger.LogWarning("Melhor Envio recusou cotacao: {Content}.", content);
+                    throw new InvalidOperationException("Melhor Envio recusou a cotacao. Revise token, origem, destino e dados dos produtos.");
                 }
 
                 using var doc = JsonDocument.Parse(content);
@@ -147,23 +154,65 @@ namespace NexumAltivon.API.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Erro ao consultar Melhor Envio");
-                return CalcularFreteTabelaPropria(cepDestino, itens);
+                throw;
             }
         }
 
         public async Task<string> GerarEtiquetaAsync(int pedidoId)
         {
-            if (!_usarMelhorEnvio) return null;
-            // Implementação específica do Melhor Envio para gerar etiquetas
-            _logger.LogInformation("Gerando etiqueta para pedido {PedidoId}", pedidoId);
-            return await Task.FromResult($"ETQ{pedidoId:000000}");
+            if (!_usarMelhorEnvio)
+            {
+                throw new InvalidOperationException("Geracao de etiqueta requer Melhor Envio ativo com token real.");
+            }
+
+            var endpoint = _config["Integracoes:MelhorEnvio:EtiquetaEndpoint"] ?? _config["MelhorEnvio:EtiquetaEndpoint"];
+            if (string.IsNullOrWhiteSpace(endpoint))
+            {
+                throw new InvalidOperationException("Geracao de etiqueta requer endpoint real de etiqueta do Melhor Envio.");
+            }
+
+            var response = await _httpClient.PostAsJsonAsync(endpoint, new { pedido_id = pedidoId });
+            var content = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new InvalidOperationException($"Melhor Envio recusou a etiqueta do pedido {pedidoId}. HTTP {(int)response.StatusCode}.");
+            }
+
+            using var document = JsonDocument.Parse(content);
+            foreach (var propertyName in new[] { "tracking_code", "codigo_rastreio", "tracking_number", "code" })
+            {
+                if (document.RootElement.TryGetProperty(propertyName, out var property) && property.ValueKind == JsonValueKind.String)
+                {
+                    var codigo = property.GetString();
+                    if (!string.IsNullOrWhiteSpace(codigo))
+                    {
+                        return codigo;
+                    }
+                }
+            }
+
+            throw new InvalidOperationException("Melhor Envio respondeu sem codigo de rastreio da etiqueta.");
         }
 
         public async Task RastrearEnvioAsync(string codigoRastreio)
         {
-            if (string.IsNullOrEmpty(codigoRastreio)) return;
-            _logger.LogInformation("Rastreando envio {Codigo}", codigoRastreio);
-            await Task.CompletedTask;
+            if (string.IsNullOrWhiteSpace(codigoRastreio))
+            {
+                throw new ArgumentException("Codigo de rastreio obrigatorio.", nameof(codigoRastreio));
+            }
+
+            var endpointTemplate = _config["Integracoes:MelhorEnvio:RastreamentoEndpointTemplate"] ?? _config["MelhorEnvio:RastreamentoEndpointTemplate"];
+            if (string.IsNullOrWhiteSpace(endpointTemplate))
+            {
+                throw new InvalidOperationException("Rastreamento requer endpoint real do provedor logistico.");
+            }
+
+            var endpoint = endpointTemplate.Replace("{codigo}", Uri.EscapeDataString(codigoRastreio), StringComparison.OrdinalIgnoreCase);
+            using var response = await _httpClient.GetAsync(endpoint);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new InvalidOperationException($"Provedor logistico recusou rastreamento. HTTP {(int)response.StatusCode}.");
+            }
         }
 
         private string ObterRegiao(string cep)

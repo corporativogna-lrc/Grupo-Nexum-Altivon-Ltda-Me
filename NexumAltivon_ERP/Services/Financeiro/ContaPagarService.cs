@@ -1,3 +1,13 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
+
+using System.Globalization;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using NexumAltivon_ERP.Data;
 using NexumAltivon_ERP.Models.Financeiro;
@@ -230,9 +240,108 @@ namespace NexumAltivon_ERP.Services.Financeiro
 
         public async Task<byte[]> GerarRelatorioPDFAsync(ContaPagarFiltroDto filtro)
         {
-            // Stub para geração de PDF - implementar com iTextSharp ou DinkToPdf
-            await Task.Delay(100);
-            return Array.Empty<byte>();
+            var query = _context.ContasPagar
+                .AsNoTracking()
+                .Include(c => c.CentroCusto)
+                .Include(c => c.PlanoContas)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(filtro.Status))
+                query = query.Where(c => c.Status == filtro.Status);
+
+            if (filtro.FornecedorId.HasValue)
+                query = query.Where(c => c.FornecedorId == filtro.FornecedorId);
+
+            if (filtro.CentroCustoId.HasValue)
+                query = query.Where(c => c.CentroCustoId == filtro.CentroCustoId);
+
+            if (filtro.DataInicio.HasValue)
+                query = query.Where(c => c.DataVencimento >= filtro.DataInicio);
+
+            if (filtro.DataFim.HasValue)
+                query = query.Where(c => c.DataVencimento <= filtro.DataFim);
+
+            if (filtro.LojaId.HasValue)
+                query = query.Where(c => c.LojaId == filtro.LojaId);
+
+            if (!string.IsNullOrWhiteSpace(filtro.Busca))
+                query = query.Where(c => c.FornecedorNome.Contains(filtro.Busca) ||
+                                          c.NumeroDocumento.Contains(filtro.Busca));
+
+            var contas = await query
+                .OrderBy(c => c.DataVencimento)
+                .ThenBy(c => c.FornecedorNome)
+                .ThenBy(c => c.NumeroDocumento)
+                .ToListAsync();
+
+            var culture = new CultureInfo("pt-BR");
+            var totalValor = contas.Sum(c => c.Valor);
+            var totalPago = contas.Sum(c => c.ValorPago);
+            var totalSaldo = contas.Sum(c => c.Valor - c.ValorPago);
+            var totalAtrasado = contas
+                .Where(c => c.Status == "Pendente" && c.DataVencimento.Date < DateTime.Today)
+                .Sum(c => c.Valor - c.ValorPago);
+
+            var linhas = new List<string>
+            {
+                "GenesisGest.Net - Relatorio de Contas a Pagar",
+                $"Gerado em: {DateTime.Now:dd/MM/yyyy HH:mm:ss}",
+                $"Status: {ValorFiltro(filtro.Status)} | FornecedorId: {ValorFiltro(filtro.FornecedorId)} | CentroCustoId: {ValorFiltro(filtro.CentroCustoId)} | LojaId: {ValorFiltro(filtro.LojaId)}",
+                $"Periodo de vencimento: {ValorFiltro(filtro.DataInicio)} ate {ValorFiltro(filtro.DataFim)} | Busca: {ValorFiltro(filtro.Busca)}",
+                $"Quantidade: {contas.Count} | Valor: {FormatarMoeda(totalValor, culture)} | Pago: {FormatarMoeda(totalPago, culture)} | Saldo: {FormatarMoeda(totalSaldo, culture)} | Atrasado: {FormatarMoeda(totalAtrasado, culture)}",
+                string.Empty,
+                "Vencimento Documento        Fornecedor                    Status       Valor          Pago        Saldo",
+                "---------- ---------------- ----------------------------- ---------- ------------- ------------- -------------"
+            };
+
+            foreach (var conta in contas)
+            {
+                var saldo = conta.Valor - conta.ValorPago;
+                var documento = Limitar(conta.NumeroDocumento, 16).PadRight(16);
+                var fornecedor = Limitar(conta.FornecedorNome, 29).PadRight(29);
+                var status = Limitar(conta.Status, 10).PadRight(10);
+                linhas.Add($"{conta.DataVencimento:dd/MM/yyyy} {documento} {fornecedor} {status} {FormatarMoeda(conta.Valor, culture).PadLeft(13)} {FormatarMoeda(conta.ValorPago, culture).PadLeft(13)} {FormatarMoeda(saldo, culture).PadLeft(13)}");
+
+                var classificacao = $"{conta.CentroCusto?.Nome ?? "Sem centro de custo"} / {conta.PlanoContas?.Nome ?? "Sem plano de contas"}";
+                if (!string.IsNullOrWhiteSpace(classificacao))
+                {
+                    linhas.Add($"           Classificacao: {Limitar(classificacao, 90)}");
+                }
+
+                if (!string.IsNullOrWhiteSpace(conta.NumeroNFe) || !string.IsNullOrWhiteSpace(conta.FormaPagamento))
+                {
+                    linhas.Add($"           NFe: {ValorFiltro(conta.NumeroNFe)} | Forma: {ValorFiltro(conta.FormaPagamento)} | Parcela: {conta.ParcelaAtual ?? 1}/{conta.TotalParcelas ?? 1}");
+                }
+            }
+
+            if (contas.Count == 0)
+            {
+                linhas.Add("Nenhuma conta encontrada para os filtros informados.");
+            }
+
+            return PdfFinanceiroBuilder.Gerar("Relatorio de Contas a Pagar", linhas);
+        }
+
+        private static string ValorFiltro(object? valor)
+        {
+            return valor switch
+            {
+                null => "Todos",
+                DateTime data => data.ToString("dd/MM/yyyy"),
+                string texto when string.IsNullOrWhiteSpace(texto) => "Todos",
+                _ => valor.ToString() ?? "Todos"
+            };
+        }
+
+        private static string FormatarMoeda(decimal valor, CultureInfo culture)
+        {
+            return valor.ToString("C", culture);
+        }
+
+        private static string Limitar(string? texto, int tamanho)
+        {
+            var normalizado = PdfFinanceiroBuilder.NormalizarTexto(texto ?? string.Empty);
+            return normalizado.Length <= tamanho ? normalizado : normalizado[..tamanho];
         }
     }
 
@@ -243,5 +352,144 @@ namespace NexumAltivon_ERP.Services.Financeiro
         public int TamanhoPagina { get; set; }
         public int TotalPaginas => (int)Math.Ceiling((double)Total / TamanhoPagina);
         public List<T> Itens { get; set; } = new List<T>();
+    }
+
+    internal static class PdfFinanceiroBuilder
+    {
+        private const int LinhasPorPagina = 58;
+        private const int MargemEsquerda = 36;
+        private const int PrimeiraLinhaY = 806;
+        private const int LarguraPagina = 595;
+        private const int AlturaPagina = 842;
+
+        public static byte[] Gerar(string titulo, IReadOnlyList<string> linhas)
+        {
+            var paginas = linhas
+                .Select(NormalizarTexto)
+                .Chunk(LinhasPorPagina)
+                .Select(chunk => chunk.ToList())
+                .ToList();
+
+            if (paginas.Count == 0)
+            {
+                paginas.Add(new List<string> { NormalizarTexto(titulo) });
+            }
+
+            var objetos = new SortedDictionary<int, string>
+            {
+                [1] = "<< /Type /Catalog /Pages 2 0 R >>",
+                [3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>"
+            };
+
+            var kids = new List<string>();
+            for (var paginaIndex = 0; paginaIndex < paginas.Count; paginaIndex++)
+            {
+                var paginaObjetoId = 4 + paginaIndex * 2;
+                var conteudoObjetoId = paginaObjetoId + 1;
+                kids.Add($"{paginaObjetoId} 0 R");
+
+                objetos[paginaObjetoId] = $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {LarguraPagina} {AlturaPagina}] /Resources << /Font << /F1 3 0 R >> >> /Contents {conteudoObjetoId} 0 R >>";
+
+                var conteudo = MontarConteudoPagina(paginas[paginaIndex], paginaIndex + 1, paginas.Count);
+                var conteudoBytes = Encoding.ASCII.GetByteCount(conteudo);
+                objetos[conteudoObjetoId] = $"<< /Length {conteudoBytes} >>\nstream\n{conteudo}\nendstream";
+            }
+
+            objetos[2] = $"<< /Type /Pages /Kids [{string.Join(' ', kids)}] /Count {paginas.Count} >>";
+
+            return MontarPdf(objetos);
+        }
+
+        public static string NormalizarTexto(string texto)
+        {
+            var decomposed = texto.Normalize(NormalizationForm.FormD);
+            var builder = new StringBuilder(decomposed.Length);
+            foreach (var character in decomposed)
+            {
+                var category = CharUnicodeInfo.GetUnicodeCategory(character);
+                if (category == UnicodeCategory.NonSpacingMark)
+                {
+                    continue;
+                }
+
+                builder.Append(character switch
+                {
+                    '\u2013' or '\u2014' => '-',
+                    '\u2018' or '\u2019' => '\'',
+                    '\u201c' or '\u201d' => '"',
+                    '\u00a0' => ' ',
+                    _ when character <= 127 => character,
+                    _ => '?'
+                });
+            }
+
+            return builder.ToString().Normalize(NormalizationForm.FormC);
+        }
+
+        private static string MontarConteudoPagina(IReadOnlyList<string> linhas, int paginaAtual, int totalPaginas)
+        {
+            var builder = new StringBuilder();
+            builder.AppendLine("BT");
+            builder.AppendLine("/F1 8 Tf");
+            builder.AppendLine("11 TL");
+            builder.AppendLine($"{MargemEsquerda} {PrimeiraLinhaY} Td");
+
+            foreach (var linha in linhas)
+            {
+                builder.Append('(').Append(Escapar(linha)).AppendLine(") Tj");
+                builder.AppendLine("T*");
+            }
+
+            var rodape = $"Pagina {paginaAtual}/{totalPaginas}";
+            builder.AppendLine($"0 -{Math.Max(0, LinhasPorPagina - linhas.Count + 2) * 11} Td");
+            builder.Append('(').Append(Escapar(rodape)).AppendLine(") Tj");
+            builder.AppendLine("ET");
+            return builder.ToString();
+        }
+
+        private static byte[] MontarPdf(SortedDictionary<int, string> objetos)
+        {
+            var builder = new StringBuilder();
+            var offsets = new Dictionary<int, int> { [0] = 0 };
+
+            builder.AppendLine("%PDF-1.4");
+            builder.AppendLine("%GenesisGest.Net");
+
+            foreach (var item in objetos)
+            {
+                offsets[item.Key] = Encoding.ASCII.GetByteCount(builder.ToString());
+                builder.Append(item.Key).AppendLine(" 0 obj");
+                builder.AppendLine(item.Value);
+                builder.AppendLine("endobj");
+            }
+
+            var xrefOffset = Encoding.ASCII.GetByteCount(builder.ToString());
+            var totalObjetos = objetos.Keys.Max() + 1;
+
+            builder.AppendLine("xref");
+            builder.Append("0 ").Append(totalObjetos).AppendLine();
+            builder.AppendLine("0000000000 65535 f ");
+
+            for (var id = 1; id < totalObjetos; id++)
+            {
+                builder.Append(offsets[id].ToString("D10", CultureInfo.InvariantCulture)).AppendLine(" 00000 n ");
+            }
+
+            builder.AppendLine("trailer");
+            builder.Append("<< /Size ").Append(totalObjetos).AppendLine(" /Root 1 0 R >>");
+            builder.AppendLine("startxref");
+            builder.AppendLine(xrefOffset.ToString(CultureInfo.InvariantCulture));
+            builder.AppendLine("%%EOF");
+
+            return Encoding.ASCII.GetBytes(builder.ToString());
+        }
+
+        private static string Escapar(string texto)
+        {
+            return texto
+                .Replace("\\", "\\\\")
+                .Replace("(", "\\(")
+                .Replace(")", "\\)");
+        }
     }
 }

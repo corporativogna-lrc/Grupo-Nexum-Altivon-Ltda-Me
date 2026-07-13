@@ -6428,6 +6428,7 @@ app.MapGet("/api/integracoes/credenciais-modelo", [Authorize(Policy = "Gerente")
         new("Gateway secundário", "gateway", "GatewaySecundario__Provider / GatewaySecundario__AccessToken / GatewaySecundario__PublicKey / GatewaySecundario__WebhookSecret", "Estrutura reserva para o segundo gateway adicional e contingência de cobrança.", false),
         new("Melhor Envio", "logistica", "MelhorEnvio__Token", "Token Bearer do Melhor Envio para cotação, compra de frete e etiqueta.", true),
         new("Melhor Envio", "logistica", "MelhorEnvio__Sandbox", "true para homologação; false para produção.", false),
+        new("Melhor Envio", "logistica", "MelhorEnvio__RastreamentoEndpointTemplate", "URL real de rastreamento com token {codigo}; usada por GET /api/logistica/rastreamento/{codigo}.", true),
         new("Logística principal", "logistica", "LogisticaPrincipal__Provider / LogisticaPrincipal__ApiEndpoint / LogisticaPrincipal__Token / LogisticaPrincipal__ClientId / LogisticaPrincipal__ClientSecret", "Estrutura para a principal transportadora/hub escolhida para produção.", false),
         new("Logística secundária", "logistica", "LogisticaSecundaria__Provider / LogisticaSecundaria__ApiEndpoint / LogisticaSecundaria__Token / LogisticaSecundaria__ClientId / LogisticaSecundaria__ClientSecret", "Estrutura de contingência para uma segunda transportadora ou hub logístico.", false),
         new("Dropshipping principal", "dropshipping", "DropshippingPrincipal__Provider / DropshippingPrincipal__ApiEndpoint / DropshippingPrincipal__ApiKey / DropshippingPrincipal__ApiSecret", "Canal principal de dropshipping preparado para receber as credenciais reais.", false),
@@ -6574,6 +6575,89 @@ app.MapPost("/api/logistica/roteamento", [Authorize(Policy = "Gerente")] async (
     return Results.Ok(ApiResponse<LogisticaRoteamentoResponseDto>.Ok(resposta, "Roteamento logistico calculado com menor custo e melhor margem."));
 })
 .WithName("LogisticaRoteamento")
+;
+
+app.MapGet("/api/logistica/rastreamento/{codigo}", [Authorize(Policy = "Gerente")] async (
+    string codigo,
+    NexumDbContext db,
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct) =>
+{
+    var codigoNormalizado = (codigo ?? string.Empty).Trim();
+    if (string.IsNullOrWhiteSpace(codigoNormalizado))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Codigo de rastreio obrigatorio."));
+    }
+
+    var pedido = await db.Pedidos
+        .AsNoTracking()
+        .Where(item => item.FreteCodigoRastreio == codigoNormalizado)
+        .OrderByDescending(item => item.UpdatedAt)
+        .Select(item => new
+        {
+            item.Id,
+            item.NumeroPedido,
+            item.Status,
+            item.FreteCodigoRastreio,
+            item.FreteTransportadora,
+            item.FreteMetodo,
+            item.DataEnvio,
+            item.DataEntrega,
+            item.FretePrazoDias,
+            item.UpdatedAt
+        })
+        .FirstOrDefaultAsync(ct);
+
+    if (pedido is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Codigo de rastreio nao localizado em pedido real."));
+    }
+
+    var externo = await ConsultarRastreamentoExternoAsync(codigoNormalizado, configuration, httpClientFactory, ct);
+    var dto = new LogisticaRastreamentoDto(
+        codigoNormalizado,
+        pedido.Id,
+        pedido.NumeroPedido,
+        pedido.FreteTransportadora,
+        pedido.FreteMetodo,
+        FormatStatusPedido(pedido.Status),
+        pedido.DataEnvio,
+        pedido.DataEntrega,
+        pedido.FretePrazoDias > 0 && pedido.DataEnvio.HasValue ? pedido.DataEnvio.Value.AddDays(pedido.FretePrazoDias) : null,
+        externo.Configurada,
+        externo.Operacional,
+        externo.Fonte,
+        externo.StatusExterno,
+        externo.Eventos,
+        externo.Pendencias,
+        DateTime.UtcNow);
+
+    if (!externo.Configurada)
+    {
+        return Results.Json(
+            new ApiResponse<LogisticaRastreamentoDto>(
+                false,
+                "Rastreamento externo nao configurado. Status interno do pedido foi retornado, sem eventos fabricados.",
+                dto,
+                externo.Pendencias),
+            statusCode: StatusCodes.Status424FailedDependency);
+    }
+
+    if (!externo.Operacional)
+    {
+        return Results.Json(
+            new ApiResponse<LogisticaRastreamentoDto>(
+                false,
+                "Rastreamento externo configurado, mas o provedor nao retornou consulta valida.",
+                dto,
+                externo.Pendencias),
+            statusCode: StatusCodes.Status502BadGateway);
+    }
+
+    return Results.Ok(ApiResponse<LogisticaRastreamentoDto>.Ok(dto, "Rastreamento externo consultado no provedor configurado."));
+})
+.WithName("ConsultarRastreamentoLogistico")
 ;
 
 app.MapPost("/api/webhooks/mercadopago", async (
@@ -10609,6 +10693,177 @@ static async Task<List<FreteCotacaoDto>> CotarFreteAsync(
         new("local-padrao", "Entrega padrão Nexum", "Tabela local", freteBase, interiorSp ? 3 : 7, "Tabela local"),
         new("local-expresso", "Entrega expressa assistida", "Tabela local", freteBase + 35m, interiorSp ? 1 : 4, "Tabela local")
     ];
+}
+
+static async Task<LogisticaRastreamentoExternoResult> ConsultarRastreamentoExternoAsync(
+    string codigoRastreio,
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct)
+{
+    var endpointTemplate = GetIntegrationValue(
+        configuration,
+        "Logistica:RastreamentoEndpointTemplate",
+        "Integracoes:Logistica:RastreamentoEndpointTemplate",
+        "MelhorEnvio:RastreamentoEndpointTemplate",
+        "Integracoes:MelhorEnvio:RastreamentoEndpointTemplate");
+    var token = GetIntegrationValue(
+        configuration,
+        "Logistica:RastreamentoToken",
+        "Integracoes:Logistica:RastreamentoToken",
+        "MelhorEnvio:Token",
+        "Integracoes:MelhorEnvio:Token");
+
+    if (!IsConfiguredSecret(endpointTemplate) || !IsConfiguredSecret(token))
+    {
+        return new LogisticaRastreamentoExternoResult(
+            false,
+            false,
+            "Nao configurado",
+            null,
+            [],
+            [
+                "Configure Logistica__RastreamentoEndpointTemplate ou MelhorEnvio__RastreamentoEndpointTemplate com a URL real do provedor.",
+                "Configure Logistica__RastreamentoToken ou MelhorEnvio__Token com credencial real."
+            ]);
+    }
+
+    try
+    {
+        var sandbox = configuration.GetValue("MelhorEnvio:Sandbox", configuration.GetValue("Integracoes:MelhorEnvio:Sandbox", true));
+        var endpoint = endpointTemplate!.Replace("{codigo}", Uri.EscapeDataString(codigoRastreio), StringComparison.OrdinalIgnoreCase);
+        var client = httpClientFactory.CreateClient("melhor-envio");
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var endpointUri))
+        {
+            var baseUri = new Uri(sandbox ? "https://sandbox.melhorenvio.com.br/" : "https://www.melhorenvio.com.br/");
+            endpointUri = new Uri(baseUri, endpoint.TrimStart('/'));
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, endpointUri);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        using var response = await client.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return new LogisticaRastreamentoExternoResult(
+                true,
+                false,
+                endpointUri.Host,
+                $"HTTP {(int)response.StatusCode}",
+                [],
+                [$"Provedor de rastreamento retornou HTTP {(int)response.StatusCode}. Revise token, endpoint e permissao de rastreamento."]);
+        }
+
+        var (status, eventos) = ParseRastreamentoExterno(body);
+        return new LogisticaRastreamentoExternoResult(
+            true,
+            true,
+            endpointUri.Host,
+            status,
+            eventos,
+            eventos.Count == 0 ? ["Provedor respondeu sem eventos de rastreamento para este codigo."] : []);
+    }
+    catch (Exception ex)
+    {
+        return new LogisticaRastreamentoExternoResult(
+            true,
+            false,
+            "Provedor configurado",
+            ex.GetType().Name,
+            [],
+            [$"Falha real ao consultar rastreamento externo: {ex.Message}"]);
+    }
+}
+
+static (string? Status, List<LogisticaRastreamentoEventoDto> Eventos) ParseRastreamentoExterno(string json)
+{
+    using var document = JsonDocument.Parse(json);
+    var root = document.RootElement;
+    var status = TryReadFirstString(root, "status", "status_name", "statusName", "situacao", "situation", "state", "message");
+    var eventos = new List<LogisticaRastreamentoEventoDto>();
+    CollectTrackingEvents(root, eventos);
+    return (status, eventos.OrderByDescending(item => item.DataHora ?? DateTime.MinValue).ToList());
+}
+
+static void CollectTrackingEvents(JsonElement element, List<LogisticaRastreamentoEventoDto> eventos)
+{
+    if (element.ValueKind == JsonValueKind.Array)
+    {
+        foreach (var item in element.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var status = TryReadFirstString(item, "status", "status_name", "statusName", "name", "titulo", "title", "message");
+            var descricao = TryReadFirstString(item, "description", "descricao", "message", "detail", "detalhe");
+            var local = TryReadFirstString(item, "location", "local", "city", "cidade", "unit", "unidade");
+            var dataHora = TryReadFirstDateTime(item, "date", "datetime", "data", "data_hora", "created_at", "updated_at", "timestamp");
+
+            if (!string.IsNullOrWhiteSpace(status) || !string.IsNullOrWhiteSpace(descricao))
+            {
+                eventos.Add(new LogisticaRastreamentoEventoDto(dataHora, status ?? "Evento", local, descricao));
+            }
+
+            CollectTrackingEvents(item, eventos);
+        }
+
+        return;
+    }
+
+    if (element.ValueKind != JsonValueKind.Object)
+    {
+        return;
+    }
+
+    foreach (var property in element.EnumerateObject())
+    {
+        if (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
+        {
+            CollectTrackingEvents(property.Value, eventos);
+        }
+    }
+}
+
+static string? TryReadFirstString(JsonElement element, params string[] names)
+{
+    if (element.ValueKind != JsonValueKind.Object)
+    {
+        return null;
+    }
+
+    foreach (var name in names)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (property.NameEquals(name) && property.Value.ValueKind is JsonValueKind.String or JsonValueKind.Number)
+            {
+                var value = property.Value.ToString();
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value.Trim();
+                }
+            }
+        }
+    }
+
+    return null;
+}
+
+static DateTime? TryReadFirstDateTime(JsonElement element, params string[] names)
+{
+    var value = TryReadFirstString(element, names);
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return null;
+    }
+
+    return DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)
+        ? parsed.UtcDateTime
+        : null;
 }
 
 static async Task<GatewayPaymentStartResult> TryStartGatewayPaymentAsync(
@@ -15070,6 +15325,38 @@ public sealed record LogisticaRoteamentoResponseDto(
     string ResumoLogistico,
     List<string> Pendencias,
     DateTime CalculadoEm);
+
+public sealed record LogisticaRastreamentoDto(
+    string CodigoRastreio,
+    int PedidoId,
+    string NumeroPedido,
+    string? Transportadora,
+    string? MetodoFrete,
+    string StatusInterno,
+    DateTime? DataEnvio,
+    DateTime? DataEntrega,
+    DateTime? PrevisaoEntrega,
+    bool RastreamentoExternoConfigurado,
+    bool RastreamentoExternoOperacional,
+    string FonteExterna,
+    string? StatusExterno,
+    List<LogisticaRastreamentoEventoDto> Eventos,
+    List<string> Pendencias,
+    DateTime ConsultadoEm);
+
+public sealed record LogisticaRastreamentoEventoDto(
+    DateTime? DataHora,
+    string Status,
+    string? Local,
+    string? Descricao);
+
+public sealed record LogisticaRastreamentoExternoResult(
+    bool Configurada,
+    bool Operacional,
+    string Fonte,
+    string? StatusExterno,
+    List<LogisticaRastreamentoEventoDto> Eventos,
+    List<string> Pendencias);
 
 public sealed record GatewayPaymentStartResult(
     bool Started,
