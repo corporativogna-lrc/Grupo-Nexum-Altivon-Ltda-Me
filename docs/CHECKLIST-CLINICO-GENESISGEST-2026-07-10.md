@@ -46,6 +46,7 @@ Apuracao complementar de integridade funcional: 2026-07-12.
 |---|---|
 | Seeds auditaveis do `NexumDbContext` | `Loja`, `Transportadora`, `Marketplace` e `DropshippingConfig` passaram a declarar valores obrigatorios de auditoria e flags operacionais em `HasData` |
 | Validacao operacional da etapa | `dotnet build NexumAltivon.ERP.sln -c Release --no-restore -m:1 /nr:false /p:UseSharedCompilation=false` passou com 0 avisos e 0 erros apos remover a base de validacao da solution |
+| Republicacao oficial 5010 | Validacao elevada em 2026-07-13T00:53:39 confirmou task `NexumAltivonApi24h` `Running`, usuario `SISTEMA`, `RunLevel Highest`, PID `10928`, `dotnet.exe NexumAltivon.API.dll`, `/health`, `/health/db`, `/health/db/genesis` e `/api/site/configuracoes/publico` com HTTP 200 |
 | OpenAPI em runtime local | `/swagger/v1/swagger.json` respondeu 200 em API local com o build atual |
 | Alias FICO razao | `/api/financeiro/contabil/razao` respondeu 401 sem token, sem 404 |
 | Alias FICO conciliacao | `/api/financeiro/contabil/conciliacao` respondeu 401 sem token, sem 404 |
@@ -70,8 +71,8 @@ Apuracao complementar de integridade funcional: 2026-07-12.
 | API ativa | Commit `07a465e` alinhou auditoria tenant, migrations, confirmacao de cadastro, Melhor Envio real e filtros de produto publicavel; `dotnet build NexumAltivon_Back-End\NexumAltivon.API.csproj -c Release` passou com 0 erros e 0 avisos |
 | Banco local oficial | MySQL XAMPP validado em `127.0.0.1:3309`; schemas `nexum_altivon` e `genesis_bd` existem, com 212 e 47 tabelas respectivamente |
 | Catalogo publico | Consulta direta no banco confirmou 91 produtos ativos e 91 produtos publicaveis pelo filtro atual da API |
-| API oficial 5010 | Task `NexumAltivonApi24h` validada em 2026-07-12 como `Running`, usuario `SISTEMA`, `RunLevel Highest`, processo `dotnet.exe NexumAltivon.API.dll`, `/health`, `/health/db`, `/health/db/genesis` e `/api/site/configuracoes/publico` com HTTP 200 |
-| GitHub oficial atualizado | `origin/main` e `origin/work/delivery-2026-06-13` alinhados no commit `1e458b1 fix: api - aguardar readiness da tarefa oficial 5010` antes da apuracao complementar de ferramentas ficticias |
+| API oficial 5010 | Task `NexumAltivonApi24h` validada em 2026-07-13T00:53:39 como `Running`, usuario `SISTEMA`, `RunLevel Highest`, processo `dotnet.exe NexumAltivon.API.dll`, PID `10928`, `/health`, `/health/db`, `/health/db/genesis` e `/api/site/configuracoes/publico` com HTTP 200 |
+| GitHub oficial atualizado | `origin/main` e `origin/work/delivery-2026-06-13` alinhados no commit `8d58edb fix: api - limpar base de teste e corrigir seeds auditaveis` |
 
 ## Ferramentas que nao podem mais ser tratadas como prontas sem evidencia
 
