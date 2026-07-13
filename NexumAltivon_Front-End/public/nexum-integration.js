@@ -122,7 +122,7 @@
       <div id="nexum-search-box">
         <button id="nexum-search-close">&times;</button>
         <h2 style="color:#C9A227;font-family:'Playfair Display',serif;margin:0 0 20px 0;">Buscar Produtos</h2>
-        <input id="nexum-search-input" type="text" placeholder="Digite o nome do produto..." autofocus />
+        <input id="nexum-search-input" type="text" aria-label="Digite o nome do produto" autofocus />
         <div id="nexum-search-results" style="margin-top:20px;"></div>
       </div>
     `;
@@ -255,11 +255,23 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nome, email, telefone, empresa, mensagem, origem: `Site - ${origem}` })
     });
+    const payload = await res.json().catch(() => null);
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || 'Erro ao enviar');
+      const detail = payload?.detail || payload?.mensagem || payload?.Mensagem || 'API recusou o cadastro do lead.';
+      throw new Error(detail);
     }
-    return res.json();
+
+    if (!payload || payload.sucesso === false || payload.Sucesso === false) {
+      throw new Error(payload?.mensagem || payload?.Mensagem || 'API nao confirmou o cadastro do lead.');
+    }
+
+    const lead = payload.dados || payload.Dados || payload.data || payload.Data;
+    const leadId = lead?.id ?? lead?.Id;
+    if (!leadId) {
+      throw new Error('API nao confirmou o ID do lead gravado no CRM.');
+    }
+
+    return { payload, lead, leadId };
   }
 
   function setupForms() {
@@ -273,11 +285,11 @@
         const origText = btn ? btn.textContent : '';
         if (btn) { btn.disabled = true; btn.textContent = 'Enviando...'; }
         try {
-          await submitForm(form);
-          showMessage(form, 'success', '✓ Cadastro enviado com sucesso! Entraremos em contato em breve.');
+          const result = await submitForm(form);
+          showMessage(form, 'success', `Cadastro registrado no CRM. Protocolo ${result.leadId}.`);
           form.reset();
         } catch (err) {
-          showMessage(form, 'error', '✗ ' + (err.message || 'Erro ao enviar. Tente novamente.'));
+          showMessage(form, 'error', 'Falha ao registrar no CRM: ' + (err.message || 'erro operacional sem detalhe retornado.'));
         } finally {
           if (btn) { btn.disabled = false; btn.textContent = origText; }
         }
