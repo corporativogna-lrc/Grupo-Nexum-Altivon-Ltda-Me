@@ -1,3 +1,11 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
+
 using Microsoft.EntityFrameworkCore;
 using NexumAltivon_ERP.Data;
 using NexumAltivon_ERP.Models.Financeiro;
@@ -67,22 +75,38 @@ namespace NexumAltivon_ERP.Services.Financeiro
                 fim = new DateTime(ano, 12, 31);
             }
 
-            // Buscar dados do e-commerce (pedidos pagos)
             var receitaBruta = await _context.FluxosCaixa
                 .AsNoTracking()
                 .Where(f => f.Data >= inicio && f.Data <= fim && f.Tipo == "Entrada" && f.Categoria == "Vendas")
                 .SumAsync(f => f.Valor);
 
-            // Buscar despesas do período
             var despesas = await _context.ContasPagar
                 .AsNoTracking()
+                .Include(c => c.PlanoContas)
                 .Where(c => c.DataPagamento >= inicio && c.DataPagamento <= fim && c.Status == "Pago")
                 .ToListAsync();
 
-            var cmv = despesas.Where(c => c.CentroCustoId == 1).Sum(c => c.ValorPago); // Ajustar lógica real
-            var despesasOp = despesas.Where(c => c.CentroCustoId == 3).Sum(c => c.ValorPago);
-            var despesasAdm = despesas.Where(c => c.CentroCustoId == 4).Sum(c => c.ValorPago);
-            var despesasCom = despesas.Where(c => c.CentroCustoId == 2).Sum(c => c.ValorPago);
+            var receitasFinanceiras = await _context.FluxosCaixa
+                .AsNoTracking()
+                .Where(f => f.Data >= inicio && f.Data <= fim && f.Tipo == "Entrada" && f.Categoria.Contains("Financeir"))
+                .SumAsync(f => f.Valor);
+
+            var cmv = despesas.Where(c => ClassificacaoContem(c, "cmv", "custo", "mercadoria", "produto", "insumo")).Sum(c => c.ValorPago);
+            var impostosSobreVendas = despesas.Where(c => ClassificacaoContem(c, "icms", "iss", "pis", "cofins", "imposto sobre venda", "tributo venda")).Sum(c => c.ValorPago);
+            var impostoRenda = despesas.Where(c => ClassificacaoContem(c, "imposto de renda", "irpj")).Sum(c => c.ValorPago);
+            var contribuicaoSocial = despesas.Where(c => ClassificacaoContem(c, "contribuicao social", "contribuição social", "csll")).Sum(c => c.ValorPago);
+            var despesasFinanceiras = despesas.Where(c => ClassificacaoContem(c, "financeir", "juros", "tarifa", "banco")).Sum(c => c.ValorPago);
+            var despesasCom = despesas.Where(c => ClassificacaoContem(c, "comercial", "marketing", "venda", "comissao", "comissão")).Sum(c => c.ValorPago);
+            var despesasAdm = despesas.Where(c => ClassificacaoContem(c, "administrativ", "admin", "escritorio", "escritório")).Sum(c => c.ValorPago);
+            var despesasOp = despesas
+                .Where(c =>
+                    !ClassificacaoContem(c, "cmv", "custo", "mercadoria", "produto", "insumo") &&
+                    !ClassificacaoContem(c, "icms", "iss", "pis", "cofins", "imposto sobre venda", "tributo venda") &&
+                    !ClassificacaoContem(c, "imposto de renda", "irpj", "contribuicao social", "contribuição social", "csll") &&
+                    !ClassificacaoContem(c, "financeir", "juros", "tarifa", "banco") &&
+                    !ClassificacaoContem(c, "comercial", "marketing", "venda", "comissao", "comissão") &&
+                    !ClassificacaoContem(c, "administrativ", "admin", "escritorio", "escritório"))
+                .Sum(c => c.ValorPago);
 
             var dre = new DRE
             {
@@ -90,15 +114,15 @@ namespace NexumAltivon_ERP.Services.Financeiro
                 Mes = mes,
                 Tipo = tipo,
                 ReceitaBruta = receitaBruta,
-                ImpostosSobreVendas = receitaBruta * 0.12m, // Estimativa simplificada
+                ImpostosSobreVendas = impostosSobreVendas,
                 CMV = cmv,
                 DespesasOperacionais = despesasOp,
                 DespesasAdministrativas = despesasAdm,
                 DespesasComerciais = despesasCom,
-                DespesasFinanceiras = 0,
-                ReceitasFinanceiras = 0,
-                ImpostoRenda = 0,
-                ContribuicaoSocial = 0,
+                DespesasFinanceiras = despesasFinanceiras,
+                ReceitasFinanceiras = receitasFinanceiras,
+                ImpostoRenda = impostoRenda,
+                ContribuicaoSocial = contribuicaoSocial,
                 LojaId = lojaId,
                 CriadoEm = DateTime.Now
             };
@@ -140,8 +164,53 @@ namespace NexumAltivon_ERP.Services.Financeiro
 
         public async Task<byte[]> GerarRelatorioPDFAsync(int id)
         {
-            await Task.Delay(100);
-            return Array.Empty<byte>();
+            var dre = await _context.DREs.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id);
+            if (dre == null) throw new Exception("DRE não encontrada");
+
+            var margemBruta = dre.ReceitaLiquida > 0 ? dre.LucroBruto / dre.ReceitaLiquida * 100 : 0;
+            var margemLiquida = dre.ReceitaLiquida > 0 ? dre.LucroLiquido / dre.ReceitaLiquida * 100 : 0;
+            var periodo = dre.Mes.HasValue ? $"{dre.Mes:00}/{dre.Ano}" : dre.Ano.ToString();
+
+            var linhas = new List<string>
+            {
+                "GenesisGest.Net - Demonstrativo do Resultado do Exercicio",
+                $"DRE Id: {dre.Id} | Periodo: {periodo} | Tipo: {dre.Tipo} | LojaId: {dre.LojaId?.ToString() ?? "Todas"}",
+                $"Gerado em: {DateTime.Now:dd/MM/yyyy HH:mm:ss}",
+                string.Empty,
+                $"Receita bruta..................... {FormatarMoeda(dre.ReceitaBruta)}",
+                $"(-) Impostos sobre vendas......... {FormatarMoeda(dre.ImpostosSobreVendas)}",
+                $"(=) Receita liquida............... {FormatarMoeda(dre.ReceitaLiquida)}",
+                $"(-) CMV........................... {FormatarMoeda(dre.CMV)}",
+                $"(=) Lucro bruto................... {FormatarMoeda(dre.LucroBruto)}",
+                string.Empty,
+                $"(-) Despesas operacionais......... {FormatarMoeda(dre.DespesasOperacionais)}",
+                $"(-) Despesas administrativas...... {FormatarMoeda(dre.DespesasAdministrativas)}",
+                $"(-) Despesas comerciais........... {FormatarMoeda(dre.DespesasComerciais)}",
+                $"(-) Despesas financeiras.......... {FormatarMoeda(dre.DespesasFinanceiras)}",
+                $"(+) Receitas financeiras.......... {FormatarMoeda(dre.ReceitasFinanceiras)}",
+                $"(=) LAIR.......................... {FormatarMoeda(dre.LAIR)}",
+                string.Empty,
+                $"(-) Imposto de renda.............. {FormatarMoeda(dre.ImpostoRenda)}",
+                $"(-) Contribuicao social........... {FormatarMoeda(dre.ContribuicaoSocial)}",
+                $"(=) Lucro liquido................. {FormatarMoeda(dre.LucroLiquido)}",
+                $"EBITDA............................ {FormatarMoeda(dre.EBITDA)}",
+                string.Empty,
+                $"Margem bruta...................... {margemBruta:N2}%",
+                $"Margem liquida.................... {margemLiquida:N2}%"
+            };
+
+            return PdfFinanceiroBuilder.Gerar("DRE", linhas);
+        }
+
+        private static bool ClassificacaoContem(ContaPagar conta, params string[] termos)
+        {
+            var texto = $"{conta.PlanoContas?.Codigo} {conta.PlanoContas?.Nome} {conta.PlanoContas?.Tipo} {conta.PlanoContas?.Descricao} {conta.FornecedorNome} {conta.Observacoes}";
+            return termos.Any(termo => texto.Contains(termo, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static string FormatarMoeda(decimal valor)
+        {
+            return valor.ToString("C", new System.Globalization.CultureInfo("pt-BR"));
         }
     }
 }
