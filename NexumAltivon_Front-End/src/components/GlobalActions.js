@@ -95,14 +95,19 @@ export default function GlobalActions() {
         sessaoId: getSessionId(),
         historico,
       });
-      const answer = response.data?.mensagem || response.data?.Mensagem || response.data?.dados?.mensagem || response.data?.Dados?.Mensagem;
+      const answer = String(response.data?.mensagem || response.data?.Mensagem || response.data?.dados?.mensagem || response.data?.Dados?.Mensagem || '').trim();
+
+      if (!answer) {
+        throw new Error('A API da central de IA não retornou uma resposta válida.');
+      }
+
       setMessages((current) => [
         ...current,
         {
           id: `assistant-${Date.now()}`,
           author: 'assistente',
           assistant,
-          text: answer || 'Recebi sua mensagem e estou pronta para continuar o atendimento.',
+          text: answer,
         },
       ]);
     } catch {
@@ -190,8 +195,8 @@ export default function GlobalActions() {
               value={text}
               onChange={(event) => setText(event.target.value)}
               maxLength={1200}
-              className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white outline-none placeholder:text-zinc-600 focus:border-[#C9A227]"
-              placeholder={`Mensagem para ${activeProfile.label}`}
+              aria-label={`Mensagem para ${activeProfile.label}`}
+              className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white outline-none focus:border-[#C9A227]"
             />
             <button
               type="submit"
