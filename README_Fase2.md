@@ -1,106 +1,56 @@
-# NEXUM ALTIVON COMMERCE PLATFORM
-## FASE 2 — Painel Administrativo, Dashboard, Gestao Completa
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+-->
 
-### Grupo Nexum Altivon ME — www.nexumaltivon.com
+# Fase 2 - Painel Administrativo
 
----
+Data de revisao: 2026-07-12.
 
-## Entregaveis da FASE 2
+## Estado oficial
 
-### 1. Back-End — API Admin Dashboard
+- O painel administrativo operacional fica no React oficial: `NexumAltivon_Front-End/src/pages/Login.js`, `NexumAltivon_Front-End/src/pages/Dashboard.js`, `NexumAltivon_Front-End/src/context/AuthContext.js` e `NexumAltivon_Front-End/src/services/api.js`.
+- A API oficial e a Minimal API em `NexumAltivon_Back-End/API/Program.cs`.
+- O HTML paralelo `NexumAltivon_Front-End/admin/index.html` nao e painel produtivo e foi desativado para redirecionar ao login oficial `/?/login`.
+- `admin-painel.html` na raiz e em `NexumAltivon_Front-End/public/admin-painel.html` tambem redirecionam ao login oficial.
+- Nenhum fluxo administrativo deve usar painel estatico separado do React oficial.
 
-| Arquivo | Descricao |
-|---|---|
-| `Services/Admin/AdminDashboardService.cs` | Servico completo de KPIs, graficos e metricas |
-| `Controllers/Admin/DashboardController.cs` | 8 endpoints REST para dashboard |
-| `DTOs/Admin/DashboardDtos.cs` | 8 DTOs de KPIs, faturamento, vendas, produtos, clientes, leads |
+## Endpoints administrativos confirmados no `Program.cs`
 
-#### Endpoints Admin (requer Gerente+)
+| Endpoint | Metodo | Politica | Uso atual |
+|---|---|---|---|
+| `/api/admin/dashboard/completo` | GET | `Gerente` | Dashboard completo do painel React |
+| `/api/admin/dashboard/kpis` | GET | `Gerente` | KPIs administrativos do painel React |
+| `/api/admin/usuarios` | GET/POST | `Admin` | Gestao real de usuarios administrativos |
+| `/api/admin/usuarios/{id:int}` | PUT | `Admin` | Atualizacao real de usuario administrativo |
+| `/api/admin/usuarios/perfis` | GET | `Admin` | Lista real de perfis administrativos |
 
-| Endpoint | Metodo | Descricao |
-|---|---|---|
-| `/api/admin/dashboard/completo` | GET | Dashboard completo com tudo |
-| `/api/admin/dashboard/kpis` | GET | Apenas KPIs principais |
-| `/api/admin/dashboard/faturamento/semanal` | GET | Grafico de faturamento 7 dias |
-| `/api/admin/dashboard/faturamento/mensal` | GET | Grafico de faturamento 12 meses |
-| `/api/admin/dashboard/vendas/lojas` | GET | Vendas por loja (pie chart) |
-| `/api/admin/dashboard/produtos/mais-vendidos` | GET | Top produtos (bar chart) |
-| `/api/admin/dashboard/clientes/recentes` | GET | Clientes recentes |
-| `/api/admin/dashboard/pedidos/recentes` | GET | Pedidos recentes |
-| `/api/admin/dashboard/leads/recentes` | GET | Leads recentes |
+## Validacao operacional
 
-### 2. Front-End — Painel Administrativo
+Comandos executados nesta revisao:
 
-| Arquivo | Descricao |
-|---|---|
-| `NexumAltivon_Front-End/admin/index.html` | Painel admin completo com Chart.js |
+```powershell
+npm.cmd run build
+```
 
-#### Funcionalidades do Painel
+Resultado: build React concluido com sucesso em `NexumAltivon_Front-End`.
 
-- **KPI Cards**: 6 cards com faturamento, pedidos, clientes, ticket medio, estoque baixo, leads
-- **Grafico Faturamento Semanal**: Line chart com 7 dias
-- **Grafico Vendas por Loja**: Doughnut chart com as 6 lojas
-- **Grafico Faturamento Mensal**: Bar chart com 12 meses
-- **Grafico Produtos Mais Vendidos**: Horizontal bar chart
-- **Tabela Pedidos Recentes**: Ultimos 5 pedidos com status
-- **Tabela Leads Recentes**: Ultimos 5 leads com prioridade
-- **Tabela Clientes Recentes**: Ultimos 5 clientes com gasto total
-- **Menu Lateral**: 15 secoes navegaveis (Dashboard, Pedidos, Produtos, Clientes, Lojas, Financeiro, Fiscal, Logistica, CRM, Cupons, Marketing, Marketplaces, Dropshipping, Usuarios, Configuracoes, Auditoria)
-- **Design**: Escuro premium, cores gold #C9A227, identico ao site principal
+Validacoes publicas executadas para a API oficial:
 
-#### Secoes do Menu (todas estruturadas)
+```powershell
+Invoke-WebRequest http://127.0.0.1:5010/health
+Invoke-WebRequest http://127.0.0.1:5010/health/db
+Invoke-WebRequest http://127.0.0.1:5010/health/db/genesis
+Invoke-WebRequest https://api.nexumaltivon.com.br/health
+Invoke-WebRequest https://api.nexumaltivon.com.br/health/db
+Invoke-WebRequest https://api.nexumaltivon.com.br/health/db/genesis
+```
 
-1. **Dashboard** — Completo com KPIs e graficos
-2. **Pedidos** — Tabela com filtros e exportacao
-3. **Produtos** — Catalogo com estoque e acoes
-4. **Clientes** — Base completa com perfis
-5. **Lojas** — Cards das 6 lojas com metricas
-6. **Financeiro** — KPIs financeiros
-7. **Fiscal** — (placeholder para FASE 3+)
-8. **Logistica** — (placeholder para FASE 4)
-9. **CRM** — Tabela de leads completa
-10. **Cupons** — (placeholder)
-11. **Marketing** — (placeholder)
-12. **Marketplaces** — (placeholder para FASE 4)
-13. **Dropshipping** — (placeholder para FASE 4)
-14. **Usuarios** — (placeholder)
-15. **Configuracoes** — Painel de configuracoes editaveis
-16. **Auditoria** — (placeholder)
+Resultado: HTTP 200 nos endpoints acima.
 
----
+## Regra de manutencao
 
-## KPIs Implementados
-
-| KPI | Fonte |
-|---|---|
-| Faturamento Hoje/Mes/Ano | Soma de pedidos aprovados |
-| Pedidos Hoje/Mes/Pendentes/Enviados/Entregues | Count por status |
-| Clientes Novos/Ativos/Total | Count de clientes |
-| Ticket Medio | AVG(total) dos pedidos |
-| Taxa de Conversao | Pedidos / Visitas (placeholder) |
-| Produtos Ativos/Estoque Baixo/Sem Estoque | Count por condicao |
-| Leads Novos/Convertidos/Em Atendimento | Count por status |
-
----
-
-## Tecnologias Front-End do Painel
-
-- Chart.js 4.4.1 (graficos)
-- Font Awesome 6.5.0 (icones)
-- Google Fonts Montserrat (tipografia)
-- CSS Grid/Flexbox (layout responsivo)
-- JavaScript Vanilla (sem frameworks)
-
----
-
-## Proxima Fase
-
-| Fase | Entregaveis |
-|---|---|
-| **FASE 3** | Carrinho Funcional, Checkout, Gateway Pagamento |
-| **FASE 4** | Logistica, Marketplaces, Dropshipping |
-| **FASE 5** | CRM Avancado, Automacoes, IA, Analytics |
-
----
-
-(c) 2026 Grupo Nexum Altivon ME — Todos os direitos reservados
+Componentes visuais uteis do HTML desativado so podem voltar ao produto se forem migrados para o React oficial e ligados a endpoints reais da API, com persistencia validada no banco.

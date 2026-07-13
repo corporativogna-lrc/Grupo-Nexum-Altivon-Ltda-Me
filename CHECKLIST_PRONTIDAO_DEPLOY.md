@@ -28,8 +28,8 @@
 1. `api.nexumaltivon.com` ainda nao foi validado com DNS/rota Cloudflare nesta operacao.
    Correcao: criar/validar hostname publico no Cloudflare apontando para a mesma origem `http://127.0.0.1:5010` ja usada por `api.nexumaltivon.com.br`.
 
-2. Serviço local da API pode estar ausente apos reinicialização ou queda de energia.
-   Correcao: executar `scripts\server\VERIFICAR-BANCO-XAMPP-COMO-ADMIN.cmd -StartIfStopped` e depois `scripts\server\INSTALAR-API-24H-SERVIDOR-COMO-ADMIN.cmd` no servidor, apos criar `D:\NexumAltivon_API_24H\config\api.env.ps1` com valores reais.
+2. Servico local da API pode estar ausente apos reinicializacao ou queda de energia.
+   Correcao: executar `scripts\server\VERIFICAR-BANCO-XAMPP-COMO-ADMIN.cmd -StartIfStopped` e depois `powershell -ExecutionPolicy Bypass -File "D:\Nexum Altivon\NexumAltivon.com\scripts\server\instalar-api-oficial-24h-task.ps1"` no servidor. A configuracao privada oficial fica em `D:\Nexum Altivon\NexumAltivon.com\runtime\api-24h\api.env.ps1`; nao usar diretorio externo `D:\NexumAltivon_API_24H`.
 
 3. Connection strings privadas ainda podem apontar para `192.168.1.72`, que nao esta atribuido nesta sessao.
    Correcao: para execucao no mesmo servidor do banco, usar `127.0.0.1:3309` nas variaveis privadas `ConnectionStrings__DefaultConnection`, `ConnectionStrings__NexumDb` e `ConnectionStrings__GenesisConnection`, ou restabelecer IP fixo `192.168.1.72` no adaptador de rede antes de instalar a API 24h.
@@ -55,7 +55,8 @@ Atualizar/sobrepor estes arquivos no servidor principal:
 - `NexumAltivon_Back-End\API\Services\NotificacaoService.cs`
 - `NexumAltivon_Back-End\API\appsettings.json`
 - `NexumAltivon_Front-End\src\services\api.js`
-- `NexumAltivon_Front-End\admin\index.html`
+- `admin-painel.html`
+- `NexumAltivon_Front-End\public\admin-painel.html`
 - `NexumAltivon.Desktop\MainWindow.xaml.cs`
 - `NexumAltivon.Desktop\ManualNfeWindow.xaml.cs`
 - `Database\2026-06-18-unificar-lojas-estoque.sql`
