@@ -487,6 +487,19 @@ const normalizeSiteConfigValue = (key, value) => {
   const parsed = JSON.parse(rawValue);
   return JSON.stringify(parsed);
 };
+const buildSiteConfigFormFromItems = (items, baseForm = emptySiteConfigForm) =>
+  items.reduce((acc, item) => {
+    if (!item?.chave) return acc;
+
+    return {
+      ...acc,
+      [item.chave]: siteConfigJsonFields.has(item.chave)
+        ? formatSiteConfigJsonForForm(item.valor, emptySiteConfigForm[item.chave] || '[]')
+        : item.valor ?? '',
+    };
+  }, { ...baseForm });
+const getFiscalDraftSavedAt = (draft) =>
+  draft?.updatedAt || draft?.UpdatedAt || draft?.salvoEm || draft?.SalvoEm || draft?.salvo_em || '';
 const galleryToArray = (value) =>
   String(value ?? '')
     .split(/\r?\n/)
@@ -728,22 +741,12 @@ export default function Dashboard() {
       setCredenciaisModelo(Array.isArray(credenciaisRes.data) ? credenciaisRes.data : []);
       if (Array.isArray(siteConfigRes.data) && siteConfigRes.data.length > 0) {
         setSiteConfigItems(siteConfigRes.data);
-        setSiteConfigForm((current) =>
-          siteConfigRes.data.reduce(
-            (acc, item) => ({
-              ...acc,
-              [item.chave]: siteConfigJsonFields.has(item.chave)
-                ? formatSiteConfigJsonForForm(item.valor, emptySiteConfigForm[item.chave] || '[]')
-                : item.valor ?? '',
-            }),
-            { ...current },
-          ),
-        );
+        setSiteConfigForm((current) => buildSiteConfigFormFromItems(siteConfigRes.data, current));
       }
       const fiscalDraft = fiscalDraftRes?.data ?? {};
       const fiscalDraftPayload = safeJsonParse(fiscalDraft.valor || fiscalDraft.Valor || fiscalDraft.Valor || fiscalDraft.payload, null);
       if (fiscalDraftPayload && typeof fiscalDraftPayload === 'object' && !Array.isArray(fiscalDraftPayload)) {
-        setFiscalManualRascunho(fiscalDraft.updatedAt || fiscalDraft.UpdatedAt || fiscalDraft.salvoEm || '');
+        setFiscalManualRascunho(getFiscalDraftSavedAt(fiscalDraft));
         setFiscalManualForm((current) => ({
           ...current,
           empresaEmissora: fiscalDraftPayload.empresaEmissora ?? fiscalDraftPayload.EmpresaEmissora ?? current.empresaEmissora,
@@ -1014,19 +1017,21 @@ export default function Dashboard() {
       return;
     }
 
-    await siteAPI.update(payload);
+    try {
+      await siteAPI.update(payload);
+      const persistedResponse = await siteAPI.getAll();
+      const persistedItems = persistedResponse.data;
 
-    setSiteConfigItems(payload.map((item, index) => ({
-      id: siteConfigItems.find((config) => config.chave === item.chave)?.id || index + 1,
-      chave: item.chave,
-      valor: item.valor,
-      tipo: item.tipo,
-      descricao: item.descricao,
-      grupo: item.grupo,
-      editavel: item.editavel,
-      updatedAt: new Date().toISOString(),
-    })));
-    setFormStatus('Configurações da home, banners e contatos salvas no banco com sucesso.');
+      if (!Array.isArray(persistedItems)) {
+        throw new Error('A API não confirmou as configurações persistidas no banco.');
+      }
+
+      setSiteConfigItems(persistedItems);
+      setSiteConfigForm((current) => buildSiteConfigFormFromItems(persistedItems, current));
+      setFormStatus('Configurações da home, banners e contatos recarregadas do banco com sucesso.');
+    } catch (error) {
+      setFormStatus(error.response?.data?.detail || error.response?.data?.mensagem || error.message || 'Não foi possível salvar as configurações do site.');
+    }
   };
 
   const submitEmpresaGrupo = async (event) => {
@@ -1085,9 +1090,24 @@ export default function Dashboard() {
       requerEntradaNfe: Boolean(fiscalManualForm.requerEntradaNfe),
     };
 
-    await fiscalAPI.salvarRascunhoManual(payload);
-    setFiscalManualRascunho(new Date().toISOString());
-    setFormStatus('Rascunho fiscal manual salvo no banco.');
+    try {
+      const response = await fiscalAPI.salvarRascunhoManual(payload);
+      let savedAt = getFiscalDraftSavedAt(response.data);
+
+      if (!savedAt) {
+        const persistedResponse = await fiscalAPI.getRascunhoManual();
+        savedAt = getFiscalDraftSavedAt(persistedResponse.data);
+      }
+
+      if (!savedAt) {
+        throw new Error('A API não confirmou a data do rascunho persistido no banco.');
+      }
+
+      setFiscalManualRascunho(savedAt);
+      setFormStatus('Rascunho fiscal manual confirmado no banco.');
+    } catch (error) {
+      setFormStatus(error.response?.data?.detail || error.response?.data?.mensagem || error.message || 'Não foi possível salvar o rascunho fiscal manual.');
+    }
   };
 
   const prepararFiscalManual = async () => {
@@ -1272,7 +1292,7 @@ export default function Dashboard() {
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Buscar pedidos, clientes, produtos ou leads"
+                  aria-label="Buscar pedidos, clientes, produtos ou leads"
                   className="h-11 w-full rounded-full border border-[#2A2A2A] bg-[#050505] pl-10 pr-4 text-sm font-semibold text-white outline-none transition focus:border-[#C9A227] focus:ring-4 focus:ring-[#C9A227]/10 sm:w-80"
                 />
               </div>
@@ -3048,8 +3068,8 @@ function ImageGalleryField({ value, onChange, onUpload, uploading, className = '
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        aria-label="URLs da galeria, uma por linha"
         className="mt-4 min-h-24 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-semibold outline-none transition focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
-        placeholder="Uma URL por linha"
       />
 
       {items.length > 0 && (
