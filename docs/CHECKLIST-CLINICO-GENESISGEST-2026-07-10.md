@@ -9,6 +9,7 @@
 # Checklist Clinico GenesisGest.Net v1.1.5
 
 Data da apuracao: 2026-07-10.
+Apuracao complementar de integridade funcional: 2026-07-12.
 
 ## Rotas Travadas
 
@@ -67,6 +68,20 @@ Data da apuracao: 2026-07-10.
 | API ativa | Commit `07a465e` alinhou auditoria tenant, migrations, confirmacao de cadastro, Melhor Envio real e filtros de produto publicavel; `dotnet build NexumAltivon_Back-End\NexumAltivon.API.csproj -c Release` passou com 0 erros e 0 avisos |
 | Banco local oficial | MySQL XAMPP validado em `127.0.0.1:3309`; schemas `nexum_altivon` e `genesis_bd` existem, com 212 e 47 tabelas respectivamente |
 | Catalogo publico | Consulta direta no banco confirmou 91 produtos ativos e 91 produtos publicaveis pelo filtro atual da API |
+| API oficial 5010 | Task `NexumAltivonApi24h` validada em 2026-07-12 como `Running`, usuario `SISTEMA`, `RunLevel Highest`, processo `dotnet.exe NexumAltivon.API.dll`, `/health`, `/health/db`, `/health/db/genesis` e `/api/site/configuracoes/publico` com HTTP 200 |
+| GitHub oficial atualizado | `origin/main` e `origin/work/delivery-2026-06-13` alinhados no commit `1e458b1 fix: api - aguardar readiness da tarefa oficial 5010` antes da apuracao complementar de ferramentas ficticias |
+
+## Ferramentas que nao podem mais ser tratadas como prontas sem evidencia
+
+| Ferramenta/modulo | Evidencia encontrada | Classificacao real | Acao aplicada em 2026-07-12 | Proxima acao obrigatoria |
+|---|---|---|---|---|
+| Shopee marketplace | `NexumAltivon_Back-End/API/Services/MarketplaceHubService.cs` gravava `IdExterno = SHP{produtoId}`, `Status = active` e log `[STUB]` sem chamada externa real | Falso positivo operacional | Removida gravacao de sucesso fabricado; publicacao/atualizacao Shopee agora falha de forma rastreavel e nao registra sync como ativo | Implementar conector oficial Shopee com assinatura HMAC, credenciais reais, sandbox/producao, teste HTTP e persistencia apenas apos retorno aceito pela API externa |
+| Amazon marketplace | `MarketplaceHubService.cs` gravava `IdExterno = AMZ{produtoId}`, `Status = active` e log `[STUB]` sem Amazon SP-API | Falso positivo operacional | Removida gravacao de sucesso fabricado; publicacao/atualizacao Amazon agora falha de forma rastreavel e nao registra sync como ativo | Implementar Amazon SP-API real com OAuth/LWA, seller, marketplace, assinatura AWS4, sandbox/producao e teste HTTP antes de persistir sync |
+| Busca de produtos do `nexum-integration.js` | Script buscava `/api/produtos?limit=100` e exigia array direto, mas a API real usa `itensPorPagina` e envelope `ApiResponse.dados` | Quebrado/incompatível com contrato real | `nexum-integration.js` raiz e `NexumAltivon_Front-End/public/nexum-integration.js` ajustados para `itensPorPagina=60` e leitura de `dados/data` | Validar visualmente `/landing.html` e decidir se este legado continua publicado ou se sera substituido integralmente pelo React oficial |
+| Landing HTML legada | `landing.html` e `public/landing.html` ainda possuem links `#`, textos `Em Breve`, `CNPJ em breve` e script legado | Legado com risco de promessa falsa | Ainda nao alterado nesta apuracao para evitar mexer no design publicado sem validar uso real | Remover da publicacao ou converter todos os links/formularios para rotas React/API reais antes de expor como tela oficial |
+| Admin HTML estatico legado | `NexumAltivon_Front-End/admin/index.html` contem painel administrativo estatico separado do React oficial | Legado nao homologado | Nao publicado como `admin-painel.html`; `admin-painel.html` oficial redireciona para `/?/login` | Remover do build/publicacao ou migrar componentes uteis para `Dashboard.js` com chamadas API reais |
+| PDF de conta a pagar no ERP isolado | `NexumAltivon_ERP/Services/Financeiro/ContaPagarService.cs` possui comentario de stub para geracao de PDF | Funcionalidade incompleta no ERP isolado | Registrado como pendencia; nao tratado como pronto | Implementar PDF real com biblioteca ja disponivel ou remover botao/fluxo ate existir geracao validada |
+| Logistica tracking externo | `LogisticaService.cs` declara simulacao de eventos de transportadora | Parcial interno, nao tracking externo real | Registrado como pendencia; roteamento/frete nao deve ser anunciado como rastreio externo completo | Integrar transportadora/hub real ou expor apenas status interno, sem promessa de rastreamento externo |
 
 ## Definition of Done
 
@@ -96,6 +111,7 @@ Data da apuracao: 2026-07-10.
 | Termos proibidos no codigo ativo | Parcial | Blocos commitados nesta auditoria foram varridos; ainda restam Desktop, docs antigos e services legados nao compilados para triagem |
 | Header de IP em todos os arquivos | Parcial | Blocos commitados nesta auditoria receberam header; falta varredura completa nos arquivos remanescentes |
 | Fluxo cadastro a BI isolado por empresa | Pendente | Executar roteiro ponta a ponta com dados reais |
+| Ferramentas ficticias convertidas em reais ou bloqueadas claramente | Em execucao | Shopee/Amazon deixam de gravar sucesso falso; concluir landing/admin legado, PDF financeiro, tracking externo e demais achados da secao acima |
 
 ## GitHub e Commit
 

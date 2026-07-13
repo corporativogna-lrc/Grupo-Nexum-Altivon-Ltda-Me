@@ -145,11 +145,18 @@
 
         if (!allProducts) {
           try {
-            const res = await fetch(`${API_URL}/produtos?limit=100`);
+            const res = await fetch(`${API_URL}/produtos?itensPorPagina=60`);
             if (!res.ok) {
               throw new Error(`API retornou HTTP ${res.status} ao buscar produtos.`);
             }
-            allProducts = await res.json();
+            const payload = await res.json();
+            allProducts = Array.isArray(payload)
+              ? payload
+              : Array.isArray(payload.dados)
+                ? payload.dados
+                : Array.isArray(payload.data)
+                  ? payload.data
+                  : [];
             if (!Array.isArray(allProducts)) {
               throw new Error('API retornou payload invalido para produtos.');
             }
@@ -161,7 +168,8 @@
         }
 
         const filtered = allProducts.filter(p =>
-          p.nome.toLowerCase().includes(q) || (p.descricao || '').toLowerCase().includes(q)
+          String(p.nome || p.Nome || '').toLowerCase().includes(q) ||
+          String(p.descricao || p.Descricao || p.descricao_curta || p.descricaoCurta || '').toLowerCase().includes(q)
         );
 
         if (filtered.length === 0) {
@@ -171,11 +179,11 @@
 
         results.innerHTML = filtered.map(p => `
           <div class="nexum-result">
-            <img src="${p.imagem_url || ''}" alt="${p.nome}" onerror="this.style.display='none'" />
+            <img src="${p.imagem_url || p.imagemUrl || p.ImagemUrl || ''}" alt="${p.nome || p.Nome || 'Produto'}" onerror="this.style.display='none'" />
             <div class="nexum-result-info">
-              <h4>${p.nome}</h4>
-              <p style="margin:4px 0;color:#A0A0A0;font-size:0.85rem;">${(p.descricao || '').substring(0, 80)}</p>
-              <div class="price">R$ ${(p.preco_promocional || p.preco).toFixed(2).replace('.', ',')}</div>
+              <h4>${p.nome || p.Nome || 'Produto sem nome'}</h4>
+              <p style="margin:4px 0;color:#A0A0A0;font-size:0.85rem;">${String(p.descricao || p.Descricao || p.descricao_curta || p.descricaoCurta || '').substring(0, 80)}</p>
+              <div class="price">R$ ${Number(p.preco_promocional || p.precoPromocional || p.PrecoPromocional || p.preco || p.Preco || 0).toFixed(2).replace('.', ',')}</div>
             </div>
           </div>
         `).join('');

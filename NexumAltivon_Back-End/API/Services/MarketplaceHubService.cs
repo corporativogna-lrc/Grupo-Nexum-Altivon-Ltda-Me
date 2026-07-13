@@ -1,3 +1,10 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -30,8 +37,6 @@ namespace NexumAltivon.API.Services
         private readonly IMercadoLivreService _ml;
         private readonly IConfiguration _config;
         private readonly ILogger<MarketplaceHubService> _logger;
-        private readonly HttpClient _shopeeClient;
-        private readonly HttpClient _amazonClient;
 
         public MarketplaceHubService(
             NexumDbContext context,
@@ -44,8 +49,6 @@ namespace NexumAltivon.API.Services
             _ml = ml;
             _config = config;
             _logger = logger;
-            _shopeeClient = factory.CreateClient("Shopee");
-            _amazonClient = factory.CreateClient("Amazon");
         }
 
         public async Task<SyncStatusDto> SincronizarProdutoAsync(int produtoId, string canal, bool forcar)
@@ -156,51 +159,32 @@ namespace NexumAltivon.API.Services
         public async Task<bool> PublicarShopeeAsync(int produtoId, long? categoryId, decimal? preco)
         {
             var produto = await _context.Produtos.FindAsync(produtoId);
-            if (produto == null) return false;
+            if (produto == null) throw new ArgumentException("Produto não encontrado.");
 
-            var shopeeBase = _config["Integracoes:Shopee:BaseUrl"];
-            var partnerId = _config["Integracoes:Shopee:PartnerId"];
-            var shopId = _config["Integracoes:Shopee:ShopId"];
-
-            // Stub: Shopee exige assinatura HMAC específica
-            _logger.LogInformation("[STUB] Publicar produto {ProdutoId} na Shopee", produtoId);
-
-            var sync = new MarketplaceProduto
-            {
-                ProdutoId = produtoId,
-                Canal = "shopee",
-                IdExterno = $"SHP{produtoId}",
-                Status = "active",
-                PrecoExterno = preco ?? produto.Preco,
-                EstoqueExterno = produto.Estoque,
-                SyncEm = DateTime.UtcNow
-            };
-            _context.MarketplaceProdutos.Add(sync);
-            await _context.SaveChangesAsync();
-            return true;
+            throw CreateMarketplaceUnavailableException(
+                "Shopee",
+                "publicar produto",
+                "Integracoes:Shopee:BaseUrl",
+                "Integracoes:Shopee:PartnerId",
+                "Integracoes:Shopee:PartnerKey",
+                "Integracoes:Shopee:ShopId",
+                "Integracoes:Shopee:AccessToken");
         }
 
         public async Task<bool> PublicarAmazonAsync(int produtoId, string asin, string skuAmazon)
         {
             var produto = await _context.Produtos.FindAsync(produtoId);
-            if (produto == null) return false;
+            if (produto == null) throw new ArgumentException("Produto não encontrado.");
 
-            // Stub: Amazon SP-API exige certificados e assinatura AWS4
-            _logger.LogInformation("[STUB] Publicar produto {ProdutoId} na Amazon", produtoId);
-
-            var sync = new MarketplaceProduto
-            {
-                ProdutoId = produtoId,
-                Canal = "amazon",
-                IdExterno = asin ?? $"AMZ{produtoId}",
-                Status = "active",
-                PrecoExterno = produto.Preco,
-                EstoqueExterno = produto.Estoque,
-                SyncEm = DateTime.UtcNow
-            };
-            _context.MarketplaceProdutos.Add(sync);
-            await _context.SaveChangesAsync();
-            return true;
+            throw CreateMarketplaceUnavailableException(
+                "Amazon SP-API",
+                "publicar produto",
+                "Integracoes:Amazon:BaseUrl",
+                "Integracoes:Amazon:ClientId",
+                "Integracoes:Amazon:ClientSecret",
+                "Integracoes:Amazon:RefreshToken",
+                "Integracoes:Amazon:SellerId",
+                "Integracoes:Amazon:MarketplaceId");
         }
 
         public async Task<bool> AtualizarEstoqueMultiCanalAsync(int produtoId, int novoEstoque)
@@ -208,6 +192,8 @@ namespace NexumAltivon.API.Services
             var syncs = await _context.MarketplaceProdutos
                 .Where(m => m.ProdutoId == produtoId)
                 .ToListAsync();
+
+            var houveFalha = false;
 
             foreach (var sync in syncs)
             {
@@ -230,24 +216,45 @@ namespace NexumAltivon.API.Services
                 }
                 catch (Exception ex)
                 {
+                    houveFalha = true;
+                    sync.Status = "ERRO";
+                    sync.SyncEm = DateTime.UtcNow;
                     _logger.LogError(ex, "Erro atualizar estoque {Canal} produto {ProdutoId}", sync.Canal, produtoId);
                 }
             }
 
             await _context.SaveChangesAsync();
+            if (houveFalha)
+            {
+                throw new InvalidOperationException($"Falha ao sincronizar estoque real de um ou mais marketplaces do produto {produtoId}. Consulte logs operacionais.");
+            }
+
             return true;
         }
 
-        private async Task AtualizarShopeeAsync(string itemId, decimal preco, int estoque)
+        private Task AtualizarShopeeAsync(string itemId, decimal preco, int estoque)
         {
-            _logger.LogInformation("[STUB] Atualizar Shopee item {ItemId}: preco {Preco}, estoque {Estoque}", itemId, preco, estoque);
-            await Task.CompletedTask;
+            return Task.FromException(CreateMarketplaceUnavailableException(
+                "Shopee",
+                $"atualizar item {itemId}",
+                "Integracoes:Shopee:BaseUrl",
+                "Integracoes:Shopee:PartnerId",
+                "Integracoes:Shopee:PartnerKey",
+                "Integracoes:Shopee:ShopId",
+                "Integracoes:Shopee:AccessToken"));
         }
 
-        private async Task AtualizarAmazonAsync(string asin, int estoque)
+        private Task AtualizarAmazonAsync(string asin, int estoque)
         {
-            _logger.LogInformation("[STUB] Atualizar Amazon ASIN {Asin}: estoque {Estoque}", asin, estoque);
-            await Task.CompletedTask;
+            return Task.FromException(CreateMarketplaceUnavailableException(
+                "Amazon SP-API",
+                $"atualizar ASIN {asin}",
+                "Integracoes:Amazon:BaseUrl",
+                "Integracoes:Amazon:ClientId",
+                "Integracoes:Amazon:ClientSecret",
+                "Integracoes:Amazon:RefreshToken",
+                "Integracoes:Amazon:SellerId",
+                "Integracoes:Amazon:MarketplaceId"));
         }
 
         private async Task<SyncStatusDto> ObterStatusSync(int produtoId, string canal)
@@ -270,6 +277,17 @@ namespace NexumAltivon.API.Services
                     SyncEm = s.SyncEm
                 }).ToList()
             };
+        }
+
+        private static InvalidOperationException CreateMarketplaceUnavailableException(
+            string canal,
+            string acao,
+            params string[] requiredKeys)
+        {
+            var keys = string.Join(", ", requiredKeys.Distinct(StringComparer.OrdinalIgnoreCase));
+            return new InvalidOperationException(
+                $"{canal} nao executou '{acao}' porque a integracao externa real nao esta homologada neste projeto. " +
+                $"Nenhum registro de sucesso foi gravado. Configure e implemente o conector oficial com as chaves: {keys}.");
         }
     }
 }
