@@ -49,6 +49,7 @@ Apuracao complementar de integridade funcional: 2026-07-12.
 | Republicacao oficial 5010 | Validacao elevada em 2026-07-13T00:53:39 confirmou task `NexumAltivonApi24h` `Running`, usuario `SISTEMA`, `RunLevel Highest`, PID `10928`, `dotnet.exe NexumAltivon.API.dll`, `/health`, `/health/db`, `/health/db/genesis` e `/api/site/configuracoes/publico` com HTTP 200 |
 | Painel administrativo React | `Dashboard.js` ajustado no commit `0b8212e` para nao exibir sucesso visual com estado local fabricado em `Site & Banners` e rascunho fiscal manual; apos salvar, a tela usa retorno/releitura real da API antes de confirmar persistencia |
 | Central de IA do site | `GlobalActions.js` ajustado no commit `5848622` para nao inventar resposta local quando a API retorna payload sem mensagem; sem resposta textual real, o chat exibe falha operacional |
+| Frete/logistica sem sucesso falso | `Program.cs` ajustado no commit `4918d30`: `/api/frete/cotar` e `/api/logistica/roteamento` retornam 502 se Melhor Envio estiver configurado e falhar, recusar ou nao devolver cotacao utilizavel; tabela interna oficial so e usada quando nao ha credencial externa configurada |
 | Smoke publico painel/portal | Endpoints principais consumidos pelo painel e portal foram verificados em `https://api.nexumaltivon.com.br`: rotas publicas retornaram 200, rotas protegidas retornaram 401, nenhuma retornou 404 |
 | OpenAPI em runtime local | `/swagger/v1/swagger.json` respondeu 200 em API local com o build atual |
 | Alias FICO razao | `/api/financeiro/contabil/razao` respondeu 401 sem token, sem 404 |
@@ -89,6 +90,7 @@ Apuracao complementar de integridade funcional: 2026-07-12.
 | Admin HTML estatico legado | `NexumAltivon_Front-End/admin/index.html` continha painel administrativo estatico separado do React oficial | Legado nao homologado | Ajustado em 2026-07-12: `admin/index.html`, `admin-painel.html` raiz e `public/admin-painel.html` redirecionam para `/?/login` e possuem header de propriedade intelectual | Migrar componentes uteis somente para `Dashboard.js` com chamadas API reais e persistencia validada |
 | PDF de conta a pagar no ERP isolado | `NexumAltivon_ERP/Services/Financeiro/ContaPagarService.cs` retornava `Array.Empty<byte>()` | Funcionalidade incompleta no ERP isolado | Ajustado em 2026-07-12: `GerarRelatorioPDFAsync` consulta `GenesisDbContext`, aplica filtros reais, calcula totais e gera PDF `%PDF-1.4` em memoria sem dependencia paga | Validado por `dotnet build NexumAltivon_ERP.csproj -c Release --no-restore` e `dotnet build NexumAltivon.ERP.sln -c Release --no-restore`; pendente apenas teste funcional chamando a tela/endpoint que consome este service |
 | PDF de DRE no ERP isolado | `NexumAltivon_ERP/Services/Financeiro/DREService.cs` retornava `Array.Empty<byte>()` e o DRE automatico usava percentual fixo de imposto | Funcionalidade incompleta no ERP isolado | Ajustado em 2026-07-12: `GerarRelatorioPDFAsync` gera PDF real com valores do DRE gravado; `GerarAutomaticoAsync` calcula impostos/despesas por classificacao de contas pagas e fluxo financeiro real | Validado por `dotnet build NexumAltivon_ERP.csproj -c Release --no-restore` e `dotnet build NexumAltivon.ERP.sln -c Release --no-restore`; pendente validar em tela/endpoint consumidor |
+| Frete Melhor Envio | `CotarFreteAsync` capturava qualquer excecao do provedor e seguia com cotacao local, mascarando queda, erro HTTP ou retorno vazio do Melhor Envio configurado | Falso positivo condicional | Ajustado em 2026-07-13: `POST /api/frete/cotar` e `POST /api/logistica/roteamento` agora retornam 502 quando o provedor configurado falha, recusa ou nao retorna cotacao utilizavel; a tabela interna foi renomeada para `Tabela interna oficial` e nao simula resposta externa | Configurar `MelhorEnvio__AccessToken` e validar cotacao real por CEP/peso; sem token externo, o sistema continua com tabela interna oficial explicitamente identificada |
 | Logistica tracking externo | `LogisticaService.cs` declarava eventos locais sem chamada de transportadora externa | Parcial interno, nao tracking externo real | Ajustado em 2026-07-12: API ativa ganhou `GET /api/logistica/rastreamento/{codigo}`; consulta pedido real no banco, chama provedor externo quando `Logistica__RastreamentoEndpointTemplate`/`MelhorEnvio__RastreamentoEndpointTemplate` e token real existem, e retorna 424/502 sem sucesso falso quando faltar configuracao ou houver recusa externa | Configurar endpoint/token reais do provedor logistico e validar HTTP autenticado com codigo de rastreio real |
 | NF-e/NFC-e SEFAZ | API ativa nao tinha `POST /api/fiscal/nfe/emitir` nem `POST /api/fiscal/nfce/emitir`; status manual podia marcar emissao sem chave/protocolo | Pendente real de homologacao; agora bloqueado sem sucesso falso | Ajustado em 2026-07-12: API ativa ganhou emissao NF-e/NFC-e, cancelamento, inutilizacao e carta de correcao via provedor externo configurado; valida PFX A1, emitente, destinatario, endereco, itens, CFOP, serie e numeracao; sem `FiscalSefaz__EndpointBase`, rota, token e certificado real retorna 424 e nao registra autorizacao | Configurar certificado real A1/A3 e provedor fiscal homologado (`FiscalSefaz__...`, `NFeIo__...` ou `DFe__...`), executar emissao em homologacao e conferir chave/protocolo gravados no banco |
 
@@ -127,13 +129,12 @@ Apuracao complementar de integridade funcional: 2026-07-12.
 Estado apurado:
 
 - Branch local: `work/delivery-2026-06-13`.
-- Commit local e remoto atual: `07a465e feat: api - alinhar auditoria tenant e fluxos reais`.
-- `origin/work/delivery-2026-06-13`: alinhado com `07a465e`.
-- `origin/main`: `5cb041d46d30af0ab7da4a7f9eeda1b2a4ea983f`.
-- O estado atual da arvore ainda possui muitas alteracoes nao commitadas e nao deve ser tratado como sincronizado com `main`.
-- Total de alteracoes locais remanescentes apos o commit `07a465e`: 51 entradas no `git status --short --untracked-files=normal`.
-- Commits atomicos enviados nesta rodada: `c7076d5`, `7ccc668`, `028ee9f`, `1e0a4ec`, `5611329`, `07a465e`.
-- Publicacao GitHub deve ser seletiva e auditada; publicar todo o worktree atual sem triagem pode enviar arquivos legados/falsos que o prompt bloqueia.
+- Commit local e remoto atual: `4918d30 fix: api - bloquear fallback silencioso de frete`.
+- `origin/work/delivery-2026-06-13`: alinhado com `4918d30`.
+- `origin/main`: alinhado com `4918d30`.
+- Estado do worktree antes desta atualizacao documental: limpo.
+- Commits atomicos enviados nesta rodada de saneamento: `8d58edb`, `0b8212e`, `a7c23d9`, `5848622`, `fd988d0`, `d766314`, `4918d30`.
+- Publicacao GitHub permanece seletiva e auditada; nao publicar arquivos legados/falsos sem validacao direta no projeto oficial.
 
 ## Regra de continuidade
 
