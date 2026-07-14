@@ -47,12 +47,17 @@ Apuracao complementar de integridade funcional: 2026-07-12.
 | Seeds auditaveis do `NexumDbContext` | `Loja`, `Transportadora`, `Marketplace` e `DropshippingConfig` passaram a declarar valores obrigatorios de auditoria e flags operacionais em `HasData` |
 | Validacao operacional da etapa | `dotnet build NexumAltivon.ERP.sln -c Release --no-restore -m:1 /nr:false /p:UseSharedCompilation=false` passou com 0 avisos e 0 erros apos remover a base de validacao da solution |
 | Republicacao oficial 5010 | Validacao elevada em 2026-07-13T00:53:39 confirmou task `NexumAltivonApi24h` `Running`, usuario `SISTEMA`, `RunLevel Highest`, PID `10928`, `dotnet.exe NexumAltivon.API.dll`, `/health`, `/health/db`, `/health/db/genesis` e `/api/site/configuracoes/publico` com HTTP 200 |
+| Republicacao oficial 5010 complementar | Validacao elevada em 2026-07-13T23:45:31 confirmou task `NexumAltivonApi24h` `Running`, usuario `SISTEMA`, `RunLevel Highest`, PID `12876`, `dotnet.exe NexumAltivon.API.dll`, `/health`, `/health/db`, `/health/db/genesis` e `/api/site/configuracoes/publico` com HTTP 200 |
 | Painel administrativo React | `Dashboard.js` ajustado no commit `0b8212e` para nao exibir sucesso visual com estado local fabricado em `Site & Banners` e rascunho fiscal manual; apos salvar, a tela usa retorno/releitura real da API antes de confirmar persistencia |
 | Central de IA do site | `GlobalActions.js` ajustado no commit `5848622` para nao inventar resposta local quando a API retorna payload sem mensagem; sem resposta textual real, o chat exibe falha operacional |
 | Frete/logistica sem sucesso falso | `Program.cs` ajustado no commit `4918d30`: `/api/frete/cotar` e `/api/logistica/roteamento` retornam 502 se Melhor Envio estiver configurado e falhar, recusar ou nao devolver cotacao utilizavel; tabela interna oficial so e usada quando nao ha credencial externa configurada |
 | HTML estatico legado do frontend | `NexumAltivon_Front-End/index.html` ajustado no commit `937512d`: removido HTML legado com Formspree, links sem destino, termos de lancamento futuro e CNPJ inexistente; arquivo agora redireciona para o portal oficial publicado |
 | Script legado de CRM | `nexum-integration.js` e `public/nexum-integration.js` ajustados no commit `6dbf1f0`: formulario legado so confirma cadastro quando `/api/crm/leads` retorna `Dados.Id`; sem confirmacao de persistencia, exibe erro operacional |
 | Smoke publico painel/portal | Endpoints principais consumidos pelo painel e portal foram verificados em `https://api.nexumaltivon.com.br`: rotas publicas retornaram 200, rotas protegidas retornaram 401, nenhuma retornou 404 |
+| Smoke publico 2026-07-14 | Local e publico responderam sem 404 para `/api/lojas/1`, `/api/pedidos/1`, `/api/relatorios/vendas`, `/api/financeiro/faturamento`, `/api/dashboard/resumo`, `/api/clientes`, `/api/fornecedores`, `/api/fiscal/pedidos` e `/swagger/v1/swagger.json`; protegidas retornaram 401 e publicas 200 |
+| Frete em runtime 5010 | `POST /api/frete/cotar` local e publico retornou 200 com mensagem `Cotacao operacional calculada pela tabela interna oficial.`, fonte `Tabela interna oficial` e sem texto antigo de fallback silencioso |
+| IA em runtime 5010 | `POST /api/assistentes/mensagem` com mensagem vazia retornou 400 local e publico com `Mensagem obrigatoria para acionar a central de IA`, sem resposta local fabricada |
+| Portal publicado | Bundle publico `/static/js/main.5963bdf6.js` verificado em 2026-07-14 sem `Em Breve`, `formspree`, `Entraremos em contato` e `Recebi sua mensagem`; `/nexum-integration.js` publicado contem validacao de ID real do CRM |
 | OpenAPI em runtime local | `/swagger/v1/swagger.json` respondeu 200 em API local com o build atual |
 | Alias FICO razao | `/api/financeiro/contabil/razao` respondeu 401 sem token, sem 404 |
 | Alias FICO conciliacao | `/api/financeiro/contabil/conciliacao` respondeu 401 sem token, sem 404 |
@@ -133,9 +138,9 @@ Apuracao complementar de integridade funcional: 2026-07-12.
 Estado apurado:
 
 - Branch local: `work/delivery-2026-06-13`.
-- Commit local e remoto atual: `6dbf1f0 fix: frontend - exigir lead persistido no script legado`.
-- `origin/work/delivery-2026-06-13`: alinhado com `6dbf1f0`.
-- `origin/main`: alinhado com `6dbf1f0`.
+- Commit local e remoto atual antes deste registro: `ecec6ee docs: checklist - registrar crm legado persistido`.
+- `origin/work/delivery-2026-06-13`: alinhado com `ecec6ee`.
+- `origin/main`: alinhado com `ecec6ee`.
 - Estado do worktree antes desta atualizacao documental: limpo.
 - Commits atomicos enviados nesta rodada de saneamento: `8d58edb`, `0b8212e`, `a7c23d9`, `5848622`, `fd988d0`, `d766314`, `4918d30`, `3879914`, `937512d`, `404468b`, `6dbf1f0`.
 - Publicacao GitHub permanece seletiva e auditada; nao publicar arquivos legados/falsos sem validacao direta no projeto oficial.
