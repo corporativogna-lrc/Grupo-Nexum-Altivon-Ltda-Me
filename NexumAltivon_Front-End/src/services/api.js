@@ -174,6 +174,8 @@ const normalizeRecord = (record) => {
     desconto_percentual: record.desconto_percentual ?? record.descontoPercentual,
     desconto_valor: record.desconto_valor ?? record.descontoValor,
     valor_minimo: record.valor_minimo ?? record.valorMinimo,
+    valor_maximo_desconto: record.valor_maximo_desconto ?? record.valorMaximoDesconto,
+    frete_gratis: record.frete_gratis ?? record.freteGratis ?? false,
     pedidos_hoje: record.pedidos_hoje ?? record.pedidosHoje,
     total_clientes: record.total_clientes ?? record.totalClientes,
     faturamento_mes: record.faturamento_mes ?? record.faturamentoMes,
@@ -332,7 +334,23 @@ export const clienteAPI = {
 };
 
 export const cupomAPI = {
-  validar: (codigo) => api.get(`/cupons/${codigo}`),
+  validar: (codigo, subtotal) => api.get(`/cupons/${encodeURIComponent(codigo)}`, { params: { subtotal } }),
+  listarAdministracao: () => api.get('/admin/cupons'),
+  criar: (data) => api.post('/admin/cupons', data),
+  atualizar: (id, data) => api.put(`/admin/cupons/${id}`, data),
+  desativar: (id) => api.delete(`/admin/cupons/${id}`),
+};
+
+export const usuarioAdminAPI = {
+  listar: () => api.get('/admin/usuarios'),
+  listarPerfis: () => api.get('/admin/usuarios/perfis'),
+  criar: (data) => api.post('/admin/usuarios', data),
+  atualizar: (id, data) => api.put(`/admin/usuarios/${id}`, data),
+};
+
+export const auditoriaAPI = {
+  listar: (params) => api.get('/auditoria', { params }),
+  obter: (id) => api.get(`/auditoria/${id}`),
 };
 
 export const fornecedorAPI = {
@@ -401,6 +419,7 @@ export const integracoesAPI = {
   getDiagnostico: () => api.get('/integracoes/diagnostico'),
   getCredenciaisModelo: () => api.get('/integracoes/credenciais-modelo'),
   testar: (slug) => api.post(`/integracoes/testar/${slug}`),
+  sincronizarMarketplace: (canal, data) => api.post(`/marketplaces/${canal}/sync`, data),
 };
 
 export const assistenteAPI = {

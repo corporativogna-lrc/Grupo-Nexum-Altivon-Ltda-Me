@@ -1,8 +1,17 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ */
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { categoriaAPI, clienteAPI, dashboardAPI, empresaGrupoAPI, fiscalAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI, siteAPI } from '../services/api';
 import { formatDate, formatPrice, getLeadStatusClass, getPagamentoLabel, getPedidoStatusClass } from '../utils/formatters';
+import CupomAdminPanel from '../components/CupomAdminPanel';
+import AccessAuditPanel from '../components/AccessAuditPanel';
 import {
   Activity,
   ArrowDownRight,
@@ -29,15 +38,19 @@ import {
   Sparkles,
   Truck,
   TrendingUp,
+  TicketPercent,
   UserRound,
+  UserCog,
   Users,
   WalletCards,
+  FileSearch,
 } from 'lucide-react';
 
 const tabs = [
   { id: 'overview', label: 'Dashboard', icon: LayoutDashboard, section: 'Principal' },
   { id: 'pedidos', label: 'Pedidos', icon: ShoppingBag, section: 'Principal' },
   { id: 'crm', label: 'CRM', icon: Users, section: 'Marketing & CRM' },
+  { id: 'cupons', label: 'Cupons', icon: TicketPercent, section: 'Marketing & CRM' },
   { id: 'cadastros', label: 'Menu de Cadastros', icon: PackagePlus, section: 'Cadastros', badge: 'novo' },
   { id: 'cadastro-produtos', label: 'Produtos', icon: PackageCheck, section: 'Cadastros' },
   { id: 'cadastro-clientes', label: 'Clientes', icon: Users, section: 'Cadastros' },
@@ -52,6 +65,8 @@ const tabs = [
   { id: 'erp-relatorios', label: 'Relatórios', icon: TrendingUp, section: 'Gestão', badge: 'kpi' },
   { id: 'integracoes', label: 'Integrações', icon: Globe2, section: 'Integrações', badge: 'paralelo' },
   { id: 'configuracoes-site', label: 'Site & Banners', icon: Cog, section: 'Sistema', badge: 'home' },
+  { id: 'usuarios', label: 'Usuários', icon: UserCog, section: 'Sistema' },
+  { id: 'auditoria', label: 'Auditoria', icon: FileSearch, section: 'Sistema' },
 ];
 
 const cadastroTabs = [
@@ -1718,6 +1733,12 @@ export default function Dashboard() {
                 </section>
               )}
 
+              {activeTab === 'cupons' && <CupomAdminPanel />}
+
+              {activeTab === 'usuarios' && <AccessAuditPanel mode="usuarios" />}
+
+              {activeTab === 'auditoria' && <AccessAuditPanel mode="auditoria" />}
+
               {activeTab === 'erp' && (
                 <section className="space-y-6">
                   <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -2736,6 +2757,9 @@ function IntegrationCard({ integracao, onOpen }) {
 function IntegrationWorkspace({ integracao, guide, credenciaisModelo = [], onBack }) {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [marketplaceSyncing, setMarketplaceSyncing] = useState(false);
+  const [marketplaceResult, setMarketplaceResult] = useState(null);
+  const [marketplaceForm, setMarketplaceForm] = useState({ canal: 'mercadolivre', direcao: 'pull', entidade: 'pedidos', limite: '50' });
 
   if (!integracao || !guide) {
     return (
@@ -2755,6 +2779,7 @@ function IntegrationWorkspace({ integracao, guide, credenciaisModelo = [], onBac
   const status = testResult?.status || integracao.status;
   const credentialCategories = integrationCredentialCategoryMap[integracao.slug] || [];
   const relevantCredentials = credenciaisModelo.filter((item) => credentialCategories.includes((item.categoria || item.Categoria || '').toLowerCase()));
+  const isMarketplaceWorkspace = integracao.slug === 'mercadolivre' || integracao.slug === 'marketplaces';
 
   const runTest = async () => {
     setTesting(true);
@@ -2854,6 +2879,44 @@ function IntegrationWorkspace({ integracao, guide, credenciaisModelo = [], onBac
                 })}
               </div>
             </div>
+          )}
+          {isMarketplaceWorkspace && (
+            <form onSubmit={runMarketplaceSync} className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Operação externa controlada</p>
+                  <h4 className="mt-1 text-lg font-black text-slate-950">Sincronizar marketplace</h4>
+                  <p className="mt-1 text-sm font-semibold text-slate-600">A API só confirma sucesso depois da resposta aceita pelo seller externo.</p>
+                </div>
+                <button disabled={marketplaceSyncing} className="inline-flex h-11 items-center justify-center rounded-lg bg-slate-950 px-5 text-sm font-black text-white disabled:opacity-60">
+                  {marketplaceSyncing ? 'Executando...' : 'Executar sincronização'}
+                </button>
+              </div>
+              <div className="mt-5 grid gap-4 md:grid-cols-4">
+                <SelectField label="Canal" value={marketplaceForm.canal} onChange={(value) => setMarketplaceForm((current) => ({ ...current, canal: value }))} options={['mercadolivre', 'b2w', 'via']} />
+                <SelectField label="Direção" value={marketplaceForm.direcao} onChange={(value) => setMarketplaceForm((current) => ({ ...current, direcao: value }))} options={['pull', 'push', 'bidirecional']} />
+                <SelectField label="Entidade" value={marketplaceForm.entidade} onChange={(value) => setMarketplaceForm((current) => ({ ...current, entidade: value }))} options={['pedidos', 'produtos', 'catalogo', 'todos']} />
+                <Field label="Limite" type="number" value={marketplaceForm.limite} onChange={(value) => setMarketplaceForm((current) => ({ ...current, limite: value }))} required />
+              </div>
+              {marketplaceResult && (
+                <div className={`mt-5 rounded-lg border p-4 ${marketplaceResult.apiSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-950' : 'border-red-200 bg-red-50 text-red-950'}`}>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <strong>HTTP {marketplaceResult.httpStatus}</strong>
+                    <span>{marketplaceResult.canal || marketplaceForm.canal}</span>
+                    <span>{marketplaceResult.operacional ? 'Operação externa confirmada' : 'Operação não confirmada'}</span>
+                  </div>
+                  {marketplaceResult.message && <p className="mt-2 text-sm font-semibold">{marketplaceResult.message}</p>}
+                  <div className="mt-3 grid gap-2 text-sm font-bold sm:grid-cols-3">
+                    <span>Locais elegíveis: {marketplaceResult.produtosLocaisElegiveis ?? 0}</span>
+                    <span>Externos lidos: {marketplaceResult.registrosExternosLidos ?? 0}</span>
+                    <span>Externos enviados: {marketplaceResult.produtosExternosEnviados ?? 0}</span>
+                  </div>
+                  {Array.isArray(marketplaceResult.pendencias) && marketplaceResult.pendencias.length > 0 && (
+                    <div className="mt-3 space-y-1">{marketplaceResult.pendencias.map((item) => <p key={item} className="text-sm font-semibold">{item}</p>)}</div>
+                  )}
+                </div>
+              )}
+            </form>
           )}
         </div>
         <aside className="space-y-4">
@@ -3040,6 +3103,35 @@ function ImageGalleryField({ value, onChange, onUpload, uploading, className = '
 
   const removeItem = (targetUrl) => {
     onChange(galleryToText(items.filter((item) => item !== targetUrl)));
+  };
+
+  const runMarketplaceSync = async (event) => {
+    event.preventDefault();
+    setMarketplaceSyncing(true);
+    setMarketplaceResult(null);
+    try {
+      const response = await integracoesAPI.sincronizarMarketplace(marketplaceForm.canal, {
+        direcao: marketplaceForm.direcao,
+        entidade: marketplaceForm.entidade,
+        limite: Number(marketplaceForm.limite),
+        produto_ids: null,
+        categoria_externa: null,
+        forcar: false,
+      });
+      setMarketplaceResult({ ...response.data, httpStatus: response.status, apiSuccess: true });
+    } catch (error) {
+      const envelope = error.response?.data || {};
+      const result = envelope.dados || envelope.Dados || {};
+      setMarketplaceResult({
+        ...result,
+        apiSuccess: false,
+        httpStatus: error.response?.status || 0,
+        message: envelope.mensagem || error.message || 'Sincronização não executada.',
+        pendencias: result.pendencias || envelope.erros || ['A API não confirmou operação externa.'],
+      });
+    } finally {
+      setMarketplaceSyncing(false);
+    }
   };
 
   return (

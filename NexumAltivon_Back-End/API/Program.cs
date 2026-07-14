@@ -3625,39 +3625,151 @@ app.MapPut("/api/produtos/{id}", [Authorize(Policy = "Gerente")] async (
 .WithName("AtualizarProduto")
 ;
 
-app.MapGet("/api/cupons/{codigo}", async (string codigo, NexumDbContext db, CancellationToken ct) =>
+app.MapGet("/api/cupons/{codigo}", async (string codigo, decimal? subtotal, NexumDbContext db, CancellationToken ct) =>
 {
+    var codigoNormalizado = codigo.Trim().ToUpperInvariant();
+    if (codigoNormalizado.Length == 0)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Codigo do cupom obrigatorio."));
+    }
+
     var cupom = await db.Cupons
         .AsNoTracking()
-        .FirstOrDefaultAsync(item => item.Codigo == codigo && item.Ativo, ct);
+        .FirstOrDefaultAsync(item => item.Codigo == codigoNormalizado && item.Ativo, ct);
 
     if (cupom is null)
     {
         return Results.NotFound(ApiResponse<string>.Erro("Cupom invalido."));
     }
 
-    if (cupom.ValidoDe.HasValue && cupom.ValidoDe.Value > DateTime.UtcNow)
+    if (cupom.ValidoDe.HasValue && cupom.ValidoDe.Value.Date > DateTime.UtcNow.Date)
     {
         return Results.NotFound(ApiResponse<string>.Erro("Cupom invalido."));
     }
 
-    if (cupom.ValidoAte.HasValue && cupom.ValidoAte.Value < DateTime.UtcNow)
+    if (cupom.ValidoAte.HasValue && cupom.ValidoAte.Value.Date < DateTime.UtcNow.Date)
     {
         return Results.NotFound(ApiResponse<string>.Erro("Cupom invalido."));
+    }
+
+    if (cupom.QuantidadeUsos.HasValue && cupom.UsosAtuais >= cupom.QuantidadeUsos.Value)
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("Cupom esgotado."));
+    }
+
+    if (subtotal.HasValue && subtotal.Value < cupom.ValorMinimoPedido)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro(
+            $"Valor minimo para este cupom: {cupom.ValorMinimoPedido.ToString("C", CultureInfo.GetCultureInfo("pt-BR"))}."));
     }
 
     var dto = cupom.Tipo switch
     {
-        TipoCupom.Percentual => new CupomDto(cupom.Codigo, cupom.Valor, null, cupom.ValorMinimoPedido),
-        TipoCupom.ValorFixo => new CupomDto(cupom.Codigo, null, cupom.Valor, cupom.ValorMinimoPedido),
-        TipoCupom.FreteGratis => new CupomDto(cupom.Codigo, null, cupom.Valor, cupom.ValorMinimoPedido),
-        _ => new CupomDto(cupom.Codigo, cupom.Valor, null, cupom.ValorMinimoPedido)
+        TipoCupom.Percentual => new CupomDto(cupom.Codigo, cupom.Valor, null, cupom.ValorMinimoPedido, cupom.ValorMaximoDesconto, false),
+        TipoCupom.ValorFixo => new CupomDto(cupom.Codigo, null, cupom.Valor, cupom.ValorMinimoPedido, cupom.ValorMaximoDesconto, false),
+        TipoCupom.FreteGratis => new CupomDto(cupom.Codigo, null, null, cupom.ValorMinimoPedido, null, true),
+        _ => throw new InvalidOperationException($"Tipo de cupom nao suportado: {cupom.Tipo}.")
     };
 
     return Results.Ok(ApiResponse<CupomDto>.Ok(dto));
 })
 .AllowAnonymous()
 .WithName("CupomPorCodigo")
+;
+
+app.MapGet("/api/admin/cupons", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var cuponsDb = await db.Cupons
+        .AsNoTracking()
+        .OrderByDescending(cupom => cupom.Ativo)
+        .ThenByDescending(cupom => cupom.UpdatedAt)
+        .ToListAsync(ct);
+    var cupons = cuponsDb.Select(ToCupomAdminDto).ToList();
+
+    return Results.Ok(ApiResponse<List<CupomAdminDto>>.Ok(cupons, total: cupons.Count));
+})
+.WithName("ListarCuponsAdministracao")
+;
+
+app.MapPost("/api/admin/cupons", [Authorize(Policy = "Gerente")] async (
+    CupomAdminRequest request,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var erroValidacao = ValidateCupomAdminRequest(request);
+    if (erroValidacao is not null)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro(erroValidacao));
+    }
+
+    var codigo = request.Codigo.Trim().ToUpperInvariant();
+    if (await db.Cupons.AnyAsync(cupom => cupom.Codigo == codigo, ct))
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("Ja existe cupom com este codigo."));
+    }
+
+    var cupom = new Cupom { CreatedAt = DateTime.UtcNow };
+    ApplyCupomAdminRequest(cupom, request, codigo);
+    db.Cupons.Add(cupom);
+    await db.SaveChangesAsync(ct);
+
+    return Results.Created(
+        $"/api/admin/cupons/{cupom.Id}",
+        ApiResponse<CupomAdminDto>.Ok(ToCupomAdminDto(cupom), "Cupom cadastrado no banco de dados."));
+})
+.WithName("CriarCupomAdministracao")
+;
+
+app.MapPut("/api/admin/cupons/{id:int}", [Authorize(Policy = "Gerente")] async (
+    int id,
+    CupomAdminRequest request,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var erroValidacao = ValidateCupomAdminRequest(request);
+    if (erroValidacao is not null)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro(erroValidacao));
+    }
+
+    var cupom = await db.Cupons.FirstOrDefaultAsync(item => item.Id == id, ct);
+    if (cupom is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Cupom nao encontrado."));
+    }
+
+    var codigo = request.Codigo.Trim().ToUpperInvariant();
+    if (await db.Cupons.AnyAsync(item => item.Id != id && item.Codigo == codigo, ct))
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("Ja existe cupom com este codigo."));
+    }
+
+    ApplyCupomAdminRequest(cupom, request, codigo);
+    await db.SaveChangesAsync(ct);
+
+    return Results.Ok(ApiResponse<CupomAdminDto>.Ok(ToCupomAdminDto(cupom), "Cupom atualizado no banco de dados."));
+})
+.WithName("AtualizarCupomAdministracao")
+;
+
+app.MapDelete("/api/admin/cupons/{id:int}", [Authorize(Policy = "Gerente")] async (
+    int id,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var cupom = await db.Cupons.FirstOrDefaultAsync(item => item.Id == id, ct);
+    if (cupom is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Cupom nao encontrado."));
+    }
+
+    cupom.Ativo = false;
+    cupom.UpdatedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync(ct);
+
+    return Results.Ok(ApiResponse<CupomAdminDto>.Ok(ToCupomAdminDto(cupom), "Cupom desativado no banco de dados."));
+})
+.WithName("DesativarCupomAdministracao")
 ;
 
 app.MapGet("/api/clientes", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
@@ -6098,21 +6210,76 @@ app.MapPost("/api/pedidos", async (
         abastecimentoResumo.Add(BuildAbastecimentoResumo(produto, item.Quantidade));
     }
 
+    Cupom? cupomAplicado = null;
     decimal desconto = 0m;
     if (!string.IsNullOrWhiteSpace(request.CupomCodigo))
     {
-        var cupom = await db.Cupons.AsNoTracking().FirstOrDefaultAsync(c => c.Codigo == request.CupomCodigo && c.Ativo, ct);
-        if (cupom is not null && subtotal >= cupom.ValorMinimoPedido)
+        var agora = DateTime.UtcNow;
+        var codigoCupom = request.CupomCodigo.Trim().ToUpperInvariant();
+        cupomAplicado = await db.Cupons.FirstOrDefaultAsync(c => c.Codigo == codigoCupom && c.Ativo, ct);
+        if (cupomAplicado is null)
         {
-            desconto = cupom.Tipo switch
-            {
-                TipoCupom.Percentual => subtotal * (cupom.Valor / 100m),
-                TipoCupom.ValorFixo => cupom.Valor,
-                TipoCupom.FreteGratis => cupom.Valor,
-                _ => 0m
-            };
-            desconto = Math.Min(desconto, subtotal);
+            return Results.BadRequest(ApiResponse<string>.Erro("Cupom invalido ou inativo."));
         }
+
+        if (cupomAplicado.ValidoDe.HasValue && cupomAplicado.ValidoDe.Value.Date > agora.Date)
+        {
+            return Results.BadRequest(ApiResponse<string>.Erro("Cupom ainda nao esta vigente."));
+        }
+
+        if (cupomAplicado.ValidoAte.HasValue && cupomAplicado.ValidoAte.Value.Date < agora.Date)
+        {
+            return Results.BadRequest(ApiResponse<string>.Erro("Cupom expirado."));
+        }
+
+        if (cupomAplicado.QuantidadeUsos.HasValue && cupomAplicado.UsosAtuais >= cupomAplicado.QuantidadeUsos.Value)
+        {
+            return Results.Conflict(ApiResponse<string>.Erro("Cupom esgotado."));
+        }
+
+        if (subtotal < cupomAplicado.ValorMinimoPedido)
+        {
+            return Results.BadRequest(ApiResponse<string>.Erro(
+                $"Subtotal minimo para este cupom: {cupomAplicado.ValorMinimoPedido.ToString("C", CultureInfo.GetCultureInfo("pt-BR"))}."));
+        }
+
+        if (cupomAplicado.QuantidadePorCliente > 0)
+        {
+            var usosCliente = await db.Pedidos.CountAsync(
+                pedido => pedido.ClienteId == cliente.Id &&
+                    pedido.CupomCodigo == codigoCupom &&
+                    pedido.Status != StatusPedido.Cancelado,
+                ct);
+            if (usosCliente >= cupomAplicado.QuantidadePorCliente)
+            {
+                return Results.Conflict(ApiResponse<string>.Erro("Limite de uso deste cupom por cliente atingido."));
+            }
+        }
+
+        if (cupomAplicado.PrimeiroCompraOnly)
+        {
+            var possuiPedido = await db.Pedidos.AnyAsync(
+                pedido => pedido.ClienteId == cliente.Id && pedido.Status != StatusPedido.Cancelado,
+                ct);
+            if (possuiPedido)
+            {
+                return Results.Conflict(ApiResponse<string>.Erro("Cupom exclusivo para a primeira compra."));
+            }
+        }
+
+        desconto = cupomAplicado.Tipo switch
+        {
+            TipoCupom.Percentual => subtotal * (cupomAplicado.Valor / 100m),
+            TipoCupom.ValorFixo => cupomAplicado.Valor,
+            TipoCupom.FreteGratis => 0m,
+            _ => throw new InvalidOperationException($"Tipo de cupom nao suportado: {cupomAplicado.Tipo}.")
+        };
+        if (cupomAplicado.ValorMaximoDesconto.HasValue)
+        {
+            desconto = Math.Min(desconto, cupomAplicado.ValorMaximoDesconto.Value);
+        }
+
+        desconto = Math.Min(desconto, subtotal);
     }
 
     int? enderecoEntregaId = null;
@@ -6178,6 +6345,11 @@ app.MapPost("/api/pedidos", async (
         return Results.BadRequest(ApiResponse<string>.Erro("Opcao de frete invalida ou indisponivel. Refaca a cotacao."));
     }
 
+    if (cupomAplicado?.Tipo == TipoCupom.FreteGratis)
+    {
+        desconto = freteSelecionado.Valor;
+    }
+
     var pedido = new Pedido
     {
         NumeroPedido = $"NX{DateTime.UtcNow:yyMMddHHmmss}{Random.Shared.Next(10, 99)}",
@@ -6195,7 +6367,8 @@ app.MapPost("/api/pedidos", async (
         FreteTransportadora = freteSelecionado.Transportadora,
         FretePrazoDias = freteSelecionado.PrazoDias,
         Total = Math.Max(0m, subtotal + freteSelecionado.Valor - desconto),
-        CupomCodigo = request.CupomCodigo,
+        CupomCodigo = cupomAplicado?.Codigo,
+        CupomDesconto = desconto,
         Origem = OrigemPedido.Site,
         IpCliente = http.Connection.RemoteIpAddress?.ToString(),
         UserAgent = http.Request.Headers.UserAgent.ToString(),
@@ -6222,6 +6395,11 @@ app.MapPost("/api/pedidos", async (
 
     db.Pedidos.Add(pedido);
     db.Financeiros.Add(BuildFinanceiroReceitaPedido(pedido));
+    if (cupomAplicado is not null)
+    {
+        cupomAplicado.UsosAtuais++;
+        cupomAplicado.UpdatedAt = DateTime.UtcNow;
+    }
     await db.SaveChangesAsync(ct);
     await transaction.CommitAsync(ct);
 
@@ -9752,6 +9930,90 @@ static string? NormalizePhone(string? value)
 
 static string? TrimOrNull(string? value) =>
     string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+static string? ValidateCupomAdminRequest(CupomAdminRequest request)
+{
+    var codigo = request.Codigo?.Trim() ?? string.Empty;
+    if (codigo.Length is < 3 or > 50)
+    {
+        return "Codigo do cupom deve ter entre 3 e 50 caracteres.";
+    }
+
+    if (codigo.Any(character => !char.IsLetterOrDigit(character) && character is not '-' and not '_'))
+    {
+        return "Codigo do cupom aceita somente letras, numeros, hifen e sublinhado.";
+    }
+
+    if (!Enum.TryParse<TipoCupom>(request.Tipo, true, out var tipo))
+    {
+        return "Tipo de cupom invalido.";
+    }
+
+    if (tipo == TipoCupom.Percentual && (request.Valor <= 0m || request.Valor > 100m))
+    {
+        return "Cupom percentual deve ter valor maior que zero e menor ou igual a 100.";
+    }
+
+    if (tipo == TipoCupom.ValorFixo && request.Valor <= 0m)
+    {
+        return "Cupom de valor fixo deve ter valor maior que zero.";
+    }
+
+    if (tipo == TipoCupom.FreteGratis && request.Valor != 0m)
+    {
+        return "Cupom de frete gratis deve ter valor zero; o desconto sera o frete selecionado.";
+    }
+
+    if (request.ValorMinimoPedido < 0m || request.ValorMaximoDesconto is <= 0m)
+    {
+        return "Valores minimo e maximo de desconto devem ser validos.";
+    }
+
+    if (request.QuantidadeUsos is <= 0 || request.QuantidadePorCliente < 0)
+    {
+        return "Limites de uso devem ser maiores que zero; use zero apenas para remover o limite por cliente.";
+    }
+
+    if (request.ValidoDe.HasValue && request.ValidoAte.HasValue && request.ValidoAte.Value < request.ValidoDe.Value)
+    {
+        return "Data final da vigencia deve ser igual ou posterior a data inicial.";
+    }
+
+    return null;
+}
+
+static void ApplyCupomAdminRequest(Cupom cupom, CupomAdminRequest request, string codigo)
+{
+    cupom.Codigo = codigo;
+    cupom.Tipo = Enum.Parse<TipoCupom>(request.Tipo, true);
+    cupom.Valor = request.Valor;
+    cupom.ValorMinimoPedido = request.ValorMinimoPedido;
+    cupom.ValorMaximoDesconto = request.ValorMaximoDesconto;
+    cupom.QuantidadeUsos = request.QuantidadeUsos;
+    cupom.QuantidadePorCliente = request.QuantidadePorCliente;
+    cupom.ValidoDe = request.ValidoDe;
+    cupom.ValidoAte = request.ValidoAte;
+    cupom.PrimeiroCompraOnly = request.PrimeiroCompraOnly;
+    cupom.Ativo = request.Ativo;
+    cupom.UpdatedAt = DateTime.UtcNow;
+}
+
+static CupomAdminDto ToCupomAdminDto(Cupom cupom) => new(
+    cupom.Id,
+    cupom.Codigo,
+    cupom.Tipo.ToString(),
+    cupom.Valor,
+    cupom.ValorMinimoPedido,
+    cupom.ValorMaximoDesconto,
+    cupom.QuantidadeUsos,
+    cupom.UsosAtuais,
+    cupom.QuantidadePorCliente,
+    cupom.ValidoDe,
+    cupom.ValidoAte,
+    cupom.PrimeiroCompraOnly,
+    cupom.Ativo,
+    cupom.CreatedAt,
+    cupom.UpdatedAt);
 
 static bool TryResolveRedisEndpoint(string connectionString, out string host, out int port, out string? error)
 {
@@ -16272,7 +16534,43 @@ public sealed record UploadImagemRequest(string? FileName, string? ContentType, 
 
 public sealed record UploadImagemDto(string Url);
 
-public sealed record CupomDto(string Codigo, decimal? DescontoPercentual, decimal? DescontoValor, decimal? ValorMinimo);
+public sealed record CupomDto(
+    string Codigo,
+    decimal? DescontoPercentual,
+    decimal? DescontoValor,
+    decimal? ValorMinimo,
+    decimal? ValorMaximoDesconto,
+    bool FreteGratis);
+
+public sealed record CupomAdminRequest(
+    string Codigo,
+    string Tipo,
+    decimal Valor,
+    decimal ValorMinimoPedido,
+    decimal? ValorMaximoDesconto,
+    int? QuantidadeUsos,
+    int QuantidadePorCliente,
+    DateTime? ValidoDe,
+    DateTime? ValidoAte,
+    bool PrimeiroCompraOnly,
+    bool Ativo);
+
+public sealed record CupomAdminDto(
+    int Id,
+    string Codigo,
+    string Tipo,
+    decimal Valor,
+    decimal ValorMinimoPedido,
+    decimal? ValorMaximoDesconto,
+    int? QuantidadeUsos,
+    int UsosAtuais,
+    int QuantidadePorCliente,
+    DateTime? ValidoDe,
+    DateTime? ValidoAte,
+    bool PrimeiroCompraOnly,
+    bool Ativo,
+    DateTime CreatedAt,
+    DateTime UpdatedAt);
 
 public sealed record ClienteRequest(
     string Nome,

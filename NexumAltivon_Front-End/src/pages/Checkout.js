@@ -22,13 +22,19 @@ import {
 } from '../components/CheckoutSteps';
 
 // Helper: calcula desconto baseado no cupom aplicado
-function calcularDesconto(cupomAplicado, subtotal) {
+function calcularDesconto(cupomAplicado, subtotal, frete) {
   if (!cupomAplicado) return 0;
   if (cupomAplicado.valor_minimo && subtotal < cupomAplicado.valor_minimo) return 0;
-  if (cupomAplicado.desconto_percentual) {
-    return subtotal * (cupomAplicado.desconto_percentual / 100);
-  }
-  return cupomAplicado.desconto_valor || 0;
+  if (cupomAplicado.frete_gratis) return Math.max(0, frete || 0);
+
+  const descontoCalculado = cupomAplicado.desconto_percentual
+    ? subtotal * (cupomAplicado.desconto_percentual / 100)
+    : cupomAplicado.desconto_valor || 0;
+  const descontoLimitado = cupomAplicado.valor_maximo_desconto
+    ? Math.min(descontoCalculado, cupomAplicado.valor_maximo_desconto)
+    : descontoCalculado;
+
+  return Math.min(descontoLimitado, subtotal);
 }
 
 function mapGatewayLabel(metodoPagamento) {
@@ -156,9 +162,9 @@ export default function Checkout() {
   }, [isAuthenticated, isAdmin, user]);
 
   const subtotal = getTotal();
-  const desconto = calcularDesconto(cupomAplicado, subtotal);
   const frete = freteOptions.find((item) => item.id === freteSelecionado) || freteOptions[1];
-  const total = subtotal + frete.valor - desconto;
+  const desconto = calcularDesconto(cupomAplicado, subtotal, frete.valor);
+  const total = Math.max(0, subtotal + frete.valor - desconto);
 
   useEffect(() => {
     const cepDestino = endereco.cep?.replace(/\D/g, '');

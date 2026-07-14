@@ -9,7 +9,7 @@ import { useCart } from '../context/CartContext';
 import { Link, useNavigate } from 'react-router-dom';
 import { Trash2, Plus, Minus, ShoppingBag } from 'lucide-react';
 import { useState } from 'react';
-import api, { produtoAPI } from '../services/api';
+import { cupomAPI, produtoAPI } from '../services/api';
 
 export default function Carrinho() {
   const { cart, removeFromCart, updateQuantity, getTotal, clearCart } = useCart();
@@ -27,22 +27,14 @@ export default function Carrinho() {
   };
 
   const validarCupom = async () => {
-    if (!cupom) return;
+    const codigo = cupom.trim().toUpperCase();
+    if (!codigo) return;
+
     setError('');
     try {
-      const response = await api.get(`/cupons/${cupom.toUpperCase()}`);
+      const response = await cupomAPI.validar(codigo, getTotal());
       setCupomAplicado(response.data);
     } catch (err) {
-      const codigo = cupom.toUpperCase();
-      const cuponsLocais = {
-        NEXUM10: { codigo: 'NEXUM10', desconto_percentual: 10, valor_minimo: 500 },
-        FRETEGRATIS: { codigo: 'FRETEGRATIS', desconto_valor: 89, valor_minimo: 1000 },
-      };
-      if (cuponsLocais[codigo]) {
-        setCupomAplicado(cuponsLocais[codigo]);
-        return;
-      }
-
       setError(err.response?.data?.detail || err.response?.data?.mensagem || 'Cupom inválido');
       setCupomAplicado(null);
     }
@@ -52,8 +44,16 @@ export default function Carrinho() {
     if (!cupomAplicado) return 0;
     const subtotal = getTotal();
     if (cupomAplicado.valor_minimo && subtotal < cupomAplicado.valor_minimo) return 0;
-    if (cupomAplicado.desconto_percentual) return subtotal * (cupomAplicado.desconto_percentual / 100);
-    return cupomAplicado.desconto_valor || 0;
+    if (cupomAplicado.frete_gratis) return 0;
+
+    const descontoCalculado = cupomAplicado.desconto_percentual
+      ? subtotal * (cupomAplicado.desconto_percentual / 100)
+      : cupomAplicado.desconto_valor || 0;
+    const descontoLimitado = cupomAplicado.valor_maximo_desconto
+      ? Math.min(descontoCalculado, cupomAplicado.valor_maximo_desconto)
+      : descontoCalculado;
+
+    return Math.min(descontoLimitado, subtotal);
   };
 
   const subtotal = getTotal();
@@ -172,7 +172,12 @@ export default function Carrinho() {
                 </button>
               </div>
               {error && <p className="mt-2 text-sm text-rose-400">{error}</p>}
-              {cupomAplicado && <p className="mt-2 text-sm text-emerald-400">✓ Cupom {cupomAplicado.codigo} aplicado!</p>}
+              {cupomAplicado && (
+                <p className="mt-2 text-sm text-emerald-400">
+                  Cupom {cupomAplicado.codigo} validado pela API
+                  {cupomAplicado.frete_gratis ? '; frete grátis calculado no checkout.' : '.'}
+                </p>
+              )}
             </div>
 
             <div className="space-y-2 border-t border-[#2A2A2A] pt-4 text-[#D8D8D8]">
