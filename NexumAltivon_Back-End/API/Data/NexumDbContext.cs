@@ -52,6 +52,7 @@ public class NexumDbContext : DbContext
     public DbSet<Marketplace> Marketplaces { get; set; } = null!;
     public DbSet<DropshippingConfig> DropshippingConfigs { get; set; } = null!;
     public DbSet<EmpresaGrupo> EmpresasGrupo { get; set; } = null!;
+    public DbSet<SiteMidia> SiteMidias { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -108,6 +109,23 @@ public class NexumDbContext : DbContext
 
         modelBuilder.Entity<DropshippingConfig>()
             .HasIndex(d => d.Slug)
+            .IsUnique();
+
+        modelBuilder.Entity<SiteMidia>()
+            .Property(midia => midia.Tipo)
+            .HasConversion<string>()
+            .HasMaxLength(30);
+
+        modelBuilder.Entity<SiteMidia>()
+            .Property(midia => midia.RowVersion)
+            .IsConcurrencyToken()
+            .ValueGeneratedNever();
+
+        modelBuilder.Entity<SiteMidia>()
+            .HasIndex(midia => new { midia.TenantId, midia.CreatedAt });
+
+        modelBuilder.Entity<SiteMidia>()
+            .HasIndex(midia => new { midia.TenantId, midia.CaminhoRelativo })
             .IsUnique();
 
         modelBuilder.Entity<EmpresaGrupo>()

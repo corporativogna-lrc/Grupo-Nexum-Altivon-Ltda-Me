@@ -11,12 +11,12 @@ import { BarChart3, ChevronDown, LayoutDashboard, LogOut, Menu, Search, Shopping
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
-import { siteAPI, unwrapApiData } from '../services/api';
+import { resolvePublicAssetUrl, siteAPI, unwrapApiData } from '../services/api';
 
 const fallbackLogo = '/imagens/homepage/Logo-2.png';
 const resolveLogo = (logo) => {
   const value = String(logo || '').trim();
-  return value && !value.includes('logo-grupo-nexum-altivon.svg') ? value : fallbackLogo;
+  return resolvePublicAssetUrl(value && !value.includes('logo-grupo-nexum-altivon.svg') ? value : fallbackLogo);
 };
 
 const navItems = [
@@ -38,6 +38,7 @@ export default function Navbar() {
     subtitle: 'Participações societárias',
     logo: fallbackLogo,
   });
+  const [brandingError, setBrandingError] = useState('');
   const displayName = useMemo(() => {
     const rawName = String(user?.nome || user?.name || user?.email || '').trim();
     return rawName ? rawName.split(' ')[0] : 'Conta';
@@ -62,8 +63,11 @@ export default function Navbar() {
           subtitle: config.siteSubtitulo || config.siteSubtitle || 'Participações societárias',
           logo: resolveLogo(config.siteLogo),
         });
+        setBrandingError('');
       })
-      .catch(() => {});
+      .catch((error) => {
+        if (active) setBrandingError(error?.message || 'Identidade dinâmica indisponível.');
+      });
 
     return () => {
       active = false;
@@ -79,12 +83,15 @@ export default function Navbar() {
             alt="Logotipo Grupo Nexum Altivon"
             className="h-12 w-12 shrink-0 rounded-xl bg-[#C9A227] object-contain p-1 shadow-sm sm:h-14 sm:w-14"
             onError={(event) => {
+              setBrandingError('A logomarca configurada não respondeu.');
+              event.currentTarget.onerror = null;
               event.currentTarget.src = fallbackLogo;
             }}
           />
           <div className="min-w-0 leading-tight">
             <p className="max-w-[132px] truncate text-sm font-black tracking-wide text-[#C9A227] sm:max-w-none sm:text-base">{branding.siteName}</p>
             <p className="max-w-[132px] truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400 sm:max-w-none sm:text-xs">{branding.subtitle}</p>
+            {brandingError && <p className="max-w-[160px] truncate text-[10px] font-bold text-amber-300" title={brandingError}>Identidade dinâmica indisponível</p>}
           </div>
         </Link>
 

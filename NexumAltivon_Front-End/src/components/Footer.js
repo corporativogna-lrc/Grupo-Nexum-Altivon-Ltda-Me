@@ -9,12 +9,12 @@
 import { Link } from 'react-router-dom';
 import { Mail, MapPin, Phone, ShieldCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { siteAPI, unwrapApiData } from '../services/api';
+import { resolvePublicAssetUrl, siteAPI, unwrapApiData } from '../services/api';
 
 const fallbackLogo = '/imagens/homepage/Logo-2.png';
 const resolveLogo = (logo) => {
   const value = String(logo || '').trim();
-  return value && !value.includes('logo-grupo-nexum-altivon.svg') ? value : fallbackLogo;
+  return resolvePublicAssetUrl(value && !value.includes('logo-grupo-nexum-altivon.svg') ? value : fallbackLogo);
 };
 
 const links = [
@@ -35,6 +35,7 @@ export default function Footer() {
     telefone: '+55 (14) 99673-1879',
     telefoneSecundario: '+55 (14) 99673-1879',
   });
+  const [brandingError, setBrandingError] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -52,8 +53,11 @@ export default function Footer() {
           telefone: config.primaryPhone || '+55 (14) 99673-1879',
           telefoneSecundario: config.secondaryPhone || '+55 (14) 99673-1879',
         });
+        setBrandingError('');
       })
-      .catch(() => {});
+      .catch((error) => {
+        if (active) setBrandingError(error?.message || 'Identidade dinâmica indisponível.');
+      });
 
     return () => {
       active = false;
@@ -70,12 +74,15 @@ export default function Footer() {
               alt="Logotipo Grupo Nexum Altivon"
               className="h-11 w-11 rounded-xl bg-[#C9A227] object-contain p-1"
               onError={(event) => {
+                setBrandingError('A logomarca configurada não respondeu.');
+                event.currentTarget.onerror = null;
                 event.currentTarget.src = fallbackLogo;
               }}
             />
             <div className="leading-tight">
               <p className="text-base font-black text-[#C9A227]">{branding.siteName}</p>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">{branding.subtitle}</p>
+              {brandingError && <p className="mt-1 text-xs font-bold text-amber-300" role="alert">{brandingError}</p>}
             </div>
           </Link>
           <p className="max-w-md text-sm leading-6 text-zinc-400">

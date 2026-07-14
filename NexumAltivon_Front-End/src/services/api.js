@@ -38,6 +38,12 @@ const getDefaultApiUrl = () => {
 export const API_BASE_URL = normalizeApiUrl(process.env.REACT_APP_BACKEND_URL) || getDefaultApiUrl();
 const API_URL = `${API_BASE_URL}/api`;
 
+export const resolvePublicAssetUrl = (value) => {
+  const assetUrl = String(value || '').trim();
+  if (!assetUrl || /^(?:https?:|data:|blob:)/i.test(assetUrl)) return assetUrl;
+  return assetUrl.startsWith('/') ? `${API_BASE_URL}${assetUrl}` : assetUrl;
+};
+
 const collectRuntimeApiUrls = (config) => {
   const values = [
     config?.apiUrl,
@@ -296,6 +302,10 @@ export const siteAPI = {
   getAll: () => api.get('/site/configuracoes'),
   atualizarConfiguracao: (payload) => api.put('/site/configuracoes', payload?.itens ? payload : { itens: payload }),
   update: (itens) => api.put('/site/configuracoes', { itens }),
+  listarMidias: (params) => api.get('/site/midias', { params }),
+  uploadMidia: (data) => api.post('/site/midias', data),
+  atualizarMidia: (id, data) => api.put(`/site/midias/${id}`, data),
+  excluirMidia: (id, rowVersion) => api.delete(`/site/midias/${id}`, { params: { rowVersion } }),
 };
 
 export const produtoAPI = {

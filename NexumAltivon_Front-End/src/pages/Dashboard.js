@@ -14,6 +14,7 @@ import CupomAdminPanel from '../components/CupomAdminPanel';
 import AccessAuditPanel from '../components/AccessAuditPanel';
 import MarketingAdminPanel from '../components/MarketingAdminPanel';
 import DropshippingAdminPanel from '../components/DropshippingAdminPanel';
+import SiteMediaLibrary from '../components/SiteMediaLibrary';
 import {
   Activity,
   ArrowDownRight,
@@ -401,7 +402,7 @@ const siteConfigFieldMeta = [
   { key: 'site_logo', label: 'Logo do site', type: 'text', group: 'Geral', description: 'URL ou caminho do logo exibido na home e no rodapé.' },
   { key: 'site_email_contato', label: 'E-mail público', type: 'text', group: 'Geral', description: 'Destino principal das mensagens do site.' },
   { key: 'site_telefone', label: 'Telefone Rodrigo', type: 'text', group: 'Geral', description: 'Contato principal exibido na home.' },
-  { key: 'site_telefone_secundario', label: 'Telefone Vinicios', type: 'text', group: 'Geral', description: 'Contato secundário exibido na home.' },
+  { key: 'site_telefone_secundario', label: 'Telefone secundário', type: 'text', group: 'Geral', description: 'Contato secundário exibido na home.' },
   { key: 'site_whatsapp', label: 'WhatsApp principal', type: 'text', group: 'Geral', description: 'Número usado em links do site.' },
   { key: 'site_whatsapp_secundario', label: 'WhatsApp secundário', type: 'text', group: 'Geral', description: 'Número usado em parceria/fornecedores.' },
   { key: 'site_yara_email', label: 'E-mail da Yara', type: 'text', group: 'Atendimento', description: 'Canal atual da Yara para atendimento comercial.' },
@@ -2338,7 +2339,7 @@ export default function Dashboard() {
                   <ErpModuleHero
                     eyebrow="Portal de vendas"
                     title="Configurações públicas da home"
-                    description="Tudo o que aparece na vitrine principal sai do banco: logo, banners, contatos, Yara, textos institucionais e cards de parceria."
+                    description="Identidade, banners, contatos e textos persistidos no banco com imagens públicas servidas pela API oficial."
                   />
                   <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(340px,0.92fr)]">
                     <form onSubmit={submitSiteConfiguracoes} className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -2428,6 +2429,12 @@ export default function Dashboard() {
                       </button>
                     </form>
                     <div className="space-y-6">
+                      <SiteMediaLibrary
+                        logoUrl={siteConfigForm.site_logo}
+                        heroSlidesJson={siteConfigForm.home_hero_slides}
+                        onLogoChange={(url) => setSiteConfigForm((current) => ({ ...current, site_logo: url }))}
+                        onHeroSlidesChange={(value) => setSiteConfigForm((current) => ({ ...current, home_hero_slides: value }))}
+                      />
                       <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
                         <div className="border-b border-slate-100 px-6 py-5">
                           <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C9A227]">Prévia da home</p>
@@ -2469,12 +2476,12 @@ export default function Dashboard() {
                         </div>
                       </section>
                       <ErpChecklistCard
-                        title="O que já vinha pronto no banco"
+                        title="Persistência operacional do portal"
                         items={[
-                          'A tabela configuracoes_sistema já existia mas não estava servindo a home.',
-                          'Havia divergência de porta entre 3309 e 3306 na configuração da API.',
-                          'Banners, contatos, logo e blocos institucionais estavam presos no front e não no banco.',
-                          'Agora a trilha comercial volta para o caminho certo: vitrine configurável sem mexer em código.',
+                          'Configurações públicas são gravadas e relidas da tabela configuracoes_sistema.',
+                          'Metadados das imagens são persistidos na tabela site_midias com tenant, concorrência e exclusão lógica.',
+                          'Arquivos validados são gravados no wwwroot oficial e servidos pelo mesmo processo da API na porta 5010.',
+                          'Logo e banners só são publicados depois do salvamento confirmado pela API.',
                         ]}
                       />
                       <CompactList title="Chaves carregadas do banco" items={siteConfigItems} fields={['chave', 'grupo', 'tipo', 'updatedAt']} />

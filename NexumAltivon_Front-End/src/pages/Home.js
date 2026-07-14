@@ -33,15 +33,21 @@ import {
   Watch,
 } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
-import { clienteAPI, produtoAPI, siteAPI, unwrapApiData } from '../services/api';
+import { clienteAPI, produtoAPI, resolvePublicAssetUrl, siteAPI, unwrapApiData } from '../services/api';
 import { buildWhatsAppLink, supportMessages } from '../utils/supportLinks';
 import { isValidCpfCnpj } from '../utils/validation';
 
 const fallbackLogo = '/imagens/homepage/Logo-2.png';
 const resolveLogo = (logo) => {
   const value = String(logo || '').trim();
-  return value && !value.includes('logo-grupo-nexum-altivon.svg') ? value : fallbackLogo;
+  return resolvePublicAssetUrl(value && !value.includes('logo-grupo-nexum-altivon.svg') ? value : fallbackLogo);
 };
+
+const resolveMediaCollection = (items) => (
+  Array.isArray(items)
+    ? items.map((item) => ({ ...item, image: resolvePublicAssetUrl(item?.image) }))
+    : items
+);
 
 const heroSlides = [
   {
@@ -246,8 +252,8 @@ const mapPublicSiteConfig = (config) => {
     institutionalUrl: pickConfigValue(config, ['institutionalUrl', 'InstitutionalUrl', 'site_institucional_url', 'siteInstitucionalUrl'], '/institucional'),
     privacyUrl: pickConfigValue(config, ['privacyUrl', 'PrivacyUrl', 'site_politica_privacidade_url', 'sitePoliticaPrivacidadeUrl'], '/politica-privacidade'),
     refundUrl: pickConfigValue(config, ['refundUrl', 'RefundUrl', 'site_politica_reembolso_url', 'sitePoliticaReembolsoUrl'], '/politica-reembolso'),
-    heroSlides: pickConfigValue(config, ['heroSlides', 'HeroSlides'], []),
-    storeCards: pickConfigValue(config, ['storeCards', 'StoreCards', 'home_lojas_cards', 'homeLojasCards'], []),
+    heroSlides: resolveMediaCollection(pickConfigValue(config, ['heroSlides', 'HeroSlides'], [])),
+    storeCards: resolveMediaCollection(pickConfigValue(config, ['storeCards', 'StoreCards', 'home_lojas_cards', 'homeLojasCards'], [])),
     introTitle: pickConfigValue(config, ['introTitle', 'IntroTitle', 'home_intro_titulo', 'homeIntroTitulo'], 'Uma Nova Era Começa'),
     introText1: pickConfigValue(config, ['introText1', 'IntroText1', 'home_intro_texto_1', 'homeIntroTexto1'], 'O Grupo Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro.'),
     introText2: pickConfigValue(config, ['introText2', 'IntroText2', 'home_intro_texto_2', 'homeIntroTexto2'], 'Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso.'),
@@ -261,6 +267,9 @@ export default function Home() {
   const navigate = useNavigate();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [siteConfig, setSiteConfig] = useState(null);
+  const [siteConfigError, setSiteConfigError] = useState('');
+  const [siteMediaError, setSiteMediaError] = useState('');
+  const [failedSlideImages, setFailedSlideImages] = useState(() => new Set());
   const [featuredProducts, setFeaturedProducts] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [catalogSearch, setCatalogSearch] = useState('');
@@ -297,9 +306,14 @@ export default function Home() {
         const config = unwrapApiData(response.data);
         if (active && config) {
           setSiteConfig(mapPublicSiteConfig(config));
+          setSiteConfigError('');
         }
       })
-      .catch(() => {});
+      .catch((error) => {
+        if (active) {
+          setSiteConfigError(error?.message || 'A configuração pública não respondeu.');
+        }
+      });
 
     return () => {
       active = false;
@@ -452,18 +466,41 @@ export default function Home() {
   return (
     <main className="nexum-front-original bg-[#050505] text-[#f5f5f5]">
       <section id="home" className="relative min-h-[84vh] overflow-hidden">
-        {displaySlides.map((slide, index) => (
+        {displaySlides.map((slide, index) => {
+          const slideKey = String(slide.id || index);
+          const imageFailed = failedSlideImages.has(slideKey);
+          return (
           <div
-            key={slide.id}
+            key={slideKey}
             className={`absolute inset-0 transition-opacity duration-1000 ${index === currentSlide ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
           >
-            <img src={slide.image} alt={slide.highlight} className="h-full w-full object-cover" />
+            {!imageFailed && slide.image ? (
+              <img
+                src={resolvePublicAssetUrl(slide.image)}
+                alt={slide.imageAlt || slide.highlight || 'Banner institucional'}
+                className="h-full w-full object-cover"
+                onError={() => {
+                  setFailedSlideImages((current) => new Set(current).add(slideKey));
+                  setSiteMediaError(`A imagem configurada para o slide ${index + 1} não respondeu.`);
+                }}
+              />
+            ) : (
+              <div className="flex h-full w-full items-end bg-zinc-950 p-6 text-sm font-bold text-amber-200">
+                Imagem do slide {index + 1} indisponível
+              </div>
+            )}
             <div className="absolute inset-0 bg-gradient-to-r from-black via-black/55 to-black/75" />
           </div>
-        ))}
+          );
+        })}
 
         <div className="relative mx-auto flex min-h-[84vh] max-w-7xl items-center px-4 py-20 sm:px-6 lg:px-8">
           <div className="max-w-3xl">
+            {(siteConfigError || siteMediaError) && (
+              <div className="mb-5 border border-amber-400/60 bg-black/80 px-4 py-3 text-sm font-bold text-amber-100" role="alert">
+                {siteConfigError ? `Configuração pública indisponível: ${siteConfigError}` : siteMediaError}
+              </div>
+            )}
             <p className="mb-5 inline-flex items-center rounded-full border border-[#C9A227]/40 bg-black/40 px-4 py-2 text-xs font-bold uppercase tracking-[0.25em] text-[#E8D5A3]">
               {activeSlide.badge}
             </p>
@@ -477,6 +514,8 @@ export default function Home() {
               alt="Logotipo Grupo Nexum Altivon"
               className="hidden h-16 w-16 rounded-2xl border border-[#C9A227]/30 bg-black/60 object-contain p-2 sm:block"
               onError={(event) => {
+                setSiteMediaError('A logomarca configurada não respondeu; o arquivo institucional local foi carregado.');
+                event.currentTarget.onerror = null;
                 event.currentTarget.src = fallbackLogo;
               }}
             />
@@ -892,6 +931,8 @@ export default function Home() {
                 alt="Logotipo Grupo Nexum Altivon"
                 className="h-12 w-12 rounded-xl border border-[#C9A227]/30 bg-black object-contain p-1.5"
                 onError={(event) => {
+                  setSiteMediaError('A logomarca configurada não respondeu; o arquivo institucional local foi carregado.');
+                  event.currentTarget.onerror = null;
                   event.currentTarget.src = fallbackLogo;
                 }}
               />
@@ -899,7 +940,7 @@ export default function Home() {
             </div>
             <p className="mt-3 text-sm leading-7 text-zinc-400">{siteConfig?.footerText || 'Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas.'}</p>
             <p className="mt-2 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
-              Rodrigo: {primaryPhone} · Vinicios: {secondaryPhone} · {publicContactEmail}
+              Atendimento: {primaryPhone} · {secondaryPhone} · {publicContactEmail}
             </p>
             <div className="mt-4 flex flex-wrap gap-3 text-xs font-bold uppercase tracking-[0.12em] text-zinc-400">
               <a href={institutionalUrl} className="transition hover:text-[#C9A227]">Institucional</a>

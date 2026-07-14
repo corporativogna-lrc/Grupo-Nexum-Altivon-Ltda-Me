@@ -23,6 +23,8 @@ $resolvedProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
 $publishDir = Join-Path $resolvedProjectRoot "runtime\api-24h\api"
 $logDir = Join-Path $resolvedProjectRoot "runtime-logs\api-24h"
 $apiDll = Join-Path $publishDir "NexumAltivon.API.dll"
+$publicWebRoot = Join-Path $resolvedProjectRoot "NexumAltivon_Back-End\wwwroot"
+$publicUploadRoot = Join-Path $publicWebRoot "uploads"
 
 if (-not (Test-Path -LiteralPath $PrivateConfigPath -PathType Leaf)) {
     throw "Configuracao privada da API nao encontrada em $PrivateConfigPath."
@@ -32,10 +34,15 @@ if (-not (Test-Path -LiteralPath $apiDll -PathType Leaf)) {
     throw "Binario da API nao encontrado em $apiDll. Execute dotnet publish antes de iniciar a tarefa."
 }
 
+if (-not (Test-Path -LiteralPath $publicUploadRoot -PathType Container)) {
+    throw "Diretorio oficial de midias publicas nao encontrado em $publicUploadRoot."
+}
+
 . $PrivateConfigPath
 
 $env:ASPNETCORE_ENVIRONMENT = "Production"
 $env:ASPNETCORE_URLS = $ApiUrl
+$env:Storage__PublicWebRoot = $publicWebRoot
 
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"

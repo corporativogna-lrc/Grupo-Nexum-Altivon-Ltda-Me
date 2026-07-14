@@ -36,7 +36,16 @@ using NexumAltivon.API.Models;
 using NexumAltivon.API.Services;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 
-var builder = WebApplication.CreateBuilder(args);
+var bootstrapPublicWebRoot = Environment.GetEnvironmentVariable("Storage__PublicWebRoot")
+    ?? Environment.GetEnvironmentVariable("NEXUM_PUBLIC_WEBROOT");
+var builderOptions = new WebApplicationOptions
+{
+    Args = args,
+    WebRootPath = string.IsNullOrWhiteSpace(bootstrapPublicWebRoot)
+        ? null
+        : Path.GetFullPath(bootstrapPublicWebRoot.Trim())
+};
+var builder = WebApplication.CreateBuilder(builderOptions);
 Console.WriteLine("[NexumStartup] Builder criado.");
 
 builder.Logging.ClearProviders();
@@ -49,6 +58,24 @@ builder.Configuration
     .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
     .AddJsonFile($"API/appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
     .AddEnvironmentVariables();
+
+var configuredPublicWebRoot = builder.Configuration["Storage:PublicWebRoot"]
+    ?? Environment.GetEnvironmentVariable("NEXUM_PUBLIC_WEBROOT");
+if (!string.IsNullOrWhiteSpace(configuredPublicWebRoot))
+{
+    var publicWebRoot = Path.GetFullPath(configuredPublicWebRoot.Trim());
+    var publicUploadsRoot = Path.Combine(publicWebRoot, "uploads");
+    if (!Directory.Exists(publicUploadsRoot))
+    {
+        throw new InvalidOperationException($"Storage:PublicWebRoot deve apontar para um diretorio existente com a pasta uploads. Caminho recebido: {publicWebRoot}");
+    }
+
+    var activeWebRoot = Path.GetFullPath(builder.Environment.WebRootPath);
+    if (!string.Equals(activeWebRoot.TrimEnd(Path.DirectorySeparatorChar), publicWebRoot.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException("Storage:PublicWebRoot deve ser fornecido no bootstrap por Storage__PublicWebRoot ou NEXUM_PUBLIC_WEBROOT.");
+    }
+}
 
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 var apiSettings = builder.Configuration.GetSection("ApiSettings");
@@ -257,7 +284,29 @@ else
 }
 
 app.UseCors("NexumCorsPolicy");
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = context =>
+    {
+        if (context.Context.Request.Path.StartsWithSegments("/uploads"))
+        {
+            var fileName = Path.GetFileName(context.Context.Request.Path.Value) ?? string.Empty;
+            if (fileName.StartsWith("site-", StringComparison.OrdinalIgnoreCase))
+            {
+                context.Context.Response.Headers.CacheControl = "no-store,no-cache,must-revalidate,max-age=0";
+                context.Context.Response.Headers["CDN-Cache-Control"] = "no-store";
+                context.Context.Response.Headers.Pragma = "no-cache";
+                context.Context.Response.Headers.Expires = "0";
+            }
+            else
+            {
+                context.Context.Response.Headers.CacheControl = "public,max-age=31536000,immutable";
+            }
+
+            context.Context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        }
+    }
+});
 
 app.UseSwagger();
 
@@ -3120,6 +3169,254 @@ app.MapPut("/api/site/configuracoes", [Authorize(Policy = "Gerente")] async (Sit
     return Results.Ok(ApiResponse<string>.Ok("ok", "Configurações públicas do site atualizadas com sucesso."));
 })
 .WithName("AtualizarSiteConfiguracoes")
+;
+
+app.MapGet("/api/site/midias", [Authorize(Policy = "Gerente")] async (
+    string? tipo,
+    NexumDbContext db,
+    HttpContext http,
+    CancellationToken ct) =>
+{
+    var query = db.SiteMidias.AsNoTracking();
+    if (!string.IsNullOrWhiteSpace(tipo))
+    {
+        if (!Enum.TryParse<TipoMidiaSite>(tipo.Trim(), true, out var parsedType))
+        {
+            return Results.BadRequest(ApiResponse<List<SiteMidiaDto>>.Erro("Tipo de midia invalido. Use Logo, Banner, Loja ou Institucional."));
+        }
+
+        query = query.Where(midia => midia.Tipo == parsedType);
+    }
+
+    var entities = await query
+        .OrderByDescending(midia => midia.CreatedAt)
+        .ToListAsync(ct);
+    var items = entities.Select(midia => MapSiteMidiaDto(midia, http)).ToList();
+    return Results.Ok(ApiResponse<List<SiteMidiaDto>>.Ok(items));
+})
+.WithName("ListarSiteMidias")
+;
+
+app.MapPost("/api/site/midias", [Authorize(Policy = "Gerente")] async (
+    SiteMidiaUploadRequest request,
+    NexumDbContext db,
+    IWebHostEnvironment environment,
+    HttpContext http,
+    CancellationToken ct) =>
+{
+    var nome = request.Nome?.Trim();
+    var textoAlternativo = request.TextoAlternativo?.Trim();
+    var originalFileName = Path.GetFileName(request.FileName?.Trim());
+    if (string.IsNullOrWhiteSpace(nome) || nome.Length is < 3 or > 150)
+    {
+        return Results.BadRequest(ApiResponse<SiteMidiaDto>.Erro("Nome da midia deve ter entre 3 e 150 caracteres."));
+    }
+
+    if (string.IsNullOrWhiteSpace(textoAlternativo) || textoAlternativo.Length is < 3 or > 240)
+    {
+        return Results.BadRequest(ApiResponse<SiteMidiaDto>.Erro("Texto alternativo deve ter entre 3 e 240 caracteres."));
+    }
+
+    if (string.IsNullOrWhiteSpace(originalFileName) || originalFileName.Length > 255)
+    {
+        return Results.BadRequest(ApiResponse<SiteMidiaDto>.Erro("Nome do arquivo e obrigatorio e deve ter ate 255 caracteres."));
+    }
+
+    if (!Enum.TryParse<TipoMidiaSite>(request.Tipo?.Trim(), true, out var tipoMidia))
+    {
+        return Results.BadRequest(ApiResponse<SiteMidiaDto>.Erro("Tipo de midia invalido. Use Logo, Banner, Loja ou Institucional."));
+    }
+
+    if (!TryDecodeSiteImage(request, out var decoded, out var decodeError))
+    {
+        return Results.BadRequest(ApiResponse<SiteMidiaDto>.Erro(decodeError));
+    }
+
+    var webRoot = environment.WebRootPath;
+    var uploadRoot = string.IsNullOrWhiteSpace(webRoot) ? null : Path.Combine(webRoot, "uploads");
+    if (string.IsNullOrWhiteSpace(uploadRoot) || !Directory.Exists(uploadRoot))
+    {
+        return Results.Problem(
+            title: "Storage publico indisponivel",
+            detail: "Storage:PublicWebRoot nao aponta para o diretorio oficial com a pasta uploads.",
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
+    var id = Guid.NewGuid();
+    var storedFileName = $"site-{id:N}{decoded.Extension}";
+    var relativePath = $"/uploads/{storedFileName}";
+    var fullPath = Path.Combine(uploadRoot, storedFileName);
+
+    await using (var stream = new FileStream(
+        fullPath,
+        FileMode.CreateNew,
+        FileAccess.Write,
+        FileShare.None,
+        65_536,
+        FileOptions.Asynchronous | FileOptions.WriteThrough))
+    {
+        await stream.WriteAsync(decoded.Bytes, ct);
+    }
+
+    var entity = new SiteMidia
+    {
+        Id = id,
+        Nome = nome,
+        Tipo = tipoMidia,
+        TextoAlternativo = textoAlternativo,
+        NomeArquivoOriginal = originalFileName,
+        CaminhoRelativo = relativePath,
+        ContentType = decoded.ContentType,
+        TamanhoBytes = decoded.Bytes.LongLength,
+        Largura = decoded.Width,
+        Altura = decoded.Height
+    };
+
+    db.SiteMidias.Add(entity);
+    try
+    {
+        await db.SaveChangesAsync(ct);
+    }
+    catch
+    {
+        File.Delete(fullPath);
+        throw;
+    }
+
+    var response = MapSiteMidiaDto(entity, http);
+    return Results.Created($"/api/site/midias/{entity.Id}", ApiResponse<SiteMidiaDto>.Ok(response, "Midia validada e persistida."));
+})
+.WithName("CriarSiteMidia")
+;
+
+app.MapPut("/api/site/midias/{id:guid}", [Authorize(Policy = "Gerente")] async (
+    Guid id,
+    SiteMidiaUpdateRequest request,
+    NexumDbContext db,
+    HttpContext http,
+    CancellationToken ct) =>
+{
+    var nome = request.Nome?.Trim();
+    var textoAlternativo = request.TextoAlternativo?.Trim();
+    if (string.IsNullOrWhiteSpace(nome) || nome.Length is < 3 or > 150)
+    {
+        return Results.BadRequest(ApiResponse<SiteMidiaDto>.Erro("Nome da midia deve ter entre 3 e 150 caracteres."));
+    }
+
+    if (string.IsNullOrWhiteSpace(textoAlternativo) || textoAlternativo.Length is < 3 or > 240)
+    {
+        return Results.BadRequest(ApiResponse<SiteMidiaDto>.Erro("Texto alternativo deve ter entre 3 e 240 caracteres."));
+    }
+
+    if (!Enum.TryParse<TipoMidiaSite>(request.Tipo?.Trim(), true, out var tipoMidia))
+    {
+        return Results.BadRequest(ApiResponse<SiteMidiaDto>.Erro("Tipo de midia invalido. Use Logo, Banner, Loja ou Institucional."));
+    }
+
+    if (!TryParseSiteMediaRowVersion(request.RowVersion, out var rowVersion))
+    {
+        return Results.BadRequest(ApiResponse<SiteMidiaDto>.Erro("RowVersion invalida."));
+    }
+
+    var entity = await db.SiteMidias.FirstOrDefaultAsync(midia => midia.Id == id, ct);
+    if (entity is null)
+    {
+        return Results.NotFound(ApiResponse<SiteMidiaDto>.Erro("Midia nao encontrada."));
+    }
+
+    if (!entity.RowVersion.SequenceEqual(rowVersion))
+    {
+        return Results.Conflict(ApiResponse<SiteMidiaDto>.Erro("A midia foi alterada por outra sessao. Recarregue a biblioteca."));
+    }
+
+    entity.Nome = nome;
+    entity.Tipo = tipoMidia;
+    entity.TextoAlternativo = textoAlternativo;
+
+    try
+    {
+        await db.SaveChangesAsync(ct);
+    }
+    catch (DbUpdateConcurrencyException)
+    {
+        return Results.Conflict(ApiResponse<SiteMidiaDto>.Erro("A midia foi alterada por outra sessao. Recarregue a biblioteca."));
+    }
+
+    return Results.Ok(ApiResponse<SiteMidiaDto>.Ok(MapSiteMidiaDto(entity, http), "Metadados da midia atualizados."));
+})
+.WithName("AtualizarSiteMidia")
+;
+
+app.MapDelete("/api/site/midias/{id:guid}", [Authorize(Policy = "Gerente")] async (
+    Guid id,
+    string rowVersion,
+    NexumDbContext db,
+    IWebHostEnvironment environment,
+    CancellationToken ct) =>
+{
+    if (!TryParseSiteMediaRowVersion(rowVersion, out var parsedRowVersion))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("RowVersion invalida."));
+    }
+
+    var entity = await db.SiteMidias.FirstOrDefaultAsync(midia => midia.Id == id, ct);
+    if (entity is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Midia nao encontrada."));
+    }
+
+    if (!entity.RowVersion.SequenceEqual(parsedRowVersion))
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("A midia foi alterada por outra sessao. Recarregue a biblioteca."));
+    }
+
+    var referenced = await db.ConfiguracoesSistema
+        .AsNoTracking()
+        .AnyAsync(config => config.Valor != null && config.Valor.Contains(entity.CaminhoRelativo), ct);
+    if (referenced)
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("Midia vinculada a configuracao publica. Remova o vinculo e salve a configuracao antes de excluir."));
+    }
+
+    if (!TryResolvePublicMediaFile(environment.WebRootPath, entity.CaminhoRelativo, out var physicalPath))
+    {
+        return Results.Problem("O caminho fisico da midia persistida e invalido.", statusCode: StatusCodes.Status500InternalServerError);
+    }
+
+    byte[]? physicalContent = null;
+    if (File.Exists(physicalPath))
+    {
+        physicalContent = await File.ReadAllBytesAsync(physicalPath, ct);
+        File.Delete(physicalPath);
+    }
+
+    db.SiteMidias.Remove(entity);
+    try
+    {
+        await db.SaveChangesAsync(ct);
+    }
+    catch (DbUpdateConcurrencyException)
+    {
+        if (physicalContent is not null)
+        {
+            await File.WriteAllBytesAsync(physicalPath, physicalContent, CancellationToken.None);
+        }
+
+        return Results.Conflict(ApiResponse<string>.Erro("A midia foi alterada por outra sessao. Recarregue a biblioteca."));
+    }
+    catch
+    {
+        if (physicalContent is not null)
+        {
+            await File.WriteAllBytesAsync(physicalPath, physicalContent, CancellationToken.None);
+        }
+
+        throw;
+    }
+
+    return Results.NoContent();
+})
+.WithName("ExcluirSiteMidia")
 ;
 
 app.MapGet("/api/categorias", async (NexumDbContext db, CancellationToken ct) =>
@@ -14133,6 +14430,267 @@ static string BuildLeadNotificationEmail(CrmLead lead)
     """;
 }
 
+static SiteMidiaDto MapSiteMidiaDto(SiteMidia midia, HttpContext http) =>
+    new(
+        midia.Id,
+        midia.TenantId,
+        midia.Nome,
+        midia.Tipo.ToString(),
+        midia.TextoAlternativo,
+        midia.NomeArquivoOriginal,
+        midia.CaminhoRelativo,
+        BuildPublicAssetUrl(http, midia.CaminhoRelativo),
+        midia.ContentType,
+        midia.TamanhoBytes,
+        midia.Largura,
+        midia.Altura,
+        Convert.ToBase64String(midia.RowVersion),
+        midia.CreatedAt,
+        midia.UpdatedAt);
+
+static string BuildPublicAssetUrl(HttpContext http, string relativePath)
+{
+    var forwardedProto = http.Request.Headers["X-Forwarded-Proto"].FirstOrDefault();
+    var scheme = string.Equals(forwardedProto, "https", StringComparison.OrdinalIgnoreCase)
+        ? "https"
+        : http.Request.Scheme;
+    var forwardedHost = http.Request.Headers["X-Forwarded-Host"].FirstOrDefault();
+    var host = string.IsNullOrWhiteSpace(forwardedHost) ? http.Request.Host.Value : forwardedHost.Trim();
+    return $"{scheme}://{host}{(relativePath.StartsWith('/') ? relativePath : $"/{relativePath}")}";
+}
+
+static bool TryResolvePublicMediaFile(string webRootPath, string relativePath, out string fullPath)
+{
+    fullPath = string.Empty;
+    if (string.IsNullOrWhiteSpace(webRootPath) || string.IsNullOrWhiteSpace(relativePath))
+    {
+        return false;
+    }
+
+    var normalizedRelativePath = relativePath.Replace('\\', '/').Trim();
+    if (!normalizedRelativePath.StartsWith("/uploads/", StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    var webRoot = Path.GetFullPath(webRootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    var relativeFile = normalizedRelativePath.TrimStart('/').Replace('/', Path.DirectorySeparatorChar);
+    var candidate = Path.GetFullPath(Path.Combine(webRoot, relativeFile));
+    if (!candidate.StartsWith(webRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    fullPath = candidate;
+    return true;
+}
+
+static bool TryParseSiteMediaRowVersion(string? value, out byte[] rowVersion)
+{
+    rowVersion = Array.Empty<byte>();
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return false;
+    }
+
+    try
+    {
+        rowVersion = Convert.FromBase64String(value.Trim());
+        return rowVersion.Length > 0;
+    }
+    catch (FormatException)
+    {
+        return false;
+    }
+}
+
+static bool TryDecodeSiteImage(
+    SiteMidiaUploadRequest request,
+    out DecodedSiteImage decoded,
+    out string error)
+{
+    decoded = new DecodedSiteImage(Array.Empty<byte>(), string.Empty, string.Empty, 0, 0);
+    error = string.Empty;
+    var dataUrl = request.DataUrl?.Trim();
+    if (string.IsNullOrWhiteSpace(dataUrl))
+    {
+        error = "Conteudo da imagem e obrigatorio.";
+        return false;
+    }
+
+    var separatorIndex = dataUrl.IndexOf(',', StringComparison.Ordinal);
+    var base64 = separatorIndex >= 0 ? dataUrl[(separatorIndex + 1)..] : dataUrl;
+    byte[] bytes;
+    try
+    {
+        bytes = Convert.FromBase64String(base64);
+    }
+    catch (FormatException)
+    {
+        error = "Conteudo base64 da imagem e invalido.";
+        return false;
+    }
+
+    const int maxBytes = 8 * 1024 * 1024;
+    if (bytes.Length == 0 || bytes.Length > maxBytes)
+    {
+        error = "Imagem deve possuir conteudo e ter no maximo 8MB.";
+        return false;
+    }
+
+    string contentType;
+    string extension;
+    int width;
+    int height;
+    if (TryReadPngDimensions(bytes, out width, out height))
+    {
+        contentType = "image/png";
+        extension = ".png";
+    }
+    else if (TryReadJpegDimensions(bytes, out width, out height))
+    {
+        contentType = "image/jpeg";
+        extension = ".jpg";
+    }
+    else if (TryReadWebpDimensions(bytes, out width, out height))
+    {
+        contentType = "image/webp";
+        extension = ".webp";
+    }
+    else
+    {
+        error = "Arquivo nao e uma imagem PNG, JPEG ou WebP valida.";
+        return false;
+    }
+
+    var declaredContentType = request.ContentType?.Trim().ToLowerInvariant();
+    if (declaredContentType == "image/jpg")
+    {
+        declaredContentType = "image/jpeg";
+    }
+
+    if (!string.IsNullOrWhiteSpace(declaredContentType)
+        && !string.Equals(declaredContentType, contentType, StringComparison.Ordinal))
+    {
+        error = $"Content-Type declarado ({declaredContentType}) diverge do arquivo validado ({contentType}).";
+        return false;
+    }
+
+    const long maxPixels = 60_000_000;
+    if (width is < 32 or > 12_000 || height is < 32 or > 12_000 || (long)width * height > maxPixels)
+    {
+        error = "Dimensoes da imagem devem ficar entre 32 e 12000 pixels, limitadas a 60 megapixels.";
+        return false;
+    }
+
+    decoded = new DecodedSiteImage(bytes, contentType, extension, width, height);
+    return true;
+}
+
+static bool TryReadPngDimensions(byte[] bytes, out int width, out int height)
+{
+    width = 0;
+    height = 0;
+    ReadOnlySpan<byte> signature = [137, 80, 78, 71, 13, 10, 26, 10];
+    if (bytes.Length < 24 || !bytes.AsSpan(0, signature.Length).SequenceEqual(signature))
+    {
+        return false;
+    }
+
+    width = (bytes[16] << 24) | (bytes[17] << 16) | (bytes[18] << 8) | bytes[19];
+    height = (bytes[20] << 24) | (bytes[21] << 16) | (bytes[22] << 8) | bytes[23];
+    return width > 0 && height > 0;
+}
+
+static bool TryReadJpegDimensions(byte[] bytes, out int width, out int height)
+{
+    width = 0;
+    height = 0;
+    if (bytes.Length < 12 || bytes[0] != 0xFF || bytes[1] != 0xD8)
+    {
+        return false;
+    }
+
+    var offset = 2;
+    while (offset + 8 < bytes.Length)
+    {
+        while (offset < bytes.Length && bytes[offset] == 0xFF)
+        {
+            offset++;
+        }
+
+        if (offset >= bytes.Length)
+        {
+            break;
+        }
+
+        var marker = bytes[offset++];
+        if (marker is 0xD8 or 0xD9)
+        {
+            continue;
+        }
+
+        if (offset + 1 >= bytes.Length)
+        {
+            return false;
+        }
+
+        var segmentLength = (bytes[offset] << 8) | bytes[offset + 1];
+        if (segmentLength < 2 || offset + segmentLength > bytes.Length)
+        {
+            return false;
+        }
+
+        var isStartOfFrame = marker is 0xC0 or 0xC1 or 0xC2 or 0xC3 or 0xC5 or 0xC6 or 0xC7 or 0xC9 or 0xCA or 0xCB or 0xCD or 0xCE or 0xCF;
+        if (isStartOfFrame && segmentLength >= 7)
+        {
+            height = (bytes[offset + 3] << 8) | bytes[offset + 4];
+            width = (bytes[offset + 5] << 8) | bytes[offset + 6];
+            return width > 0 && height > 0;
+        }
+
+        offset += segmentLength;
+    }
+
+    return false;
+}
+
+static bool TryReadWebpDimensions(byte[] bytes, out int width, out int height)
+{
+    width = 0;
+    height = 0;
+    if (bytes.Length < 25
+        || Encoding.ASCII.GetString(bytes, 0, 4) != "RIFF"
+        || Encoding.ASCII.GetString(bytes, 8, 4) != "WEBP")
+    {
+        return false;
+    }
+
+    var chunkType = Encoding.ASCII.GetString(bytes, 12, 4);
+    if (chunkType == "VP8X" && bytes.Length >= 30)
+    {
+        width = 1 + bytes[24] + (bytes[25] << 8) + (bytes[26] << 16);
+        height = 1 + bytes[27] + (bytes[28] << 8) + (bytes[29] << 16);
+        return width > 0 && height > 0;
+    }
+
+    if (chunkType == "VP8L" && bytes.Length >= 25 && bytes[20] == 0x2F)
+    {
+        width = 1 + bytes[21] + ((bytes[22] & 0x3F) << 8);
+        height = 1 + (bytes[22] >> 6) + (bytes[23] << 2) + ((bytes[24] & 0x0F) << 10);
+        return width > 0 && height > 0;
+    }
+
+    if (chunkType == "VP8 " && bytes.Length >= 30 && bytes[23] == 0x9D && bytes[24] == 0x01 && bytes[25] == 0x2A)
+    {
+        width = (bytes[26] | (bytes[27] << 8)) & 0x3FFF;
+        height = (bytes[28] | (bytes[29] << 8)) & 0x3FFF;
+        return width > 0 && height > 0;
+    }
+
+    return false;
+}
+
 static SiteConfiguracaoPublicaDto BuildPublicSiteConfig(IReadOnlyDictionary<string, string?> configMap)
 {
     var contactEmail = GetConfigValue(configMap, "site_email_contato", "corporativo.gna@gmail.com");
@@ -14256,6 +14814,7 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
     }
 
     await EnsureMarketingSchemaAsync(db);
+    await EnsureSiteMediaSchemaAsync(db);
     await EnsureAuditSchemaAsync(db, logger);
     await EnsureUsuariosSchemaAsync(db);
     await EnsurePlatformSsoSchemaAsync(db);
@@ -14576,6 +15135,37 @@ static async Task EnsureAuditSchemaAsync(NexumDbContext db, ILogger logger)
     }
 
     logger.LogInformation("Auditoria, multitenancy e soft-delete verificados em {Total} tabelas EF.", tableNames.Count);
+}
+
+static async Task EnsureSiteMediaSchemaAsync(NexumDbContext db)
+{
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        CREATE TABLE IF NOT EXISTS site_midias (
+            id CHAR(36) NOT NULL,
+            tenant_id CHAR(36) NOT NULL,
+            row_version BLOB NOT NULL,
+            created_at DATETIME(6) NOT NULL,
+            created_by_user_id CHAR(36) NULL,
+            updated_at DATETIME(6) NULL,
+            updated_by_user_id CHAR(36) NULL,
+            is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+            deleted_at DATETIME(6) NULL,
+            nome VARCHAR(150) NOT NULL,
+            tipo VARCHAR(30) NOT NULL,
+            texto_alternativo VARCHAR(240) NOT NULL,
+            nome_arquivo_original VARCHAR(255) NOT NULL,
+            caminho_relativo VARCHAR(255) NOT NULL,
+            content_type VARCHAR(80) NOT NULL,
+            tamanho_bytes BIGINT NOT NULL,
+            largura INT NOT NULL,
+            altura INT NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY ux_site_midias_tenant_path (tenant_id, caminho_relativo),
+            KEY ix_site_midias_tenant_created (tenant_id, created_at),
+            KEY ix_site_midias_tenant_deleted (tenant_id, is_deleted)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        """);
 }
 
 static async Task EnsureMarketingSchemaAsync(NexumDbContext db)
@@ -18042,6 +18632,44 @@ public sealed record MarketplaceHttpResult(
     bool Sucesso,
     string? Body,
     List<string> Pendencias);
+
+public sealed record SiteMidiaUploadRequest(
+    string? Nome,
+    string? Tipo,
+    string? TextoAlternativo,
+    string? FileName,
+    string? ContentType,
+    string? DataUrl);
+
+public sealed record SiteMidiaUpdateRequest(
+    string? Nome,
+    string? Tipo,
+    string? TextoAlternativo,
+    string? RowVersion);
+
+public sealed record SiteMidiaDto(
+    Guid Id,
+    Guid TenantId,
+    string Nome,
+    string Tipo,
+    string TextoAlternativo,
+    string NomeArquivoOriginal,
+    string CaminhoRelativo,
+    string Url,
+    string ContentType,
+    long TamanhoBytes,
+    int Largura,
+    int Altura,
+    string RowVersion,
+    DateTime CreatedAt,
+    DateTime? UpdatedAt);
+
+public sealed record DecodedSiteImage(
+    byte[] Bytes,
+    string ContentType,
+    string Extension,
+    int Width,
+    int Height);
 
 public sealed record SiteConfiguracaoItemDto(
     int Id,
