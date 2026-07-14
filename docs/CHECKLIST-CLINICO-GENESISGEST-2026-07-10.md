@@ -10,6 +10,7 @@
 
 Data da apuracao: 2026-07-10.
 Apuracao complementar de integridade funcional: 2026-07-12.
+Apuracao de paridade do painel legado: 2026-07-14.
 
 ## Rotas Travadas
 
@@ -84,6 +85,31 @@ Apuracao complementar de integridade funcional: 2026-07-12.
 | Catalogo publico | Consulta direta no banco confirmou 91 produtos ativos e 91 produtos publicaveis pelo filtro atual da API |
 | API oficial 5010 | Task `NexumAltivonApi24h` validada em 2026-07-13T00:53:39 como `Running`, usuario `SISTEMA`, `RunLevel Highest`, processo `dotnet.exe NexumAltivon.API.dll`, PID `10928`, `/health`, `/health/db`, `/health/db/genesis` e `/api/site/configuracoes/publico` com HTTP 200 |
 | GitHub oficial atualizado | `origin/main` e `origin/work/delivery-2026-06-13` alinhados no commit `8d58edb fix: api - limpar base de teste e corrigir seeds auditaveis` |
+
+## Mapa Clinico das Ferramentas Prometidas pelo Painel Legado
+
+O painel HTML removido foi recuperado somente para leitura pelo historico Git (`5d05ab0^:NexumAltivon_Front-End/admin/index.html`). Ele anunciava 16 ferramentas, mas continha secoes HTML somente para Dashboard, Pedidos, Produtos, Clientes, CRM, Lojas, Financeiro e Configuracoes. Fiscal, Logistica, Cupons, Marketing, Marketplaces, Dropshipping, Usuarios e Auditoria apareciam no menu sem secao funcional correspondente.
+
+| Ferramenta prometida | Tela React oficial | API/persistencia | Status clinico em 2026-07-14 | Evidencia ou bloqueio atual |
+|---|---|---|---|---|
+| Dashboard | Existe em `Dashboard.js` | `/api/dashboard/resumo` e `/api/admin/dashboard/completo` | Parcial validado | KPIs reais existem; ainda ha indicadores textuais de arquitetura a revisar para nao aparentarem integracao homologada |
+| Pedidos | Existe | `/api/pedidos*`, MySQL `pedidos` | Parcial validado | Lista e alteracao de status existem; fluxo venda-pagamento-fiscal-logistica-financeiro ainda nao foi homologado integralmente |
+| Produtos | Existe | `/api/produtos*`, MySQL `produtos` | Parcial validado | CRUD e catalogo existem; falta homologar todas as restricoes de estoque/tenant e marketplace |
+| Clientes | Existe | `/api/clientes*`, MySQL `clientes` | Parcial validado | CRUD, portal e confirmacao existem; falta teste completo de isolamento e historico operacional |
+| Lojas | Sem tela dedicada equivalente | `/api/lojas*`, MySQL `lojas` | Parcial | Dados aparecem em dashboard/empresas; falta gestao dedicada das seis lojas com gravacao e permissoes |
+| Financeiro | Existe | `/api/financeiro*` e `/api/erp/genesis/financeiro*` | Parcial avancado | Lancamentos, razao, conciliacao, DRE e fechamento existem; PDFs foram corrigidos, mas fluxo e tela completa ainda requerem homologacao |
+| Fiscal | Existe | `/api/fiscal*` | Parcial real bloqueado externamente | Endpoints bloqueiam sem certificado/provedor; falta certificado e homologacao SEFAZ real |
+| Logistica | Existe | `/api/frete*`, `/api/logistica*`, estoque/transportes | Parcial real | Cotacao interna identificada funciona; tracking externo exige endpoint/token real e retorna bloqueio rastreavel sem eles |
+| CRM | Existe | `/api/crm/leads*`, MySQL `crm_leads` | Parcial | Leads possuem persistencia confirmada; pipelines, oportunidades, tickets, atividades, campanhas e segmentos ainda nao estao completos na API/tela |
+| Cupons | Implementada nesta rodada em `CupomAdminPanel.js` | `/api/admin/cupons*` e `/api/cupons/{codigo}`, MySQL `cupons` | Concluido e validado no escopo CRUD/uso publico | Em 2026-07-14, no runtime oficial `127.0.0.1:5010`: POST retornou 201 e ID persistido, subtotal abaixo do minimo retornou 400, consulta publica com vigencia `DATE` retornou 200, PUT retornou 200, DELETE desativou com 200 e nova consulta publica retornou 404. A limpeza controlada confirmou zero registros residuais no MySQL |
+| Marketing | Ausente | Nao ha modulo completo de campanhas/segmentos | Pendente real | Nao existe tela nem fluxo persistente completo; nao pode ser tratado como funcional |
+| Marketplaces | Diagnostico e formulario de sincronizacao em Integracoes | `/api/marketplaces/{canal}/sync` e services | Parcial bloqueado por credenciais | Tela React envia canal, direcao, entidade e limite para a API real. Mercado Livre/B2W/Via responderam 424 local e publicamente sem tokens, sem registrar sucesso; Shopee/Amazon nao gravam mais sucesso fabricado, mas conectores oficiais continuam pendentes |
+| Dropshipping | Diagnostico em Integracoes e cadastro de fornecedor/produto | Models/services e roteamento de pedido | Parcial | Vinculo produto-fornecedor existe; falta ciclo completo de cotacao, pedido externo, retorno e rastreamento por fornecedor |
+| Usuarios | Implementada nesta rodada em `AccessAuditPanel.js` | `/api/admin/usuarios*`, MySQL `usuarios` | Parcial validado | API local e publica retornaram HTTP 200, 1 usuario e 7 perfis; tela compilou. Criacao/edicao/desativacao ainda precisa prova controlada com limpeza |
+| Configuracoes | Existe | `/api/site/configuracoes*`, MySQL | Parcial validado | Persistencia foi corrigida para exigir retorno/releitura da API; falta conferir todos os campos publicados no portal |
+| Auditoria | Implementada nesta rodada em `AccessAuditPanel.js` | `/api/auditoria*`, MySQL `logs_auditoria` | Parcial validado | API local e publica retornaram HTTP 200 e 42 eventos; tela de filtros/detalhe compilou. Cobertura de toda escrita ainda nao foi comprovada |
+
+Regra de aceite para cada ferramenta: somente marcar `Concluido` quando houver tela oficial, endpoint Minimal API, persistencia/consulta real quando aplicavel, autorizacao, tratamento de erro, build e teste HTTP autenticado. Integracao externa tambem exige chamada aceita pelo provedor oficial e persistencia do identificador retornado.
 
 ## Ferramentas que nao podem mais ser tratadas como prontas sem evidencia
 
