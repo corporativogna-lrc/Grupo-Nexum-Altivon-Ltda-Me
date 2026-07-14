@@ -75,7 +75,7 @@
                 <Border Style="{StaticResource WorkspaceCard}">
                     <StackPanel>
                         <TextBlock Text="Contexto operacional" Foreground="{StaticResource TextPrimary}" FontSize="20" FontWeight="Bold" />
-                        <TextBlock Text="Esta janela individualiza o serviço selecionado e organiza o fluxo local do módulo sem depender do site Nexum." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,8,0,16" />
+                            <TextBlock Text="Esta janela registra solicitações operacionais no servidor Genesis e mantém contingência local identificada quando a API estiver indisponível." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,8,0,16" />
 
                         <UniformGrid Columns="2">
                             <StackPanel Margin="0,0,12,12">
@@ -92,7 +92,7 @@
                             </StackPanel>
                             <StackPanel Margin="0,0,0,12">
                                 <TextBlock Text="Banco interno" Foreground="{StaticResource TextSecondary}" />
-                                <TextBox Text="192.168.1.72:3309" IsReadOnly="True" />
+                                <TextBox Text="{Binding ServerDatabase}" IsReadOnly="True" />
                             </StackPanel>
                         </UniformGrid>
 
@@ -105,9 +105,9 @@
                 <Border Grid.Column="2" Style="{StaticResource WorkspaceCard}">
                     <StackPanel>
                         <TextBlock Text="Ações disponíveis" Foreground="{StaticResource TextPrimary}" FontSize="20" FontWeight="Bold" />
-                        <TextBlock Text="As operações executadas aqui seguem o mesmo login, perfis e autorizações do ecossistema Nexum/Genesis." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,8,0,16" />
+                        <TextBlock Text="O resultado diferencia gravação confirmada no servidor, contingência local e falha, incluindo a referência persistida." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,8,0,16" />
 
-                        <Button Content="Registrar / consultar"
+                        <Button Content="Registrar solicitação operacional"
                                 Padding="16,10"
                                 Background="{StaticResource AccentGold}"
                                 Foreground="#080704"

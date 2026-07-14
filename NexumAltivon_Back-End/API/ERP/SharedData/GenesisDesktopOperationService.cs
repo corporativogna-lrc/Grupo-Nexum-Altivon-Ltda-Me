@@ -58,7 +58,7 @@ public static class GenesisDesktopOperationService
                   AND opd_codigo = {1}
                   AND opd_hash_sha256 = {2}
                 ORDER BY opd_id DESC
-                LIMIT 1;
+                LIMIT 1
                 """,
                 modulo,
                 codigo,

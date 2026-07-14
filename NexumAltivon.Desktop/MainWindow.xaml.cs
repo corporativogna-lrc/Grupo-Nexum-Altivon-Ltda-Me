@@ -34,7 +34,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private string _integrationMetricValue = "API";
     private string _connectionModeLabel = "Validando conexão";
     private string _pdvOperationalNote = "Contingência preparada para registrar venda local e sincronizar quando a API estiver disponível.";
-    private string _serverDatabaseLabel = "Banco interno 192.168.1.72:3309";
+    private string _serverDatabaseLabel = "Banco interno local:3309";
     private bool _showSalesDashboard = true;
     private bool _showFinanceDashboard = true;
     private bool _showPurchaseDashboard = true;
@@ -361,7 +361,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        var window = new ModuleWorkspaceWindow(title, area, detail);
+        var window = new ModuleWorkspaceWindow(title, area, detail, Terminal);
         window.ShowDialog();
     }
 
