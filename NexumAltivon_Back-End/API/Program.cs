@@ -6473,6 +6473,162 @@ app.MapPost("/api/pedidos", async (
 .WithName("CriarPedido")
 ;
 
+app.MapGet("/api/dropshipping/canais", [Authorize(Policy = "Gerente")] async (
+    NexumDbContext db,
+    IConfiguration configuration,
+    bool? ativo,
+    string? busca,
+    CancellationToken ct) =>
+{
+    var query = db.DropshippingConfigs.AsQueryable();
+    if (ativo.HasValue)
+    {
+        query = query.Where(config => config.Ativo == ativo.Value);
+    }
+
+    var termo = TrimOrNull(busca);
+    if (termo is not null)
+    {
+        query = query.Where(config => config.Nome.Contains(termo) || config.Slug.Contains(termo));
+    }
+
+    var canais = await query.OrderBy(config => config.Nome).ToListAsync(ct);
+    var dados = canais.Select(config => ToDropshippingCanalDto(db, configuration, config)).ToList();
+    return Results.Ok(ApiResponse<List<DropshippingCanalDto>>.Ok(dados, "Canais de dropshipping carregados.", dados.Count));
+})
+.WithName("DropshippingCanaisListar");
+
+app.MapGet("/api/dropshipping/canais/{id:int}", [Authorize(Policy = "Gerente")] async (
+    int id,
+    NexumDbContext db,
+    IConfiguration configuration,
+    CancellationToken ct) =>
+{
+    var canal = await db.DropshippingConfigs.FirstOrDefaultAsync(config => config.Id == id, ct);
+    return canal is null
+        ? Results.NotFound(ApiResponse<DropshippingCanalDto>.Erro("Canal de dropshipping nao encontrado."))
+        : Results.Ok(ApiResponse<DropshippingCanalDto>.Ok(ToDropshippingCanalDto(db, configuration, canal)));
+})
+.WithName("DropshippingCanaisObter");
+
+app.MapPost("/api/dropshipping/canais", [Authorize(Policy = "Gerente")] async (
+    DropshippingCanalRequest request,
+    NexumDbContext db,
+    IConfiguration configuration,
+    CancellationToken ct) =>
+{
+    var validation = ValidateDropshippingCanalRequest(request, configuration, out var nome, out var slug, out var tipo);
+    if (validation is not null)
+    {
+        return validation.Value.StatusCode == StatusCodes.Status424FailedDependency
+            ? Results.Json(ApiResponse<DropshippingCanalDto>.Erro(validation.Value.Message), statusCode: validation.Value.StatusCode)
+            : Results.BadRequest(ApiResponse<DropshippingCanalDto>.Erro(validation.Value.Message));
+    }
+
+    if (await db.DropshippingConfigs.AnyAsync(config => config.Slug == slug, ct))
+    {
+        return Results.Conflict(ApiResponse<DropshippingCanalDto>.Erro("Ja existe canal com o slug informado."));
+    }
+
+    var canal = new DropshippingConfig
+    {
+        Nome = nome,
+        Slug = slug,
+        Tipo = tipo,
+        ApiEndpoint = TrimOrNull(request.ApiEndpoint),
+        Ativo = request.Ativo
+    };
+    db.DropshippingConfigs.Add(canal);
+    await db.SaveChangesAsync(ct);
+
+    var response = ToDropshippingCanalDto(db, configuration, canal);
+    return Results.Created($"/api/dropshipping/canais/{canal.Id}", ApiResponse<DropshippingCanalDto>.Ok(response, "Canal de dropshipping criado."));
+})
+.WithName("DropshippingCanaisCriar");
+
+app.MapPut("/api/dropshipping/canais/{id:int}", [Authorize(Policy = "Gerente")] async (
+    int id,
+    DropshippingCanalRequest request,
+    NexumDbContext db,
+    IConfiguration configuration,
+    CancellationToken ct) =>
+{
+    if (!TryDecodeRowVersion(request.RowVersion, out var expectedRowVersion))
+    {
+        return Results.BadRequest(ApiResponse<DropshippingCanalDto>.Erro("RowVersion valido e obrigatorio para atualizar o canal."));
+    }
+
+    var canal = await db.DropshippingConfigs.FirstOrDefaultAsync(config => config.Id == id, ct);
+    if (canal is null)
+    {
+        return Results.NotFound(ApiResponse<DropshippingCanalDto>.Erro("Canal de dropshipping nao encontrado."));
+    }
+
+    var validation = ValidateDropshippingCanalRequest(request, configuration, out var nome, out var slug, out var tipo);
+    if (validation is not null)
+    {
+        return validation.Value.StatusCode == StatusCodes.Status424FailedDependency
+            ? Results.Json(ApiResponse<DropshippingCanalDto>.Erro(validation.Value.Message), statusCode: validation.Value.StatusCode)
+            : Results.BadRequest(ApiResponse<DropshippingCanalDto>.Erro(validation.Value.Message));
+    }
+
+    if (await db.DropshippingConfigs.AnyAsync(config => config.Id != id && config.Slug == slug, ct))
+    {
+        return Results.Conflict(ApiResponse<DropshippingCanalDto>.Erro("Ja existe canal com o slug informado."));
+    }
+
+    db.Entry(canal).Property<byte[]>("RowVersion").OriginalValue = expectedRowVersion;
+    canal.Nome = nome;
+    canal.Slug = slug;
+    canal.Tipo = tipo;
+    canal.ApiEndpoint = TrimOrNull(request.ApiEndpoint);
+    canal.Ativo = request.Ativo;
+
+    try
+    {
+        await db.SaveChangesAsync(ct);
+    }
+    catch (DbUpdateConcurrencyException)
+    {
+        return Results.Conflict(ApiResponse<DropshippingCanalDto>.Erro("Canal alterado por outro usuario. Recarregue os dados antes de salvar novamente."));
+    }
+
+    return Results.Ok(ApiResponse<DropshippingCanalDto>.Ok(ToDropshippingCanalDto(db, configuration, canal), "Canal de dropshipping atualizado."));
+})
+.WithName("DropshippingCanaisAtualizar");
+
+app.MapDelete("/api/dropshipping/canais/{id:int}", [Authorize(Policy = "Gerente")] async (
+    int id,
+    string? rowVersion,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    if (!TryDecodeRowVersion(rowVersion, out var expectedRowVersion))
+    {
+        return Results.BadRequest(ApiResponse<object>.Erro("RowVersion valido e obrigatorio para excluir o canal."));
+    }
+
+    var canal = await db.DropshippingConfigs.FirstOrDefaultAsync(config => config.Id == id, ct);
+    if (canal is null)
+    {
+        return Results.NotFound(ApiResponse<object>.Erro("Canal de dropshipping nao encontrado."));
+    }
+
+    db.Entry(canal).Property<byte[]>("RowVersion").OriginalValue = expectedRowVersion;
+    db.DropshippingConfigs.Remove(canal);
+    try
+    {
+        await db.SaveChangesAsync(ct);
+    }
+    catch (DbUpdateConcurrencyException)
+    {
+        return Results.Conflict(ApiResponse<object>.Erro("Canal alterado por outro usuario. Recarregue os dados antes de excluir."));
+    }
+
+    return Results.NoContent();
+})
+.WithName("DropshippingCanaisExcluir");
+
 app.MapGet("/api/integracoes/status", [Authorize(Policy = "Gerente")] async (
     IConfiguration configuration,
     NexumDbContext db,
@@ -12473,6 +12629,117 @@ static IntegracaoDiagnosticoDto MissingIntegration(string nome, string slug, str
 static IntegracaoDiagnosticoDto ExternalError(string nome, string slug, Exception ex) =>
     new(nome, slug, "Erro de comunicação", true, false, $"Falha ao testar provedor externo: {ex.Message}", ["Conferir internet do servidor.", "Repetir teste após validar token/provedor."], DateTime.UtcNow, null);
 
+static (int StatusCode, string Message)? ValidateDropshippingCanalRequest(
+    DropshippingCanalRequest request,
+    IConfiguration configuration,
+    out string nome,
+    out string slug,
+    out TipoDropshipping tipo)
+{
+    nome = request.Nome?.Trim() ?? string.Empty;
+    slug = Slugify(request.Slug) ?? string.Empty;
+    tipo = default;
+
+    if (nome.Length is < 3 or > 100)
+    {
+        return (StatusCodes.Status400BadRequest, "Nome do canal deve ter entre 3 e 100 caracteres.");
+    }
+
+    if (slug.Length is < 2 or > 50)
+    {
+        return (StatusCodes.Status400BadRequest, "Slug do canal deve ter entre 2 e 50 caracteres validos.");
+    }
+
+    if (!Enum.TryParse(request.Tipo, true, out tipo))
+    {
+        return (StatusCodes.Status400BadRequest, "Tipo de dropshipping invalido.");
+    }
+
+    var endpoint = TrimOrNull(request.ApiEndpoint);
+    if (endpoint is not null
+        && (!Uri.TryCreate(endpoint, UriKind.Absolute, out var endpointUri)
+            || endpointUri.Scheme != Uri.UriSchemeHttps))
+    {
+        return (StatusCodes.Status400BadRequest, "Endpoint do canal deve ser uma URL HTTPS absoluta.");
+    }
+
+    var credentialStatus = GetDropshippingCredentialStatus(configuration, slug, tipo);
+    if (request.Ativo && !credentialStatus.Configured)
+    {
+        return (StatusCodes.Status424FailedDependency, credentialStatus.Detail);
+    }
+
+    return null;
+}
+
+static DropshippingCanalDto ToDropshippingCanalDto(
+    NexumDbContext db,
+    IConfiguration configuration,
+    DropshippingConfig canal)
+{
+    var credentialStatus = GetDropshippingCredentialStatus(configuration, canal.Slug, canal.Tipo);
+    var rowVersion = db.Entry(canal).Property<byte[]>("RowVersion").CurrentValue ?? Array.Empty<byte>();
+    return new DropshippingCanalDto(
+        canal.Id,
+        canal.Nome,
+        canal.Slug,
+        canal.Tipo.ToString(),
+        canal.ApiEndpoint,
+        canal.Ativo,
+        credentialStatus.Configured,
+        credentialStatus.Status,
+        credentialStatus.Detail,
+        Convert.ToBase64String(rowVersion),
+        canal.CreatedAt,
+        canal.UpdatedAt);
+}
+
+static (bool Configured, string Status, string Detail) GetDropshippingCredentialStatus(
+    IConfiguration configuration,
+    string slug,
+    TipoDropshipping tipo)
+{
+    var normalized = NormalizeIntegrationSlug(slug);
+    if (tipo == TipoDropshipping.Shopify || normalized == "shopify")
+    {
+        var configured = HasAllIntegrationValues(
+            configuration,
+            ("Shopify:StoreDomain", "Integracoes:Shopify:StoreDomain"),
+            ("Shopify:AdminApiAccessToken", "Integracoes:Shopify:AdminApiAccessToken"),
+            ("Shopify:ApiVersion", "Integracoes:Shopify:ApiVersion"));
+        return configured
+            ? (true, "Configurado", "Dominio, versao e token privado Shopify carregados no servidor.")
+            : (false, "Aguardando credenciais", "Shopify exige dominio, versao da Admin API e token privado configurados no servidor.");
+    }
+
+    if (tipo == TipoDropshipping.CJDropshipping || normalized is "cjdropshipping" or "cjdropship")
+    {
+        var configured = HasAllIntegrationValues(
+            configuration,
+            ("CJDropshipping:ApiEndpoint", "Integracoes:CJDropshipping:ApiEndpoint"),
+            ("CJDropshipping:AccessToken", "Integracoes:CJDropshipping:AccessToken"));
+        return configured
+            ? (true, "Configurado", "Endpoint e token CJ Dropshipping carregados no servidor.")
+            : (false, "Aguardando credenciais", "CJ Dropshipping exige endpoint e token da conta configurados no servidor.");
+    }
+
+    if (normalized is "dropshippingprincipal" or "dropshippingsecundario")
+    {
+        var section = normalized == "dropshippingprincipal" ? "DropshippingPrincipal" : "DropshippingSecundario";
+        var configured = HasAllIntegrationValues(
+            configuration,
+            ($"{section}:Provider", $"Integracoes:{section}:Provider"),
+            ($"{section}:ApiEndpoint", $"Integracoes:{section}:ApiEndpoint"),
+            ($"{section}:ApiKey", $"Integracoes:{section}:ApiKey"),
+            ($"{section}:ApiSecret", $"Integracoes:{section}:ApiSecret"));
+        return configured
+            ? (true, "Configurado", $"Credenciais privadas de {section} carregadas no servidor.")
+            : (false, "Aguardando credenciais", $"{section} exige provedor, endpoint, chave e segredo configurados no servidor.");
+    }
+
+    return (false, "Conector indisponivel", $"O tipo {tipo} ainda nao possui conector externo oficial implementado e nao pode ser ativado.");
+}
+
 static string NormalizeIntegrationSlug(string slug)
 {
     var normalized = (slug ?? string.Empty).Normalize(NormalizationForm.FormD).ToLowerInvariant();
@@ -14172,7 +14439,7 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
             id INT NOT NULL AUTO_INCREMENT,
             nome VARCHAR(100) NOT NULL,
             slug VARCHAR(50) NOT NULL,
-            tipo INT NOT NULL,
+            tipo ENUM('AliExpress','CJDropshipping','Dropi','Cartpanda','Nuvemshop','Shopify','Outro') NOT NULL,
             api_endpoint VARCHAR(255) NULL,
             api_key VARCHAR(255) NULL,
             api_secret VARCHAR(255) NULL,
@@ -14186,14 +14453,21 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
 
     await db.Database.ExecuteSqlRawAsync(
         """
+        ALTER TABLE dropshipping_config
+            MODIFY COLUMN tipo ENUM('AliExpress','CJDropshipping','Dropi','Cartpanda','Nuvemshop','Shopify','Outro') NOT NULL,
+            MODIFY COLUMN ativo TINYINT(1) NOT NULL DEFAULT 0;
+        UPDATE dropshipping_config SET tipo = 'Shopify' WHERE slug = 'shopify';
+        UPDATE dropshipping_config SET tipo = 'CJDropshipping' WHERE slug IN ('cjdropshipping', 'cj-dropshipping');
+        """);
+
+    await db.Database.ExecuteSqlRawAsync(
+        """
         INSERT INTO dropshipping_config (nome, slug, tipo, api_endpoint, ativo)
         VALUES
-            ('Shopify', 'shopify', 5, 'https://{{store}}.myshopify.com/admin/api', 0),
-            ('CJ Dropshipping', 'cjdropshipping', 1, 'https://developers.cjdropshipping.com/api2.0/v1', 0)
+            ('Shopify', 'shopify', 'Shopify', NULL, 0),
+            ('CJ Dropshipping', 'cjdropshipping', 'CJDropshipping', 'https://developers.cjdropshipping.com/api2.0/v1', 0)
         ON DUPLICATE KEY UPDATE
             nome = VALUES(nome),
-            tipo = VALUES(tipo),
-            api_endpoint = VALUES(api_endpoint),
             updated_at = CURRENT_TIMESTAMP;
         """);
 
@@ -17675,6 +17949,28 @@ public sealed record PedidoAcompanhamentoDto(
     string? FreteCodigoRastreio,
     string InstrucaoPagamento,
     string? PaymentUrl,
+    DateTime CreatedAt,
+    DateTime UpdatedAt);
+
+public sealed record DropshippingCanalRequest(
+    string Nome,
+    string Slug,
+    string Tipo,
+    string? ApiEndpoint,
+    bool Ativo,
+    string? RowVersion);
+
+public sealed record DropshippingCanalDto(
+    int Id,
+    string Nome,
+    string Slug,
+    string Tipo,
+    string? ApiEndpoint,
+    bool Ativo,
+    bool CredenciaisConfiguradas,
+    string StatusCredenciais,
+    string DetalheCredenciais,
+    string RowVersion,
     DateTime CreatedAt,
     DateTime UpdatedAt);
 

@@ -435,6 +435,14 @@ export const integracoesAPI = {
   sincronizarMarketplace: (canal, data) => api.post(`/marketplaces/${canal}/sync`, data),
 };
 
+export const dropshippingAPI = {
+  listar: (params) => api.get('/dropshipping/canais', { params }),
+  obter: (id) => api.get(`/dropshipping/canais/${id}`),
+  criar: (data) => api.post('/dropshipping/canais', data),
+  atualizar: (id, data) => api.put(`/dropshipping/canais/${id}`, data),
+  excluir: (id, rowVersion) => api.delete(`/dropshipping/canais/${id}`, { params: { rowVersion } }),
+};
+
 export const assistenteAPI = {
   enviarMensagem: (data) => api.post('/assistentes/mensagem', data),
 };

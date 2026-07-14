@@ -13,6 +13,7 @@ import { formatDate, formatPrice, getLeadStatusClass, getPagamentoLabel, getPedi
 import CupomAdminPanel from '../components/CupomAdminPanel';
 import AccessAuditPanel from '../components/AccessAuditPanel';
 import MarketingAdminPanel from '../components/MarketingAdminPanel';
+import DropshippingAdminPanel from '../components/DropshippingAdminPanel';
 import {
   Activity,
   ArrowDownRight,
@@ -2785,6 +2786,7 @@ function IntegrationWorkspace({ integracao, guide, credenciaisModelo = [], onBac
   const credentialCategories = integrationCredentialCategoryMap[integracao.slug] || [];
   const relevantCredentials = credenciaisModelo.filter((item) => credentialCategories.includes((item.categoria || item.Categoria || '').toLowerCase()));
   const isMarketplaceWorkspace = integracao.slug === 'mercadolivre' || integracao.slug === 'marketplaces';
+  const isDropshippingWorkspace = ['dropshipping', 'shopify', 'cjdropshipping'].includes(integracao.slug);
 
   const runTest = async () => {
     setTesting(true);
@@ -2885,6 +2887,7 @@ function IntegrationWorkspace({ integracao, guide, credenciaisModelo = [], onBac
               </div>
             </div>
           )}
+          {isDropshippingWorkspace && <DropshippingAdminPanel />}
           {isMarketplaceWorkspace && (
             <form onSubmit={runMarketplaceSync} className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
