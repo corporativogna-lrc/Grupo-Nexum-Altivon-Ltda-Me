@@ -29,6 +29,18 @@ Rotas travadas de desenvolvimento e validacao local:
 - Arquivos novos ou editados devem preservar o header de propriedade intelectual no topo, usando a sintaxe valida de cada formato.
 - Segredos, banco de dados, repositorios e configuracoes operacionais permanecem privados.
 
+## Bloqueio Sophia 5.5 - Adendo de Veracidade Operacional
+
+- O bloqueio Sophia 5.5 permanece integralmente ativo; este adendo apenas acrescenta criterios de aceite.
+- Toda entrega deve apresentar resultado concreto, codigo real, endpoint real, persistencia real e validacao executada. Relatos sem evidencia tecnica nao encerram requisito.
+- Ferramentas, funcoes e telas prometidas por paineis legados ou documentos anteriores devem ser mapeadas, comparadas com o painel React oficial e consolidadas somente como implementacao real no projeto oficial.
+- Nenhuma ferramenta do painel pode ser tratada como finalizada quando existir apenas interface figurativa, botao sem acao, redirecionamento decorativo, retorno local fabricado, mensagem de sucesso sem gravacao no banco ou integracao sem chamada externa valida.
+- Quando uma ferramenta depender de marketplace, gateway, SEFAZ, logistica, banco, storage ou outro provedor externo, a validacao deve usar credencial real de homologacao ou teste oficial disponivel no ambiente. Se a credencial nao existir, a API deve bloquear a operacao com erro rastreavel, sem sucesso falso.
+- A arquitetura aceitavel para cada ferramenta do painel deve conter, no minimo: model ou contrato de dados, service real, endpoint Minimal API, chamada frontend pelo `src/services/api.js`, tela React oficial, persistencia/consulta no banco quando aplicavel e smoke test HTTP.
+- O painel legado desativado deve ser usado apenas como mapa de intencao funcional. Ele nao deve voltar como HTML operacional nem substituir o painel React oficial.
+- Publicacao e validacao devem confirmar o mesmo comportamento no runtime local `127.0.0.1:5010`, na API publica `https://api.nexumaltivon.com.br` e no portal publicado `https://nexumaltivon.com.br`, quando a funcao for exposta publicamente.
+- O repositorio GitHub deve receber apenas codigo auditado a partir do projeto oficial vigente em `D:\Nexum Altivon\NexumAltivon.com`, nunca o contrario sem validacao previa.
+
 ## Estado da Fase A
 
 - `NexumAltivon.ERP.sln` inclui `NexumAltivon.API`, `NexumAltivon_ERP`, `NexumAltivon.Desktop` e o projeto raiz `NexumAltivon.ERP`.
