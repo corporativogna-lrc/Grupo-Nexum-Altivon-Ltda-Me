@@ -173,7 +173,7 @@ const parceiros = [
     title: 'Fornecedores & Distribuidores',
     text: 'Distribuidores e fabricantes encontram um canal de venda em crescimento, com visão de volume, relacionamento e longo prazo.',
     cta: 'Quero Fornecer',
-    href: 'https://wa.me/5514996348409?text=Olá! Sou fornecedor/distribuidor e tenho interesse em parceria com o Grupo Nexum Altivon.',
+    href: 'https://wa.me/5514996731879?text=Olá! Sou fornecedor/distribuidor e tenho interesse em parceria com o Grupo Nexum Altivon.',
     icon: Truck,
   },
   {
@@ -238,9 +238,9 @@ const mapPublicSiteConfig = (config) => {
     siteUrl: pickConfigValue(config, ['siteUrl', 'SiteUrl', 'site_url'], 'https://nexumaltivon.com.br'),
     contactEmail: pickConfigValue(config, ['contactEmail', 'ContactEmail', 'site_email_contato', 'siteEmailContato'], 'corporativo.gna@gmail.com'),
     primaryPhone: pickConfigValue(config, ['primaryPhone', 'PrimaryPhone', 'site_telefone', 'siteTelefone'], '(14) 99673-1879'),
-    secondaryPhone: pickConfigValue(config, ['secondaryPhone', 'SecondaryPhone', 'site_telefone_secundario', 'siteTelefoneSecundario'], '(14) 99634-8409'),
+    secondaryPhone: pickConfigValue(config, ['secondaryPhone', 'SecondaryPhone', 'site_telefone_secundario', 'siteTelefoneSecundario'], '(14) 99673-1879'),
     primaryWhatsapp: pickConfigValue(config, ['primaryWhatsapp', 'PrimaryWhatsapp', 'site_whatsapp', 'siteWhatsapp'], '5514996731879'),
-    secondaryWhatsapp: pickConfigValue(config, ['secondaryWhatsapp', 'SecondaryWhatsapp', 'site_whatsapp_secundario', 'siteWhatsappSecundario'], '5514996348409'),
+    secondaryWhatsapp: pickConfigValue(config, ['secondaryWhatsapp', 'SecondaryWhatsapp', 'site_whatsapp_secundario', 'siteWhatsappSecundario'], '5514996731879'),
     yaraEmail: pickConfigValue(config, ['yaraEmail', 'YaraEmail', 'site_yara_email', 'siteYaraEmail'], 'corporativo.gna@gmail.com'),
     siteLogo: resolveLogo(pickConfigValue(config, ['siteLogo', 'SiteLogo', 'site_logo', 'siteLogoUrl'], fallbackLogo)),
     institutionalUrl: pickConfigValue(config, ['institutionalUrl', 'InstitutionalUrl', 'site_institucional_url', 'siteInstitucionalUrl'], '/institucional'),
@@ -280,7 +280,7 @@ export default function Home() {
     siteConfig?.introText2 || 'Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso.';
   const introBadge = siteConfig?.introBadge || 'nexumaltivon.com.br';
   const primaryPhone = siteConfig?.primaryPhone || '+55 (14) 99673-1879';
-  const secondaryPhone = siteConfig?.secondaryPhone || '+55 (14) 99634-8409';
+  const secondaryPhone = siteConfig?.secondaryPhone || '+55 (14) 99673-1879';
   const publicContactEmail = siteConfig?.contactEmail || 'corporativo.gna@gmail.com';
   const yaraInstantHref = buildWhatsAppLink(siteConfig?.primaryWhatsapp, supportMessages.yaraSales);
   const siteLogo = siteConfig?.siteLogo || fallbackLogo;

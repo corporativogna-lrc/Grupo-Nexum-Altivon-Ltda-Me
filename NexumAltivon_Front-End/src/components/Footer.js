@@ -33,7 +33,7 @@ export default function Footer() {
     logo: fallbackLogo,
     email: 'corporativo.gna@gmail.com',
     telefone: '+55 (14) 99673-1879',
-    telefoneSecundario: '+55 (14) 99634-8409',
+    telefoneSecundario: '+55 (14) 99673-1879',
   });
 
   useEffect(() => {
@@ -50,7 +50,7 @@ export default function Footer() {
           logo: resolveLogo(config.siteLogo),
           email: config.contactEmail || 'corporativo.gna@gmail.com',
           telefone: config.primaryPhone || '+55 (14) 99673-1879',
-          telefoneSecundario: config.secondaryPhone || '+55 (14) 99634-8409',
+          telefoneSecundario: config.secondaryPhone || '+55 (14) 99673-1879',
         });
       })
       .catch(() => {});

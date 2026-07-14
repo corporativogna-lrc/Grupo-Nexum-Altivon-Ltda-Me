@@ -7,7 +7,7 @@
  */
 
 export const YARA_WHATSAPP = '5514996731879';
-export const SOPHIA_WHATSAPP = '5514996348409';
+export const SOPHIA_WHATSAPP = '5514996731879';
 
 export const supportMessages = Object.freeze({
   yaraSales:
