@@ -950,8 +950,7 @@ DELIMITER ;
 -- ============================================================
 INSERT INTO usuarios (nome, email, senha_hash, perfil, ativo) VALUES
 ('Administrador Master', 'admin@nexumaltivon.com', '$2a$12$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'SuperAdmin', 1),
-('Rodrigo Costa', 'corporativo.gna@gmail.com', '$2a$12$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'Admin', 1),
-('Vinicius', 'corporativo.gna@gmail.com', '$2a$12$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'Gerente', 1);
+('Rodrigo Costa', 'corporativo.gna@gmail.com', '$2a$12$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'Admin', 1);
 
 -- ============================================================
 -- FIM DO SCRIPT

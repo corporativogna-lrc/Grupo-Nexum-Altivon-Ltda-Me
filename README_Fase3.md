@@ -49,7 +49,7 @@
     }
   },
   "Alertas": {
-    "EstoqueEmailAdmin": "vinicius@nexumaltivon.com"
+    "EstoqueEmailAdmin": "corporativo.gna@gmail.com"
   }
 }
 ```

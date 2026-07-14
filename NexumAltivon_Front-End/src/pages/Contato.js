@@ -12,7 +12,6 @@ import { leadAPI } from '../services/api';
 
 const canais = [
   { label: 'Rodrigo', value: '+55 (14) 99673-1879', href: 'tel:+5514996731879', icon: Phone },
-  { label: 'Vinicius', value: '+55 (14) 99634-8409', href: 'tel:+5514996348409', icon: Phone },
   { label: 'E-mail comercial', value: 'corporativo.gna@gmail.com', href: 'mailto:corporativo.gna@gmail.com', icon: Mail },
   { label: 'Atendimento', value: 'Segunda a sexta, 9h às 18h', href: null, icon: MessageSquare },
 ];

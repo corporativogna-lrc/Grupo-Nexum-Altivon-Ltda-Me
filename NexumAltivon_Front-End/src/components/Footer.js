@@ -105,10 +105,6 @@ export default function Footer() {
               <Phone size={16} />
               Rodrigo: {branding.telefone}
             </a>
-            <a className="flex items-center gap-2 transition hover:text-[#C9A227]" href={`tel:${branding.telefoneSecundario.replace(/\D/g, '')}`}>
-              <Phone size={16} />
-              Vinicius: {branding.telefoneSecundario}
-            </a>
             <p className="flex items-center gap-2">
               <MapPin size={16} />
               Brasil

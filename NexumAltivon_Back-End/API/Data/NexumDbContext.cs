@@ -42,6 +42,8 @@ public class NexumDbContext : DbContext
     public DbSet<Envio> Envios { get; set; } = null!;
     public DbSet<CrmLead> CrmLeads { get; set; } = null!;
     public DbSet<CrmAtendimento> CrmAtendimentos { get; set; } = null!;
+    public DbSet<CrmCampanha> CrmCampanhas { get; set; } = null!;
+    public DbSet<CrmSegmento> CrmSegmentos { get; set; } = null!;
     public DbSet<Financeiro> Financeiros { get; set; } = null!;
     public DbSet<Fiscal> Fiscais { get; set; } = null!;
     public DbSet<Notificacao> Notificacoes { get; set; } = null!;
@@ -151,6 +153,30 @@ public class NexumDbContext : DbContext
             .HasForeignKey(a => a.LeadId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        modelBuilder.Entity<CrmCampanha>()
+            .HasOne(campanha => campanha.Segmento)
+            .WithMany(segmento => segmento.Campanhas)
+            .HasForeignKey(campanha => campanha.SegmentoId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<CrmCampanha>()
+            .HasIndex(campanha => new { campanha.TenantId, campanha.Nome })
+            .IsUnique();
+
+        modelBuilder.Entity<CrmSegmento>()
+            .HasIndex(segmento => new { segmento.TenantId, segmento.Nome })
+            .IsUnique();
+
+        modelBuilder.Entity<CrmCampanha>()
+            .Property(campanha => campanha.RowVersion)
+            .IsConcurrencyToken()
+            .ValueGeneratedNever();
+
+        modelBuilder.Entity<CrmSegmento>()
+            .Property(segmento => segmento.RowVersion)
+            .IsConcurrencyToken()
+            .ValueGeneratedNever();
+
         modelBuilder.Entity<Usuario>()
             .Property(usuario => usuario.Perfil)
             .HasConversion<string>();
@@ -221,6 +247,14 @@ public class NexumDbContext : DbContext
 
         modelBuilder.Entity<CrmLead>()
             .Property(lead => lead.Prioridade)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<CrmCampanha>()
+            .Property(campanha => campanha.Tipo)
+            .HasConversion<string>();
+
+        modelBuilder.Entity<CrmCampanha>()
+            .Property(campanha => campanha.Status)
             .HasConversion<string>();
 
         modelBuilder.Entity<Pedido>()

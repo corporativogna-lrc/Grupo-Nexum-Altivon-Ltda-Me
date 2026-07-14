@@ -353,6 +353,19 @@ export const auditoriaAPI = {
   obter: (id) => api.get(`/auditoria/${id}`),
 };
 
+export const marketingAPI = {
+  listarCampanhas: (params) => api.get('/crm/campanhas', { params }),
+  obterCampanha: (id) => api.get(`/crm/campanhas/${id}`),
+  criarCampanha: (data) => api.post('/crm/campanhas', data),
+  atualizarCampanha: (id, data) => api.put(`/crm/campanhas/${id}`, data),
+  excluirCampanha: (id) => api.delete(`/crm/campanhas/${id}`),
+  listarSegmentos: () => api.get('/crm/segmentos'),
+  obterSegmento: (id) => api.get(`/crm/segmentos/${id}`),
+  criarSegmento: (data) => api.post('/crm/segmentos', data),
+  atualizarSegmento: (id, data) => api.put(`/crm/segmentos/${id}`, data),
+  excluirSegmento: (id) => api.delete(`/crm/segmentos/${id}`),
+};
+
 export const fornecedorAPI = {
   ...buildResourceApi('/fornecedores'),
 };

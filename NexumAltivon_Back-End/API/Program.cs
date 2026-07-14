@@ -7197,6 +7197,276 @@ app.MapGet("/api/gestao-corporativa/ciclo-operacional", [Authorize(Policy = "Ger
 .WithName("GestaoCorporativaCicloOperacional")
 ;
 
+app.MapGet("/api/crm/segmentos", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var segmentos = await db.CrmSegmentos
+        .AsNoTracking()
+        .OrderByDescending(segmento => segmento.Ativo)
+        .ThenBy(segmento => segmento.Prioridade)
+        .ThenBy(segmento => segmento.Nome)
+        .ToListAsync(ct);
+
+    var dados = segmentos.Select(ToCrmSegmentoDto).ToList();
+    return Results.Ok(ApiResponse<List<CrmSegmentoDto>>.Ok(dados, total: dados.Count));
+})
+.WithName("CrmSegmentosListar")
+;
+
+app.MapGet("/api/crm/segmentos/{id:guid}", [Authorize(Policy = "Gerente")] async (
+    Guid id,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var segmento = await db.CrmSegmentos.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id, ct);
+    return segmento is null
+        ? Results.NotFound(ApiResponse<string>.Erro("Segmento nao encontrado."))
+        : Results.Ok(ApiResponse<CrmSegmentoDto>.Ok(ToCrmSegmentoDto(segmento)));
+})
+.WithName("CrmSegmentosObter")
+;
+
+app.MapPost("/api/crm/segmentos", [Authorize(Policy = "Gerente")] async (
+    CrmSegmentoRequest request,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var validation = ValidateCrmSegmentoRequest(request);
+    if (validation is not null)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro(validation));
+    }
+
+    var nome = request.Nome.Trim();
+    if (await db.CrmSegmentos.AnyAsync(item => item.Nome == nome, ct))
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("Ja existe segmento com este nome no tenant atual."));
+    }
+
+    var segmento = new CrmSegmento();
+    ApplyCrmSegmentoRequest(segmento, request, nome);
+    db.CrmSegmentos.Add(segmento);
+    await db.SaveChangesAsync(ct);
+
+    return Results.Created(
+        $"/api/crm/segmentos/{segmento.Id}",
+        ApiResponse<CrmSegmentoDto>.Ok(ToCrmSegmentoDto(segmento), "Segmento gravado no banco de dados."));
+})
+.WithName("CrmSegmentosCriar")
+;
+
+app.MapPut("/api/crm/segmentos/{id:guid}", [Authorize(Policy = "Gerente")] async (
+    Guid id,
+    CrmSegmentoRequest request,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var validation = ValidateCrmSegmentoRequest(request);
+    if (validation is not null)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro(validation));
+    }
+
+    if (!TryDecodeRowVersion(request.RowVersion, out var expectedRowVersion))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("RowVersion valido e obrigatorio para atualizar o segmento."));
+    }
+
+    var segmento = await db.CrmSegmentos.FirstOrDefaultAsync(item => item.Id == id, ct);
+    if (segmento is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Segmento nao encontrado."));
+    }
+
+    var nome = request.Nome.Trim();
+    if (await db.CrmSegmentos.AnyAsync(item => item.Id != id && item.Nome == nome, ct))
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("Ja existe segmento com este nome no tenant atual."));
+    }
+
+    db.Entry(segmento).Property(item => item.RowVersion).OriginalValue = expectedRowVersion;
+    ApplyCrmSegmentoRequest(segmento, request, nome);
+
+    try
+    {
+        await db.SaveChangesAsync(ct);
+    }
+    catch (DbUpdateConcurrencyException)
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("O segmento foi alterado por outro usuario. Recarregue os dados antes de salvar."));
+    }
+
+    return Results.Ok(ApiResponse<CrmSegmentoDto>.Ok(ToCrmSegmentoDto(segmento), "Segmento atualizado no banco de dados."));
+})
+.WithName("CrmSegmentosAtualizar")
+;
+
+app.MapDelete("/api/crm/segmentos/{id:guid}", [Authorize(Policy = "Gerente")] async (
+    Guid id,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var segmento = await db.CrmSegmentos.FirstOrDefaultAsync(item => item.Id == id, ct);
+    if (segmento is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Segmento nao encontrado."));
+    }
+
+    db.CrmSegmentos.Remove(segmento);
+    await db.SaveChangesAsync(ct);
+    return Results.NoContent();
+})
+.WithName("CrmSegmentosExcluir")
+;
+
+app.MapGet("/api/crm/campanhas", [Authorize(Policy = "Gerente")] async (
+    string? status,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var query = db.CrmCampanhas.AsNoTracking().Include(campanha => campanha.Segmento).AsQueryable();
+    if (!string.IsNullOrWhiteSpace(status))
+    {
+        if (!Enum.TryParse<StatusCampanha>(status.Trim(), true, out var parsedStatus))
+        {
+            return Results.BadRequest(ApiResponse<string>.Erro("Status de campanha invalido."));
+        }
+
+        query = query.Where(campanha => campanha.Status == parsedStatus);
+    }
+
+    var campanhas = await query
+        .OrderByDescending(campanha => campanha.DataInicio)
+        .ThenBy(campanha => campanha.Nome)
+        .ToListAsync(ct);
+    var dados = campanhas.Select(ToCrmCampanhaDto).ToList();
+
+    return Results.Ok(ApiResponse<List<CrmCampanhaDto>>.Ok(dados, total: dados.Count));
+})
+.WithName("CrmCampanhasListar")
+;
+
+app.MapGet("/api/crm/campanhas/{id:guid}", [Authorize(Policy = "Gerente")] async (
+    Guid id,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var campanha = await db.CrmCampanhas
+        .AsNoTracking()
+        .Include(item => item.Segmento)
+        .FirstOrDefaultAsync(item => item.Id == id, ct);
+
+    return campanha is null
+        ? Results.NotFound(ApiResponse<string>.Erro("Campanha nao encontrada."))
+        : Results.Ok(ApiResponse<CrmCampanhaDto>.Ok(ToCrmCampanhaDto(campanha)));
+})
+.WithName("CrmCampanhasObter")
+;
+
+app.MapPost("/api/crm/campanhas", [Authorize(Policy = "Gerente")] async (
+    CrmCampanhaRequest request,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var validation = ValidateCrmCampanhaRequest(request, null, out var tipo, out var status);
+    if (validation is not null)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro(validation));
+    }
+
+    if (request.SegmentoId.HasValue && !await db.CrmSegmentos.AnyAsync(item => item.Id == request.SegmentoId.Value && item.Ativo, ct))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Segmento ativo nao encontrado no tenant atual."));
+    }
+
+    var nome = request.Nome.Trim();
+    if (await db.CrmCampanhas.AnyAsync(item => item.Nome == nome, ct))
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("Ja existe campanha com este nome no tenant atual."));
+    }
+
+    var campanha = new CrmCampanha();
+    ApplyCrmCampanhaRequest(campanha, request, nome, tipo, status);
+    db.CrmCampanhas.Add(campanha);
+    await db.SaveChangesAsync(ct);
+    await db.Entry(campanha).Reference(item => item.Segmento).LoadAsync(ct);
+
+    return Results.Created(
+        $"/api/crm/campanhas/{campanha.Id}",
+        ApiResponse<CrmCampanhaDto>.Ok(ToCrmCampanhaDto(campanha), "Campanha gravada no banco de dados."));
+})
+.WithName("CrmCampanhasCriar")
+;
+
+app.MapPut("/api/crm/campanhas/{id:guid}", [Authorize(Policy = "Gerente")] async (
+    Guid id,
+    CrmCampanhaRequest request,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    if (!TryDecodeRowVersion(request.RowVersion, out var expectedRowVersion))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("RowVersion valido e obrigatorio para atualizar a campanha."));
+    }
+
+    var campanha = await db.CrmCampanhas.Include(item => item.Segmento).FirstOrDefaultAsync(item => item.Id == id, ct);
+    if (campanha is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Campanha nao encontrada."));
+    }
+
+    var validation = ValidateCrmCampanhaRequest(request, campanha.Status, out var tipo, out var status);
+    if (validation is not null)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro(validation));
+    }
+
+    if (request.SegmentoId.HasValue && !await db.CrmSegmentos.AnyAsync(item => item.Id == request.SegmentoId.Value && item.Ativo, ct))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Segmento ativo nao encontrado no tenant atual."));
+    }
+
+    var nome = request.Nome.Trim();
+    if (await db.CrmCampanhas.AnyAsync(item => item.Id != id && item.Nome == nome, ct))
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("Ja existe campanha com este nome no tenant atual."));
+    }
+
+    db.Entry(campanha).Property(item => item.RowVersion).OriginalValue = expectedRowVersion;
+    ApplyCrmCampanhaRequest(campanha, request, nome, tipo, status);
+
+    try
+    {
+        await db.SaveChangesAsync(ct);
+    }
+    catch (DbUpdateConcurrencyException)
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("A campanha foi alterada por outro usuario. Recarregue os dados antes de salvar."));
+    }
+
+    await db.Entry(campanha).Reference(item => item.Segmento).LoadAsync(ct);
+    return Results.Ok(ApiResponse<CrmCampanhaDto>.Ok(ToCrmCampanhaDto(campanha), "Campanha atualizada no banco de dados."));
+})
+.WithName("CrmCampanhasAtualizar")
+;
+
+app.MapDelete("/api/crm/campanhas/{id:guid}", [Authorize(Policy = "Gerente")] async (
+    Guid id,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var campanha = await db.CrmCampanhas.FirstOrDefaultAsync(item => item.Id == id, ct);
+    if (campanha is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Campanha nao encontrada."));
+    }
+
+    db.CrmCampanhas.Remove(campanha);
+    await db.SaveChangesAsync(ct);
+    return Results.NoContent();
+})
+.WithName("CrmCampanhasExcluir")
+;
+
 app.MapGet("/api/crm/leads", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
 {
     var leads = await db.Database.SqlQueryRaw<LeadRow>(
@@ -10014,6 +10284,249 @@ static CupomAdminDto ToCupomAdminDto(Cupom cupom) => new(
     cupom.Ativo,
     cupom.CreatedAt,
     cupom.UpdatedAt);
+
+static string? ValidateCrmSegmentoRequest(CrmSegmentoRequest request)
+{
+    var nome = request.Nome?.Trim() ?? string.Empty;
+    if (nome.Length is < 3 or > 100)
+    {
+        return "Nome do segmento deve ter entre 3 e 100 caracteres.";
+    }
+
+    var cor = request.Cor?.Trim() ?? string.Empty;
+    if (cor.Length != 7 || cor[0] != '#' || !cor.Skip(1).All(Uri.IsHexDigit))
+    {
+        return "Cor do segmento deve usar o formato hexadecimal #RRGGBB.";
+    }
+
+    if (request.Prioridade is < 1 or > 999)
+    {
+        return "Prioridade do segmento deve estar entre 1 e 999.";
+    }
+
+    if (request.TicketMedioMinimo is < 0m || request.TicketMedioMaximo is < 0m)
+    {
+        return "Faixas de ticket medio nao podem ser negativas.";
+    }
+
+    if (request.TicketMedioMinimo.HasValue
+        && request.TicketMedioMaximo.HasValue
+        && request.TicketMedioMaximo < request.TicketMedioMinimo)
+    {
+        return "Ticket medio maximo deve ser igual ou superior ao minimo.";
+    }
+
+    if (request.FrequenciaMinimaDias is < 0 || request.FrequenciaMaximaDias is < 0)
+    {
+        return "Frequencias de compra nao podem ser negativas.";
+    }
+
+    if (request.FrequenciaMinimaDias.HasValue
+        && request.FrequenciaMaximaDias.HasValue
+        && request.FrequenciaMaximaDias < request.FrequenciaMinimaDias)
+    {
+        return "Frequencia maxima deve ser igual ou superior a minima.";
+    }
+
+    return null;
+}
+
+static void ApplyCrmSegmentoRequest(CrmSegmento segmento, CrmSegmentoRequest request, string nome)
+{
+    segmento.Nome = nome;
+    segmento.Descricao = TrimOrNull(request.Descricao);
+    segmento.Cor = request.Cor.Trim().ToUpperInvariant();
+    segmento.Prioridade = request.Prioridade;
+    segmento.TicketMedioMinimo = request.TicketMedioMinimo;
+    segmento.TicketMedioMaximo = request.TicketMedioMaximo;
+    segmento.FrequenciaMinimaDias = request.FrequenciaMinimaDias;
+    segmento.FrequenciaMaximaDias = request.FrequenciaMaximaDias;
+    segmento.Ativo = request.Ativo;
+}
+
+static CrmSegmentoDto ToCrmSegmentoDto(CrmSegmento segmento) => new(
+    segmento.Id,
+    segmento.Nome,
+    segmento.Descricao,
+    segmento.Cor,
+    segmento.Prioridade,
+    segmento.TicketMedioMinimo,
+    segmento.TicketMedioMaximo,
+    segmento.FrequenciaMinimaDias,
+    segmento.FrequenciaMaximaDias,
+    segmento.Ativo,
+    Convert.ToBase64String(segmento.RowVersion),
+    segmento.CreatedAt,
+    segmento.UpdatedAt);
+
+static string? ValidateCrmCampanhaRequest(
+    CrmCampanhaRequest request,
+    StatusCampanha? currentStatus,
+    out TipoCampanha tipo,
+    out StatusCampanha status)
+{
+    tipo = default;
+    status = default;
+
+    var nome = request.Nome?.Trim() ?? string.Empty;
+    if (nome.Length is < 3 or > 200)
+    {
+        return "Nome da campanha deve ter entre 3 e 200 caracteres.";
+    }
+
+    if (!Enum.TryParse(request.Tipo, true, out tipo))
+    {
+        return "Tipo de campanha invalido.";
+    }
+
+    if (!Enum.TryParse(request.Status, true, out status))
+    {
+        return "Status de campanha invalido.";
+    }
+
+    if (currentStatus is null && status is not (StatusCampanha.Rascunho or StatusCampanha.Agendada))
+    {
+        return "Campanha nova deve iniciar como Rascunho ou Agendada.";
+    }
+
+    if (currentStatus.HasValue && !IsValidCampaignStatusTransition(currentStatus.Value, status))
+    {
+        return $"Transicao de {currentStatus.Value} para {status} nao permitida.";
+    }
+
+    if (request.DataInicio == default)
+    {
+        return "Data de inicio da campanha obrigatoria.";
+    }
+
+    if (request.DataFim.HasValue && request.DataFim.Value < request.DataInicio)
+    {
+        return "Data final deve ser igual ou posterior a data inicial.";
+    }
+
+    if (request.Orcamento < 0m || request.CustoAtual < 0m || request.ReceitaGerada < 0m)
+    {
+        return "Valores financeiros da campanha nao podem ser negativos.";
+    }
+
+    if (request.Alcance < 0
+        || request.Cliques < 0
+        || request.LeadsGerados < 0
+        || request.OportunidadesGeradas < 0
+        || request.VendasGeradas < 0)
+    {
+        return "Metricas da campanha nao podem ser negativas.";
+    }
+
+    if (request.Cliques > request.Alcance && request.Alcance > 0)
+    {
+        return "Cliques nao podem superar o alcance informado.";
+    }
+
+    if (request.VendasGeradas > request.OportunidadesGeradas && request.OportunidadesGeradas > 0)
+    {
+        return "Vendas geradas nao podem superar as oportunidades informadas.";
+    }
+
+    if ((status is StatusCampanha.Agendada or StatusCampanha.EmAndamento)
+        && (string.IsNullOrWhiteSpace(request.PublicoAlvo) || string.IsNullOrWhiteSpace(request.Conteudo)))
+    {
+        return "Campanha agendada ou em andamento exige publico-alvo e conteudo.";
+    }
+
+    return null;
+}
+
+static bool IsValidCampaignStatusTransition(StatusCampanha current, StatusCampanha next)
+{
+    if (current == next)
+    {
+        return true;
+    }
+
+    return current switch
+    {
+        StatusCampanha.Rascunho => next is StatusCampanha.Agendada or StatusCampanha.EmAndamento or StatusCampanha.Cancelada,
+        StatusCampanha.Agendada => next is StatusCampanha.EmAndamento or StatusCampanha.Pausada or StatusCampanha.Cancelada,
+        StatusCampanha.EmAndamento => next is StatusCampanha.Pausada or StatusCampanha.Concluida or StatusCampanha.Cancelada,
+        StatusCampanha.Pausada => next is StatusCampanha.EmAndamento or StatusCampanha.Concluida or StatusCampanha.Cancelada,
+        StatusCampanha.Concluida or StatusCampanha.Cancelada => false,
+        _ => false
+    };
+}
+
+static void ApplyCrmCampanhaRequest(
+    CrmCampanha campanha,
+    CrmCampanhaRequest request,
+    string nome,
+    TipoCampanha tipo,
+    StatusCampanha status)
+{
+    campanha.Nome = nome;
+    campanha.Descricao = TrimOrNull(request.Descricao);
+    campanha.Tipo = tipo;
+    campanha.Status = status;
+    campanha.SegmentoId = request.SegmentoId;
+    campanha.DataInicio = request.DataInicio;
+    campanha.DataFim = request.DataFim;
+    campanha.Orcamento = request.Orcamento;
+    campanha.CustoAtual = request.CustoAtual;
+    campanha.Alcance = request.Alcance;
+    campanha.Cliques = request.Cliques;
+    campanha.LeadsGerados = request.LeadsGerados;
+    campanha.OportunidadesGeradas = request.OportunidadesGeradas;
+    campanha.VendasGeradas = request.VendasGeradas;
+    campanha.ReceitaGerada = request.ReceitaGerada;
+    campanha.PublicoAlvo = TrimOrNull(request.PublicoAlvo);
+    campanha.Conteudo = TrimOrNull(request.Conteudo);
+}
+
+static CrmCampanhaDto ToCrmCampanhaDto(CrmCampanha campanha) => new(
+    campanha.Id,
+    campanha.Nome,
+    campanha.Descricao,
+    campanha.Tipo.ToString(),
+    campanha.Status.ToString(),
+    campanha.SegmentoId,
+    campanha.Segmento?.Nome,
+    campanha.DataInicio,
+    campanha.DataFim,
+    campanha.Orcamento,
+    campanha.CustoAtual,
+    campanha.Alcance,
+    campanha.Cliques,
+    campanha.LeadsGerados,
+    campanha.OportunidadesGeradas,
+    campanha.VendasGeradas,
+    campanha.ReceitaGerada,
+    campanha.CustoAtual > 0m ? decimal.Round(campanha.ReceitaGerada / campanha.CustoAtual, 4) : 0m,
+    campanha.Cliques > 0 ? decimal.Round(campanha.CustoAtual / campanha.Cliques, 4) : 0m,
+    campanha.LeadsGerados > 0 ? decimal.Round(campanha.CustoAtual / campanha.LeadsGerados, 4) : 0m,
+    campanha.VendasGeradas > 0 ? decimal.Round(campanha.CustoAtual / campanha.VendasGeradas, 4) : 0m,
+    campanha.PublicoAlvo,
+    campanha.Conteudo,
+    Convert.ToBase64String(campanha.RowVersion),
+    campanha.CreatedAt,
+    campanha.UpdatedAt);
+
+static bool TryDecodeRowVersion(string? value, out byte[] rowVersion)
+{
+    rowVersion = Array.Empty<byte>();
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return false;
+    }
+
+    try
+    {
+        rowVersion = Convert.FromBase64String(value.Trim());
+        return rowVersion.Length > 0;
+    }
+    catch (FormatException)
+    {
+        return false;
+    }
+}
 
 static bool TryResolveRedisEndpoint(string connectionString, out string host, out int port, out string? error)
 {
@@ -13475,6 +13988,7 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
         return;
     }
 
+    await EnsureMarketingSchemaAsync(db);
     await EnsureAuditSchemaAsync(db, logger);
     await EnsureUsuariosSchemaAsync(db);
     await EnsurePlatformSsoSchemaAsync(db);
@@ -13789,6 +14303,73 @@ static async Task EnsureAuditSchemaAsync(NexumDbContext db, ILogger logger)
     }
 
     logger.LogInformation("Auditoria, multitenancy e soft-delete verificados em {Total} tabelas EF.", tableNames.Count);
+}
+
+static async Task EnsureMarketingSchemaAsync(NexumDbContext db)
+{
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        CREATE TABLE IF NOT EXISTS crm_segmentos (
+            id CHAR(36) NOT NULL,
+            tenant_id CHAR(36) NOT NULL,
+            row_version BLOB NOT NULL,
+            nome VARCHAR(100) NOT NULL,
+            descricao VARCHAR(500) NULL,
+            cor VARCHAR(20) NOT NULL DEFAULT '#C9A227',
+            prioridade INT NOT NULL DEFAULT 1,
+            ticket_medio_minimo DECIMAL(15,2) NULL,
+            ticket_medio_maximo DECIMAL(15,2) NULL,
+            frequencia_minima_dias INT NULL,
+            frequencia_maxima_dias INT NULL,
+            ativo TINYINT(1) NOT NULL DEFAULT 1,
+            created_at DATETIME NOT NULL,
+            created_by_user_id CHAR(36) NULL,
+            updated_at DATETIME NULL,
+            updated_by_user_id CHAR(36) NULL,
+            is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+            deleted_at DATETIME NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY ux_crm_segmentos_tenant_nome (tenant_id, nome),
+            KEY ix_crm_segmentos_tenant_deleted (tenant_id, is_deleted)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        CREATE TABLE IF NOT EXISTS crm_campanhas (
+            id CHAR(36) NOT NULL,
+            tenant_id CHAR(36) NOT NULL,
+            row_version BLOB NOT NULL,
+            nome VARCHAR(200) NOT NULL,
+            descricao VARCHAR(1000) NULL,
+            tipo VARCHAR(40) NOT NULL,
+            status VARCHAR(40) NOT NULL,
+            segmento_id CHAR(36) NULL,
+            data_inicio DATETIME NOT NULL,
+            data_fim DATETIME NULL,
+            orcamento DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+            custo_atual DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+            alcance INT NOT NULL DEFAULT 0,
+            cliques INT NOT NULL DEFAULT 0,
+            leads_gerados INT NOT NULL DEFAULT 0,
+            oportunidades_geradas INT NOT NULL DEFAULT 0,
+            vendas_geradas INT NOT NULL DEFAULT 0,
+            receita_gerada DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+            publico_alvo VARCHAR(1000) NULL,
+            conteudo LONGTEXT NULL,
+            created_at DATETIME NOT NULL,
+            created_by_user_id CHAR(36) NULL,
+            updated_at DATETIME NULL,
+            updated_by_user_id CHAR(36) NULL,
+            is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+            deleted_at DATETIME NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY ux_crm_campanhas_tenant_nome (tenant_id, nome),
+            KEY ix_crm_campanhas_tenant_deleted (tenant_id, is_deleted),
+            KEY ix_crm_campanhas_segmento (segmento_id),
+            CONSTRAINT fk_crm_campanhas_segmento FOREIGN KEY (segmento_id) REFERENCES crm_segmentos (id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        """);
 }
 
 static async Task EnsureGrcIamSchemaAsync(NexumDbContext db)
@@ -15220,7 +15801,7 @@ static async Task EnsureValidationTokensAsync(NexumDbContext db)
     var tokens = new (string Key, string Hash, string Description)[]
     {
         ("validacao_token_01", "6135f83d946d18267f24118fee932fe807554f55da6cee693b4a8db131662297", "TOKEN01 - Gabriel/Rafael/Miguel/Castiel"),
-        ("validacao_token_02", "512cddda6828e66ba75f47b0f64f3433a2267b61faaa5685270154adba3ecc8a", "TOKEN02 - Yara/Rodrigo/Vinicius/Sophia"),
+        ("validacao_token_02", "512cddda6828e66ba75f47b0f64f3433a2267b61faaa5685270154adba3ecc8a", "TOKEN02 - Validacao operacional GenesisGest.Net"),
         ("validacao_token_03", "d72000837011904c56211687ac8ac1e72004de9c29338ddbf379f9e63f91facd", "TOKEN03 - Nexum/Chronnus/Estruturaline/Altivon")
     };
 
@@ -16306,6 +16887,81 @@ public sealed record ApiResponse<T>(
     public static ApiResponse<T> Erro(string mensagem, List<string>? erros = null)
         => new(false, mensagem, default, erros);
 }
+
+public sealed record CrmSegmentoRequest(
+    string Nome,
+    string? Descricao,
+    string Cor,
+    int Prioridade,
+    decimal? TicketMedioMinimo,
+    decimal? TicketMedioMaximo,
+    int? FrequenciaMinimaDias,
+    int? FrequenciaMaximaDias,
+    bool Ativo,
+    string? RowVersion);
+
+public sealed record CrmSegmentoDto(
+    Guid Id,
+    string Nome,
+    string? Descricao,
+    string Cor,
+    int Prioridade,
+    decimal? TicketMedioMinimo,
+    decimal? TicketMedioMaximo,
+    int? FrequenciaMinimaDias,
+    int? FrequenciaMaximaDias,
+    bool Ativo,
+    string RowVersion,
+    DateTime CreatedAt,
+    DateTime? UpdatedAt);
+
+public sealed record CrmCampanhaRequest(
+    string Nome,
+    string? Descricao,
+    string Tipo,
+    string Status,
+    Guid? SegmentoId,
+    DateTime DataInicio,
+    DateTime? DataFim,
+    decimal Orcamento,
+    decimal CustoAtual,
+    int Alcance,
+    int Cliques,
+    int LeadsGerados,
+    int OportunidadesGeradas,
+    int VendasGeradas,
+    decimal ReceitaGerada,
+    string? PublicoAlvo,
+    string? Conteudo,
+    string? RowVersion);
+
+public sealed record CrmCampanhaDto(
+    Guid Id,
+    string Nome,
+    string? Descricao,
+    string Tipo,
+    string Status,
+    Guid? SegmentoId,
+    string? SegmentoNome,
+    DateTime DataInicio,
+    DateTime? DataFim,
+    decimal Orcamento,
+    decimal CustoAtual,
+    int Alcance,
+    int Cliques,
+    int LeadsGerados,
+    int OportunidadesGeradas,
+    int VendasGeradas,
+    decimal ReceitaGerada,
+    decimal Roas,
+    decimal Cpc,
+    decimal Cpl,
+    decimal Cpa,
+    string? PublicoAlvo,
+    string? Conteudo,
+    string RowVersion,
+    DateTime CreatedAt,
+    DateTime? UpdatedAt);
 
 public sealed record LojaDto(
     int Id,

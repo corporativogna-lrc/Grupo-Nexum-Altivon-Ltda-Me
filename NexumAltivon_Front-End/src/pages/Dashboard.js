@@ -12,6 +12,7 @@ import { categoriaAPI, clienteAPI, dashboardAPI, empresaGrupoAPI, fiscalAPI, for
 import { formatDate, formatPrice, getLeadStatusClass, getPagamentoLabel, getPedidoStatusClass } from '../utils/formatters';
 import CupomAdminPanel from '../components/CupomAdminPanel';
 import AccessAuditPanel from '../components/AccessAuditPanel';
+import MarketingAdminPanel from '../components/MarketingAdminPanel';
 import {
   Activity,
   ArrowDownRight,
@@ -29,6 +30,7 @@ import {
   ImagePlus,
   PackagePlus,
   LayoutDashboard,
+  Megaphone,
   LogOut,
   PackageCheck,
   Trash2,
@@ -50,6 +52,7 @@ const tabs = [
   { id: 'overview', label: 'Dashboard', icon: LayoutDashboard, section: 'Principal' },
   { id: 'pedidos', label: 'Pedidos', icon: ShoppingBag, section: 'Principal' },
   { id: 'crm', label: 'CRM', icon: Users, section: 'Marketing & CRM' },
+  { id: 'marketing', label: 'Marketing', icon: Megaphone, section: 'Marketing & CRM' },
   { id: 'cupons', label: 'Cupons', icon: TicketPercent, section: 'Marketing & CRM' },
   { id: 'cadastros', label: 'Menu de Cadastros', icon: PackagePlus, section: 'Cadastros', badge: 'novo' },
   { id: 'cadastro-produtos', label: 'Produtos', icon: PackageCheck, section: 'Cadastros' },
@@ -1734,6 +1737,8 @@ export default function Dashboard() {
               )}
 
               {activeTab === 'cupons' && <CupomAdminPanel />}
+
+              {activeTab === 'marketing' && <MarketingAdminPanel />}
 
               {activeTab === 'usuarios' && <AccessAuditPanel mode="usuarios" />}
 
