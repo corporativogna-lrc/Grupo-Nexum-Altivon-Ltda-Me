@@ -340,6 +340,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        if (title is "Dropshipping e parcerias" or "E-commerce e dropshipping")
+        {
+            var dropshippingWindow = new DropshippingWindow(Terminal)
+            {
+                Owner = this
+            };
+            dropshippingWindow.ShowDialog();
+            return;
+        }
+
         if (IsProcurementWorkspace(title))
         {
             var procurementWindow = new ProcurementWindow(title);
@@ -547,7 +557,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             or "Cotação com fornecedores"
             or "Pedido de compra"
             or "Entrada de mercadoria"
-            or "Dropshipping e parcerias"
             or "Devolução a fornecedor";
     }
 

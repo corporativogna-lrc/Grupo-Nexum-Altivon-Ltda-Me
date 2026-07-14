@@ -1,0 +1,121 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ -->
+<Window x:Class="NexumAltivon.Desktop.DropshippingWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GenesisGest.Net - Dropshipping"
+        Width="1240" Height="780" MinWidth="1040" MinHeight="660"
+        WindowStartupLocation="CenterOwner" Background="{StaticResource ShellBackground}"
+        FontFamily="Segoe UI">
+    <Window.Resources>
+        <Style x:Key="Panel" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackground}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="18" />
+        </Style>
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+            <Setter Property="Margin" Value="0,0,0,5" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Style="{StaticResource Panel}">
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="COMERCIAL / INTEGRAÇÕES" Foreground="{StaticResource AccentGold}" FontWeight="Bold" />
+                    <TextBlock Text="Canais de dropshipping" Foreground="{StaticResource TextPrimary}" FontSize="28" FontWeight="Bold" Margin="0,5,0,0" />
+                    <TextBlock Text="Cadastro, credenciais, ativação e concorrência confirmados pela API oficial." Foreground="{StaticResource TextSecondary}" Margin="0,6,0,0" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                    <TextBlock Text="{Binding SessionLabel}" Foreground="{StaticResource TextPrimary}" FontWeight="Bold" HorizontalAlignment="Right" />
+                    <TextBlock Text="{Binding EndpointLabel}" Foreground="{StaticResource AccentGreen}" Margin="0,5,0,0" HorizontalAlignment="Right" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2" Style="{StaticResource Panel}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="2*" />
+                    <ColumnDefinition Width="12" /><ColumnDefinition Width="1.2*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel><TextBlock Text="E-mail administrativo" Style="{StaticResource FieldLabel}" /><TextBox Text="{Binding LoginEmail, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
+                <StackPanel Grid.Column="2"><TextBlock Text="Senha" Style="{StaticResource FieldLabel}" /><PasswordBox x:Name="LoginPassword" /></StackPanel>
+                <StackPanel Grid.Column="4"><TextBlock Text="MFA (quando ativo)" Style="{StaticResource FieldLabel}" /><TextBox Text="{Binding MfaCode, UpdateSourceTrigger=PropertyChanged}" MaxLength="8" /></StackPanel>
+                <Button Grid.Column="6" Content="Autenticar" Click="Authenticate_Click" Padding="22,10" VerticalAlignment="Bottom" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="4" IsEnabled="{Binding IsAuthenticated}">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="0.78*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="1.22*" /></Grid.ColumnDefinitions>
+            <Border Style="{StaticResource Panel}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <DockPanel>
+                            <TextBlock Text="Cadastro do canal" Foreground="{StaticResource TextPrimary}" FontSize="19" FontWeight="Bold" />
+                            <Button Content="Novo" Click="New_Click" DockPanel.Dock="Right" Padding="14,6" />
+                        </DockPanel>
+                        <TextBlock Text="Nome" Style="{StaticResource FieldLabel}" Margin="0,14,0,5" />
+                        <TextBox Text="{Binding ChannelName, UpdateSourceTrigger=PropertyChanged}" MaxLength="100" />
+                        <TextBlock Text="Slug" Style="{StaticResource FieldLabel}" Margin="0,10,0,5" />
+                        <TextBox Text="{Binding ChannelSlug, UpdateSourceTrigger=PropertyChanged}" MaxLength="50" />
+                        <TextBlock Text="Tipo" Style="{StaticResource FieldLabel}" Margin="0,10,0,5" />
+                        <ComboBox ItemsSource="{Binding ChannelTypes}" SelectedItem="{Binding ChannelType}" />
+                        <TextBlock Text="Endpoint HTTPS" Style="{StaticResource FieldLabel}" Margin="0,10,0,5" />
+                        <TextBox Text="{Binding ChannelEndpoint, UpdateSourceTrigger=PropertyChanged}" />
+                        <CheckBox Content="Ativar somente com credenciais privadas válidas" IsChecked="{Binding ChannelActive}" Margin="0,14,0,0" />
+                        <Border Background="#FFF8E1" BorderBrush="#E8C15A" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,14,0,0">
+                            <StackPanel>
+                                <TextBlock Text="{Binding CredentialStatus}" Foreground="#6E5200" FontWeight="Bold" />
+                                <TextBlock Text="{Binding CredentialDetail}" Foreground="#6E5200" TextWrapping="Wrap" Margin="0,5,0,0" />
+                            </StackPanel>
+                        </Border>
+                        <Button Content="Salvar canal" Click="Save_Click" Padding="18,10" HorizontalAlignment="Left" Margin="0,14,0,0" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource Panel}">
+                <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                    <DockPanel>
+                        <TextBlock Text="Canais confirmados no banco" Foreground="{StaticResource TextPrimary}" FontSize="19" FontWeight="Bold" />
+                        <Button Content="Atualizar" Click="Reload_Click" DockPanel.Dock="Right" Padding="14,6" />
+                    </DockPanel>
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding Channels}" SelectedItem="{Binding SelectedChannel}" AutoGenerateColumns="False" IsReadOnly="True" Margin="0,12,0,0" SelectionChanged="ChannelSelectionChanged">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Canal" Binding="{Binding Nome}" Width="*" />
+                            <DataGridTextColumn Header="Tipo" Binding="{Binding Tipo}" Width="125" />
+                            <DataGridTextColumn Header="Credenciais" Binding="{Binding StatusCredenciais}" Width="150" />
+                            <DataGridCheckBoxColumn Header="Ativo" Binding="{Binding Ativo}" Width="70" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <Button Grid.Row="2" Content="Excluir selecionado" Click="Delete_Click" Padding="14,7" HorizontalAlignment="Right" Margin="0,12,0,0" />
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="6" Style="{StaticResource Panel}" Padding="14">
+            <TextBlock Text="{Binding Status}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" />
+        </Border>
+    </Grid>
+</Window>

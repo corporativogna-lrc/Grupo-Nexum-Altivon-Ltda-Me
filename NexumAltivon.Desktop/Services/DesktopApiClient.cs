@@ -131,6 +131,40 @@ public sealed class DesktopApiClient
         CancellationToken cancellationToken = default)
         => SendAuthorizedAsync<bool>(profile, token, HttpMethod.Delete, $"/api/crm/campanhas/{id}", null, cancellationToken);
 
+    public Task<DesktopApiDataResult<List<DesktopDropshippingCanal>>> GetDropshippingChannelsAsync(
+        TerminalProfile profile,
+        string token,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<List<DesktopDropshippingCanal>>(profile, token, HttpMethod.Get, "/api/dropshipping/canais", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopDropshippingCanal>> SaveDropshippingChannelAsync(
+        TerminalProfile profile,
+        string token,
+        DesktopDropshippingCanalRequest payload,
+        int? id,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<DesktopDropshippingCanal>(
+            profile,
+            token,
+            id.HasValue ? HttpMethod.Put : HttpMethod.Post,
+            id.HasValue ? $"/api/dropshipping/canais/{id.Value}" : "/api/dropshipping/canais",
+            payload,
+            cancellationToken);
+
+    public Task<DesktopApiDataResult<bool>> DeleteDropshippingChannelAsync(
+        TerminalProfile profile,
+        string token,
+        int id,
+        string rowVersion,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<bool>(
+            profile,
+            token,
+            HttpMethod.Delete,
+            $"/api/dropshipping/canais/{id}?rowVersion={Uri.EscapeDataString(rowVersion)}",
+            null,
+            cancellationToken);
+
     public async Task<DesktopApiHealthResult> CheckHealthAsync(TerminalProfile profile, CancellationToken cancellationToken = default)
     {
         var local = await TryHealthAsync(profile.ApiBaseUrl, cancellationToken);
@@ -288,7 +322,7 @@ public sealed class DesktopApiClient
                 if (!response.IsSuccessStatusCode)
                 {
                     var detail = $"{(int)response.StatusCode} {ExtractErrorMessage(content, response.ReasonPhrase)}";
-                    if ((int)response.StatusCode is 400 or 401 or 403 or 404 or 409 or 422)
+                    if ((int)response.StatusCode is 400 or 401 or 403 or 404 or 409 or 422 or 424)
                     {
                         return new DesktopApiDataResult<T>(false, default, detail);
                     }
@@ -587,4 +621,26 @@ public sealed record DesktopCrmCampanhaRequest(
     decimal ReceitaGerada,
     string? PublicoAlvo,
     string? Conteudo,
+    string? RowVersion);
+
+public sealed record DesktopDropshippingCanal(
+    int Id,
+    string Nome,
+    string Slug,
+    string Tipo,
+    string? ApiEndpoint,
+    bool Ativo,
+    bool CredenciaisConfiguradas,
+    string StatusCredenciais,
+    string DetalheCredenciais,
+    string RowVersion,
+    DateTime CreatedAt,
+    DateTime UpdatedAt);
+
+public sealed record DesktopDropshippingCanalRequest(
+    string Nome,
+    string Slug,
+    string Tipo,
+    string? ApiEndpoint,
+    bool Ativo,
     string? RowVersion);
