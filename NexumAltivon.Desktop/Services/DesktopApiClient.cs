@@ -7,6 +7,7 @@
  */
 
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using NexumAltivon.Desktop.Models;
@@ -21,6 +22,114 @@ public sealed class DesktopApiClient
     };
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    public async Task<DesktopLoginResult> AuthenticateAsync(
+        TerminalProfile profile,
+        string email,
+        string password,
+        string? mfaCode,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+        {
+            return new DesktopLoginResult(false, null, null, "E-mail e senha sao obrigatorios.");
+        }
+
+        foreach (var endpoint in GetEndpoints(profile))
+        {
+            try
+            {
+                using var response = await Http.PostAsJsonAsync(
+                    $"{endpoint}/api/auth/login",
+                    new DesktopLoginRequest(email.Trim(), password, string.IsNullOrWhiteSpace(mfaCode) ? null : mfaCode.Trim()),
+                    JsonOptions,
+                    cancellationToken);
+                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    if ((int)response.StatusCode is 400 or 401 or 403)
+                    {
+                        return new DesktopLoginResult(false, null, null, ExtractErrorMessage(content, response.ReasonPhrase));
+                    }
+
+                    continue;
+                }
+
+                var envelope = JsonSerializer.Deserialize<DesktopApiEnvelope<DesktopLoginResponse>>(content, JsonOptions);
+                var login = envelope?.Dados;
+                if (envelope is null || !envelope.Sucesso || login is null || string.IsNullOrWhiteSpace(login.Token) || login.ExpiraEm <= DateTime.UtcNow)
+                {
+                    return new DesktopLoginResult(false, null, null, envelope?.Mensagem ?? "A API nao confirmou uma sessao JWT valida.");
+                }
+
+                return new DesktopLoginResult(true, login.Token, login.Usuario, $"Sessao autenticada em {endpoint}.");
+            }
+            catch (HttpRequestException)
+            {
+                continue;
+            }
+            catch (TaskCanceledException)
+            {
+                continue;
+            }
+        }
+
+        return new DesktopLoginResult(false, null, null, "API local e publica indisponiveis para autenticacao.");
+    }
+
+    public Task<DesktopApiDataResult<List<DesktopCrmSegmento>>> GetMarketingSegmentsAsync(
+        TerminalProfile profile,
+        string token,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<List<DesktopCrmSegmento>>(profile, token, HttpMethod.Get, "/api/crm/segmentos", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<List<DesktopCrmCampanha>>> GetMarketingCampaignsAsync(
+        TerminalProfile profile,
+        string token,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<List<DesktopCrmCampanha>>(profile, token, HttpMethod.Get, "/api/crm/campanhas", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopCrmSegmento>> SaveMarketingSegmentAsync(
+        TerminalProfile profile,
+        string token,
+        DesktopCrmSegmentoRequest payload,
+        Guid? id,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<DesktopCrmSegmento>(
+            profile,
+            token,
+            id.HasValue ? HttpMethod.Put : HttpMethod.Post,
+            id.HasValue ? $"/api/crm/segmentos/{id.Value}" : "/api/crm/segmentos",
+            payload,
+            cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopCrmCampanha>> SaveMarketingCampaignAsync(
+        TerminalProfile profile,
+        string token,
+        DesktopCrmCampanhaRequest payload,
+        Guid? id,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<DesktopCrmCampanha>(
+            profile,
+            token,
+            id.HasValue ? HttpMethod.Put : HttpMethod.Post,
+            id.HasValue ? $"/api/crm/campanhas/{id.Value}" : "/api/crm/campanhas",
+            payload,
+            cancellationToken);
+
+    public Task<DesktopApiDataResult<bool>> DeleteMarketingSegmentAsync(
+        TerminalProfile profile,
+        string token,
+        Guid id,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<bool>(profile, token, HttpMethod.Delete, $"/api/crm/segmentos/{id}", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<bool>> DeleteMarketingCampaignAsync(
+        TerminalProfile profile,
+        string token,
+        Guid id,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<bool>(profile, token, HttpMethod.Delete, $"/api/crm/campanhas/{id}", null, cancellationToken);
 
     public async Task<DesktopApiHealthResult> CheckHealthAsync(TerminalProfile profile, CancellationToken cancellationToken = default)
     {
@@ -147,6 +256,99 @@ public sealed class DesktopApiClient
             string.Empty,
             string.Join(" | ", failures),
             null);
+    }
+
+    private static async Task<DesktopApiDataResult<T>> SendAuthorizedAsync<T>(
+        TerminalProfile profile,
+        string token,
+        HttpMethod method,
+        string path,
+        object? payload,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return new DesktopApiDataResult<T>(false, default, "Sessao administrativa ausente.");
+        }
+
+        var failures = new List<string>();
+        foreach (var endpoint in GetEndpoints(profile))
+        {
+            try
+            {
+                using var request = new HttpRequestMessage(method, $"{endpoint}{path}");
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                if (payload is not null)
+                {
+                    request.Content = JsonContent.Create(payload, options: JsonOptions);
+                }
+
+                using var response = await Http.SendAsync(request, cancellationToken);
+                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var detail = $"{(int)response.StatusCode} {ExtractErrorMessage(content, response.ReasonPhrase)}";
+                    if ((int)response.StatusCode is 400 or 401 or 403 or 404 or 409 or 422)
+                    {
+                        return new DesktopApiDataResult<T>(false, default, detail);
+                    }
+
+                    failures.Add($"{endpoint}: {detail}");
+                    continue;
+                }
+
+                if (response.StatusCode == System.Net.HttpStatusCode.NoContent)
+                {
+                    object deleted = true;
+                    return new DesktopApiDataResult<T>(true, (T)deleted, $"Exclusao confirmada em {endpoint}.");
+                }
+
+                var envelope = JsonSerializer.Deserialize<DesktopApiEnvelope<T>>(content, JsonOptions);
+                if (envelope is null || !envelope.Sucesso || envelope.Dados is null)
+                {
+                    return new DesktopApiDataResult<T>(false, default, envelope?.Mensagem ?? "A API nao confirmou os dados persistidos.");
+                }
+
+                return new DesktopApiDataResult<T>(true, envelope.Dados, envelope.Mensagem);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+            {
+                failures.Add($"{endpoint}: {ex.Message}");
+            }
+        }
+
+        return new DesktopApiDataResult<T>(false, default, string.Join(" | ", failures));
+    }
+
+    private static string[] GetEndpoints(TerminalProfile profile)
+        => new[] { profile.ApiBaseUrl, profile.PublicApiUrl }
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .Select(url => url.TrimEnd('/'))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    private static string ExtractErrorMessage(string content, string? reasonPhrase)
+    {
+        if (!string.IsNullOrWhiteSpace(content))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(content);
+                foreach (var property in new[] { "mensagem", "detail", "erro", "message" })
+                {
+                    if (document.RootElement.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String)
+                    {
+                        return value.GetString() ?? reasonPhrase ?? "Falha na API.";
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                return TrimContent(content);
+            }
+        }
+
+        return reasonPhrase ?? "Falha na API.";
     }
 
     private static async Task<DesktopApiSubmitResult> TrySubmitAsync<TPayload>(
@@ -304,3 +506,85 @@ internal sealed record GenesisDesktopOperationApiRequest(
     string? Status,
     JsonElement Payload,
     string? Observacoes);
+
+public sealed record DesktopLoginResult(bool Success, string? Token, DesktopUser? User, string Detail);
+public sealed record DesktopLoginRequest(string Email, string Senha, string? MfaCode);
+public sealed record DesktopLoginResponse(string Token, string RefreshToken, DateTime ExpiraEm, DesktopUser Usuario);
+public sealed record DesktopUser(int Id, string Nome, string Email, string Perfil);
+public sealed record DesktopApiEnvelope<T>(bool Sucesso, string Mensagem, T? Dados, List<string>? Erros);
+public sealed record DesktopApiDataResult<T>(bool Success, T? Data, string Detail);
+
+public sealed record DesktopCrmSegmento(
+    Guid Id,
+    string Nome,
+    string? Descricao,
+    string Cor,
+    int Prioridade,
+    decimal? TicketMedioMinimo,
+    decimal? TicketMedioMaximo,
+    int? FrequenciaMinimaDias,
+    int? FrequenciaMaximaDias,
+    bool Ativo,
+    string RowVersion,
+    DateTime CreatedAt,
+    DateTime? UpdatedAt);
+
+public sealed record DesktopCrmSegmentoRequest(
+    string Nome,
+    string? Descricao,
+    string Cor,
+    int Prioridade,
+    decimal? TicketMedioMinimo,
+    decimal? TicketMedioMaximo,
+    int? FrequenciaMinimaDias,
+    int? FrequenciaMaximaDias,
+    bool Ativo,
+    string? RowVersion);
+
+public sealed record DesktopCrmCampanha(
+    Guid Id,
+    string Nome,
+    string? Descricao,
+    string Tipo,
+    string Status,
+    Guid? SegmentoId,
+    string? SegmentoNome,
+    DateTime DataInicio,
+    DateTime? DataFim,
+    decimal Orcamento,
+    decimal CustoAtual,
+    int Alcance,
+    int Cliques,
+    int LeadsGerados,
+    int OportunidadesGeradas,
+    int VendasGeradas,
+    decimal ReceitaGerada,
+    decimal Roas,
+    decimal Cpc,
+    decimal Cpl,
+    decimal Cpa,
+    string? PublicoAlvo,
+    string? Conteudo,
+    string RowVersion,
+    DateTime CreatedAt,
+    DateTime? UpdatedAt);
+
+public sealed record DesktopCrmCampanhaRequest(
+    string Nome,
+    string? Descricao,
+    string Tipo,
+    string Status,
+    Guid? SegmentoId,
+    DateTime DataInicio,
+    DateTime? DataFim,
+    decimal Orcamento,
+    decimal CustoAtual,
+    int Alcance,
+    int Cliques,
+    int LeadsGerados,
+    int OportunidadesGeradas,
+    int VendasGeradas,
+    decimal ReceitaGerada,
+    string? PublicoAlvo,
+    string? Conteudo,
+    string? RowVersion);

@@ -361,6 +361,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        if (string.Equals(title, "Comercial e CRM", StringComparison.OrdinalIgnoreCase))
+        {
+            var marketingWindow = new MarketingWindow(Terminal)
+            {
+                Owner = this
+            };
+            marketingWindow.ShowDialog();
+            return;
+        }
+
         var window = new ModuleWorkspaceWindow(title, area, detail, Terminal);
         window.ShowDialog();
     }
