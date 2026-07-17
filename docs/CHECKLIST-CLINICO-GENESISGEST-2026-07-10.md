@@ -12,6 +12,7 @@ Data da apuracao: 2026-07-10.
 Apuracao complementar de integridade funcional: 2026-07-12.
 Apuracao de paridade do painel legado: 2026-07-14.
 Apuracao da persistencia das configuracoes publicas: 2026-07-17.
+Apuracao da maquina de estados de workflow: 2026-07-17.
 
 ## Rotas Travadas
 
@@ -31,7 +32,7 @@ Apuracao da persistencia das configuracoes publicas: 2026-07-17.
 | B2 | Controllers MVC fora do ativo e endpoints criticos sem 404 | Ajustado e publicado na branch de entrega | API oficial e Minimal API; controllers MVC removidos do projeto da API ativa no commit `4bacfe5`; smoke publico passou nos pontos obrigatorios |
 | B3 | Duplicacao massiva da raiz removida do build ativo | Concluido para a raiz legacy | Diretorios legados da raiz foram removidos do build/versionamento no commit `7ccc668`; solution Release seguiu compilando com 0 erros e 0 avisos |
 | B4 | `Sys_AuditableEntity` em 100% das entidades transacionais | Parcial avancado | Commit `07a465e` aplicou tenant, soft-delete, auditoria central e `row_version` BLOB no `NexumDbContext`; heranca direta ainda nao cobre todas as classes |
-| B5 | MFA, refresh-token, tenants e workflows | Parcial | Rotas existem e compilam; tenant smoke validado; fluxo completo ainda exige teste integrado |
+| B5 | MFA, refresh-token, tenants e workflows | Parcial avancado | Workflow concluido e validado no runtime oficial com definicao, instancia, RBAC por transicao, historico, concorrencia, tenant e soft-delete; MFA e rotacao de refresh-token ainda exigem homologacao integrada especifica |
 | B6 | Testes com cobertura minima de 70% em Services | Pendente | Por orientacao operacional, a base de testes criada para validacao foi removida da solution e do projeto oficial; cobertura >=70% ainda precisa ser implementada sem confundir codigo operacional com artefato de validacao |
 | B7 | Observabilidade completa | Parcial | Health e Redis existem; Serilog/OpenTelemetry completos ainda nao foram homologados ponta a ponta |
 | B8 | Backup diario e restore-test semanal | Parcial | Backup local 2h corrigido para `D:\Nexum Altivon\NexumAltivon.com` e executado com resultado 0; restore-test em CI ainda nao comprovado |
@@ -73,6 +74,7 @@ Apuracao da persistencia das configuracoes publicas: 2026-07-17.
 | CRM Marketing operacional | Segmentos e campanhas foram implementados com tela React, endpoints Minimal API, tenant, auditoria, soft-delete, maquina de estados e concorrencia por `RowVersion`; ensaio no runtime oficial retornou POST 201/201, PUT 200, conflito 409, GET 200 e DELETE 204/204; MySQL confirmou `is_deleted=1` e limpeza controlada `0,0` |
 | Desktop WPF sem sucesso fabricado | `ModuleWorkspaceWindow` deixou de confirmar operacao apenas alterando texto local: agora exige resposta persistida da API oficial e referencia do servidor; falha usa outbox real somente quando a contingencia esta ativa. A rota desktop foi validada com HTTP 201 e linha confirmada no MySQL, seguida de limpeza controlada |
 | Marketing no Desktop WPF | `MarketingWindow` adicionada ao menu `Comercial e CRM`; autentica em `/api/auth/login`, mantem JWT somente em memoria e consome os mesmos CRUDs de campanhas/segmentos. Credencial controlada invalida recebeu HTTP 401 e a solution completa compilou com 0 erros e 0 avisos |
+| Workflow operacional | A API Minimal oficial passou a validar estados alcancaveis, transicoes configuradas, entidade da definicao, perfil autorizado e concorrencia. Ensaio autenticado em 2026-07-17 executou 27 verificacoes: criacao e reativacao 201, consultas/transicoes 200, exclusoes 204, entradas invalidas 400, RBAC 403, conflitos 409, rota Cloudflare 200, duas transicoes confirmadas diretamente no MySQL e limpeza final com zero registros residuais |
 | Referencias societarias encerradas | Removidas das fontes, seeds, contato, rodape, documentacao e bundle estatico; varredura integral no projeto oficial retornou zero ocorrencias do nome solicitado |
 | Publicacao Marketing | Commit `6933f98` enviado para `main`; CI/CD `29306776375` e Pages `29306776372` concluiram com sucesso. Portal respondeu 200 com bundle `main.260894af.js`, contendo `Marketing operacional` e sem a referencia societaria removida |
 | Rotas de banco ativas | Runtime oficial usa `127.0.0.1:3309/nexum_altivon` e `127.0.0.1:3309/genesis_bd`; `health/db` e `health/db/genesis` retornaram 200 local e publico |
@@ -147,6 +149,7 @@ Regra de aceite para cada ferramenta: somente marcar `Concluido` quando houver t
 | Frontend sem 404 nos endpoints consumidos | Parcial | Smoke publico dos pontos criticos passou em 2026-07-10: `/health`, `/api/lojas`, `/api/lojas/1`, `/swagger/v1/swagger.json`, aliases FICO e CORS sem 404; falta varredura completa do frontend |
 | Multitenancy e soft-delete em 100% das entidades | Parcial | Migrar entidades legadas e validar isolamento por tenant |
 | MFA TOTP funcional | Parcial | Executar teste integrado enable, verify e login com MFA |
+| Workflow de aprovacao funcional | Concluido no backend oficial | CRUD de definicoes e instancias, historico, maquina de estados, RBAC, tenant, soft-delete e atualizacao atomica foram publicados e validados localmente, no dominio Cloudflare e diretamente no MySQL; faltam apenas telas especificas quando cada modulo consumir o workflow |
 | NF-e/NFC-e SEFAZ homologacao | Parcial real, bloqueado por credencial/certificado | Endpoints de emissao/eventos existem na API ativa e nao registram sucesso sem provedor real; falta configurar certificado/provedor homologado e validar chave/protocolo real |
 | WMS completo | Parcial | Completar endpoints/telas e validar movimentacao, inventario, kardex e transferencia |
 | MES/OPS operacional | Parcial | Backend existe; telas e fluxo completo ainda precisam validacao. No WPF, a janela generica agora registra solicitacao real na API ou contingencia explicitamente pendente; isto nao substitui as telas especificas de OS, producao, manutencao e ativos |
@@ -176,9 +179,9 @@ Regra de aceite para cada ferramenta: somente marcar `Concluido` quando houver t
 Estado apurado:
 
 - Branch local: `work/delivery-2026-06-13`.
-- Commit local e remoto atual antes deste registro: `ecec6ee docs: checklist - registrar crm legado persistido`.
-- `origin/work/delivery-2026-06-13`: alinhado com `ecec6ee`.
-- `origin/main`: alinhado com `ecec6ee`.
+- Base local e remota antes da entrega de workflow: `4405fa6 fix: servidor - iniciar api no boot sem login`.
+- Entrega de workflow: commit atomico `feat: workflow - validar maquina de estados real`, destinado igualmente a `origin/work/delivery-2026-06-13` e `origin/main`.
+- Antes do commit desta entrega, `HEAD`, `origin/work/delivery-2026-06-13` e `origin/main` estavam alinhados sem divergencia no commit `4405fa6`.
 - Estado do worktree antes desta atualizacao documental: limpo.
 - Commits atomicos enviados nesta rodada de saneamento: `8d58edb`, `0b8212e`, `a7c23d9`, `5848622`, `fd988d0`, `d766314`, `4918d30`, `3879914`, `937512d`, `404468b`, `6dbf1f0`.
 - Publicacao GitHub permanece seletiva e auditada; nao publicar arquivos legados/falsos sem validacao direta no projeto oficial.

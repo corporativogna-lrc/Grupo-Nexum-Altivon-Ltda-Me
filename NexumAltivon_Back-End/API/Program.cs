@@ -1601,16 +1601,29 @@ app.MapGet("/api/workflows/definicoes", [Authorize(Policy = "Gerente")] async (
         FROM sys_workflow_definicoes
         WHERE tenant_id = {0}
           AND is_deleted = 0
-          AND ({1} IS NULL OR entidade = {1})
+          AND ({1} = '' OR entidade = {1})
         ORDER BY entidade, nome
         """,
         tenantContext.TenantId.ToString(),
-        (object?)filtroEntidade ?? DBNull.Value)
+        filtroEntidade)
         .ToListAsync(ct);
 
     return Results.Ok(ApiResponse<List<WorkflowDefinicaoDto>>.Ok(definicoes, "Definicoes de workflow carregadas."));
 })
 .WithName("WorkflowsDefinicoesListar");
+
+app.MapGet("/api/workflows/definicoes/{id:guid}", [Authorize(Policy = "Gerente")] async (
+    Guid id,
+    NexumDbContext db,
+    ITenantContext tenantContext,
+    CancellationToken ct) =>
+{
+    var definicao = await LoadWorkflowDefinitionAsync(db, tenantContext.TenantId, id, ct);
+    return definicao is null
+        ? Results.NotFound(ApiResponse<WorkflowDefinicaoDto>.Erro("Definicao de workflow nao encontrada."))
+        : Results.Ok(ApiResponse<WorkflowDefinicaoDto>.Ok(definicao, "Definicao de workflow carregada."));
+})
+.WithName("WorkflowsDefinicoesObter");
 
 app.MapPost("/api/workflows/definicoes", [Authorize(Policy = "Gerente")] async (
     WorkflowDefinicaoRequest request,
@@ -1618,28 +1631,82 @@ app.MapPost("/api/workflows/definicoes", [Authorize(Policy = "Gerente")] async (
     ITenantContext tenantContext,
     CancellationToken ct) =>
 {
-    var entidade = NormalizeBusinessKey(request.Entidade);
-    var codigo = NormalizeBusinessKey(request.Codigo);
-    var nome = TrimOrNull(request.Nome);
-    if (string.IsNullOrWhiteSpace(entidade) || string.IsNullOrWhiteSpace(codigo) || string.IsNullOrWhiteSpace(nome))
+    var definicao = NormalizeWorkflowDefinition(request, out var validationError);
+    if (definicao is null)
     {
-        return Results.BadRequest(ApiResponse<WorkflowDefinicaoDto>.Erro("Entidade, codigo e nome sao obrigatorios."));
+        return Results.BadRequest(ApiResponse<WorkflowDefinicaoDto>.Erro(validationError));
     }
 
-    var estadosJson = JsonSerializer.Serialize(request.Estados.Where(item => !string.IsNullOrWhiteSpace(item)).Select(item => item.Trim()).Distinct().ToList());
-    var transicoesJson = JsonSerializer.Serialize(request.Transicoes);
-    var id = Guid.NewGuid().ToString();
-
-    await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        INSERT INTO sys_workflow_definicoes
-            (id, tenant_id, entidade, codigo, nome, estados_json, transicoes_json, ativo, created_at, updated_at)
-        VALUES
-            ({id}, {tenantContext.TenantId.ToString()}, {entidade}, {codigo}, {nome}, {estadosJson}, {transicoesJson}, {request.Ativo}, UTC_TIMESTAMP(), UTC_TIMESTAMP())
+    var duplicateCount = await db.Database.SqlQueryRaw<int>(
+        """
+        SELECT COUNT(*) AS Value
+        FROM sys_workflow_definicoes
+        WHERE tenant_id = {0} AND codigo = {1} AND is_deleted = 0
         """,
-        ct);
+        tenantContext.TenantId.ToString(),
+        definicao.Codigo)
+        .SingleAsync(ct);
+    if (duplicateCount > 0)
+    {
+        return Results.Conflict(ApiResponse<WorkflowDefinicaoDto>.Erro("Ja existe uma definicao ativa com este codigo no tenant."));
+    }
 
-    var response = new WorkflowDefinicaoDto(id, entidade, codigo, nome, estadosJson, transicoesJson, request.Ativo, DateTime.UtcNow, DateTime.UtcNow);
+    var estadosJson = JsonSerializer.Serialize(definicao.Estados);
+    var transicoesJson = JsonSerializer.Serialize(definicao.Transicoes);
+    var deletedDefinitionIds = await db.Database.SqlQueryRaw<string>(
+        """
+        SELECT CAST(id AS CHAR) AS Value
+        FROM sys_workflow_definicoes
+        WHERE tenant_id = {0} AND codigo = {1} AND is_deleted = 1
+        LIMIT 1
+        """,
+        tenantContext.TenantId.ToString(),
+        definicao.Codigo)
+        .ToListAsync(ct);
+    var deletedDefinitionId = deletedDefinitionIds.FirstOrDefault();
+    var id = deletedDefinitionId ?? Guid.NewGuid().ToString();
+
+    if (deletedDefinitionId is not null)
+    {
+        var restored = await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE sys_workflow_definicoes
+            SET entidade = {definicao.Entidade},
+                nome = {definicao.Nome},
+                estados_json = {estadosJson},
+                transicoes_json = {transicoesJson},
+                ativo = {definicao.Ativo},
+                is_deleted = 0,
+                deleted_at = NULL,
+                updated_at = UTC_TIMESTAMP()
+            WHERE id = {deletedDefinitionId} AND tenant_id = {tenantContext.TenantId.ToString()} AND is_deleted = 1
+            """,
+            ct);
+        if (restored != 1)
+        {
+            return Results.Conflict(ApiResponse<WorkflowDefinicaoDto>.Erro("A definicao foi alterada por outra operacao. Recarregue a lista."));
+        }
+    }
+    else
+    {
+        try
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                INSERT INTO sys_workflow_definicoes
+                    (id, tenant_id, entidade, codigo, nome, estados_json, transicoes_json, ativo, created_at, updated_at)
+                VALUES
+                    ({id}, {tenantContext.TenantId.ToString()}, {definicao.Entidade}, {definicao.Codigo}, {definicao.Nome}, {estadosJson}, {transicoesJson}, {definicao.Ativo}, UTC_TIMESTAMP(), UTC_TIMESTAMP())
+                """,
+                ct);
+        }
+        catch (MySqlException ex) when (ex.Number == 1062)
+        {
+            return Results.Conflict(ApiResponse<WorkflowDefinicaoDto>.Erro("Ja existe uma definicao ativa com este codigo no tenant."));
+        }
+    }
+
+    var response = new WorkflowDefinicaoDto(id, definicao.Entidade, definicao.Codigo, definicao.Nome, estadosJson, transicoesJson, definicao.Ativo, DateTime.UtcNow, DateTime.UtcNow);
     return Results.Created($"/api/workflows/definicoes/{id}", ApiResponse<WorkflowDefinicaoDto>.Ok(response, "Definicao de workflow criada."));
 })
 .WithName("WorkflowsDefinicoesCriar");
@@ -1651,26 +1718,67 @@ app.MapPut("/api/workflows/definicoes/{id:guid}", [Authorize(Policy = "Gerente")
     ITenantContext tenantContext,
     CancellationToken ct) =>
 {
-    var entidade = NormalizeBusinessKey(request.Entidade);
-    var codigo = NormalizeBusinessKey(request.Codigo);
-    var nome = TrimOrNull(request.Nome);
-    if (string.IsNullOrWhiteSpace(entidade) || string.IsNullOrWhiteSpace(codigo) || string.IsNullOrWhiteSpace(nome))
+    var atual = await LoadWorkflowDefinitionAsync(db, tenantContext.TenantId, id, ct);
+    if (atual is null)
     {
-        return Results.BadRequest(ApiResponse<WorkflowDefinicaoDto>.Erro("Entidade, codigo e nome sao obrigatorios."));
+        return Results.NotFound(ApiResponse<WorkflowDefinicaoDto>.Erro("Definicao de workflow nao encontrada."));
     }
 
-    var estadosJson = JsonSerializer.Serialize(request.Estados.Where(item => !string.IsNullOrWhiteSpace(item)).Select(item => item.Trim()).Distinct().ToList());
-    var transicoesJson = JsonSerializer.Serialize(request.Transicoes);
+    var definicao = NormalizeWorkflowDefinition(request, out var validationError);
+    if (definicao is null)
+    {
+        return Results.BadRequest(ApiResponse<WorkflowDefinicaoDto>.Erro(validationError));
+    }
+
+    var duplicateCount = await db.Database.SqlQueryRaw<int>(
+        """
+        SELECT COUNT(*) AS Value
+        FROM sys_workflow_definicoes
+        WHERE tenant_id = {0} AND codigo = {1} AND id <> {2} AND is_deleted = 0
+        """,
+        tenantContext.TenantId.ToString(),
+        definicao.Codigo,
+        id.ToString())
+        .SingleAsync(ct);
+    if (duplicateCount > 0)
+    {
+        return Results.Conflict(ApiResponse<WorkflowDefinicaoDto>.Erro("Ja existe uma definicao ativa com este codigo no tenant."));
+    }
+
+    var estadosEmUso = await db.Database.SqlQueryRaw<string>(
+        """
+        SELECT DISTINCT estado_atual AS Value
+        FROM sys_workflow_instancias
+        WHERE tenant_id = {0} AND definicao_id = {1} AND is_deleted = 0
+        """,
+        tenantContext.TenantId.ToString(),
+        id.ToString())
+        .ToListAsync(ct);
+    var estadosRemovidosEmUso = estadosEmUso
+        .Where(estado => !definicao.Estados.Contains(estado, StringComparer.OrdinalIgnoreCase))
+        .ToList();
+    if (estadosRemovidosEmUso.Count > 0)
+    {
+        return Results.Conflict(ApiResponse<WorkflowDefinicaoDto>.Erro(
+            $"A definicao nao pode remover estados utilizados por instancias ativas: {string.Join(", ", estadosRemovidosEmUso)}."));
+    }
+    if (!definicao.Ativo && estadosEmUso.Count > 0)
+    {
+        return Results.Conflict(ApiResponse<WorkflowDefinicaoDto>.Erro("A definicao possui instancias ativas e nao pode ser desativada."));
+    }
+
+    var estadosJson = JsonSerializer.Serialize(definicao.Estados);
+    var transicoesJson = JsonSerializer.Serialize(definicao.Transicoes);
 
     var affected = await db.Database.ExecuteSqlInterpolatedAsync(
         $"""
         UPDATE sys_workflow_definicoes
-        SET entidade = {entidade},
-            codigo = {codigo},
-            nome = {nome},
+        SET entidade = {definicao.Entidade},
+            codigo = {definicao.Codigo},
+            nome = {definicao.Nome},
             estados_json = {estadosJson},
             transicoes_json = {transicoesJson},
-            ativo = {request.Ativo},
+            ativo = {definicao.Ativo},
             updated_at = UTC_TIMESTAMP()
         WHERE id = {id.ToString()} AND tenant_id = {tenantContext.TenantId.ToString()} AND is_deleted = 0
         """,
@@ -1681,7 +1789,7 @@ app.MapPut("/api/workflows/definicoes/{id:guid}", [Authorize(Policy = "Gerente")
         return Results.NotFound(ApiResponse<WorkflowDefinicaoDto>.Erro("Definicao de workflow nao encontrada."));
     }
 
-    var response = new WorkflowDefinicaoDto(id.ToString(), entidade, codigo, nome, estadosJson, transicoesJson, request.Ativo, DateTime.UtcNow, DateTime.UtcNow);
+    var response = new WorkflowDefinicaoDto(id.ToString(), definicao.Entidade, definicao.Codigo, definicao.Nome, estadosJson, transicoesJson, definicao.Ativo, atual.CriadoEm, DateTime.UtcNow);
     return Results.Ok(ApiResponse<WorkflowDefinicaoDto>.Ok(response, "Definicao de workflow atualizada."));
 })
 .WithName("WorkflowsDefinicoesAtualizar");
@@ -1692,6 +1800,20 @@ app.MapDelete("/api/workflows/definicoes/{id:guid}", [Authorize(Policy = "Gerent
     ITenantContext tenantContext,
     CancellationToken ct) =>
 {
+    var activeInstanceCount = await db.Database.SqlQueryRaw<int>(
+        """
+        SELECT COUNT(*) AS Value
+        FROM sys_workflow_instancias
+        WHERE tenant_id = {0} AND definicao_id = {1} AND is_deleted = 0
+        """,
+        tenantContext.TenantId.ToString(),
+        id.ToString())
+        .SingleAsync(ct);
+    if (activeInstanceCount > 0)
+    {
+        return Results.Conflict(ApiResponse<object>.Erro("A definicao possui instancias ativas e nao pode ser excluida."));
+    }
+
     var affected = await db.Database.ExecuteSqlInterpolatedAsync(
         $"""
         UPDATE sys_workflow_definicoes
@@ -1716,12 +1838,66 @@ app.MapPost("/api/workflows/instancias", [Authorize(Policy = "Gerente")] async (
     ClaimsPrincipal principal,
     CancellationToken ct) =>
 {
+    var definicaoDto = await LoadWorkflowDefinitionAsync(db, tenantContext.TenantId, request.DefinicaoId, ct);
+    if (definicaoDto is null || !definicaoDto.Ativo)
+    {
+        return Results.NotFound(ApiResponse<WorkflowInstanciaDto>.Erro("Definicao de workflow ativa nao encontrada."));
+    }
+
+    if (!TryParseWorkflowDefinition(definicaoDto, out var definicao, out var definitionError) || definicao is null)
+    {
+        return Results.Problem(
+            statusCode: StatusCodes.Status500InternalServerError,
+            title: "Definicao de workflow inconsistente",
+            detail: definitionError);
+    }
+
     var entidade = NormalizeBusinessKey(request.Entidade);
     var registroChave = TrimOrNull(request.RegistroChave);
-    var estadoInicial = TrimOrNull(request.EstadoInicial) ?? "ABERTO";
+    var estadoInicial = string.IsNullOrWhiteSpace(request.EstadoInicial)
+        ? definicao.Estados[0]
+        : NormalizeBusinessKey(request.EstadoInicial);
     if (string.IsNullOrWhiteSpace(entidade) || string.IsNullOrWhiteSpace(registroChave))
     {
         return Results.BadRequest(ApiResponse<WorkflowInstanciaDto>.Erro("Entidade e registro sao obrigatorios."));
+    }
+    if (!string.Equals(entidade, definicao.Entidade, StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(ApiResponse<WorkflowInstanciaDto>.Erro("A entidade da instancia nao corresponde a entidade da definicao."));
+    }
+    if (registroChave.Length > 120)
+    {
+        return Results.BadRequest(ApiResponse<WorkflowInstanciaDto>.Erro("A chave do registro deve ter no maximo 120 caracteres."));
+    }
+    if (!definicao.Estados.Contains(estadoInicial, StringComparer.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(ApiResponse<WorkflowInstanciaDto>.Erro("O estado inicial nao pertence a definicao do workflow."));
+    }
+
+    var currentUserId = GetCurrentUserId(principal);
+    if (currentUserId <= 0)
+    {
+        return Results.Unauthorized();
+    }
+
+    var duplicateCount = await db.Database.SqlQueryRaw<int>(
+        """
+        SELECT COUNT(*) AS Value
+        FROM sys_workflow_instancias
+        WHERE tenant_id = {0}
+          AND definicao_id = {1}
+          AND entidade = {2}
+          AND registro_chave = {3}
+          AND is_deleted = 0
+        """,
+        tenantContext.TenantId.ToString(),
+        request.DefinicaoId.ToString(),
+        entidade,
+        registroChave)
+        .SingleAsync(ct);
+    if (duplicateCount > 0)
+    {
+        return Results.Conflict(ApiResponse<WorkflowInstanciaDto>.Erro("Ja existe uma instancia ativa para este registro e definicao."));
     }
 
     var id = Guid.NewGuid().ToString();
@@ -1730,22 +1906,27 @@ app.MapPost("/api/workflows/instancias", [Authorize(Policy = "Gerente")] async (
         INSERT INTO sys_workflow_instancias
             (id, tenant_id, definicao_id, entidade, registro_chave, estado_atual, solicitante_user_id, observacao, created_at, updated_at)
         VALUES
-            ({id}, {tenantContext.TenantId.ToString()}, {request.DefinicaoId.ToString()}, {entidade}, {registroChave}, {estadoInicial}, {GetCurrentUserId(principal)}, {TrimOrNull(request.Observacao)}, UTC_TIMESTAMP(), UTC_TIMESTAMP())
+            ({id}, {tenantContext.TenantId.ToString()}, {request.DefinicaoId.ToString()}, {entidade}, {registroChave}, {estadoInicial}, {currentUserId}, {TrimOrNull(request.Observacao)}, UTC_TIMESTAMP(), UTC_TIMESTAMP())
         """,
         ct);
 
-    var response = new WorkflowInstanciaDto(id, request.DefinicaoId.ToString(), entidade, registroChave, estadoInicial, GetCurrentUserId(principal), DateTime.UtcNow, DateTime.UtcNow);
+    var response = new WorkflowInstanciaDto(id, request.DefinicaoId.ToString(), entidade, registroChave, estadoInicial, currentUserId, DateTime.UtcNow, DateTime.UtcNow);
     return Results.Created($"/api/workflows/instancias/{id}", ApiResponse<WorkflowInstanciaDto>.Ok(response, "Instancia de workflow aberta."));
 })
 .WithName("WorkflowsInstanciasCriar");
 
-app.MapGet("/api/workflows/instancias/{id:guid}", [Authorize(Policy = "Gerente")] async (
-    Guid id,
+app.MapGet("/api/workflows/instancias", [Authorize(Policy = "Gerente")] async (
+    string? entidade,
+    string? estado,
+    string? registroChave,
     NexumDbContext db,
     ITenantContext tenantContext,
     CancellationToken ct) =>
 {
-    var instancia = await db.Database.SqlQueryRaw<WorkflowInstanciaDto>(
+    var entidadeFiltro = NormalizeBusinessKey(entidade);
+    var estadoFiltro = NormalizeBusinessKey(estado);
+    var registroFiltro = TrimOrNull(registroChave);
+    var instancias = await db.Database.SqlQueryRaw<WorkflowInstanciaDto>(
         """
         SELECT
             CAST(id AS CHAR) AS Id,
@@ -1757,17 +1938,71 @@ app.MapGet("/api/workflows/instancias/{id:guid}", [Authorize(Policy = "Gerente")
             created_at AS CriadoEm,
             updated_at AS AtualizadoEm
         FROM sys_workflow_instancias
-        WHERE id = {0} AND tenant_id = {1} AND is_deleted = 0
+        WHERE tenant_id = {0}
+          AND is_deleted = 0
+          AND ({1} = '' OR entidade = {1})
+          AND ({2} = '' OR estado_atual = {2})
+          AND ({3} IS NULL OR registro_chave = {3})
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT 500
         """,
-        id.ToString(),
-        tenantContext.TenantId.ToString())
-        .FirstOrDefaultAsync(ct);
+        tenantContext.TenantId.ToString(),
+        entidadeFiltro,
+        estadoFiltro,
+        (object?)registroFiltro ?? DBNull.Value)
+        .ToListAsync(ct);
+
+    return Results.Ok(ApiResponse<List<WorkflowInstanciaDto>>.Ok(instancias, "Instancias de workflow carregadas.", instancias.Count));
+})
+.WithName("WorkflowsInstanciasListar");
+
+app.MapGet("/api/workflows/instancias/{id:guid}", [Authorize(Policy = "Gerente")] async (
+    Guid id,
+    NexumDbContext db,
+    ITenantContext tenantContext,
+    CancellationToken ct) =>
+{
+    var instancia = await LoadWorkflowInstanceAsync(db, tenantContext.TenantId, id, ct);
 
     return instancia is null
         ? Results.NotFound(ApiResponse<WorkflowInstanciaDto>.Erro("Instancia de workflow nao encontrada."))
         : Results.Ok(ApiResponse<WorkflowInstanciaDto>.Ok(instancia, "Instancia de workflow carregada."));
 })
 .WithName("WorkflowsInstanciasObter");
+
+app.MapGet("/api/workflows/instancias/{id:guid}/transicoes", [Authorize(Policy = "Gerente")] async (
+    Guid id,
+    NexumDbContext db,
+    ITenantContext tenantContext,
+    CancellationToken ct) =>
+{
+    var instancia = await LoadWorkflowInstanceAsync(db, tenantContext.TenantId, id, ct);
+    if (instancia is null)
+    {
+        return Results.NotFound(ApiResponse<List<WorkflowTransicaoDto>>.Erro("Instancia de workflow nao encontrada."));
+    }
+
+    var transicoes = await db.Database.SqlQueryRaw<WorkflowTransicaoDto>(
+        """
+        SELECT
+            CAST(id AS CHAR) AS Id,
+            CAST(instancia_id AS CHAR) AS InstanciaId,
+            estado_origem AS EstadoOrigem,
+            estado_destino AS EstadoDestino,
+            acao AS Acao,
+            usuario_id AS UsuarioId,
+            created_at AS CriadoEm
+        FROM sys_workflow_transicoes
+        WHERE instancia_id = {0} AND tenant_id = {1}
+        ORDER BY created_at, id
+        """,
+        id.ToString(),
+        tenantContext.TenantId.ToString())
+        .ToListAsync(ct);
+
+    return Results.Ok(ApiResponse<List<WorkflowTransicaoDto>>.Ok(transicoes, "Historico de transicoes carregado.", transicoes.Count));
+})
+.WithName("WorkflowsInstanciasTransicoesListar");
 
 app.MapPost("/api/workflows/instancias/{id:guid}/transicoes", [Authorize(Policy = "Gerente")] async (
     Guid id,
@@ -1777,59 +2012,135 @@ app.MapPost("/api/workflows/instancias/{id:guid}/transicoes", [Authorize(Policy 
     ClaimsPrincipal principal,
     CancellationToken ct) =>
 {
-    var destino = TrimOrNull(request.EstadoDestino);
-    var acao = TrimOrNull(request.Acao) ?? "TRANSICAO";
+    var destino = NormalizeBusinessKey(request.EstadoDestino);
+    var acaoSolicitada = NormalizeBusinessKey(request.Acao);
     if (string.IsNullOrWhiteSpace(destino))
     {
         return Results.BadRequest(ApiResponse<WorkflowTransicaoDto>.Erro("Estado de destino e obrigatorio."));
     }
 
-    var instancia = await db.Database.SqlQueryRaw<WorkflowInstanciaDto>(
-        """
-        SELECT
-            CAST(id AS CHAR) AS Id,
-            CAST(definicao_id AS CHAR) AS DefinicaoId,
-            entidade AS Entidade,
-            registro_chave AS RegistroChave,
-            estado_atual AS EstadoAtual,
-            solicitante_user_id AS SolicitanteUserId,
-            created_at AS CriadoEm,
-            updated_at AS AtualizadoEm
-        FROM sys_workflow_instancias
-        WHERE id = {0} AND tenant_id = {1} AND is_deleted = 0
-        """,
-        id.ToString(),
-        tenantContext.TenantId.ToString())
-        .FirstOrDefaultAsync(ct);
-
-    if (instancia is null)
+    var executionStrategy = db.Database.CreateExecutionStrategy();
+    return await executionStrategy.ExecuteAsync(async () =>
     {
-        return Results.NotFound(ApiResponse<WorkflowTransicaoDto>.Erro("Instancia de workflow nao encontrada."));
-    }
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+        var instancia = await LoadWorkflowInstanceAsync(db, tenantContext.TenantId, id, ct);
+        if (instancia is null)
+        {
+            await transaction.RollbackAsync(ct);
+            return (IResult)Results.NotFound(ApiResponse<WorkflowTransicaoDto>.Erro("Instancia de workflow nao encontrada."));
+        }
 
-    var transicaoId = Guid.NewGuid().ToString();
-    await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        INSERT INTO sys_workflow_transicoes
-            (id, tenant_id, instancia_id, estado_origem, estado_destino, acao, usuario_id, observacao, created_at)
-        VALUES
-            ({transicaoId}, {tenantContext.TenantId.ToString()}, {id.ToString()}, {instancia.EstadoAtual}, {destino}, {acao}, {GetCurrentUserId(principal)}, {TrimOrNull(request.Observacao)}, UTC_TIMESTAMP())
-        """,
-        ct);
+        if (!Guid.TryParse(instancia.DefinicaoId, out var definicaoId))
+        {
+            await transaction.RollbackAsync(ct);
+            return Results.Problem(
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Instancia de workflow inconsistente",
+                detail: "O identificador da definicao vinculada nao possui formato UUID valido.");
+        }
 
-    await db.Database.ExecuteSqlInterpolatedAsync(
+        var definicaoDto = await LoadWorkflowDefinitionAsync(db, tenantContext.TenantId, definicaoId, ct);
+        if (definicaoDto is null || !definicaoDto.Ativo)
+        {
+            await transaction.RollbackAsync(ct);
+            return Results.Conflict(ApiResponse<WorkflowTransicaoDto>.Erro("A definicao vinculada a instancia nao esta ativa."));
+        }
+        if (!TryParseWorkflowDefinition(definicaoDto, out var definicao, out var definitionError) || definicao is null)
+        {
+            await transaction.RollbackAsync(ct);
+            return Results.Problem(
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Definicao de workflow inconsistente",
+                detail: definitionError);
+        }
+
+        var candidatas = definicao.Transicoes
+            .Where(regra => string.Equals(regra.Origem, instancia.EstadoAtual, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(regra.Destino, destino, StringComparison.OrdinalIgnoreCase)
+                && (string.IsNullOrWhiteSpace(acaoSolicitada) || string.Equals(regra.Acao, acaoSolicitada, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        if (candidatas.Count == 0)
+        {
+            await transaction.RollbackAsync(ct);
+            return Results.Conflict(ApiResponse<WorkflowTransicaoDto>.Erro(
+                $"Nao existe transicao configurada de {instancia.EstadoAtual} para {destino}."));
+        }
+        if (candidatas.Count > 1)
+        {
+            await transaction.RollbackAsync(ct);
+            return Results.BadRequest(ApiResponse<WorkflowTransicaoDto>.Erro("Informe a acao para selecionar uma transicao sem ambiguidade."));
+        }
+
+        var regraSelecionada = candidatas[0];
+        if (!IsWorkflowProfileAuthorized(principal, regraSelecionada.PerfisAutorizados))
+        {
+            await transaction.RollbackAsync(ct);
+            return Results.Forbid();
+        }
+
+        var currentUserId = GetCurrentUserId(principal);
+        if (currentUserId <= 0)
+        {
+            await transaction.RollbackAsync(ct);
+            return Results.Unauthorized();
+        }
+
+        var affected = await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE sys_workflow_instancias
+            SET estado_atual = {regraSelecionada.Destino},
+                updated_at = UTC_TIMESTAMP()
+            WHERE id = {id.ToString()}
+              AND tenant_id = {tenantContext.TenantId.ToString()}
+              AND estado_atual = {instancia.EstadoAtual}
+              AND is_deleted = 0
+            """,
+            ct);
+        if (affected != 1)
+        {
+            await transaction.RollbackAsync(ct);
+            return Results.Conflict(ApiResponse<WorkflowTransicaoDto>.Erro("A instancia foi alterada por outra operacao. Recarregue o estado atual."));
+        }
+
+        var transicaoId = Guid.NewGuid().ToString();
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            INSERT INTO sys_workflow_transicoes
+                (id, tenant_id, instancia_id, estado_origem, estado_destino, acao, usuario_id, observacao, created_at)
+            VALUES
+                ({transicaoId}, {tenantContext.TenantId.ToString()}, {id.ToString()}, {instancia.EstadoAtual}, {regraSelecionada.Destino}, {regraSelecionada.Acao}, {currentUserId}, {TrimOrNull(request.Observacao)}, UTC_TIMESTAMP())
+            """,
+            ct);
+
+        await transaction.CommitAsync(ct);
+
+        var response = new WorkflowTransicaoDto(transicaoId, id.ToString(), instancia.EstadoAtual, regraSelecionada.Destino, regraSelecionada.Acao, currentUserId, DateTime.UtcNow);
+        return Results.Ok(ApiResponse<WorkflowTransicaoDto>.Ok(response, "Transicao de workflow registrada."));
+    });
+})
+.WithName("WorkflowsInstanciasTransicionar");
+
+app.MapDelete("/api/workflows/instancias/{id:guid}", [Authorize(Policy = "Gerente")] async (
+    Guid id,
+    NexumDbContext db,
+    ITenantContext tenantContext,
+    CancellationToken ct) =>
+{
+    var affected = await db.Database.ExecuteSqlInterpolatedAsync(
         $"""
         UPDATE sys_workflow_instancias
-        SET estado_atual = {destino},
+        SET is_deleted = 1,
+            deleted_at = UTC_TIMESTAMP(),
             updated_at = UTC_TIMESTAMP()
         WHERE id = {id.ToString()} AND tenant_id = {tenantContext.TenantId.ToString()} AND is_deleted = 0
         """,
         ct);
 
-    var response = new WorkflowTransicaoDto(transicaoId, id.ToString(), instancia.EstadoAtual, destino, acao, GetCurrentUserId(principal), DateTime.UtcNow);
-    return Results.Ok(ApiResponse<WorkflowTransicaoDto>.Ok(response, "Transicao de workflow registrada."));
+    return affected == 0
+        ? Results.NotFound(ApiResponse<object>.Erro("Instancia de workflow nao encontrada."))
+        : Results.NoContent();
 })
-.WithName("WorkflowsInstanciasTransicionar");
+.WithName("WorkflowsInstanciasExcluir");
 
 app.MapPost("/api/sistema/validar-token", async (
     ValidacaoTokenRequest request,
@@ -11243,6 +11554,222 @@ static Guid? GetCurrentUserGuidOrNull(ClaimsPrincipal principal)
     return Guid.TryParse(idRaw, out var id) && id != Guid.Empty ? id : null;
 }
 
+static async Task<WorkflowDefinicaoDto?> LoadWorkflowDefinitionAsync(
+    NexumDbContext db,
+    Guid tenantId,
+    Guid definitionId,
+    CancellationToken ct)
+{
+    var definitions = await db.Database.SqlQueryRaw<WorkflowDefinicaoDto>(
+        """
+        SELECT
+            CAST(id AS CHAR) AS Id,
+            entidade AS Entidade,
+            codigo AS Codigo,
+            nome AS Nome,
+            estados_json AS EstadosJson,
+            transicoes_json AS TransicoesJson,
+            ativo AS Ativo,
+            created_at AS CriadoEm,
+            updated_at AS AtualizadoEm
+        FROM sys_workflow_definicoes
+        WHERE id = {0} AND tenant_id = {1} AND is_deleted = 0
+        """,
+        definitionId.ToString(),
+        tenantId.ToString())
+        .ToListAsync(ct);
+    return definitions.SingleOrDefault();
+}
+
+static async Task<WorkflowInstanciaDto?> LoadWorkflowInstanceAsync(
+    NexumDbContext db,
+    Guid tenantId,
+    Guid instanceId,
+    CancellationToken ct)
+{
+    var instances = await db.Database.SqlQueryRaw<WorkflowInstanciaDto>(
+        """
+        SELECT
+            CAST(id AS CHAR) AS Id,
+            CAST(definicao_id AS CHAR) AS DefinicaoId,
+            entidade AS Entidade,
+            registro_chave AS RegistroChave,
+            estado_atual AS EstadoAtual,
+            solicitante_user_id AS SolicitanteUserId,
+            created_at AS CriadoEm,
+            updated_at AS AtualizadoEm
+        FROM sys_workflow_instancias
+        WHERE id = {0} AND tenant_id = {1} AND is_deleted = 0
+        """,
+        instanceId.ToString(),
+        tenantId.ToString())
+        .ToListAsync(ct);
+    return instances.SingleOrDefault();
+}
+
+static WorkflowDefinicaoNormalizada? NormalizeWorkflowDefinition(
+    WorkflowDefinicaoRequest request,
+    out string validationError)
+{
+    validationError = string.Empty;
+    var entidade = NormalizeBusinessKey(request.Entidade);
+    var codigo = NormalizeBusinessKey(request.Codigo);
+    var nome = TrimOrNull(request.Nome);
+    if (string.IsNullOrWhiteSpace(entidade) || string.IsNullOrWhiteSpace(codigo) || string.IsNullOrWhiteSpace(nome))
+    {
+        validationError = "Entidade, codigo e nome sao obrigatorios.";
+        return null;
+    }
+    if (entidade.Length > 120 || codigo.Length > 100 || nome.Length > 180)
+    {
+        validationError = "Entidade, codigo ou nome excede o limite permitido.";
+        return null;
+    }
+
+    var estados = (request.Estados ?? [])
+        .Select(NormalizeBusinessKey)
+        .Where(item => !string.IsNullOrWhiteSpace(item))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToList();
+    if (estados.Count < 2 || estados.Count > 50)
+    {
+        validationError = "A definicao deve possuir entre 2 e 50 estados distintos.";
+        return null;
+    }
+    if (estados.Any(estado => estado.Length > 80))
+    {
+        validationError = "Cada estado deve ter no maximo 80 caracteres.";
+        return null;
+    }
+
+    var transicoes = new List<WorkflowTransicaoRegraDto>();
+    foreach (var regra in request.Transicoes ?? [])
+    {
+        var origem = NormalizeBusinessKey(regra.Origem);
+        var destino = NormalizeBusinessKey(regra.Destino);
+        var acao = NormalizeBusinessKey(regra.Acao);
+        if (string.IsNullOrWhiteSpace(origem) || string.IsNullOrWhiteSpace(destino) || string.IsNullOrWhiteSpace(acao))
+        {
+            validationError = "Toda transicao deve informar origem, destino e acao.";
+            return null;
+        }
+        if (!estados.Contains(origem, StringComparer.OrdinalIgnoreCase)
+            || !estados.Contains(destino, StringComparer.OrdinalIgnoreCase))
+        {
+            validationError = $"A transicao {origem} -> {destino} referencia um estado inexistente.";
+            return null;
+        }
+        if (acao.Length > 80)
+        {
+            validationError = "Cada acao de transicao deve ter no maximo 80 caracteres.";
+            return null;
+        }
+
+        var perfis = (regra.PerfisAutorizados ?? [])
+            .Select(TrimOrNull)
+            .Where(perfil => !string.IsNullOrWhiteSpace(perfil))
+            .Select(perfil => perfil!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (perfis.Any(perfil => perfil.Length > 80))
+        {
+            validationError = "Cada perfil autorizado deve ter no maximo 80 caracteres.";
+            return null;
+        }
+
+        transicoes.Add(new WorkflowTransicaoRegraDto(origem, destino, acao, perfis.Count == 0 ? null : perfis));
+    }
+
+    if (transicoes.Count == 0 || transicoes.Count > 250)
+    {
+        validationError = "A definicao deve possuir entre 1 e 250 transicoes.";
+        return null;
+    }
+
+    var duplicateTransition = transicoes
+        .GroupBy(regra => $"{regra.Origem}\u001f{regra.Destino}\u001f{regra.Acao}", StringComparer.OrdinalIgnoreCase)
+        .FirstOrDefault(group => group.Count() > 1);
+    if (duplicateTransition is not null)
+    {
+        validationError = "A definicao possui transicoes duplicadas para a mesma origem, destino e acao.";
+        return null;
+    }
+
+    var estadosAlcancaveis = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { estados[0] };
+    var pendentes = new Queue<string>();
+    pendentes.Enqueue(estados[0]);
+    while (pendentes.TryDequeue(out var origemAtual))
+    {
+        foreach (var destino in transicoes
+                     .Where(regra => string.Equals(regra.Origem, origemAtual, StringComparison.OrdinalIgnoreCase))
+                     .Select(regra => regra.Destino))
+        {
+            if (estadosAlcancaveis.Add(destino))
+            {
+                pendentes.Enqueue(destino);
+            }
+        }
+    }
+
+    var estadosInalcancaveis = estados.Where(estado => !estadosAlcancaveis.Contains(estado)).ToList();
+    if (estadosInalcancaveis.Count > 0)
+    {
+        validationError = $"Estados sem caminho a partir do estado inicial {estados[0]}: {string.Join(", ", estadosInalcancaveis)}.";
+        return null;
+    }
+
+    return new WorkflowDefinicaoNormalizada(entidade, codigo, nome, estados, transicoes, request.Ativo);
+}
+
+static bool TryParseWorkflowDefinition(
+    WorkflowDefinicaoDto definition,
+    out WorkflowDefinicaoNormalizada? normalized,
+    out string validationError)
+{
+    normalized = null;
+    try
+    {
+        var estados = JsonSerializer.Deserialize<List<string>>(definition.EstadosJson);
+        var transicoes = JsonSerializer.Deserialize<List<WorkflowTransicaoRegraDto>>(definition.TransicoesJson);
+        if (estados is null || transicoes is null)
+        {
+            validationError = "Os estados ou as transicoes armazenados nao possuem formato valido.";
+            return false;
+        }
+
+        normalized = NormalizeWorkflowDefinition(
+            new WorkflowDefinicaoRequest(
+                definition.Entidade,
+                definition.Codigo,
+                definition.Nome,
+                estados,
+                transicoes,
+                definition.Ativo),
+            out validationError);
+        return normalized is not null;
+    }
+    catch (JsonException ex)
+    {
+        validationError = $"JSON de workflow invalido: {ex.Message}";
+        return false;
+    }
+}
+
+static bool IsWorkflowProfileAuthorized(ClaimsPrincipal principal, IReadOnlyCollection<string>? authorizedProfiles)
+{
+    if (authorizedProfiles is null || authorizedProfiles.Count == 0)
+    {
+        return true;
+    }
+
+    var currentProfiles = principal.Claims
+        .Where(claim => claim.Type == ClaimTypes.Role || claim.Type == "perfil")
+        .Select(claim => claim.Value)
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    return authorizedProfiles.Any(currentProfiles.Contains);
+}
+
 static UsuarioAcessoDto ToUsuarioAcessoDto(Usuario usuario) =>
     new(
         usuario.Id,
@@ -17404,13 +17931,21 @@ public sealed record WorkflowDefinicaoRequest(
     List<WorkflowTransicaoRegraDto> Transicoes,
     bool Ativo);
 
+public sealed record WorkflowDefinicaoNormalizada(
+    string Entidade,
+    string Codigo,
+    string Nome,
+    List<string> Estados,
+    List<WorkflowTransicaoRegraDto> Transicoes,
+    bool Ativo);
+
 public sealed record WorkflowInstanciaDto(
     string Id,
     string DefinicaoId,
     string Entidade,
     string RegistroChave,
     string EstadoAtual,
-    int SolicitanteUserId,
+    int? SolicitanteUserId,
     DateTime CriadoEm,
     DateTime AtualizadoEm);
 
@@ -17427,7 +17962,7 @@ public sealed record WorkflowTransicaoDto(
     string EstadoOrigem,
     string EstadoDestino,
     string Acao,
-    int UsuarioId,
+    int? UsuarioId,
     DateTime CriadoEm);
 
 public sealed record WorkflowTransicaoRequest(
