@@ -65,15 +65,21 @@ public class Usuario
     [MaxLength(255)]
     public string? TokenRefresh { get; set; }
 
+    [Column("token_refresh_expira_em")]
+    public DateTime? TokenRefreshExpiraEm { get; set; }
+
     [Column("mfa_habilitado")]
     public bool MfaHabilitado { get; set; }
 
     [Column("mfa_secret")]
-    [MaxLength(64)]
+    [MaxLength(1024)]
     public string? MfaSecret { get; set; }
 
     [Column("mfa_confirmado_em")]
     public DateTime? MfaConfirmadoEm { get; set; }
+
+    [Column("mfa_ultimo_passo")]
+    public long? MfaUltimoPasso { get; set; }
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

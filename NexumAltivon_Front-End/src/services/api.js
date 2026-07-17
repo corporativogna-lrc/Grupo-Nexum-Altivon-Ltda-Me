@@ -15,6 +15,7 @@ const RUNTIME_URL_TTL_MS = 30 * 1000;
 
 let runtimeApiUrlPromise = null;
 let runtimeApiUrlResolvedAt = 0;
+let refreshSessionPromise = null;
 const apiHealthCache = new Map();
 
 const normalizeApiUrl = (value) => {
@@ -221,6 +222,33 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
+const refreshSession = async () => {
+  const refreshToken = localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
+  const accessTokenAtual = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+  if (!refreshToken || !accessTokenAtual) {
+    throw new Error('Sessão sem credenciais de renovação. Entre novamente.');
+  }
+
+  const runtimeApiBaseUrl = await getRuntimeApiBaseUrl();
+  const response = await axios.post(`${runtimeApiBaseUrl}/api/auth/refresh`, {
+    token: accessTokenAtual,
+    access_token: accessTokenAtual,
+    refresh_token: refreshToken,
+    refreshToken,
+  });
+
+  const payload = unwrapApiData(response.data) || {};
+  const accessToken = payload.access_token || payload.accessToken || payload.token || payload.Token;
+  const nextRefreshToken = payload.refresh_token || payload.refreshToken || payload.RefreshToken;
+  if (!accessToken || !nextRefreshToken) {
+    throw new Error('A API não retornou o par de tokens rotacionado.');
+  }
+
+  localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
+  localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, nextRefreshToken);
+  return accessToken;
+};
+
 api.interceptors.response.use(
   (response) => ({
     ...response,
@@ -236,34 +264,20 @@ api.interceptors.response.use(
       return api(originalRequest);
     }
 
-    if (error.response?.status === HTTP_UNAUTHORIZED && originalRequest && !originalRequest._retry) {
+    if (error.response?.status === HTTP_UNAUTHORIZED
+      && originalRequest
+      && !originalRequest._retry
+      && !String(originalRequest.url || '').includes('/auth/refresh')) {
       originalRequest._retry = true;
 
       try {
-        const refreshToken = localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
-        if (!refreshToken) {
-          return Promise.reject(error);
+        if (!refreshSessionPromise) {
+          refreshSessionPromise = refreshSession().finally(() => {
+            refreshSessionPromise = null;
+          });
         }
-
-        const runtimeApiBaseUrl = await getRuntimeApiBaseUrl();
-        const accessTokenAtual = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-        const response = await axios.post(`${runtimeApiBaseUrl}/api/auth/refresh`, {
-          token: accessTokenAtual,
-          access_token: accessTokenAtual,
-          refresh_token: refreshToken,
-          refreshToken,
-        });
-
-        const payload = unwrapApiData(response.data) || {};
-        const accessToken = payload.access_token || payload.accessToken || payload.token || payload.Token;
-        const nextRefreshToken = payload.refresh_token || payload.refreshToken || payload.RefreshToken || refreshToken;
-
-        if (!accessToken) {
-          return Promise.reject(error);
-        }
-
-        localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
-        localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, nextRefreshToken);
+        const accessToken = await refreshSessionPromise;
+        originalRequest.headers = originalRequest.headers || {};
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
 
         return api(originalRequest);

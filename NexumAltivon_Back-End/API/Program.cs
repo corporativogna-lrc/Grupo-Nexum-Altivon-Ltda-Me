@@ -86,6 +86,11 @@ if (Encoding.UTF8.GetByteCount(secretKey) < 32)
 }
 var issuer = jwtSettings["Issuer"] ?? "NexumAltivon.API";
 var audience = jwtSettings["Audience"] ?? "NexumAltivon.Admin";
+var refreshTokenExpirationDays = jwtSettings.GetValue("RefreshTokenExpirationDays", 7);
+if (refreshTokenExpirationDays is < 1 or > 90)
+{
+    throw new InvalidOperationException("JwtSettings:RefreshTokenExpirationDays deve estar entre 1 e 90 dias.");
+}
 var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
 
 var connectionString = ResolveConfiguredConnectionString(builder.Configuration, "DefaultConnection", "NexumDb");
@@ -266,9 +271,26 @@ builder.Services.AddScoped<INotificacaoService, NotificacaoService>();
 builder.Services.AddScoped<IAssistenteIaService, AssistenteIaService>();
 builder.Services.AddScoped<IAnexoStorageService, AnexoStorageService>();
 
-builder.Services
+var defaultDataProtectionKeysPath = builder.Environment.IsProduction()
+    ? Directory.GetParent(builder.Environment.ContentRootPath)?.FullName
+    : Path.GetTempPath();
+var configuredDataProtectionKeysPath = TrimOrNull(builder.Configuration["DataProtection:KeysPath"]);
+var dataProtectionKeysPath = configuredDataProtectionKeysPath is null
+    ? defaultDataProtectionKeysPath
+    : Path.GetFullPath(configuredDataProtectionKeysPath, builder.Environment.ContentRootPath);
+if (string.IsNullOrWhiteSpace(dataProtectionKeysPath) || !Directory.Exists(dataProtectionKeysPath))
+{
+    throw new InvalidOperationException($"Diretorio persistente de Data Protection inexistente: {dataProtectionKeysPath ?? "nao_resolvido"}. Configure DataProtection__KeysPath com um diretorio existente.");
+}
+
+var dataProtectionBuilder = builder.Services
     .AddDataProtection()
-    .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(Path.GetTempPath(), "nexum-altivon-api-keys")));
+    .SetApplicationName("GenesisGest.Net.v1.1.5")
+    .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath));
+if (OperatingSystem.IsWindows())
+{
+    dataProtectionBuilder.ProtectKeysWithDpapi(protectToLocalMachine: true);
+}
 
 Console.WriteLine("[NexumStartup] Montando aplicacao.");
 var app = builder.Build();
@@ -1214,9 +1236,9 @@ app.MapGet("/", (IHostEnvironment environment) =>
 
 app.MapPost("/api/auth/login", async (
     LoginRequest request,
-    IConfiguration configuration,
-    IHostEnvironment environment,
     NexumDbContext db,
+    IDataProtectionProvider dataProtectionProvider,
+    ILoggerFactory loggerFactory,
     CancellationToken ct) =>
 {
     var normalizedEmail = NormalizeEmail(request.Email);
@@ -1225,43 +1247,78 @@ app.MapPost("/api/auth/login", async (
         return Results.Unauthorized();
     }
 
-    var expirationHours = configuration.GetValue("JwtSettings:ExpirationHours", 24);
+    var expirationHours = builder.Configuration.GetValue("JwtSettings:ExpirationHours", 24);
+    var now = DateTime.UtcNow;
+    var refreshExpiresAt = now.AddDays(refreshTokenExpirationDays);
 
     var usuario = await db.Usuarios
         .FirstOrDefaultAsync(item => item.Email == normalizedEmail && item.Ativo, ct);
 
     if (usuario is not null && BCrypt.Net.BCrypt.Verify(request.Senha, usuario.SenhaHash))
     {
-        if (usuario.MfaHabilitado && !ValidateTotpCode(usuario.MfaSecret, request.MfaCode, DateTimeOffset.UtcNow))
+        long? matchedTimestep = null;
+        if (usuario.MfaHabilitado)
         {
-            return Results.BadRequest(ApiResponse<LoginResponse>.Erro("MFA_REQUIRED: informe um codigo MFA valido para concluir o login."));
+            if (!TryUnprotectMfaSecret(usuario.MfaSecret, dataProtectionProvider, out var mfaSecret))
+            {
+                loggerFactory.CreateLogger("AuthMfa").LogError(
+                    "Segredo MFA do usuario {UsuarioId} nao pode ser decifrado com o chaveiro persistente atual.",
+                    usuario.Id);
+                return Results.Problem(
+                    "A configuracao MFA deste usuario nao pode ser lida. O administrador deve reiniciar o cadastro MFA.",
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+
+            if (!TryValidateTotpCode(mfaSecret, request.MfaCode, DateTimeOffset.UtcNow, usuario.MfaUltimoPasso, out var validatedTimestep))
+            {
+                return Results.BadRequest(ApiResponse<LoginResponse>.Erro("MFA_REQUIRED: informe um codigo MFA valido, ainda nao utilizado, para concluir o login."));
+            }
+
+            matchedTimestep = validatedTimestep;
         }
 
-        usuario.UltimoLogin = DateTime.UtcNow;
-        usuario.TokenRefresh = GenerateRefreshToken();
-        usuario.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
+        var refreshToken = GenerateRefreshToken();
+        var refreshTokenHash = ComputeSha256Hash(refreshToken);
+        if (matchedTimestep.HasValue)
+        {
+            var updated = await db.Usuarios
+                .Where(item => item.Id == usuario.Id
+                    && item.Ativo
+                    && (item.MfaUltimoPasso == null || item.MfaUltimoPasso < matchedTimestep.Value))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.MfaUltimoPasso, matchedTimestep.Value)
+                    .SetProperty(item => item.UltimoLogin, now)
+                    .SetProperty(item => item.TokenRefresh, refreshTokenHash)
+                    .SetProperty(item => item.TokenRefreshExpiraEm, refreshExpiresAt)
+                    .SetProperty(item => item.UpdatedAt, now), ct);
+            if (updated != 1)
+            {
+                return Results.BadRequest(ApiResponse<LoginResponse>.Erro("MFA_REQUIRED: o codigo MFA informado ja foi utilizado."));
+            }
+        }
+        else
+        {
+            usuario.UltimoLogin = now;
+            usuario.TokenRefresh = refreshTokenHash;
+            usuario.TokenRefreshExpiraEm = refreshExpiresAt;
+            usuario.UpdatedAt = now;
+            await db.SaveChangesAsync(ct);
+        }
 
         var perfil = usuario.Perfil.ToString();
-        var usuarioResponse = CreateLoginResponse(usuario.Id, usuario.Nome, usuario.Email, perfil, issuer, audience, signingKey, expirationHours, usuario.TokenRefresh);
+        var usuarioResponse = CreateLoginResponse(
+            usuario.Id,
+            usuario.Nome,
+            usuario.Email,
+            perfil,
+            db.CurrentTenantId,
+            "usuario",
+            issuer,
+            audience,
+            signingKey,
+            expirationHours,
+            refreshToken);
         return Results.Ok(ApiResponse<LoginResponse>.Ok(usuarioResponse, "Login realizado com sucesso."));
-    }
-
-    if (!environment.IsProduction())
-    {
-        var admin = configuration.GetSection("AdminUser");
-        var configuredEmail = NormalizeEmail(admin["Email"] ?? "admin@nexumaltivon.com");
-        var configuredPassword = admin["Password"];
-        var configuredName = admin["Name"] ?? "Administrador Nexum";
-        var configuredRole = admin["Role"] ?? "Gerente";
-
-        if (IsConfiguredSecret(configuredPassword)
-            && string.Equals(normalizedEmail, configuredEmail, StringComparison.OrdinalIgnoreCase)
-            && request.Senha == configuredPassword)
-        {
-            var adminResponse = CreateLoginResponse(1, configuredName, configuredEmail!, configuredRole, issuer, audience, signingKey, expirationHours);
-            return Results.Ok(ApiResponse<LoginResponse>.Ok(adminResponse, "Login administrativo de desenvolvimento realizado com sucesso."));
-        }
     }
 
     var cliente = await db.Clientes
@@ -1274,11 +1331,25 @@ app.MapPost("/api/auth/login", async (
             return Results.BadRequest(ApiResponse<LoginResponse>.Erro("Seu cadastro ainda não foi confirmado. Verifique seu e-mail antes de entrar."));
         }
 
-        cliente.UltimoAcesso = DateTime.UtcNow;
-        cliente.UpdatedAt = DateTime.UtcNow;
+        var refreshToken = GenerateRefreshToken();
+        cliente.UltimoAcesso = now;
+        cliente.TokenRefresh = ComputeSha256Hash(refreshToken);
+        cliente.TokenRefreshExpiraEm = refreshExpiresAt;
+        cliente.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
 
-        var clienteResponse = CreateLoginResponse(cliente.Id, cliente.Nome, cliente.Email, "Cliente", issuer, audience, signingKey, expirationHours);
+        var clienteResponse = CreateLoginResponse(
+            cliente.Id,
+            cliente.Nome,
+            cliente.Email,
+            "Cliente",
+            db.CurrentTenantId,
+            "cliente",
+            issuer,
+            audience,
+            signingKey,
+            expirationHours,
+            refreshToken);
         return Results.Ok(ApiResponse<LoginResponse>.Ok(clienteResponse, "Login do cliente realizado com sucesso."));
     }
 
@@ -1289,9 +1360,7 @@ app.MapPost("/api/auth/login", async (
 
 app.MapPost("/api/auth/refresh", async (
     RefreshTokenRequest request,
-    IConfiguration configuration,
-    IServiceProvider services,
-    ILoggerFactory loggerFactory,
+    NexumDbContext db,
     CancellationToken ct) =>
 {
     var token = TrimOrNull(request.ResolveToken());
@@ -1301,51 +1370,123 @@ app.MapPost("/api/auth/refresh", async (
         return Results.BadRequest(ApiResponse<LoginResponse>.Erro("Token e refresh token sao obrigatorios."));
     }
 
-    var expirationHours = configuration.GetValue("JwtSettings:ExpirationHours", 24);
+    var expirationHours = builder.Configuration.GetValue("JwtSettings:ExpirationHours", 24);
     var principal = ValidateExpiredJwtToken(token, issuer, audience, signingKey);
     var email = NormalizeEmail(principal?.FindFirstValue(ClaimTypes.Email) ?? principal?.FindFirstValue(JwtRegisteredClaimNames.Email));
-    if (string.IsNullOrWhiteSpace(email))
+    var subjectType = principal?.FindFirstValue("subject_type");
+    var subjectIdRaw = principal?.FindFirstValue(JwtRegisteredClaimNames.Sub) ?? principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+    var tenantIdRaw = principal?.FindFirstValue("tenant_id");
+    if (string.IsNullOrWhiteSpace(email)
+        || !int.TryParse(subjectIdRaw, NumberStyles.None, CultureInfo.InvariantCulture, out var subjectId)
+        || subjectId <= 0
+        || !Guid.TryParse(tenantIdRaw, out var tenantId)
+        || tenantId == Guid.Empty
+        || subjectType is not ("usuario" or "cliente"))
     {
         return Results.Unauthorized();
     }
 
-    NexumDbContext db;
-    try
+    var now = DateTime.UtcNow;
+    var currentRefreshHash = ComputeSha256Hash(refreshToken);
+    var nextRefreshToken = GenerateRefreshToken();
+    var nextRefreshHash = ComputeSha256Hash(nextRefreshToken);
+    var nextRefreshExpiresAt = now.AddDays(refreshTokenExpirationDays);
+    LoginResponse? response = null;
+
+    if (subjectType == "usuario")
     {
-        db = services.GetRequiredService<NexumDbContext>();
+        var usuario = await db.Usuarios
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Id == subjectId
+                && item.Email == email
+                && item.Ativo
+                && EF.Property<Guid>(item, "TenantId") == tenantId
+                && !EF.Property<bool>(item, "IsDeleted"), ct);
+        if (usuario is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        var updated = await db.Usuarios
+            .IgnoreQueryFilters()
+            .Where(item => item.Id == subjectId
+                && item.Email == email
+                && item.Ativo
+                && item.TokenRefresh == currentRefreshHash
+                && item.TokenRefreshExpiraEm != null
+                && item.TokenRefreshExpiraEm > now
+                && EF.Property<Guid>(item, "TenantId") == tenantId
+                && !EF.Property<bool>(item, "IsDeleted"))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.TokenRefresh, nextRefreshHash)
+                .SetProperty(item => item.TokenRefreshExpiraEm, nextRefreshExpiresAt)
+                .SetProperty(item => item.UpdatedAt, now), ct);
+        if (updated != 1)
+        {
+            return Results.Unauthorized();
+        }
+
+        response = CreateLoginResponse(
+            usuario.Id,
+            usuario.Nome,
+            usuario.Email,
+            usuario.Perfil.ToString(),
+            tenantId,
+            subjectType,
+            issuer,
+            audience,
+            signingKey,
+            expirationHours,
+            nextRefreshToken);
     }
-    catch (Exception ex)
+    else
     {
-        loggerFactory
-            .CreateLogger("AuthRefresh")
-            .LogError(ex, "NexumDbContext indisponivel durante rotacao de refresh token.");
+        var cliente = await db.Clientes
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Id == subjectId
+                && item.Email == email
+                && item.Status == StatusCliente.Ativo
+                && EF.Property<Guid>(item, "TenantId") == tenantId
+                && !EF.Property<bool>(item, "IsDeleted"), ct);
+        if (cliente is null)
+        {
+            return Results.Unauthorized();
+        }
 
-        return Results.Problem(
-            "Banco de dados indisponivel para renovar sessao.",
-            statusCode: StatusCodes.Status503ServiceUnavailable);
+        var updated = await db.Clientes
+            .IgnoreQueryFilters()
+            .Where(item => item.Id == subjectId
+                && item.Email == email
+                && item.Status == StatusCliente.Ativo
+                && item.TokenRefresh == currentRefreshHash
+                && item.TokenRefreshExpiraEm != null
+                && item.TokenRefreshExpiraEm > now
+                && EF.Property<Guid>(item, "TenantId") == tenantId
+                && !EF.Property<bool>(item, "IsDeleted"))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.TokenRefresh, nextRefreshHash)
+                .SetProperty(item => item.TokenRefreshExpiraEm, nextRefreshExpiresAt)
+                .SetProperty(item => item.UpdatedAt, now), ct);
+        if (updated != 1)
+        {
+            return Results.Unauthorized();
+        }
+
+        response = CreateLoginResponse(
+            cliente.Id,
+            cliente.Nome,
+            cliente.Email,
+            "Cliente",
+            tenantId,
+            subjectType,
+            issuer,
+            audience,
+            signingKey,
+            expirationHours,
+            nextRefreshToken);
     }
-
-    var usuario = await db.Usuarios
-        .FirstOrDefaultAsync(item => item.Email == email && item.Ativo && item.TokenRefresh == refreshToken, ct);
-    if (usuario is null)
-    {
-        return Results.Unauthorized();
-    }
-
-    usuario.TokenRefresh = GenerateRefreshToken();
-    usuario.UpdatedAt = DateTime.UtcNow;
-    await db.SaveChangesAsync(ct);
-
-    var response = CreateLoginResponse(
-        usuario.Id,
-        usuario.Nome,
-        usuario.Email,
-        usuario.Perfil.ToString(),
-        issuer,
-        audience,
-        signingKey,
-        expirationHours,
-        usuario.TokenRefresh);
 
     return Results.Ok(ApiResponse<LoginResponse>.Ok(response, "Sessao renovada com sucesso."));
 })
@@ -1358,20 +1499,42 @@ app.MapPost("/api/auth/logout", [Authorize] async (
     CancellationToken ct) =>
 {
     var userId = GetCurrentUserId(principal);
-    if (userId <= 0)
+    var subjectType = principal.FindFirstValue("subject_type");
+    var tenantIdRaw = principal.FindFirstValue("tenant_id");
+    if (userId <= 0
+        || subjectType is not ("usuario" or "cliente")
+        || !Guid.TryParse(tenantIdRaw, out var tenantId)
+        || tenantId == Guid.Empty)
     {
         return Results.Unauthorized();
     }
 
-    var usuario = await db.Usuarios.FirstOrDefaultAsync(item => item.Id == userId && item.Ativo, ct);
-    if (usuario is null)
+    var now = DateTime.UtcNow;
+    var updated = subjectType == "usuario"
+        ? await db.Usuarios
+            .IgnoreQueryFilters()
+            .Where(item => item.Id == userId
+                && item.Ativo
+                && EF.Property<Guid>(item, "TenantId") == tenantId
+                && !EF.Property<bool>(item, "IsDeleted"))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.TokenRefresh, (string?)null)
+                .SetProperty(item => item.TokenRefreshExpiraEm, (DateTime?)null)
+                .SetProperty(item => item.UpdatedAt, now), ct)
+        : await db.Clientes
+            .IgnoreQueryFilters()
+            .Where(item => item.Id == userId
+                && item.Status == StatusCliente.Ativo
+                && EF.Property<Guid>(item, "TenantId") == tenantId
+                && !EF.Property<bool>(item, "IsDeleted"))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.TokenRefresh, (string?)null)
+                .SetProperty(item => item.TokenRefreshExpiraEm, (DateTime?)null)
+                .SetProperty(item => item.UpdatedAt, now), ct);
+    if (updated != 1)
     {
         return Results.Unauthorized();
     }
-
-    usuario.TokenRefresh = null;
-    usuario.UpdatedAt = DateTime.UtcNow;
-    await db.SaveChangesAsync(ct);
 
     return Results.Ok(ApiResponse<object>.Ok(new { encerrado = true }, "Sessao encerrada e refresh token revogado."));
 })
@@ -1381,10 +1544,11 @@ app.MapPost("/api/auth/mfa/enable", [Authorize] async (
     NexumDbContext db,
     ClaimsPrincipal principal,
     IConfiguration configuration,
+    IDataProtectionProvider dataProtectionProvider,
     CancellationToken ct) =>
 {
     var userId = GetCurrentUserId(principal);
-    if (userId <= 0)
+    if (userId <= 0 || !string.Equals(principal.FindFirstValue("subject_type"), "usuario", StringComparison.Ordinal))
     {
         return Results.Unauthorized();
     }
@@ -1395,18 +1559,25 @@ app.MapPost("/api/auth/mfa/enable", [Authorize] async (
         return Results.Unauthorized();
     }
 
-    usuario.MfaSecret = GenerateTotpSecret();
+    if (usuario.MfaHabilitado)
+    {
+        return Results.Conflict(ApiResponse<MfaStatusResponse>.Erro("MFA ja esta ativo para este usuario. A substituicao exige revogacao administrativa explicita."));
+    }
+
+    var rawSecret = GenerateTotpSecret();
+    usuario.MfaSecret = ProtectMfaSecret(rawSecret, dataProtectionProvider);
     usuario.MfaHabilitado = false;
     usuario.MfaConfirmadoEm = null;
+    usuario.MfaUltimoPasso = null;
     usuario.UpdatedAt = DateTime.UtcNow;
     await db.SaveChangesAsync(ct);
 
     var issuerName = Uri.EscapeDataString(configuration["Mfa:Issuer"] ?? "GenesisGest.Net");
     var account = Uri.EscapeDataString(usuario.Email);
-    var otpauth = $"otpauth://totp/{issuerName}:{account}?secret={usuario.MfaSecret}&issuer={issuerName}&digits=6&period=30&algorithm=SHA1";
+    var otpauth = $"otpauth://totp/{issuerName}:{account}?secret={rawSecret}&issuer={issuerName}&digits=6&period=30&algorithm=SHA1";
 
     return Results.Ok(ApiResponse<MfaEnableResponse>.Ok(
-        new MfaEnableResponse(usuario.MfaSecret, otpauth, usuario.MfaHabilitado),
+        new MfaEnableResponse(rawSecret, otpauth, usuario.MfaHabilitado),
         "MFA TOTP preparado. Confirme com /api/auth/mfa/verify para ativar."));
 })
 .WithName("AuthMfaEnable");
@@ -1415,10 +1586,12 @@ app.MapPost("/api/auth/mfa/verify", [Authorize] async (
     MfaVerifyRequest request,
     NexumDbContext db,
     ClaimsPrincipal principal,
+    IDataProtectionProvider dataProtectionProvider,
+    ILoggerFactory loggerFactory,
     CancellationToken ct) =>
 {
     var userId = GetCurrentUserId(principal);
-    if (userId <= 0)
+    if (userId <= 0 || !string.Equals(principal.FindFirstValue("subject_type"), "usuario", StringComparison.Ordinal))
     {
         return Results.Unauthorized();
     }
@@ -1429,18 +1602,41 @@ app.MapPost("/api/auth/mfa/verify", [Authorize] async (
         return Results.BadRequest(ApiResponse<MfaStatusResponse>.Erro("MFA ainda nao foi iniciado para este usuario."));
     }
 
-    if (!ValidateTotpCode(usuario.MfaSecret, request.Codigo, DateTimeOffset.UtcNow))
+    if (!TryUnprotectMfaSecret(usuario.MfaSecret, dataProtectionProvider, out var rawSecret))
     {
-        return Results.BadRequest(ApiResponse<MfaStatusResponse>.Erro("Codigo MFA invalido ou expirado."));
+        loggerFactory.CreateLogger("AuthMfa").LogError(
+            "Segredo MFA pendente do usuario {UsuarioId} nao pode ser decifrado com o chaveiro persistente atual.",
+            usuario.Id);
+        return Results.Problem(
+            "A configuracao MFA pendente nao pode ser lida. Reinicie o cadastro MFA.",
+            statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 
-    usuario.MfaHabilitado = true;
-    usuario.MfaConfirmadoEm = DateTime.UtcNow;
-    usuario.UpdatedAt = DateTime.UtcNow;
-    await db.SaveChangesAsync(ct);
+    if (!TryValidateTotpCode(rawSecret, request.Codigo, DateTimeOffset.UtcNow, usuario.MfaUltimoPasso, out var matchedTimestep))
+    {
+        return Results.BadRequest(ApiResponse<MfaStatusResponse>.Erro("Codigo MFA invalido, expirado ou ja utilizado."));
+    }
+
+    var confirmedAt = DateTime.UtcNow;
+    var updated = await db.Usuarios
+        .Where(item => item.Id == usuario.Id
+            && item.Ativo
+            && !item.MfaHabilitado
+            && (item.MfaUltimoPasso == null || item.MfaUltimoPasso < matchedTimestep))
+        .ExecuteUpdateAsync(setters => setters
+            .SetProperty(item => item.MfaHabilitado, true)
+            .SetProperty(item => item.MfaConfirmadoEm, confirmedAt)
+            .SetProperty(item => item.MfaUltimoPasso, matchedTimestep)
+            .SetProperty(item => item.TokenRefresh, (string?)null)
+            .SetProperty(item => item.TokenRefreshExpiraEm, (DateTime?)null)
+            .SetProperty(item => item.UpdatedAt, confirmedAt), ct);
+    if (updated != 1)
+    {
+        return Results.Conflict(ApiResponse<MfaStatusResponse>.Erro("A configuracao MFA foi alterada por outra operacao. Recarregue o estado do usuario."));
+    }
 
     return Results.Ok(ApiResponse<MfaStatusResponse>.Ok(
-        new MfaStatusResponse(usuario.MfaHabilitado, usuario.MfaConfirmadoEm),
+        new MfaStatusResponse(true, confirmedAt),
         "MFA TOTP ativado para o usuario."));
 })
 .WithName("AuthMfaVerify");
@@ -2341,6 +2537,7 @@ app.MapPut("/api/admin/usuarios/{id:int}", [Authorize(Policy = "Admin")] async (
 
         usuario.SenhaHash = BCrypt.Net.BCrypt.HashPassword(senha, 12);
         usuario.TokenRefresh = null;
+        usuario.TokenRefreshExpiraEm = null;
     }
 
     await db.SaveChangesAsync(ct);
@@ -10859,6 +11056,8 @@ static LoginResponse CreateLoginResponse(
     string nome,
     string email,
     string perfil,
+    Guid tenantId,
+    string subjectType,
     string issuer,
     string audience,
     SymmetricSecurityKey signingKey,
@@ -10874,7 +11073,11 @@ static LoginResponse CreateLoginResponse(
         new Claim(ClaimTypes.Name, nome),
         new Claim(ClaimTypes.Email, email),
         new Claim(ClaimTypes.Role, perfil),
-        new Claim("perfil", perfil)
+        new Claim("perfil", perfil),
+        new Claim("tenant_id", tenantId.ToString()),
+        new Claim("subject_type", subjectType),
+        new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+        new Claim(JwtRegisteredClaimNames.Iat, DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture), ClaimValueTypes.Integer64)
     };
 
     var token = new JwtSecurityToken(
@@ -10934,22 +11137,69 @@ static string GenerateTotpSecret()
     return ToBase32(bytes);
 }
 
-static bool ValidateTotpCode(string? secret, string? code, DateTimeOffset now)
+static string ProtectMfaSecret(string rawSecret, IDataProtectionProvider dataProtectionProvider)
 {
+    var protector = dataProtectionProvider.CreateProtector("GenesisGest.Net.Auth.MfaSecret.v1");
+    return "dp:v1:" + protector.Protect(rawSecret);
+}
+
+static bool TryUnprotectMfaSecret(
+    string? protectedSecret,
+    IDataProtectionProvider dataProtectionProvider,
+    out string rawSecret)
+{
+    rawSecret = string.Empty;
+    const string prefix = "dp:v1:";
+    if (string.IsNullOrWhiteSpace(protectedSecret) || !protectedSecret.StartsWith(prefix, StringComparison.Ordinal))
+    {
+        return false;
+    }
+
+    try
+    {
+        var protector = dataProtectionProvider.CreateProtector("GenesisGest.Net.Auth.MfaSecret.v1");
+        rawSecret = protector.Unprotect(protectedSecret[prefix.Length..]);
+        return !string.IsNullOrWhiteSpace(rawSecret);
+    }
+    catch (CryptographicException)
+    {
+        rawSecret = string.Empty;
+        return false;
+    }
+}
+
+static bool TryValidateTotpCode(
+    string? secret,
+    string? code,
+    DateTimeOffset now,
+    long? lastUsedTimestep,
+    out long matchedTimestep)
+{
+    matchedTimestep = 0;
     var normalizedCode = new string((code ?? string.Empty).Where(char.IsDigit).ToArray());
     if (string.IsNullOrWhiteSpace(secret) || normalizedCode.Length != 6)
     {
         return false;
     }
 
-    var secretBytes = FromBase32(secret);
-    var timestep = now.ToUnixTimeSeconds() / 30;
-    for (var offset = -1; offset <= 1; offset++)
+    try
     {
-        if (string.Equals(ComputeTotpCode(secretBytes, timestep + offset), normalizedCode, StringComparison.Ordinal))
+        var secretBytes = FromBase32(secret);
+        var timestep = now.ToUnixTimeSeconds() / 30;
+        for (var offset = -1; offset <= 1; offset++)
         {
-            return true;
+            var candidateTimestep = timestep + offset;
+            if ((!lastUsedTimestep.HasValue || candidateTimestep > lastUsedTimestep.Value)
+                && string.Equals(ComputeTotpCode(secretBytes, candidateTimestep), normalizedCode, StringComparison.Ordinal))
+            {
+                matchedTimestep = candidateTimestep;
+                return true;
+            }
         }
+    }
+    catch (FormatException)
+    {
+        return false;
     }
 
     return false;
@@ -16940,6 +17190,7 @@ static async Task EnsureUsuariosSchemaAsync(NexumDbContext db)
             ativo TINYINT(1) NOT NULL DEFAULT 1,
             ultimo_login DATETIME NULL,
             token_refresh VARCHAR(255) NULL,
+            token_refresh_expira_em DATETIME NULL,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
@@ -16952,14 +17203,23 @@ static async Task EnsureUsuariosSchemaAsync(NexumDbContext db)
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ativo TINYINT(1) NOT NULL DEFAULT 1;");
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ultimo_login DATETIME NULL;");
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS token_refresh VARCHAR(255) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS token_refresh_expira_em DATETIME NULL;");
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;");
 }
 
 static async Task EnsurePlatformSsoSchemaAsync(NexumDbContext db)
 {
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS mfa_habilitado TINYINT(1) NOT NULL DEFAULT 0;");
-    await db.Database.ExecuteSqlRawAsync("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS mfa_secret VARCHAR(64) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS mfa_secret VARCHAR(1024) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE usuarios MODIFY COLUMN mfa_secret VARCHAR(1024) NULL;");
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS mfa_confirmado_em DATETIME NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS mfa_ultimo_passo BIGINT NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS token_refresh VARCHAR(255) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS token_refresh_expira_em DATETIME NULL;");
+    await db.Database.ExecuteSqlRawAsync(
+        "UPDATE usuarios SET token_refresh = NULL, token_refresh_expira_em = NULL WHERE token_refresh IS NOT NULL AND (CHAR_LENGTH(token_refresh) <> 64 OR token_refresh_expira_em IS NULL);");
+    await db.Database.ExecuteSqlRawAsync(
+        "UPDATE clientes SET token_refresh = NULL, token_refresh_expira_em = NULL WHERE token_refresh IS NOT NULL AND (CHAR_LENGTH(token_refresh) <> 64 OR token_refresh_expira_em IS NULL);");
 
     await db.Database.ExecuteSqlRawAsync(
         """

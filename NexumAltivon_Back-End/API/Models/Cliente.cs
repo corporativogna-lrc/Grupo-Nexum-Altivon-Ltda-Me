@@ -100,6 +100,13 @@ public class Cliente
     [Column("token_expira_em")]
     public DateTime? TokenExpiraEm { get; set; }
 
+    [Column("token_refresh")]
+    [MaxLength(255)]
+    public string? TokenRefresh { get; set; }
+
+    [Column("token_refresh_expira_em")]
+    public DateTime? TokenRefreshExpiraEm { get; set; }
+
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

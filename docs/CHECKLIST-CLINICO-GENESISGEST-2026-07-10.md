@@ -13,6 +13,13 @@ Apuracao complementar de integridade funcional: 2026-07-12.
 Apuracao de paridade do painel legado: 2026-07-14.
 Apuracao da persistencia das configuracoes publicas: 2026-07-17.
 Apuracao da maquina de estados de workflow: 2026-07-17.
+Apuracao integrada de MFA, refresh-token e logout: 2026-07-17.
+
+## Medicao Estrita de Conclusao
+
+- Definition of Done expandida: `5/31` itens concluidos, equivalente a `16,1%`.
+- Bloqueadores B1 a B14: `4/14` integralmente concluidos, equivalente a `28,6%`.
+- Itens parciais nao entram no numerador. Portanto, o projeto permanece objetivamente abaixo de 30% pelo criterio de aceite integral, embora exista implementacao parcial relevante em varios modulos.
 
 ## Rotas Travadas
 
@@ -32,11 +39,11 @@ Apuracao da maquina de estados de workflow: 2026-07-17.
 | B2 | Controllers MVC fora do ativo e endpoints criticos sem 404 | Ajustado e publicado na branch de entrega | API oficial e Minimal API; controllers MVC removidos do projeto da API ativa no commit `4bacfe5`; smoke publico passou nos pontos obrigatorios |
 | B3 | Duplicacao massiva da raiz removida do build ativo | Concluido para a raiz legacy | Diretorios legados da raiz foram removidos do build/versionamento no commit `7ccc668`; solution Release seguiu compilando com 0 erros e 0 avisos |
 | B4 | `Sys_AuditableEntity` em 100% das entidades transacionais | Parcial avancado | Commit `07a465e` aplicou tenant, soft-delete, auditoria central e `row_version` BLOB no `NexumDbContext`; heranca direta ainda nao cobre todas as classes |
-| B5 | MFA, refresh-token, tenants e workflows | Parcial avancado | Workflow concluido e validado no runtime oficial com definicao, instancia, RBAC por transicao, historico, concorrencia, tenant e soft-delete; MFA e rotacao de refresh-token ainda exigem homologacao integrada especifica |
+| B5 | MFA, refresh-token, tenants e workflows | Parcial avancado | Workflow, MFA TOTP, refresh-token rotativo e logout foram publicados e homologados no runtime oficial. MFA usa segredo protegido por Data Protection/DPAPI persistente, bloqueia reuso TOTP e sobrevive ao reinicio; refresh de usuario e cliente usa apenas hash SHA-256, expira, rotaciona atomicamente e e revogado no logout. Falta homologar integralmente o CRUD e o isolamento de tenants para concluir o bloqueador inteiro |
 | B6 | Testes com cobertura minima de 70% em Services | Pendente | Por orientacao operacional, a base de testes criada para validacao foi removida da solution e do projeto oficial; cobertura >=70% ainda precisa ser implementada sem confundir codigo operacional com artefato de validacao |
 | B7 | Observabilidade completa | Parcial | Health e Redis existem; Serilog/OpenTelemetry completos ainda nao foram homologados ponta a ponta |
 | B8 | Backup diario e restore-test semanal | Parcial | Backup local 2h corrigido para `D:\Nexum Altivon\NexumAltivon.com` e executado com resultado 0; restore-test em CI ainda nao comprovado |
-| B9 | EF Migrations | Parcial avancado | Commit `07a465e` versionou migrations do Nexum com `row_version` BLOB alinhado ao banco real; `dotnet ef` nao esta instalado no PATH desta maquina |
+| B9 | EF Migrations | Parcial avancado | `dotnet-ef` 8.0.5 esta instalado e a migration `HardenPlatformSso` foi gerada pelo modelo real com somente cinco alteracoes de autenticacao. O banco oficial possui `__EFMigrationsHistory` vazio apesar do schema existente, portanto `database update` nessa base foi corretamente bloqueado para nao reaplicar a migration inicial; falta validar a cadeia completa em banco vazio controlado |
 | B10 | Secrets fora dos arquivos versionados | Parcial | Runtime local usa `runtime/api-24h/api.env.ps1`, ignorado pelo Git; ainda ha configuracoes de desenvolvimento e templates a revisar |
 | B11 | Documentacao tecnica e OpenAPI | Parcial | Docs principais existem; `/swagger/v1/swagger.json` foi ajustado para ser registrado fora de Development/Staging |
 | B12 | Compose dev com MySQL e Redis | Concluido em arquivo | `docker/docker-compose.yml` contem MySQL 8, Redis 7 e MinIO |
@@ -51,6 +58,11 @@ Apuracao da maquina de estados de workflow: 2026-07-17.
 | Validacao operacional da etapa | `dotnet build NexumAltivon.ERP.sln -c Release --no-restore -m:1 /nr:false /p:UseSharedCompilation=false` passou com 0 avisos e 0 erros apos remover a base de validacao da solution |
 | Republicacao oficial 5010 | Validacao elevada em 2026-07-13T00:53:39 confirmou task `NexumAltivonApi24h` `Running`, usuario `SISTEMA`, `RunLevel Highest`, PID `10928`, `dotnet.exe NexumAltivon.API.dll`, `/health`, `/health/db`, `/health/db/genesis` e `/api/site/configuracoes/publico` com HTTP 200 |
 | Republicacao oficial 5010 complementar | Validacao elevada em 2026-07-13T23:45:31 confirmou task `NexumAltivonApi24h` `Running`, usuario `SISTEMA`, `RunLevel Highest`, PID `12876`, `dotnet.exe NexumAltivon.API.dll`, `/health`, `/health/db`, `/health/db/genesis` e `/api/site/configuracoes/publico` com HTTP 200 |
+| Plataforma SSO publicada | Em 2026-07-17, a API oficial foi republicada na unica porta 5010. A tarefa `NexumAltivonApi24h` permaneceu como `SYSTEM`, `ServiceAccount`, gatilho exclusivo de boot, reinicio automatico e processo invisivel. Health local e publico, bancos Nexum/Genesis e configuracao publica responderam HTTP 200 |
+| Persistencia segura de autenticacao | `usuarios` e `clientes` passaram a armazenar somente SHA-256 do refresh token e data de expiracao; `mfa_secret` foi ampliado e recebe apenas valor protegido por Data Protection com chave persistente cifrada por DPAPI da maquina; refresh legado sem hash/expiracao foi revogado na atualizacao de schema |
+| Fluxo administrativo MFA | Ensaio controlado confirmou login local 200, hash/expiracao no MySQL, MFA enable 200, segredo cifrado no banco, codigo invalido 400, verify 200, reuso do mesmo passo TOTP 400, reinicio da API, login MFA pelo dominio publico 200, rotacao 200, replay do refresh antigo 401, logout 200 e refresh depois do logout 401 |
+| Fluxo de cliente | Ensaio controlado pelo dominio publico confirmou login 200 com par de tokens, hash/expiracao no MySQL, rotacao 200, replay do token anterior 401, logout 200 e refresh revogado 401. Um cliente autenticado recebeu 401 ao tentar iniciar MFA administrativo, eliminando colisao entre IDs inteiros de clientes e usuarios |
+| Limpeza das validacoes SSO | As contas controladas de usuario e cliente foram removidas fisicamente; consultas finais retornaram zero registros residuais |
 | Painel administrativo React | `Dashboard.js` ajustado no commit `0b8212e` para nao exibir sucesso visual com estado local fabricado em `Site & Banners` e rascunho fiscal manual; apos salvar, a tela usa retorno/releitura real da API antes de confirmar persistencia |
 | Salvar configuracao publica | Em 2026-07-17, `Dashboard.js` passou a exibir sucesso ou erro na propria tela, bloquear clique duplo durante a gravacao e comparar cada valor retornado pela API. `PUT /api/site/configuracoes` deixou de responder `ok` generico: valida escopo, duplicidade, JSON, tamanho e permissao de edicao, executa `SaveChangesAsync`, rele o MySQL e devolve a colecao persistida. Ensaio autenticado na API oficial confirmou HTTP 400 para chave fora do escopo, JSON invalido e duplicidade sem alterar o banco; lote valido foi confirmado na resposta administrativa, configuracao publica e MySQL antes e depois do reinicio PID `7492` para `10980`; restauracao passou e a limpeza terminou com zero usuarios tecnicos. |
 | Central de IA do site | `GlobalActions.js` ajustado no commit `5848622` para nao inventar resposta local quando a API retorna payload sem mensagem; sem resposta textual real, o chat exibe falha operacional |
@@ -148,7 +160,7 @@ Regra de aceite para cada ferramenta: somente marcar `Concluido` quando houver t
 | Todos os endpoints faltantes da Secao 7 com payload real | Parcial | Marketplace sync Mercado Livre/B2W/Via foi implementado na API ativa com bloqueio sem credencial real; completar demais setores e validar via HTTP |
 | Frontend sem 404 nos endpoints consumidos | Parcial | Smoke publico dos pontos criticos passou em 2026-07-10: `/health`, `/api/lojas`, `/api/lojas/1`, `/swagger/v1/swagger.json`, aliases FICO e CORS sem 404; falta varredura completa do frontend |
 | Multitenancy e soft-delete em 100% das entidades | Parcial | Migrar entidades legadas e validar isolamento por tenant |
-| MFA TOTP funcional | Parcial | Executar teste integrado enable, verify e login com MFA |
+| MFA TOTP funcional | Concluido no runtime oficial | Backend, MySQL e portal usam o mesmo contrato. Enable/verify/login foram validados local e publicamente; segredo cifrado sobreviveu ao reinicio, reuso TOTP foi recusado, refresh de usuario/cliente rotacionou atomicamente e logout revogou a sessao sem residuos controlados |
 | Workflow de aprovacao funcional | Concluido no backend oficial | CRUD de definicoes e instancias, historico, maquina de estados, RBAC, tenant, soft-delete e atualizacao atomica foram publicados e validados localmente, no dominio Cloudflare e diretamente no MySQL; faltam apenas telas especificas quando cada modulo consumir o workflow |
 | NF-e/NFC-e SEFAZ homologacao | Parcial real, bloqueado por credencial/certificado | Endpoints de emissao/eventos existem na API ativa e nao registram sucesso sem provedor real; falta configurar certificado/provedor homologado e validar chave/protocolo real |
 | WMS completo | Parcial | Completar endpoints/telas e validar movimentacao, inventario, kardex e transferencia |
@@ -157,7 +169,7 @@ Regra de aceite para cada ferramenta: somente marcar `Concluido` quando houver t
 | Redis integrado e healthcheck verde | Parcial | Health Redis existe; validar em runtime de producao |
 | S3/MinIO anexos | Parcial | Servico e compose existem; validar upload/download assinado |
 | Serilog e OpenTelemetry | Pendente | Ativar logs/traces/metrics e validar exportacao |
-| EF Migrations aplicaveis em banco vazio | Parcial avancado | Migrations foram versionadas; instalar `dotnet-ef` e executar `dotnet ef database update` em banco vazio controlado |
+| EF Migrations aplicaveis em banco vazio | Parcial avancado | `dotnet-ef` 8.0.5 esta instalado e `HardenPlatformSso` foi gerada sem deriva de tabelas; falta executar toda a cadeia em banco vazio controlado. O banco oficial nao recebeu `database update` porque seu historico EF esta vazio e reaplicaria a migration inicial sobre tabelas existentes |
 | Secrets fora de arquivos versionados | Parcial | Revisar arquivos versionados e manter segredos apenas em env/User Secrets/cofre |
 | CI/CD com gate de cobertura, Sonar e migrate | Parcial | Adicionar teste/cobertura/migrate e health-check pos-deploy |
 | Compose dev sobe tudo | Nao validado nesta apuracao | Executar `docker compose up --build` em janela propria |
@@ -172,7 +184,7 @@ Regra de aceite para cada ferramenta: somente marcar `Concluido` quando houver t
 | Termos proibidos no codigo ativo | Parcial | Blocos commitados nesta auditoria foram varridos; ainda restam Desktop, docs antigos e services legados nao compilados para triagem |
 | Header de IP em todos os arquivos | Parcial | Blocos commitados nesta auditoria receberam header; falta varredura completa nos arquivos remanescentes |
 | Fluxo cadastro a BI isolado por empresa | Pendente | Executar roteiro ponta a ponta com dados reais |
-| Ferramentas ficticias convertidas em reais ou bloqueadas claramente | Em execucao | Shopee/Amazon deixam de gravar sucesso falso; marketplace sync Mercado Livre/B2W/Via foi implementado com HTTP externo e bloqueio por credencial; landing legada e admin estatico legado foram removidos da exposicao operacional; PDF financeiro agora gera arquivo real; tracking logistico externo e emissao/eventos NF-e/NFC-e foram implementados com dependencia explicita e sem sucesso fabricado | Concluir demais achados da secao acima e validar com credenciais reais de cada integracao externa |
+| Ferramentas ficticias convertidas em reais ou bloqueadas claramente | Em execucao | O login administrativo alternativo fora do banco foi removido; MFA, refresh e logout agora persistem e revogam estado real. Shopee/Amazon deixam de gravar sucesso falso; marketplace sync Mercado Livre/B2W/Via foi implementado com HTTP externo e bloqueio por credencial; landing legada e admin estatico legado foram removidos da exposicao operacional; PDF financeiro agora gera arquivo real; tracking logistico externo e emissao/eventos NF-e/NFC-e foram implementados com dependencia explicita e sem sucesso fabricado | Concluir demais achados da secao acima e validar com credenciais reais de cada integracao externa |
 
 ## GitHub e Commit
 
