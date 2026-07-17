@@ -29,6 +29,16 @@ Rotas travadas de desenvolvimento e validacao local:
 - Arquivos novos ou editados devem preservar o header de propriedade intelectual no topo, usando a sintaxe valida de cada formato.
 - Segredos, banco de dados, repositorios e configuracoes operacionais permanecem privados.
 
+## Inicializacao do servidor
+
+- A unica tarefa oficial da API e `NexumAltivonApi24h`.
+- A tarefa deve executar como `SYSTEM`, `ServiceAccount`, nivel `Highest`, com exatamente um gatilho de boot e nenhum gatilho de logon.
+- A tarefa usa exclusivamente `http://127.0.0.1:5010`, `StartWhenAvailable`, `RestartCount=999`, `RestartInterval=PT1M`, `ExecutionTimeLimit=PT0S` e `IgnoreNew`.
+- O supervisor oficial e `scripts/server/iniciar-api-oficial-24h.ps1`; ele reinicia o processo filho e impede instancias duplicadas por mutex global.
+- `NexumAltivonMySQL`, `Cloudflared` e `Schedule` devem permanecer como servicos Windows automaticos.
+- Instalacao, publicacao e reparo devem passar por `scripts/server/atualizar-api-oficial-5010.ps1`. Nao criar outro runtime, tarefa ou porta para contornar falha.
+- A verificacao obrigatoria e `scripts/server/validar-api-oficial-24h-task.ps1`; falha local ou publica impede declarar o deploy concluido.
+
 ## Bloqueio Sophia 5.5 - Adendo de Veracidade Operacional
 
 - O bloqueio Sophia 5.5 permanece integralmente ativo; este adendo apenas acrescenta criterios de aceite.

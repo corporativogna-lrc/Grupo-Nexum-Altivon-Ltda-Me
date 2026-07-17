@@ -1,21 +1,20 @@
-# Nexum Altivon — Versão 1.1.4
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+-->
 
-Marco: `api-24h-servidor-e-integracoes-base-2026-06-04`
+# GenesisGest.Net v1.1.5
 
-Data de registro: 2026-06-04
+## Runtime oficial
 
-Status:
-- API preparada para instalação 24h no servidor, sem depender do Codex ou desta máquina de trabalho.
-- API local fixada para autoarranque pelo usuário do Windows em `http://localhost:5010`.
-- API local passa a rodar por publicação própria em `.nexum-runtime\api-local`, reduzindo dependência do projeto aberto.
-- Serviço local do Cloudflared confirmado como automático nesta máquina.
-- Pacote do servidor corrigido para usar a unidade compartilhada `Y:\NexumAltivon_API_24H_Y_FIX`, evitando instalação indevida em `C:`.
-- Versão operacional congelada antes da etapa crítica de integrações comerciais.
-- Checkout, frete, gateway escolhido, upload de imagem e painel de integrações seguem como base funcional.
-- Uploads reais de produtos ficam fora do Git para evitar versionar arquivos operacionais.
-- Próxima prioridade travada: corrigir publicação pública do hostname `api.nexumaltivon.com`, validar túnel/DNS público e avançar integrações de dropshipping, logística, gateways, e-commerce/marketplaces e financeiro.
+- Projeto: `D:\Nexum Altivon\NexumAltivon.com`.
+- API: `http://127.0.0.1:5010`.
+- Publicação: `runtime\api-24h\api` dentro do projeto.
+- Tarefa: `NexumAltivonApi24h`, executada como `SYSTEM` no boot, sem gatilho de logon.
+- Banco: `NexumAltivonMySQL` em `127.0.0.1:3309`.
+- Túnel: serviço `Cloudflared` para `https://api.nexumaltivon.com.br`.
 
-Observação operacional:
-- Esta versão é o ponto de estabilidade para apresentar evolução à diretoria e atacar operação 24h.
-- Toda próxima melhoria deve validar site, painel, login, API e checkout antes da publicação.
-- Se `https://api.nexumaltivon.com/health` falhar enquanto `http://localhost:5010/health` estiver saudável, o problema é DNS/túnel público, não a API local.
+O estado de conclusão funcional é controlado pelo checklist clínico do projeto. A disponibilidade da API não representa, isoladamente, conclusão dos módulos do ERP.

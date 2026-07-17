@@ -11,7 +11,7 @@ param(
     [string]$XamppRoot = "D:\xampp",
     [int]$DatabasePort = 3309,
     [string]$AppSettingsPath = "",
-    [string]$PrivateApiConfigPath = "D:\NexumAltivon_API_24H\config\api.env.ps1",
+    [string]$PrivateApiConfigPath = "D:\Nexum Altivon\NexumAltivon.com\runtime\api-24h\api.env.ps1",
     [string]$ConnectionStringName = "DefaultConnection",
     [string]$RootUser = "root",
     [string]$RootPasswordEnvironmentVariable = "MYSQL_ROOT_PWD",

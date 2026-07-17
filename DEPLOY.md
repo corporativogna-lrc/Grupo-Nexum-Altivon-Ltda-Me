@@ -1,83 +1,62 @@
-# Deploy privado - Grupo Nexum Altivon
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+-->
 
-Este projeto deve ser publicado apenas em repositorios privados e com banco de dados privado da empresa.
+# Deploy de produção GenesisGest.Net
 
-## Repositorio GitHub
+## Origem oficial
 
-Repositorio alvo:
+- Projeto operacional: `D:\Nexum Altivon\NexumAltivon.com`.
+- Repositório privado: `https://github.com/corporativogna-lrc/Grupo-Nexum-Altivon-Ltda-Me`.
+- Fluxo permitido: projeto oficial auditado para GitHub. Conteúdo remoto não substitui o projeto local sem revisão.
+- Branch de produção: `main`.
 
-```text
-https://github.com/corporativogna-lrc/Grupo-Nexum-Altivon-Ltda-Me.git
+## Componentes do servidor
+
+- API ASP.NET Core: tarefa Windows `NexumAltivonApi24h`, origem `http://127.0.0.1:5010`.
+- Banco: serviço `NexumAltivonMySQL`, porta `3309`, datadirs oficiais em `D:\xampp\mysql\data`.
+- Publicação externa: serviço `Cloudflared`, HTTPS em `https://api.nexumaltivon.com.br`.
+- Frontend: artefato React publicado pelo fluxo GitHub Pages configurado no repositório.
+
+## Segredos
+
+Segredos não podem existir em arquivos versionados. A API do servidor carrega `runtime\api-24h\api.env.ps1`, ignorado pelo Git, contendo as conexões, segredo JWT e credenciais das integrações realmente habilitadas.
+
+Depois de exposição acidental, o valor deve ser rotacionado no provedor e no arquivo privado. Remover apenas o texto do Git não revoga uma credencial já divulgada.
+
+## Atualização da API
+
+Em PowerShell elevado:
+
+```powershell
+Set-Location "D:\Nexum Altivon\NexumAltivon.com"
+git status --short --branch
+dotnet build .\NexumAltivon.ERP.sln -c Release
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\server\atualizar-api-oficial-5010.ps1"
 ```
 
-Antes do primeiro push, confirme no GitHub que o repositorio esta como `Private`.
+O atualizador executa `dotnet publish`, instala a tarefa exclusiva de boot como `SYSTEM` e encerra com erro se banco, túnel, API local ou API pública não estiverem saudáveis.
 
-## Segredos obrigatorios
+## Atualização do frontend
 
-Configure estes valores como GitHub Actions Secrets e tambem no arquivo `.env` do servidor de producao:
-
-```text
-API_DEFAULT_CONNECTION
-JWT_SECRET_KEY
-ADMIN_EMAIL
-ADMIN_PASSWORD
-ADMIN_NAME
-ADMIN_ROLE
-MP_ACCESS_TOKEN
-SENDGRID_API_KEY
-PROD_HOST
-PROD_USER
-PROD_SSH_KEY
+```powershell
+Set-Location "D:\Nexum Altivon\NexumAltivon.com\NexumAltivon_Front-End"
+npm ci
+npm run build
 ```
 
-`API_DEFAULT_CONNECTION` deve apontar para o MySQL privado da empresa. Use `docker/.env.example` como modelo e preencha a senha apenas no servidor ou nos secrets do GitHub.
+O artefato publicado deve ser produzido pelo workflow oficial após commit auditado. Não alterar manualmente o conteúdo remoto para divergir do código-fonte.
 
-## Deploy no servidor
+## Verificação pós-deploy
 
-No host de producao:
-
-```bash
-mkdir -p /opt/nexumaltivon/production
-cd /opt/nexumaltivon/production
-git clone https://github.com/corporativogna-lrc/Grupo-Nexum-Altivon-Ltda-M.git .
-cp docker/.env.example .env
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\Nexum Altivon\NexumAltivon.com\scripts\server\validar-api-oficial-24h-task.ps1"
+Invoke-WebRequest -UseBasicParsing "https://api.nexumaltivon.com.br/health"
+Invoke-WebRequest -UseBasicParsing "https://api.nexumaltivon.com.br/health/db"
 ```
 
-Edite `.env` no proprio servidor com os valores reais.
-
-Suba a aplicacao completa:
-
-```bash
-docker compose -f docker/docker-compose.prod.yml --env-file .env pull
-docker compose -f docker/docker-compose.prod.yml --env-file .env up -d
-docker compose -f docker/docker-compose.prod.yml --env-file .env ps
-```
-
-O compose de producao sobe:
-
-- `frontend`: site React em Nginx.
-- `api`: API ASP.NET em `8080` interno.
-- `nginx`: proxy publico na porta `80`, roteando `www.nexumaltivon.com` para o front e `api.nexumaltivon.com` para a API.
-- `watchtower`: atualizacao automatica das imagens publicadas no GHCR.
-
-DNS esperado:
-
-```text
-nexumaltivon.com        A/AAAA -> IP do servidor
-www.nexumaltivon.com    A/AAAA -> IP do servidor
-api.nexumaltivon.com    A/AAAA -> IP do servidor
-back.nexumaltivon.com   A/AAAA -> IP do servidor
-admin.nexumaltivon.com  A/AAAA -> IP do servidor
-erp.nexumaltivon.com    A/AAAA -> IP do servidor
-crm.nexumaltivon.com    A/AAAA -> IP do servidor
-pdv.nexumaltivon.com    A/AAAA -> IP do servidor
-```
-
-Para HTTPS, use um proxy/terminador TLS no servidor ou Cloudflare apontando para a porta `80` do `nexum-nginx`.
-
-## Observacoes de seguranca
-
-- Nao versionar `.env`, senhas, tokens, chaves SSH ou certificados.
-- O banco de dados deve aceitar conexoes somente da rede/hosts autorizados.
-- O usuario de banco usado pela API deve ter permissoes minimas para a aplicacao.
-- Ative HTTPS antes de expor checkout, login ou pagamentos em producao.
+Os detalhes de boot, recuperação e diagnóstico estão em `API_24H_SERVIDOR.md`.

@@ -6,83 +6,59 @@
  * Versão: 1.1.5
 -->
 
-# Checklist de Prontidao de Deploy - Nexum Altivon
+# Checklist de prontidão do servidor
 
-## Estado operacional validado
+## API, banco e túnel
 
-- Banco local validado em 2026-07-09: `localhost:3309`, `127.0.0.1:3309` e `192.168.1.66:3309`.
-- O IP historico `192.168.1.72` nao esta atribuido nesta sessao; nao usar esse endpoint ate reconfigurar IP fixo ou atualizar as connection strings privadas para `127.0.0.1`.
-- Datadir fisico do banco: `D:\xampp\mysql\data\nexum_altivon`.
-- Datadir fisico Genesis: `D:\xampp\mysql\data\genesis_bd`.
-- Rotas compartilhadas oficiais informadas: `Y:\xampp\mysql\data\nexum_altivon` e `Y:\xampp\mysql\data\genesis_bd`.
-- Estrutura XAMPP/MySQL validada em 2026-07-09: arquivos `mysqld.exe`, `mysqladmin.exe`, `my.ini` e os dois datadirs existem.
-- Serviço real do banco: `NexumAltivonMySQL`, `Running`, `Automatic`, porta `3309` em listener.
-- Serviço legado `mysql`: permanece `StartPending` e `Disabled`; nao deve ser usado pela API.
-- API local do servidor: `http://127.0.0.1:5010/health` e `http://127.0.0.1:5010/health/db`.
-- API publica validada: `https://api.nexumaltivon.com.br/health`.
-- DNS/rota ainda pendente de validacao: `https://api.nexumaltivon.com/health`.
-- Banco restaurado em 2026-07-09 a partir do datadir completo recuperado com `ibdata1`; datadir quebrado preservado em `D:\NexumAltivon_DB_RECOVERY\data-broken-20260709-210126`.
+- [Concluído em 2026-07-17] Projeto operacional em disco local fixo: `D:\Nexum Altivon\NexumAltivon.com`.
+- [Concluído em 2026-07-17] Banco e-commerce em `D:\xampp\mysql\data\nexum_altivon`.
+- [Concluído em 2026-07-17] Banco GenesisGest em `D:\xampp\mysql\data\genesis_bd`.
+- [Concluído em 2026-07-17] Serviço `NexumAltivonMySQL`: `Running`, `Automatic`, conta `LocalSystem`.
+- [Concluído em 2026-07-17] Serviço `Cloudflared`: `Running`, `Automatic`, conta `LocalSystem`.
+- [Concluído em 2026-07-17] Serviço `Schedule`: `Running`, `Automatic`, conta `LocalSystem`.
+- [Concluído em 2026-07-17] API exclusiva em `http://127.0.0.1:5010`.
+- [Concluído em 2026-07-17] API pública em `https://api.nexumaltivon.com.br`.
 
-## Riscos operacionais atuais
+## Inicialização sem login
 
-1. `api.nexumaltivon.com` ainda nao foi validado com DNS/rota Cloudflare nesta operacao.
-   Correcao: criar/validar hostname publico no Cloudflare apontando para a mesma origem `http://127.0.0.1:5010` ja usada por `api.nexumaltivon.com.br`.
+- [Concluído em 2026-07-17] Tarefa única `NexumAltivonApi24h` executada como `SYSTEM` com `LogonType=ServiceAccount` e `RunLevel=Highest`.
+- [Concluído em 2026-07-17] Exatamente um gatilho de boot e nenhum gatilho de logon.
+- [Concluído em 2026-07-17] `StartWhenAvailable=True`, `RestartCount=999`, `RestartInterval=PT1M`, `ExecutionTimeLimit=PT0S` e `MultipleInstances=IgnoreNew`.
+- [Concluído em 2026-07-17] Ação invisível aponta para `scripts\server\iniciar-api-oficial-24h.ps1` e usa somente a porta `5010`.
+- [Concluído em 2026-07-17] Teste controlado `Stop-ScheduledTask`/`Start-ScheduledTask`: API iniciada pela conta `SYSTEM` em 22 segundos, HTTP 200, sem execução interativa.
+- [Pendente de janela de manutenção] Reinicialização física do Windows e consulta externa enquanto o servidor permanece na tela de senha. O reboot não foi executado durante desenvolvimento para não interromper operações sem janela autorizada.
 
-2. Servico local da API pode estar ausente apos reinicializacao ou queda de energia.
-   Correcao: executar `scripts\server\VERIFICAR-BANCO-XAMPP-COMO-ADMIN.cmd -StartIfStopped` e depois `powershell -ExecutionPolicy Bypass -File "D:\Nexum Altivon\NexumAltivon.com\scripts\server\instalar-api-oficial-24h-task.ps1"` no servidor. A configuracao privada oficial fica em `D:\Nexum Altivon\NexumAltivon.com\runtime\api-24h\api.env.ps1`; nao usar diretorio externo `D:\NexumAltivon_API_24H`.
+## Recuperação de falha
 
-3. Connection strings privadas ainda podem apontar para `192.168.1.72`, que nao esta atribuido nesta sessao.
-   Correcao: para execucao no mesmo servidor do banco, usar `127.0.0.1:3309` nas variaveis privadas `ConnectionStrings__DefaultConnection`, `ConnectionStrings__NexumDb` e `ConnectionStrings__GenesisConnection`, ou restabelecer IP fixo `192.168.1.72` no adaptador de rede antes de instalar a API 24h.
+- [Concluído em 2026-07-17] Supervisor persistente com mutex global, retenção de logs e espera progressiva.
+- [Concluído em 2026-07-17] Processo filho PID `7432` encerrado de forma controlada; nova API PID `12184` iniciou automaticamente em 35 segundos sem reiniciar manualmente a tarefa.
+- [Concluído em 2026-07-17] Após a recuperação havia uma API e um supervisor, ambos vinculados à tarefa oficial.
+- [Concluído em 2026-07-17] Após a recuperação, `/health`, `/health/db`, `/health/db/genesis` e `https://api.nexumaltivon.com.br/health` retornaram HTTP 200.
 
-4. Estoque duplicado entre lojas pode permitir venda de produto divergente.
-   Correcao: executar `Database\2026-06-18-unificar-lojas-estoque.sql` contra `127.0.0.1:3309/nexum_altivon` no servidor do banco.
+## Estrutura e manutenção
 
-## Script de correcao de estoque
+- [Concluído em 2026-07-17] Publicação e configuração permanecem em `runtime\api-24h` dentro do projeto oficial.
+- [Concluído em 2026-07-17] O instalador legado foi consolidado como entrada compatível para o atualizador oficial e recusa pasta externa ou porta divergente.
+- [Concluído em 2026-07-17] O atualizador para somente a tarefa e processos identificados como oficiais; processo desconhecido na `5010` gera erro e não é encerrado.
+- [Concluído em 2026-07-17] Documentação de instalação, deploy, validação e diagnóstico alinhada ao servidor Windows real.
 
-Arquivo: `Database\2026-06-18-unificar-lojas-estoque.sql`
+## Comandos oficiais
 
-Executar:
-
-```bat
-D:\xampp\mysql\bin\mysql.exe -h 127.0.0.1 -P 3309 -u nexum_app -p nexum_altivon < "D:\Nexum Altivon\NexumAltivon.com\Database\2026-06-18-unificar-lojas-estoque.sql"
-```
-
-## Protocolo de lancamento
-
-Atualizar/sobrepor estes arquivos no servidor principal:
-
-- `NexumAltivon_Back-End\API\Program.cs`
-- `NexumAltivon_Back-End\API\Services\NotificacaoService.cs`
-- `NexumAltivon_Back-End\API\appsettings.json`
-- `NexumAltivon_Front-End\src\services\api.js`
-- `admin-painel.html`
-- `NexumAltivon_Front-End\public\admin-painel.html`
-- `NexumAltivon.Desktop\MainWindow.xaml.cs`
-- `NexumAltivon.Desktop\ManualNfeWindow.xaml.cs`
-- `Database\2026-06-18-unificar-lojas-estoque.sql`
-- `scripts\server\INSTALAR-API-24H-SERVIDOR-COMO-ADMIN.cmd`
-- `scripts\server\instalar-api-24h-servidor.ps1`
-- `scripts\server\VERIFICAR-BANCO-XAMPP-COMO-ADMIN.cmd`
-- `scripts\server\verificar-banco-xampp.ps1`
-- `scripts\server\CONFIGURAR-USUARIO-BANCO-XAMPP-COMO-ADMIN.cmd`
-- `scripts\server\configurar-usuario-banco-xampp.ps1`
-- `scripts\server\REPARAR-BANCO-XAMPP-SERVICO-COMO-ADMIN.cmd`
-- `scripts\server\reparar-banco-xampp-servico.ps1`
-- `scripts\server\ATIVAR-CLOUDFLARE-TUNNEL-COMO-ADMIN.cmd`
-- `scripts\server\ativar-cloudflare-tunnel.ps1`
-- `scripts\server\verificar-api-24h.ps1`
-
-## Verificacao final
-
-```bat
-curl -i http://127.0.0.1:5010/health/db
-curl -i https://api.nexumaltivon.com.br/health/db
-```
-
-Validacao operacional no servidor:
+Atualizar e reinstalar:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\server\verificar-api-24h.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\Nexum Altivon\NexumAltivon.com\scripts\server\atualizar-api-oficial-5010.ps1"
 ```
 
-O retorno esperado nos testes validados e `{"status":"Healthy"}` para `/health/db` e HTTP `200` para `/health`. O domínio `.com` deve ser acrescentado ao teste após configuração real no Cloudflare.
+Validar:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\Nexum Altivon\NexumAltivon.com\scripts\server\validar-api-oficial-24h-task.ps1"
+```
+
+Consultar falha:
+
+```powershell
+Get-Content "D:\Nexum Altivon\NexumAltivon.com\runtime-logs\api-24h\supervisor.log" -Tail 100
+Get-ScheduledTaskInfo -TaskName NexumAltivonApi24h | Format-List *
+```

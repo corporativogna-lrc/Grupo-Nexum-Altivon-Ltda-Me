@@ -6,147 +6,94 @@
  * Versão: 1.1.5
 -->
 
-# Nexum Altivon — API 24h no servidor
+# API oficial 24h no servidor Windows
 
-Este documento fixa o caminho operacional para a API não depender do Codex, do navegador ou da máquina de desenvolvimento.
+## Arquitetura operacional
 
-## Prioridade
+A API de produção não depende de login, área de trabalho aberta, Codex, navegador ou sessão de usuário.
 
-Até sábado às 08:00, a prioridade é manter a API online para sustentar:
+Fluxo de inicialização:
 
-- painel administrativo;
-- checkout e pedidos;
-- cadastros reais;
-- imagens de produtos;
-- integrações de dropshipping, logística, gateways, e-commerce/marketplaces e financeiro.
+1. O Windows inicia os serviços automáticos `NexumAltivonMySQL`, `Cloudflared` e `Schedule`.
+2. A tarefa `NexumAltivonApi24h` é disparada pelo boot com atraso de 15 segundos.
+3. A tarefa executa como `SYSTEM`, `ServiceAccount`, nível `Highest` e janela oculta.
+4. `scripts\server\iniciar-api-oficial-24h.ps1` mantém um único supervisor residente.
+5. O supervisor inicia `runtime\api-24h\api\NexumAltivon.API.dll` em `http://127.0.0.1:5010`.
+6. Se o processo da API encerrar, o supervisor registra o código de saída e o reinicia automaticamente.
+7. O serviço `Cloudflared` publica a origem local em `https://api.nexumaltivon.com.br`.
 
-## Decisão técnica
+O mutex global `GenesisGest_NexumAltivonApi24h` e a política `IgnoreNew` impedem supervisores e APIs duplicados. A tarefa não possui gatilho de logon e não possui limite de duração.
 
-A API ASP.NET Core deve rodar no servidor como tarefa automática do Windows.
+## Estrutura oficial
 
-O Cloudflare Tunnel pode publicar a API para a internet, mas ele não substitui o servidor da API. O Cloudflare transporta/protege o tráfego; quem executa a API continua sendo o servidor local ou uma VPS.
+- Projeto: `D:\Nexum Altivon\NexumAltivon.com`.
+- Publicação: `D:\Nexum Altivon\NexumAltivon.com\runtime\api-24h\api`.
+- Configuração privada: `D:\Nexum Altivon\NexumAltivon.com\runtime\api-24h\api.env.ps1`.
+- Logs da API e supervisor: `D:\Nexum Altivon\NexumAltivon.com\runtime-logs\api-24h`.
+- Log de atualização: `D:\Nexum Altivon\NexumAltivon.com\runtime-logs\api-oficial-5010-update.log`.
+- Dados e-commerce: `D:\xampp\mysql\data\nexum_altivon`.
+- Dados GenesisGest: `D:\xampp\mysql\data\genesis_bd`.
 
-## Instalação no servidor
+Nenhuma pasta externa ao projeto é aceita pelo instalador.
 
-No servidor, execute como Administrador:
+## Instalação e atualização
 
-```cmd
-scripts\server\VERIFICAR-BANCO-XAMPP-COMO-ADMIN.cmd -StartIfStopped
-scripts\server\INSTALAR-API-24H-SERVIDOR-COMO-ADMIN.cmd
-```
-
-O instalador:
-
-- publica a API em `D:\NexumAltivon_API_24H\api`;
-- exige a configuração privada real em `D:\NexumAltivon_API_24H\config\api.env.ps1`;
-- cria a tarefa automática `NexumAltivonApi24h`;
-- testa `/health` na porta `5010` antes de concluir.
-
-## Validação operacional oficial
-
-Após instalar ou reparar a API 24h, validar a tarefa oficial no próprio servidor:
+Executar em PowerShell como Administrador:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "D:\Nexum Altivon\NexumAltivon.com\scripts\server\validar-api-oficial-24h-task.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\Nexum Altivon\NexumAltivon.com\scripts\server\atualizar-api-oficial-5010.ps1"
 ```
 
-Esse validador confere a tarefa `NexumAltivonApi24h`, o processo real do `dotnet`, a porta `5010` e o `/health` local antes de considerar a API operacional.
+O comando publica a API, para somente a tarefa oficial, registra novamente a tarefa como `SYSTEM`, inicia o runtime e valida banco, API local e API pública. Ele recusa outra porta e não encerra processo desconhecido que ocupe a `5010`.
 
-Para reinstalar a tarefa oficial quando necessário, executar como Administrador:
+O comando de compatibilidade abaixo encaminha para o mesmo atualizador oficial:
+
+```cmd
+"D:\Nexum Altivon\NexumAltivon.com\scripts\server\INSTALAR-API-24H-SERVIDOR-COMO-ADMIN.cmd"
+```
+
+## Configuração privada obrigatória
+
+`runtime\api-24h\api.env.ps1` não pode ser versionado. O supervisor falha de forma explícita se não encontrar:
+
+- `ConnectionStrings__DefaultConnection`;
+- `ConnectionStrings__GenesisConnection`;
+- `JwtSettings__SecretKey` ou `JWT_SECRET_KEY` com pelo menos 32 bytes.
+
+As conexões locais usam o serviço `NexumAltivonMySQL` na porta `3309`. Senhas, tokens e certificados permanecem somente na configuração privada do servidor.
+
+## Validação
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "D:\Nexum Altivon\NexumAltivon.com\scripts\server\instalar-api-oficial-24h-task.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\Nexum Altivon\NexumAltivon.com\scripts\server\validar-api-oficial-24h-task.ps1"
 ```
 
-## Configuração privada
+O retorno só é positivo quando todos estes critérios são verdadeiros:
 
-O arquivo real `D:\NexumAltivon_API_24H\config\api.env.ps1` nunca deve ir para o Git.
+- projeto em disco local fixo;
+- tarefa em execução como `SYSTEM`/`ServiceAccount`/`Highest`;
+- um gatilho de boot e nenhum gatilho de logon;
+- `StartWhenAvailable`, `RestartCount=999`, `RestartInterval=PT1M`, `ExecutionTimeLimit=PT0S` e `IgnoreNew`;
+- ação oculta apontando para o supervisor oficial e porta `5010`;
+- `Schedule`, `NexumAltivonMySQL` e `Cloudflared` em `Running` e `Automatic`;
+- processo `NexumAltivon.API.dll` escutando a porta `5010`;
+- healthchecks locais de API, `nexum_altivon` e `genesis_bd` com HTTP 2xx;
+- healthcheck e configuração pública acessíveis por HTTPS no domínio oficial.
 
-Ele precisa definir estes nomes com valores reais:
+## Diagnóstico sem dependência pessoal
 
-- `ConnectionStrings__DefaultConnection`
-- `ConnectionStrings__NexumDb`
-- `ConnectionStrings__GenesisConnection`
-- `JwtSettings__SecretKey` ou `JWT_SECRET_KEY`
-- `AdminUser__Email`
-- `AdminUser__Password`
-- `AdminUser__Name`
-- `AdminUser__Role`
-
-Rotas fisicas de dados MySQL/MariaDB que o instalador valida no servidor apos a reinstalacao do XAMPP:
-
-- `D:\xampp\mysql\data\nexum_altivon`
-- `D:\xampp\mysql\data\genesis_bd`
-
-Rotas de unidade mapeada ou compartilhamento de rede nao sao dependencia operacional da API 24h. O serviço Windows deve usar o caminho fisico local `D:\xampp` para evitar falha de permissao em conta `LocalSystem`.
-
-A porta oficial local do MySQL/MariaDB e `3309`.
-
-Verificação/partida do banco no servidor:
-
-```cmd
-scripts\server\VERIFICAR-BANCO-XAMPP-COMO-ADMIN.cmd -StartIfStopped
-```
-
-Depois de reinstalar o XAMPP, recrie e valide o usuario real da API no MariaDB com a senha definida na `DefaultConnection` ativa:
-
-```cmd
-scripts\server\CONFIGURAR-USUARIO-BANCO-XAMPP-COMO-ADMIN.cmd
-```
-
-O serviço Windows funcional do banco, apos a reinstalacao do XAMPP em 09/07/2026, e `NexumAltivonMySQL`. Se o serviço legado `mysql` ficar preso em `StartPending`, ele deve permanecer desabilitado e o reparador deve manter `NexumAltivonMySQL` como serviço real:
-
-```cmd
-scripts\server\REPARAR-BANCO-XAMPP-SERVICO-COMO-ADMIN.cmd -ForceRecreateService
-```
-
-## Publicação externa
-
-Para `api.nexumaltivon.com.br` e `api.nexumaltivon.com`, o caminho operacional é:
-
-- API rodando em `http://127.0.0.1:5010` no servidor;
-- Cloudflared rodando no mesmo servidor;
-- rota pública verificada em 2026-07-09: `api.nexumaltivon.com.br` para `http://127.0.0.1:5010`;
-- DNS/rota pendente de validação real: `api.nexumaltivon.com`.
-
-Ativação do serviço Windows do túnel:
-
-```cmd
-scripts\server\ATIVAR-CLOUDFLARE-TUNNEL-COMO-ADMIN.cmd
-```
-
-## Verificação
-
-No servidor, rode:
+Outro desenvolvedor pode diagnosticar a operação somente com os arquivos versionados e estes comandos:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\server\verificar-api-24h.ps1
+Get-ScheduledTask -TaskName NexumAltivonApi24h | Format-List *
+Get-ScheduledTaskInfo -TaskName NexumAltivonApi24h | Format-List *
+Get-Service Schedule,NexumAltivonMySQL,Cloudflared | Format-Table Name,Status,StartType
+Get-Content "D:\Nexum Altivon\NexumAltivon.com\runtime-logs\api-24h\supervisor.log" -Tail 100
+Get-ChildItem "D:\Nexum Altivon\NexumAltivon.com\runtime-logs\api-24h" -Filter "api-*.stderr.log" | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | Get-Content -Tail 100
 ```
 
-Critérios mínimos de aceite:
+O supervisor mantém os 30 arquivos mais recentes de saída e erro. Falhas repetidas usam espera progressiva de até 300 segundos para evitar ciclo agressivo de CPU e disco.
 
-- diretórios `D:\xampp\mysql\data\nexum_altivon` e `D:\xampp\mysql\data\genesis_bd` existem;
-- serviço `NexumAltivonMySQL` esta `Running` e `Automatic`;
-- porta local `3309` está escutando;
-- tarefa `NexumAltivonApi24h` existe;
-- porta local `5010` responde;
-- `http://127.0.0.1:5010/health` retorna saudável;
-- `https://api.nexumaltivon.com.br/health` responde publicamente;
-- `https://api.nexumaltivon.com/health` deve ser validado somente depois de configurar DNS/rota Cloudflare para o domínio `.com`;
-- login do painel funciona em `https://www.nexumaltivon.com/login`.
+## Comprovação após manutenção programada
 
-## Recuperação de banco após reinstalação do XAMPP
-
-Em 2026-07-09, a reinstalação do XAMPP deixou `D:\xampp\mysql\data\nexum_altivon` e `D:\xampp\mysql\data\genesis_bd` com tabelas em estado `ERROR`, porque as pastas de schema antigas estavam desacopladas do `ibdata1` ativo.
-
-Correção executada:
-
-- datadir quebrado preservado em `D:\NexumAltivon_DB_RECOVERY\data-broken-20260709-210126`;
-- datadir íntegro restaurado de `D:\Arquivo Recuperado 03.08.2026\Pacote de Recuperação Completo Segunda Execução\xampp\mysql\data`;
-- serviço `NexumAltivonMySQL` reiniciado em `3309`;
-- usuário `nexum_app` recriado/validado via `scripts\server\CONFIGURAR-USUARIO-BANCO-XAMPP-COMO-ADMIN.cmd`;
-- API republicada em `D:\NexumAltivon_API_24H\api` e validada em `https://api.nexumaltivon.com.br`.
-
-## Plano definitivo
-
-Depois do dia 17/06/2026, quando a transferência completa do domínio for liberada, o caminho recomendado é mover a zona DNS inteira para Cloudflare ou publicar a API em VPS com IP público fixo.
+O teste definitivo de boot físico deve ser executado em uma janela autorizada de reinicialização do servidor. Após o Windows chegar à tela de senha, sem efetuar login, um equipamento externo deve consultar `https://api.nexumaltivon.com.br/health`. A resposta HTTP 200 comprova a cadeia completa de boot, banco, tarefa, API e túnel.
