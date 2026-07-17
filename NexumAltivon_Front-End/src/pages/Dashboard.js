@@ -726,6 +726,8 @@ export default function Dashboard() {
   const [leadForm, setLeadForm] = useState(emptyLead);
   const [empresaGrupoForm, setEmpresaGrupoForm] = useState(emptyEmpresaGrupo);
   const [formStatus, setFormStatus] = useState('');
+  const [siteConfigStatus, setSiteConfigStatus] = useState({ type: '', message: '' });
+  const [siteConfigSaving, setSiteConfigSaving] = useState(false);
   const [loadError, setLoadError] = useState('');
   const sophiaEmail = siteConfigForm.site_sophia_email || siteConfigForm.site_email_contato || 'corporativo.gna@gmail.com';
   const sophiaMailTo = `mailto:${encodeURIComponent(sophiaEmail)}?subject=Sophia%20-%20Apoio%20administrativo&body=Ol%C3%A1%20Sophia%2C%20preciso%20de%20apoio%20administrativo%20por%20mensagem%20instant%C3%A2nea%20para%20d%C3%BAvidas%20internas%20e%20solu%C3%A7%C3%B5es%20operacionais.`;
@@ -1015,7 +1017,10 @@ export default function Dashboard() {
 
   const submitSiteConfiguracoes = async (event) => {
     event.preventDefault();
-    setFormStatus('');
+    if (siteConfigSaving) return;
+
+    setSiteConfigStatus({ type: '', message: '' });
+    setSiteConfigSaving(true);
 
     let payload;
 
@@ -1033,24 +1038,42 @@ export default function Dashboard() {
         };
       });
     } catch (error) {
-      setFormStatus('Os campos em JSON precisam estar válidos antes de salvar.');
+      setSiteConfigStatus({ type: 'error', message: 'Os campos em JSON precisam estar válidos antes de salvar.' });
+      setSiteConfigSaving(false);
       return;
     }
 
     try {
-      await siteAPI.update(payload);
-      const persistedResponse = await siteAPI.getAll();
+      const persistedResponse = await siteAPI.update(payload);
       const persistedItems = persistedResponse.data;
 
       if (!Array.isArray(persistedItems)) {
         throw new Error('A API não confirmou as configurações persistidas no banco.');
       }
 
+      const persistedByKey = new Map(persistedItems.map((item) => [String(item.chave || '').toLowerCase(), item]));
+      const unconfirmedItem = payload.find((item) => {
+        const persisted = persistedByKey.get(item.chave.toLowerCase());
+        return !persisted || String(persisted.valor ?? '') !== String(item.valor ?? '').trim();
+      });
+
+      if (unconfirmedItem) {
+        throw new Error(`A API não confirmou no banco o valor da configuração ${unconfirmedItem.chave}.`);
+      }
+
       setSiteConfigItems(persistedItems);
       setSiteConfigForm((current) => buildSiteConfigFormFromItems(persistedItems, current));
-      setFormStatus('Configurações da home, banners e contatos recarregadas do banco com sucesso.');
+      setSiteConfigStatus({
+        type: 'success',
+        message: `${payload.length} configurações da home, banners e contatos foram gravadas e relidas do banco.`,
+      });
     } catch (error) {
-      setFormStatus(error.response?.data?.detail || error.response?.data?.mensagem || error.message || 'Não foi possível salvar as configurações do site.');
+      setSiteConfigStatus({
+        type: 'error',
+        message: error.response?.data?.detail || error.response?.data?.mensagem || error.message || 'Não foi possível salvar as configurações do site.',
+      });
+    } finally {
+      setSiteConfigSaving(false);
     }
   };
 
@@ -2423,9 +2446,22 @@ export default function Dashboard() {
                           </section>
                         ))}
                       </div>
-                      <button className="mt-6 inline-flex h-11 items-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-black text-white">
+                      {siteConfigStatus.message && (
+                        <div
+                          className={`mt-6 rounded-lg border px-4 py-3 text-sm font-bold ${siteConfigStatus.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-800'}`}
+                          role={siteConfigStatus.type === 'error' ? 'alert' : 'status'}
+                          aria-live="polite"
+                        >
+                          {siteConfigStatus.message}
+                        </div>
+                      )}
+                      <button
+                        type="submit"
+                        disabled={siteConfigSaving}
+                        className="mt-6 inline-flex h-11 items-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-black text-white transition disabled:cursor-wait disabled:opacity-60"
+                      >
                         <Save size={17} />
-                        Salvar configuração pública
+                        {siteConfigSaving ? 'Salvando e confirmando no banco...' : 'Salvar configuração pública'}
                       </button>
                     </form>
                     <div className="space-y-6">

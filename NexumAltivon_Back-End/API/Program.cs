@@ -3114,23 +3114,66 @@ app.MapPut("/api/site/configuracoes", [Authorize(Policy = "Gerente")] async (Sit
         return Results.BadRequest(ApiResponse<string>.Erro("Nenhuma configuração foi enviada."));
     }
 
+    var invalidItem = request.Itens.FirstOrDefault(item =>
+        string.IsNullOrWhiteSpace(item.Chave)
+        || item.Chave.Trim().Length > 100
+        || (!item.Chave.Trim().StartsWith("site_", StringComparison.OrdinalIgnoreCase)
+            && !item.Chave.Trim().StartsWith("home_", StringComparison.OrdinalIgnoreCase))
+        || item.Descricao?.Trim().Length > 255
+        || item.Grupo?.Trim().Length > 50);
+
+    if (invalidItem is not null)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro(
+            "A solicitação contém uma chave, descrição ou grupo inválido para as configurações públicas do site."));
+    }
+
     var requestedKeys = request.Itens
-        .Where(item => !string.IsNullOrWhiteSpace(item.Chave))
         .Select(item => item.Chave.Trim())
-        .Distinct(StringComparer.OrdinalIgnoreCase)
         .ToList();
+
+    if (requestedKeys.Distinct(StringComparer.OrdinalIgnoreCase).Count() != requestedKeys.Count)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("A solicitação contém chaves de configuração duplicadas."));
+    }
+
+    foreach (var item in request.Itens)
+    {
+        var isJson = string.Equals(item.Tipo?.Trim(), TipoConfiguracao.JSON.ToString(), StringComparison.OrdinalIgnoreCase)
+            || LooksLikeJson(item.Valor);
+
+        if (!isJson)
+        {
+            continue;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(item.Valor ?? string.Empty);
+            if (document.RootElement.ValueKind is not JsonValueKind.Array and not JsonValueKind.Object)
+            {
+                return Results.BadRequest(ApiResponse<string>.Erro($"O valor JSON da chave '{item.Chave}' deve ser um objeto ou uma lista."));
+            }
+        }
+        catch (JsonException)
+        {
+            return Results.BadRequest(ApiResponse<string>.Erro($"O valor JSON da chave '{item.Chave}' é inválido."));
+        }
+    }
 
     var existing = await db.ConfiguracoesSistema
         .Where(item => requestedKeys.Contains(item.Chave))
         .ToListAsync(ct);
 
+    var protectedKey = existing.FirstOrDefault(item => !item.Editavel);
+    if (protectedKey is not null)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro($"A configuração '{protectedKey.Chave}' não permite edição."));
+    }
+
     foreach (var item in request.Itens)
     {
-        var chave = item.Chave?.Trim();
-        if (string.IsNullOrWhiteSpace(chave))
-        {
-            continue;
-        }
+        var chave = item.Chave.Trim();
 
         var entity = existing.FirstOrDefault(config => string.Equals(config.Chave, chave, StringComparison.OrdinalIgnoreCase));
         if (entity is null)
@@ -3166,7 +3209,37 @@ app.MapPut("/api/site/configuracoes", [Authorize(Policy = "Gerente")] async (Sit
 
     await db.SaveChangesAsync(ct);
 
-    return Results.Ok(ApiResponse<string>.Ok("ok", "Configurações públicas do site atualizadas com sucesso."));
+    var persistedItems = await db.ConfiguracoesSistema
+        .AsNoTracking()
+        .OrderBy(item => item.Grupo)
+        .ThenBy(item => item.Chave)
+        .Select(item => new SiteConfiguracaoItemDto(
+            item.Id,
+            item.Chave,
+            item.Valor,
+            item.Tipo.ToString(),
+            item.Descricao,
+            item.Grupo,
+            item.Editavel,
+            item.UpdatedAt))
+        .ToListAsync(ct);
+
+    var persistedByKey = persistedItems.ToDictionary(item => item.Chave, StringComparer.OrdinalIgnoreCase);
+    var unconfirmedKey = request.Itens.FirstOrDefault(item =>
+        !persistedByKey.TryGetValue(item.Chave.Trim(), out var persisted)
+        || !string.Equals(persisted.Valor, item.Valor?.Trim(), StringComparison.Ordinal));
+
+    if (unconfirmedKey is not null)
+    {
+        return Results.Problem(
+            title: "Persistência de configuração não confirmada",
+            detail: $"A configuração '{unconfirmedKey.Chave}' não foi relida do banco com o valor solicitado.",
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+
+    return Results.Ok(ApiResponse<List<SiteConfiguracaoItemDto>>.Ok(
+        persistedItems,
+        $"{request.Itens.Count} configurações públicas foram gravadas e confirmadas no banco."));
 })
 .WithName("AtualizarSiteConfiguracoes")
 ;
@@ -4911,7 +4984,7 @@ app.MapPost("/api/compras/pedidos", [Authorize(Policy = "Gerente")] async (Compr
         if (string.IsNullOrWhiteSpace(produtoNome))
         {
             await transaction.RollbackAsync(ct);
-            return Results.BadRequest(ApiResponse<string>.Erro("Todo item sem produto vinculado precisa de descricao."));
+            return Results.BadRequest(ApiResponse<string>.Erro("Cada item sem produto vinculado precisa de descricao."));
         }
 
         var itemTotal = item.Quantidade * item.CustoUnitario;
