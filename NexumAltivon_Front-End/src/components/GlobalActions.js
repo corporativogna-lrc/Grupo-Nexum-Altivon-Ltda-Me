@@ -6,12 +6,12 @@
  * Versão: 1.1.5
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Bot, LoaderCircle, MessageCircleMore, Send, X } from 'lucide-react';
 import { assistenteAPI } from '../services/api';
 
-const assistantProfiles = {
+const assistantProfiles = Object.freeze({
   yara: {
     label: 'Yara',
     scope: 'Vendas',
@@ -22,7 +22,7 @@ const assistantProfiles = {
     scope: 'Operação',
     greeting: 'Sou a Sophia. Posso ajudar com rotinas internas, ERP, PDV, financeiro, fiscal, estoque, logística e operação do GenesisGest.Net.',
   },
-};
+});
 
 const getSessionId = () => {
   const key = 'nexum_ai_assistant_session';
@@ -45,18 +45,15 @@ const initialMessages = (assistant) => [
 
 export default function GlobalActions() {
   const location = useLocation();
-  const preferredAssistant = location.pathname.startsWith('/dashboard') ? 'sophia' : 'yara';
+  const assistant = location.pathname.startsWith('/dashboard') ? 'sophia' : 'yara';
   const [open, setOpen] = useState(false);
-  const [assistant, setAssistant] = useState(preferredAssistant);
-  const [messages, setMessages] = useState(() => initialMessages(preferredAssistant));
+  const [messagesByAssistant, setMessagesByAssistant] = useState(() => ({
+    yara: initialMessages('yara'),
+    sophia: initialMessages('sophia'),
+  }));
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
-
-  useEffect(() => {
-    setAssistant(preferredAssistant);
-    setMessages(initialMessages(preferredAssistant));
-  }, [preferredAssistant]);
-
+  const messages = messagesByAssistant[assistant];
   const activeProfile = assistantProfiles[assistant];
   const historico = useMemo(
     () =>
@@ -66,12 +63,6 @@ export default function GlobalActions() {
         .map((item) => ({ autor: item.author, texto: item.text })),
     [messages]
   );
-
-  const switchAssistant = (nextAssistant) => {
-    if (nextAssistant === assistant) return;
-    setAssistant(nextAssistant);
-    setMessages(initialMessages(nextAssistant));
-  };
 
   const sendMessage = async (event) => {
     event.preventDefault();
@@ -84,13 +75,18 @@ export default function GlobalActions() {
       assistant,
       text: message,
     };
-    setMessages((current) => [...current, userMessage]);
+    setMessagesByAssistant((current) => ({
+      ...current,
+      [assistant]: [...current[assistant], userMessage],
+    }));
     setText('');
     setSending(true);
 
     try {
-      const response = await assistenteAPI.enviarMensagem({
-        assistente: assistant,
+      const send = assistant === 'sophia'
+        ? assistenteAPI.enviarMensagemSophia
+        : assistenteAPI.enviarMensagemYara;
+      const response = await send({
         mensagem: message,
         sessaoId: getSessionId(),
         historico,
@@ -101,25 +97,37 @@ export default function GlobalActions() {
         throw new Error('A API da central de IA não retornou uma resposta válida.');
       }
 
-      setMessages((current) => [
+      setMessagesByAssistant((current) => ({
         ...current,
-        {
-          id: `assistant-${Date.now()}`,
-          author: 'assistente',
-          assistant,
-          text: answer,
-        },
-      ]);
-    } catch {
-      setMessages((current) => [
+        [assistant]: [
+          ...current[assistant],
+          {
+            id: `assistant-${Date.now()}`,
+            author: 'assistente',
+            assistant,
+            text: answer,
+          },
+        ],
+      }));
+    } catch (error) {
+      const detail = String(
+        error?.response?.data?.detail
+        || error?.response?.data?.mensagem
+        || error?.response?.data?.message
+        || 'Não foi possível concluir o atendimento pela central de IA.'
+      ).trim();
+      setMessagesByAssistant((current) => ({
         ...current,
-        {
-          id: `assistant-error-${Date.now()}`,
-          author: 'assistente',
-          assistant,
-          text: 'A central de IA está oscilando agora. Sua mensagem foi mantida na conversa; tente novamente em instantes.',
-        },
-      ]);
+        [assistant]: [
+          ...current[assistant],
+          {
+            id: `assistant-error-${Date.now()}`,
+            author: 'assistente',
+            assistant,
+            text: detail,
+          },
+        ],
+      }));
     } finally {
       setSending(false);
     }
@@ -148,23 +156,6 @@ export default function GlobalActions() {
               <X size={16} />
             </button>
           </header>
-
-          <div className="grid grid-cols-2 gap-2 border-b border-white/10 p-3">
-            {Object.entries(assistantProfiles).map(([key, profile]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => switchAssistant(key)}
-                className={`h-10 rounded-xl text-xs font-black uppercase tracking-[0.12em] transition ${
-                  assistant === key
-                    ? 'bg-[#C9A227] text-black'
-                    : 'border border-white/10 bg-white/[0.03] text-zinc-300 hover:border-[#C9A227]/60'
-                }`}
-              >
-                {profile.label}
-              </button>
-            ))}
-          </div>
 
           <div className="max-h-[360px] space-y-3 overflow-y-auto px-4 py-4">
             {messages.map((item) => (

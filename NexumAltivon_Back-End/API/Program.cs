@@ -269,6 +269,7 @@ builder.Services.AddHttpClient("OpenAI", client =>
 });
 builder.Services.AddScoped<INotificacaoService, NotificacaoService>();
 builder.Services.AddScoped<IAssistenteIaService, AssistenteIaService>();
+builder.Services.AddScoped<IOpenAiCredentialStore, DatabaseOpenAiCredentialStore>();
 builder.Services.AddScoped<IAnexoStorageService, AnexoStorageService>();
 
 var defaultDataProtectionKeysPath = builder.Environment.IsProduction()
@@ -393,15 +394,17 @@ app.MapGet("/health/redis", async (IConfiguration configuration, CancellationTok
 .AllowAnonymous()
 .WithName("HealthRedis");
 
-app.MapPost("/api/assistentes/mensagem", async (
-    AssistenteIaRequest request,
+app.MapPost("/api/assistentes/yara/mensagem", async (
+    AssistenteMensagemRequest request,
     IAssistenteIaService assistenteIa,
+    NexumDbContext db,
     CancellationToken ct) =>
 {
     try
     {
-        var resposta = await assistenteIa.ResponderAsync(request, ct);
-        return Results.Ok(ApiResponse<AssistenteIaResposta>.Ok(resposta, "Mensagem processada pelo assistente."));
+        var contextoOperacional = await BuildYaraOperationalContextAsync(db, request.Mensagem, ct);
+        var resposta = await assistenteIa.ResponderYaraAsync(request with { ContextoOperacional = contextoOperacional }, ct);
+        return Results.Ok(ApiResponse<AssistenteIaResposta>.Ok(resposta, "Mensagem processada pela Yara."));
     }
     catch (ArgumentException ex)
     {
@@ -416,7 +419,86 @@ app.MapPost("/api/assistentes/mensagem", async (
     }
 })
 .AllowAnonymous()
-.WithName("AssistentesMensagem");
+.WithName("AssistenteYaraMensagem");
+
+app.MapPost("/api/assistentes/mensagem", () => Results.Problem(
+    title: "Rota de assistentes substituida",
+    detail: "O atendimento publico utiliza exclusivamente /api/assistentes/yara/mensagem. Sophia permanece restrita ao backend administrativo.",
+    statusCode: StatusCodes.Status410Gone))
+.AllowAnonymous()
+.WithName("AssistentesMensagemDescontinuada");
+
+app.MapPost("/api/assistentes/sophia/mensagem", async (
+    AssistenteMensagemRequest request,
+    IAssistenteIaService assistenteIa,
+    CancellationToken ct) =>
+{
+    try
+    {
+        var resposta = await assistenteIa.ResponderSophiaAsync(request, ct);
+        return Results.Ok(ApiResponse<AssistenteIaResposta>.Ok(resposta, "Mensagem processada pela Sophia."));
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro(ex.Message));
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Problem(
+            title: "Assistente de IA indisponivel",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+})
+.RequireAuthorization("Admin")
+.WithName("AssistenteSophiaMensagem");
+
+app.MapGet("/api/admin/integracoes/openai", async (
+    IAssistenteIaService assistenteIa,
+    CancellationToken ct) =>
+{
+    try
+    {
+        var status = await assistenteIa.ObterStatusAsync(ct);
+        return Results.Ok(ApiResponse<OpenAiAssistentesStatus>.Ok(status, "Configuracao OpenAI consultada no banco oficial."));
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Problem(
+            title: "Falha ao consultar configuracao OpenAI",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+})
+.RequireAuthorization("SuperAdmin")
+.WithName("OpenAiAssistentesStatus");
+
+app.MapPut("/api/admin/integracoes/openai", async (
+    OpenAiAssistentesConfiguracaoRequest request,
+    IAssistenteIaService assistenteIa,
+    HttpContext httpContext,
+    CancellationToken ct) =>
+{
+    try
+    {
+        var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "usuario-administrativo";
+        var status = await assistenteIa.ConfigurarAsync(request, userId, ct);
+        return Results.Ok(ApiResponse<OpenAiAssistentesStatus>.Ok(status, "Chaves OpenAI validadas, criptografadas e confirmadas no banco oficial."));
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro(ex.Message));
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Problem(
+            title: "Configuracao OpenAI recusada",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status424FailedDependency);
+    }
+})
+.RequireAuthorization("SuperAdmin")
+.WithName("OpenAiAssistentesConfigurar");
 
 app.MapGet("/api/anexos/status", (IAnexoStorageService storage) =>
 {
@@ -3597,6 +3679,7 @@ app.MapGet("/api/site/configuracoes", [Authorize(Policy = "Gerente")] async (Nex
 {
     var items = await db.ConfiguracoesSistema
         .AsNoTracking()
+        .Where(item => item.Chave.StartsWith("site_") || item.Chave.StartsWith("home_"))
         .OrderBy(item => item.Grupo)
         .ThenBy(item => item.Chave)
         .Select(item => new SiteConfiguracaoItemDto(
@@ -13117,6 +13200,88 @@ static ClientePortalEnderecoDto ToClientePortalEnderecoDto(Endereco endereco) =>
     endereco.Estado,
     endereco.Pais,
     endereco.Padrao);
+
+static async Task<string> BuildYaraOperationalContextAsync(
+    NexumDbContext db,
+    string? mensagem,
+    CancellationToken ct)
+{
+    var stopWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "a", "ao", "aos", "as", "com", "como", "da", "das", "de", "do", "dos", "e", "em",
+        "eu", "me", "meu", "minha", "na", "nas", "no", "nos", "o", "os", "para", "por", "qual",
+        "disponivel", "disponiveis", "gostaria", "loja", "lojas", "preciso", "produto", "produtos",
+        "que", "quero", "saber", "sobre", "tem", "uma", "um", "voce", "voces"
+    };
+    var normalizedMessage = Slugify(mensagem) ?? string.Empty;
+    var searchTerm = normalizedMessage
+        .Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Where(term => term.Length >= 3 && !stopWords.Contains(term))
+        .OrderByDescending(term => term.Length)
+        .FirstOrDefault();
+
+    var stores = await db.Lojas
+        .AsNoTracking()
+        .Where(store => store.Ativa)
+        .OrderBy(store => store.OrdemExibicao)
+        .Select(store => new
+        {
+            store.Nome,
+            store.Segmento,
+            store.Slug,
+            store.Dominio
+        })
+        .ToListAsync(ct);
+
+    var productsQuery = FiltrarProdutosPublicaveis(db.Produtos.AsNoTracking());
+    if (!string.IsNullOrWhiteSpace(searchTerm))
+    {
+        productsQuery = productsQuery.Where(product =>
+            product.Nome.Contains(searchTerm) ||
+            product.Sku.Contains(searchTerm) ||
+            (product.Marca != null && product.Marca.Contains(searchTerm)) ||
+            (product.Tags != null && product.Tags.Contains(searchTerm)) ||
+            (product.DescricaoCurta != null && product.DescricaoCurta.Contains(searchTerm)));
+    }
+
+    var persistedProducts = await productsQuery
+        .OrderByDescending(product => product.Destaque)
+        .ThenByDescending(product => product.UpdatedAt)
+        .Take(8)
+        .Select(product => new
+        {
+            product.Nome,
+            product.Sku,
+            product.Slug,
+            Loja = product.Loja != null ? product.Loja.Nome : string.Empty,
+            product.Preco,
+            product.PrecoPromocional,
+            product.EstoqueAtual,
+            product.EstoqueReservado
+        })
+        .ToListAsync(ct);
+
+    var products = persistedProducts.Select(product => new
+    {
+        product.Nome,
+        product.Sku,
+        product.Slug,
+        product.Loja,
+        PrecoAtual = product.PrecoPromocional.HasValue && product.PrecoPromocional.Value > 0 && product.PrecoPromocional.Value < product.Preco
+            ? product.PrecoPromocional.Value
+            : product.Preco,
+        EstoqueDisponivel = Math.Max(0, product.EstoqueAtual - product.EstoqueReservado)
+    });
+
+    return JsonSerializer.Serialize(new
+    {
+        Fonte = "nexum_altivon",
+        ConsultadoEm = DateTime.UtcNow,
+        TermoCatalogo = searchTerm,
+        LojasAtivas = stores,
+        ProdutosPublicaveis = products
+    });
+}
 
 static IQueryable<Produto> FiltrarProdutosPublicaveis(IQueryable<Produto> query) =>
     query.Where(produto =>

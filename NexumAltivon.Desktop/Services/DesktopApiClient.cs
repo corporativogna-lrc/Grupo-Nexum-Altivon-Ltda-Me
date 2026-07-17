@@ -83,6 +83,31 @@ public sealed class DesktopApiClient
         CancellationToken cancellationToken = default)
         => SendAuthorizedAsync<List<DesktopCrmSegmento>>(profile, token, HttpMethod.Get, "/api/crm/segmentos", null, cancellationToken);
 
+    public Task<DesktopApiDataResult<DesktopOpenAiAssistentesStatus>> GetOpenAiAssistantsStatusAsync(
+        TerminalProfile profile,
+        string token,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<DesktopOpenAiAssistentesStatus>(
+            profile,
+            token,
+            HttpMethod.Get,
+            "/api/admin/integracoes/openai",
+            null,
+            cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopOpenAiAssistentesStatus>> SaveOpenAiAssistantsAsync(
+        TerminalProfile profile,
+        string token,
+        DesktopOpenAiAssistentesConfiguracaoRequest payload,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<DesktopOpenAiAssistentesStatus>(
+            profile,
+            token,
+            HttpMethod.Put,
+            "/api/admin/integracoes/openai",
+            payload,
+            cancellationToken);
+
     public Task<DesktopApiDataResult<List<DesktopCrmCampanha>>> GetMarketingCampaignsAsync(
         TerminalProfile profile,
         string token,
@@ -644,3 +669,20 @@ public sealed record DesktopDropshippingCanalRequest(
     string? ApiEndpoint,
     bool Ativo,
     string? RowVersion);
+
+public sealed record DesktopOpenAiAssistentesConfiguracaoRequest(
+    string? YaraApiKey,
+    string YaraModel,
+    string? SophiaApiKey,
+    string SophiaModel);
+
+public sealed record DesktopOpenAiAssistentesStatus(
+    DesktopOpenAiAssistenteStatus Yara,
+    DesktopOpenAiAssistenteStatus Sophia);
+
+public sealed record DesktopOpenAiAssistenteStatus(
+    string Assistente,
+    bool Configurada,
+    string Modelo,
+    string Origem,
+    DateTime? AtualizadoEm);

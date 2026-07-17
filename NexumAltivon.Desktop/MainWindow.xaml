@@ -231,7 +231,7 @@
                 <MenuItem Header="Marketplaces" Click="OpenWorkspace_Click" />
                 <MenuItem Header="Open Finance / bancos" Click="OpenWorkspace_Click" />
                 <MenuItem Header="WhatsApp e e-mail" Click="OpenWorkspace_Click" />
-                <MenuItem Header="IA Yara e Sophia" Click="OpenWorkspace_Click" />
+                <MenuItem Header="Chaves OpenAI - Yara e Sophia" Click="OpenNetworkSettings_Click" />
             </MenuItem>
             <MenuItem Header="_Governança">
                 <MenuItem Header="RBAC e perfis" Click="OpenWorkspace_Click" />

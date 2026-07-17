@@ -20,6 +20,10 @@ public partial class NetworkSettingsWindow : Window, INotifyPropertyChanged
     private readonly DesktopApiClient _apiClient = new();
     private string _resultMessage = "Ajuste a grade quando trocar terminal, unidade, rota local ou token de acesso.";
     private string _summary = "Matriz usa servidor local primeiro; unidades externas usam API pública segura e podem receber rota dedicada quando houver túnel próprio.";
+    private string _yaraModel = "gpt-5-mini";
+    private string _sophiaModel = "gpt-5-mini";
+    private string _yaraStatus = "Status ainda nao consultado";
+    private string _sophiaStatus = "Status ainda nao consultado";
 
     public TerminalProfile Terminal { get; }
     public ObservableCollection<NetworkEndpointSetting> Endpoints { get; } = new();
@@ -36,6 +40,30 @@ public partial class NetworkSettingsWindow : Window, INotifyPropertyChanged
         set => SetField(ref _summary, value);
     }
 
+    public string YaraModel
+    {
+        get => _yaraModel;
+        set => SetField(ref _yaraModel, value);
+    }
+
+    public string SophiaModel
+    {
+        get => _sophiaModel;
+        set => SetField(ref _sophiaModel, value);
+    }
+
+    public string YaraStatus
+    {
+        get => _yaraStatus;
+        set => SetField(ref _yaraStatus, value);
+    }
+
+    public string SophiaStatus
+    {
+        get => _sophiaStatus;
+        set => SetField(ref _sophiaStatus, value);
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public NetworkSettingsWindow(TerminalProfile terminal)
@@ -45,6 +73,7 @@ public partial class NetworkSettingsWindow : Window, INotifyPropertyChanged
         DataContext = this;
         TokenBox.Password = Terminal.DesktopAccessToken;
         LoadEndpoints();
+        Loaded += async (_, _) => await RefreshAssistantsAsync();
     }
 
     private void LoadEndpoints()
@@ -89,9 +118,8 @@ public partial class NetworkSettingsWindow : Window, INotifyPropertyChanged
         SetUserEnvironment("NEXUM_DESKTOP_OPERATOR", Terminal.OperatorName);
         SetUserEnvironment("NEXUM_DESKTOP_LOCAL_PRINTER", Terminal.LocalPrinter);
         SetUserEnvironment("NEXUM_DESKTOP_CONTINGENCY", Terminal.OfflineContingencyEnabled ? "true" : "false");
-        SetUserEnvironment("NEXUM_DESKTOP_TOKEN", Terminal.DesktopAccessToken);
 
-        ResultMessage = "Configuração salva nas variáveis do usuário do Windows. Feche e abra o GenesisGest.Net para recarregar tudo limpo.";
+        ResultMessage = "Configuracao do terminal salva. O JWT administrativo permanece somente na memoria desta execucao.";
         foreach (var endpoint in Endpoints)
         {
             endpoint.Status = "Salvo";
@@ -102,6 +130,104 @@ public partial class NetworkSettingsWindow : Window, INotifyPropertyChanged
     private void TokenBox_PasswordChanged(object sender, RoutedEventArgs e)
     {
         Terminal.DesktopAccessToken = TokenBox.Password;
+    }
+
+    private async void AuthenticateAdmin_Click(object sender, RoutedEventArgs e)
+    {
+        ResultMessage = "Autenticando sessao administrativa na API oficial...";
+        var login = await _apiClient.AuthenticateAsync(
+            Terminal,
+            AdminEmailBox.Text,
+            AdminPasswordBox.Password,
+            AdminMfaBox.Text);
+        if (!login.Success || string.IsNullOrWhiteSpace(login.Token))
+        {
+            ResultMessage = $"Autenticacao administrativa recusada: {login.Detail}";
+            return;
+        }
+
+        Terminal.DesktopAccessToken = login.Token;
+        TokenBox.Password = login.Token;
+        AdminPasswordBox.Clear();
+        AdminMfaBox.Clear();
+        ResultMessage = $"{login.Detail} O JWT sera mantido somente na memoria ate o Desktop ser fechado.";
+        await RefreshAssistantsAsync();
+    }
+
+    private async void RefreshAssistants_Click(object sender, RoutedEventArgs e)
+    {
+        Terminal.DesktopAccessToken = TokenBox.Password;
+        await RefreshAssistantsAsync();
+    }
+
+    private async void SaveAssistants_Click(object sender, RoutedEventArgs e)
+    {
+        Terminal.DesktopAccessToken = TokenBox.Password;
+        var yaraModel = YaraModel.Trim();
+        var sophiaModel = SophiaModel.Trim();
+        if (string.IsNullOrWhiteSpace(yaraModel) || string.IsNullOrWhiteSpace(sophiaModel))
+        {
+            ResultMessage = "Informe os modelos da Yara e da Sophia antes de salvar.";
+            return;
+        }
+
+        ResultMessage = "Validando as duas credenciais diretamente na OpenAI...";
+        var result = await _apiClient.SaveOpenAiAssistantsAsync(
+            Terminal,
+            Terminal.DesktopAccessToken,
+            new DesktopOpenAiAssistentesConfiguracaoRequest(
+                string.IsNullOrWhiteSpace(YaraApiKeyBox.Password) ? null : YaraApiKeyBox.Password,
+                yaraModel,
+                string.IsNullOrWhiteSpace(SophiaApiKeyBox.Password) ? null : SophiaApiKeyBox.Password,
+                sophiaModel));
+
+        if (!result.Success || result.Data is null)
+        {
+            ResultMessage = $"As credenciais nao foram salvas: {result.Detail}";
+            return;
+        }
+
+        ApplyAssistantStatus(result.Data);
+        YaraApiKeyBox.Clear();
+        SophiaApiKeyBox.Clear();
+        ResultMessage = "Credenciais validadas, criptografadas e relidas do banco oficial. Os campos de chave foram limpos.";
+    }
+
+    private async Task RefreshAssistantsAsync()
+    {
+        Terminal.DesktopAccessToken = TokenBox.Password;
+        var result = await _apiClient.GetOpenAiAssistantsStatusAsync(Terminal, Terminal.DesktopAccessToken);
+        if (!result.Success || result.Data is null)
+        {
+            YaraStatus = "Consulta indisponivel";
+            SophiaStatus = "Consulta indisponivel";
+            ResultMessage = $"Nao foi possivel consultar as credenciais: {result.Detail}";
+            return;
+        }
+
+        ApplyAssistantStatus(result.Data);
+        ResultMessage = "Status das credenciais consultado na API oficial.";
+    }
+
+    private void ApplyAssistantStatus(DesktopOpenAiAssistentesStatus status)
+    {
+        YaraStatus = BuildAssistantStatus(status.Yara);
+        SophiaStatus = BuildAssistantStatus(status.Sophia);
+        if (!string.IsNullOrWhiteSpace(status.Yara.Modelo))
+        {
+            YaraModel = status.Yara.Modelo;
+        }
+        if (!string.IsNullOrWhiteSpace(status.Sophia.Modelo))
+        {
+            SophiaModel = status.Sophia.Modelo;
+        }
+    }
+
+    private static string BuildAssistantStatus(DesktopOpenAiAssistenteStatus status)
+    {
+        return status.Configurada
+            ? $"Configurada | {status.Modelo} | {status.Origem}"
+            : "Nao configurada";
     }
 
     private void ApplyGridToTerminal()

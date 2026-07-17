@@ -468,7 +468,8 @@ export const dropshippingAPI = {
 };
 
 export const assistenteAPI = {
-  enviarMensagem: (data) => api.post('/assistentes/mensagem', data),
+  enviarMensagemYara: (data) => api.post('/assistentes/yara/mensagem', data),
+  enviarMensagemSophia: (data) => api.post('/assistentes/sophia/mensagem', data),
 };
 
 export const freteAPI = {

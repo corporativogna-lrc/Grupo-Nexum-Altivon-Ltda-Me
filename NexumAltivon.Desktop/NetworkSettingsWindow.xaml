@@ -10,9 +10,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="GenesisGest.Net - Grade de rede e terminais"
         Width="980"
-        Height="680"
+        Height="820"
         MinWidth="860"
-        MinHeight="620"
+        MinHeight="700"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize"
         Background="{StaticResource ShellBackground}"
@@ -77,6 +77,7 @@
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
@@ -102,7 +103,68 @@
                 </UniformGrid>
             </Border>
 
-            <DataGrid Grid.Row="1"
+            <Border Grid.Row="1" Style="{StaticResource PanelCard}" Margin="0,0,0,16">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="20" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.ColumnSpan="3" Orientation="Horizontal" Margin="0,0,0,14">
+                        <TextBlock Text="OPENAI - CHAVES SEPARADAS" Foreground="{StaticResource AccentGold}" FontWeight="Bold" VerticalAlignment="Center" />
+                        <Button Content="Atualizar status" Style="{StaticResource GhostButton}" Click="RefreshAssistants_Click" Margin="18,0,0,0" />
+                        <Button Content="Validar e salvar no banco" Style="{StaticResource PrimaryButton}" Click="SaveAssistants_Click" Margin="10,0,0,0" />
+                    </StackPanel>
+
+                    <Grid Grid.Row="1" Grid.ColumnSpan="3" Margin="0,0,0,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="110" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Margin="0,0,10,0">
+                            <TextBlock Text="E-mail administrativo" Foreground="{StaticResource TextSecondary}" />
+                            <TextBox x:Name="AdminEmailBox" Margin="0,4,0,0" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="0,0,10,0">
+                            <TextBlock Text="Senha" Foreground="{StaticResource TextSecondary}" />
+                            <PasswordBox x:Name="AdminPasswordBox" Margin="0,4,0,0" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Margin="0,0,10,0">
+                            <TextBlock Text="MFA" Foreground="{StaticResource TextSecondary}" />
+                            <TextBox x:Name="AdminMfaBox" MaxLength="6" Margin="0,4,0,0" />
+                        </StackPanel>
+                        <Button Grid.Column="3" Content="Entrar" Style="{StaticResource PrimaryButton}" Click="AuthenticateAdmin_Click" VerticalAlignment="Bottom" />
+                    </Grid>
+
+                    <StackPanel Grid.Row="2" Grid.Column="0">
+                        <TextBlock Text="Yara - atendimento comercial público" Foreground="{StaticResource TextPrimary}" FontWeight="Bold" />
+                        <TextBlock Text="{Binding YaraStatus}" Foreground="{StaticResource TextSecondary}" Margin="0,3,0,8" />
+                        <TextBlock Text="Chave OpenAI da Yara" Foreground="{StaticResource TextSecondary}" />
+                        <PasswordBox x:Name="YaraApiKeyBox" Margin="0,4,0,8" />
+                        <TextBlock Text="Modelo" Foreground="{StaticResource TextSecondary}" />
+                        <TextBox Text="{Binding YaraModel, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,0" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="2" Grid.Column="2">
+                        <TextBlock Text="Sophia - apoio administrativo interno" Foreground="{StaticResource TextPrimary}" FontWeight="Bold" />
+                        <TextBlock Text="{Binding SophiaStatus}" Foreground="{StaticResource TextSecondary}" Margin="0,3,0,8" />
+                        <TextBlock Text="Chave OpenAI da Sophia" Foreground="{StaticResource TextSecondary}" />
+                        <PasswordBox x:Name="SophiaApiKeyBox" Margin="0,4,0,8" />
+                        <TextBlock Text="Modelo" Foreground="{StaticResource TextSecondary}" />
+                        <TextBox Text="{Binding SophiaModel, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,0" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <DataGrid Grid.Row="2"
                       ItemsSource="{Binding Endpoints}"
                       AutoGenerateColumns="False"
                       CanUserAddRows="False"
@@ -117,7 +179,7 @@
                 </DataGrid.Columns>
             </DataGrid>
 
-            <Border Grid.Row="2" Style="{StaticResource PanelCard}" Margin="0,16,0,0">
+            <Border Grid.Row="3" Style="{StaticResource PanelCard}" Margin="0,16,0,0">
                 <TextBlock Text="{Binding ResultMessage}" Foreground="{StaticResource AccentGold}" TextWrapping="Wrap" FontWeight="SemiBold" />
             </Border>
         </Grid>

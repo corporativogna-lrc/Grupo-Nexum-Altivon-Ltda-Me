@@ -62,6 +62,36 @@ function Write-Step([string]$Message) {
     Add-Content -LiteralPath $logPath -Value $line -Encoding UTF8
 }
 
+function Ensure-IntegrationEncryptionKey {
+    $content = Get-Content -LiteralPath $privateConfig -Raw
+    $match = [regex]::Match($content, "(?m)^\s*\`$env:Security__IntegrationEncryptionKey\s*=\s*'(?<value>[^']+)'\s*$")
+    if ($match.Success) {
+        try {
+            $configuredKey = [Convert]::FromBase64String($match.Groups['value'].Value)
+            if ($configuredKey.Length -ne 32) {
+                throw "tamanho invalido"
+            }
+            [Array]::Clear($configuredKey, 0, $configuredKey.Length)
+            Write-Step "Chave mestra de integracoes confirmada na configuracao privada."
+            return
+        } catch {
+            throw "Security__IntegrationEncryptionKey existe, mas nao contem 32 bytes validos em Base64."
+        }
+    }
+
+    $newKey = New-Object byte[] 32
+    $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $rng.GetBytes($newKey)
+        $encodedKey = [Convert]::ToBase64String($newKey)
+        Add-Content -LiteralPath $privateConfig -Value "`r`n`$env:Security__IntegrationEncryptionKey = '$encodedKey'" -Encoding UTF8
+        Write-Step "Chave mestra de integracoes gerada e gravada somente na configuracao privada ignorada pelo Git."
+    } finally {
+        $rng.Dispose()
+        [Array]::Clear($newKey, 0, $newKey.Length)
+    }
+}
+
 function Stop-OfficialRuntime {
     $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     if ($task -and $task.State -eq "Running") {
@@ -130,6 +160,8 @@ function Invoke-OfficialEndpointValidation {
 }
 
 Write-Step "Inicio da atualizacao oficial da API em $ApiUrl."
+
+Ensure-IntegrationEncryptionKey
 
 Stop-OfficialRuntime
 
