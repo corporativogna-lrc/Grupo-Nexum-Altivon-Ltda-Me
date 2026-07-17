@@ -4757,7 +4757,7 @@ app.MapPost("/api/clientes", async (ClienteRequest request, IConfiguration confi
             clienteExistente.Status = StatusCliente.Pendente;
             var baseUrlExistente = configuration["PublicSite:BaseUrl"]?.TrimEnd('/') ?? "https://nexumaltivon.com.br";
             var linkExistente = $"{baseUrlExistente}/confirmar-cadastro.html?token={Uri.EscapeDataString(clienteExistente.TokenConfirmacaoEmail)}";
-            await notificacaoService.EnviarConfirmacaoCadastroAsync(clienteExistente, linkExistente);
+            await notificacaoService.EnviarConfirmacaoCadastroAsync(clienteExistente, linkExistente, ct);
         }
 
         await db.SaveChangesAsync(ct);
@@ -4792,7 +4792,7 @@ app.MapPost("/api/clientes", async (ClienteRequest request, IConfiguration confi
 
     var baseUrl = configuration["PublicSite:BaseUrl"]?.TrimEnd('/') ?? "https://nexumaltivon.com.br";
     var linkConfirmacao = $"{baseUrl}/confirmar-cadastro.html?token={Uri.EscapeDataString(cliente.TokenConfirmacaoEmail ?? string.Empty)}";
-    await notificacaoService.EnviarConfirmacaoCadastroAsync(cliente, linkConfirmacao);
+    await notificacaoService.EnviarConfirmacaoCadastroAsync(cliente, linkConfirmacao, ct);
 
     var dto = ToClienteLojaDto(cliente);
     return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(dto, "Cliente registrado. Enviamos um link de confirmação por e-mail."));
@@ -4828,7 +4828,7 @@ app.MapPost("/api/clientes/reenviar-confirmacao", async (ReenviarConfirmacaoClie
 
     var baseUrl = configuration["PublicSite:BaseUrl"]?.TrimEnd('/') ?? "https://nexumaltivon.com.br";
     var linkConfirmacao = $"{baseUrl}/confirmar-cadastro.html?token={Uri.EscapeDataString(cliente.TokenConfirmacaoEmail)}";
-    await notificacaoService.EnviarConfirmacaoCadastroAsync(cliente, linkConfirmacao);
+    await notificacaoService.EnviarConfirmacaoCadastroAsync(cliente, linkConfirmacao, ct);
     await db.SaveChangesAsync(ct);
 
     return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(
@@ -6812,13 +6812,13 @@ app.MapPut("/api/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
     {
         if (statusPagamentoAnterior != pedido.StatusPagamento && pedido.StatusPagamento == StatusPagamento.Aprovado)
         {
-            await notificacaoService.EnviarConfirmacaoPagamentoAsync(pedido.Cliente, pedido);
+            await notificacaoService.EnviarConfirmacaoPagamentoAsync(pedido.Cliente, pedido, ct);
         }
 
         if (status is StatusPedido.EmSeparacao or StatusPedido.Enviado or StatusPedido.Entregue or StatusPedido.Cancelado or StatusPedido.Devolvido or StatusPedido.Reembolsado)
         {
             var mensagem = BuildMensagemAtualizacaoPedido(pedido);
-            await notificacaoService.EnviarStatusPedidoAsync(pedido.Cliente, pedido, mensagem);
+            await notificacaoService.EnviarStatusPedidoAsync(pedido.Cliente, pedido, mensagem, ct);
         }
     }
 
@@ -6921,12 +6921,12 @@ app.MapPost("/api/pedidos/{id}/fluxo-operacional", [Authorize(Policy = "Gerente"
     {
         if (statusPagamentoAnterior != pedido.StatusPagamento && pedido.StatusPagamento == StatusPagamento.Aprovado)
         {
-            await notificacaoService.EnviarConfirmacaoPagamentoAsync(pedido.Cliente, pedido);
+            await notificacaoService.EnviarConfirmacaoPagamentoAsync(pedido.Cliente, pedido, ct);
         }
 
         if (proximoStatus is StatusPedido.EmSeparacao or StatusPedido.Enviado or StatusPedido.Entregue)
         {
-            await notificacaoService.EnviarStatusPedidoAsync(pedido.Cliente, pedido, BuildMensagemAtualizacaoPedido(pedido));
+            await notificacaoService.EnviarStatusPedidoAsync(pedido.Cliente, pedido, BuildMensagemAtualizacaoPedido(pedido), ct);
         }
     }
 
@@ -6960,7 +6960,7 @@ app.MapPut("/api/pedidos/{id}/logistica", [Authorize(Policy = "Gerente")] async 
 
     if (pedido.Status == StatusPedido.Enviado && pedido.Cliente is not null)
     {
-        await notificacaoService.EnviarStatusPedidoAsync(pedido.Cliente, pedido, BuildMensagemAtualizacaoPedido(pedido));
+        await notificacaoService.EnviarStatusPedidoAsync(pedido.Cliente, pedido, BuildMensagemAtualizacaoPedido(pedido), ct);
     }
 
     await db.SaveChangesAsync(ct);
@@ -7292,7 +7292,7 @@ app.MapPost("/api/pedidos", async (
     }
 
     await TryCreateGenesisContaReceberPedidoAsync(services, pedido, cliente, ct);
-    await notificacaoService.EnviarConfirmacaoPedidoAsync(cliente, pedido);
+    await notificacaoService.EnviarConfirmacaoPedidoAsync(cliente, pedido, ct);
     var metodoPagamento = (request.MetodoPagamento ?? string.Empty).Trim().ToLowerInvariant();
     var gatewayResult = metodoPagamento switch
     {
@@ -8006,7 +8006,7 @@ app.MapPost("/api/webhooks/mercadopago", async (
 
     if (pagamento.Pedido?.Cliente is not null && statusPagamentoAnterior != pagamento.Pedido.StatusPagamento && pagamento.Pedido.StatusPagamento == StatusPagamento.Aprovado)
     {
-        await notificacaoService.EnviarConfirmacaoPagamentoAsync(pagamento.Pedido.Cliente, pagamento.Pedido);
+        await notificacaoService.EnviarConfirmacaoPagamentoAsync(pagamento.Pedido.Cliente, pagamento.Pedido, ct);
     }
 
     return Results.Ok(new { received = true, updated = true, paymentId, status });
@@ -8589,7 +8589,8 @@ app.MapPost("/api/crm/leads", async (LeadRequest request, NexumDbContext db, INo
     await notificacaoService.EnviarEmailAsync(
         "corporativo.gna@gmail.com",
         existingLead is null ? $"Novo lead público: {lead.Nome}" : $"Lead público atualizado: {lead.Nome}",
-        BuildLeadNotificationEmail(lead));
+        BuildLeadNotificationEmail(lead),
+        ct);
 
     var dto = new LeadLojaDto(
         lead.Id,
@@ -9103,7 +9104,7 @@ app.MapPut("/api/fiscal/pedidos/{id}/status", [Authorize(Policy = "Gerente")] as
         novoStatus is StatusNfe.Emitida or StatusNfe.Autorizada &&
         fiscal.EmailClienteNotificadoEm is null)
     {
-        await notificacaoService.EnviarNotaFiscalEmitidaAsync(fiscal.Pedido.Cliente, fiscal.Pedido, fiscal);
+        await notificacaoService.EnviarNotaFiscalEmitidaAsync(fiscal.Pedido.Cliente, fiscal.Pedido, fiscal, ct);
         fiscal.EmailClienteNotificadoEm = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
     }

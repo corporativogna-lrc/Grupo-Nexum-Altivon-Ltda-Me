@@ -52,7 +52,7 @@ public sealed class AssistenteIaService : IAssistenteIaService
             mensagem = mensagem[..MaxMensagemChars];
         }
 
-        if (!_configuration.GetValue("OpenAI:Enabled", true))
+        if (!_configuration.GetValue<bool>("OpenAI:Enabled"))
         {
             throw new InvalidOperationException("Assistente de IA indisponivel: OpenAI:Enabled esta desativado na configuracao oficial.");
         }
@@ -109,11 +109,17 @@ public sealed class AssistenteIaService : IAssistenteIaService
     private string ResolveModel(AssistentePersona persona)
     {
         var specificKey = $"OpenAI:Assistentes:{persona.Chave}:Model";
-        return _configuration[specificKey]
+        var model = _configuration[specificKey]
             ?? Environment.GetEnvironmentVariable($"OPENAI_MODEL_{persona.Chave.ToUpperInvariant()}")
             ?? _configuration["OpenAI:Model"]
-            ?? Environment.GetEnvironmentVariable("OPENAI_MODEL")
-            ?? "gpt-4.1-mini";
+            ?? Environment.GetEnvironmentVariable("OPENAI_MODEL");
+
+        if (string.IsNullOrWhiteSpace(model))
+        {
+            throw new InvalidOperationException($"Assistente de IA indisponivel: configure um modelo OpenAI para {persona.Nome}.");
+        }
+
+        return model.Trim();
     }
 
     private static object[] BuildInput(AssistentePersona persona, string mensagem, List<AssistenteIaMensagem>? historico)
@@ -199,8 +205,13 @@ internal sealed record AssistentePersona(string Chave, string Nome, string Instr
 {
     public static AssistentePersona From(string? assistente)
     {
-        var key = (assistente ?? "yara").Trim().ToLowerInvariant();
-        return key == "sophia" ? Sophia : Yara;
+        var key = assistente?.Trim().ToLowerInvariant();
+        return key switch
+        {
+            "yara" => Yara,
+            "sophia" => Sophia,
+            _ => throw new ArgumentException("Assistente deve ser yara ou sophia.", nameof(assistente))
+        };
     }
 
     private static readonly AssistentePersona Yara = new(

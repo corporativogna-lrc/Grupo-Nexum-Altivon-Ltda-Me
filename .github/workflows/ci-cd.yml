@@ -1,3 +1,9 @@
+# Propriedade intelectual: Luís Rodrigo da Costa
+# Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+# Sistema de gestão: GenesisGest.Net
+# Ano Início: 04/2024 Publicado e operacional: 05/2026
+# Versão: 1.1.5
+
 name: Nexum Altivon CI/CD
 
 on:
@@ -23,6 +29,7 @@ env:
   DOTNET_VERSION: '8.0.x'
   NODE_VERSION: '22'
   PROJECT_PATH: 'NexumAltivon_Back-End/NexumAltivon.API.csproj'
+  TEST_PROJECT_PATH: 'NexumAltivon_Back-End/NexumAltivon.API.Tests.csproj'
   FRONTEND_PATH: 'NexumAltivon_Front-End'
   REGISTRY: ghcr.io
   API_IMAGE_NAME: corporativogna-lrc/grupo-nexum-altivon-ltda-m-api
@@ -58,6 +65,41 @@ jobs:
           name: api-publish
           path: ./publish-api
 
+  api-tests:
+    runs-on: ubuntu-latest
+    name: API Tests and Coverage Gate
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore test dependencies
+        run: dotnet restore ${{ env.TEST_PROJECT_PATH }}
+
+      - name: Test active API services with coverage gate
+        run: >-
+          dotnet test ${{ env.TEST_PROJECT_PATH }}
+          --configuration Release
+          --no-restore
+          /p:CollectCoverage=true
+          /p:CoverletOutput=${{ github.workspace }}/coverage/services/
+          /p:CoverletOutputFormat=json
+          '/p:Include=[NexumAltivon.API]NexumAltivon.API.Services.*'
+          /p:Threshold=70
+          /p:ThresholdType=line
+          /p:ThresholdStat=total
+
+      - name: Upload service coverage evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-services-coverage
+          path: ./coverage/services/coverage.json
+
   frontend-build:
     runs-on: ubuntu-latest
     name: Frontend Build
@@ -89,7 +131,7 @@ jobs:
 
   docker-build-api:
     runs-on: ubuntu-latest
-    needs: api-build
+    needs: [api-build, api-tests]
     name: Docker API
 
     steps:

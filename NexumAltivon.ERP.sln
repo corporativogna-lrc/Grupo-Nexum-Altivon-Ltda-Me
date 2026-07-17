@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NexumAltivon.API", "NexumAl
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NexumAltivon_ERP", "NexumAltivon_ERP\NexumAltivon_ERP.csproj", "{DC9AC362-21C3-4671-BA6A-44267A20ED2A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NexumAltivon.API.Tests", "NexumAltivon_Back-End\NexumAltivon.API.Tests.csproj", "{30A4CD5E-2C22-40A4-B181-A851D0A3F02F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -71,12 +73,25 @@ Global
 		{DC9AC362-21C3-4671-BA6A-44267A20ED2A}.Release|x64.Build.0 = Release|Any CPU
 		{DC9AC362-21C3-4671-BA6A-44267A20ED2A}.Release|x86.ActiveCfg = Release|Any CPU
 		{DC9AC362-21C3-4671-BA6A-44267A20ED2A}.Release|x86.Build.0 = Release|Any CPU
+		{30A4CD5E-2C22-40A4-B181-A851D0A3F02F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{30A4CD5E-2C22-40A4-B181-A851D0A3F02F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{30A4CD5E-2C22-40A4-B181-A851D0A3F02F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{30A4CD5E-2C22-40A4-B181-A851D0A3F02F}.Debug|x64.Build.0 = Debug|Any CPU
+		{30A4CD5E-2C22-40A4-B181-A851D0A3F02F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{30A4CD5E-2C22-40A4-B181-A851D0A3F02F}.Debug|x86.Build.0 = Debug|Any CPU
+		{30A4CD5E-2C22-40A4-B181-A851D0A3F02F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{30A4CD5E-2C22-40A4-B181-A851D0A3F02F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{30A4CD5E-2C22-40A4-B181-A851D0A3F02F}.Release|x64.ActiveCfg = Release|Any CPU
+		{30A4CD5E-2C22-40A4-B181-A851D0A3F02F}.Release|x64.Build.0 = Release|Any CPU
+		{30A4CD5E-2C22-40A4-B181-A851D0A3F02F}.Release|x86.ActiveCfg = Release|Any CPU
+		{30A4CD5E-2C22-40A4-B181-A851D0A3F02F}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{738DB7CF-9008-451C-B350-CFEF182DDE53} = {087DD8B5-4C1C-76B3-F972-32E64B130581}
+		{30A4CD5E-2C22-40A4-B181-A851D0A3F02F} = {087DD8B5-4C1C-76B3-F972-32E64B130581}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {A4D6AE40-D317-42ED-95C6-784D945EF426}
