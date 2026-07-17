@@ -461,6 +461,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ServerDatabaseLabel = $"Banco interno {Terminal.ServerAddress}:{Terminal.DatabasePort}";
     }
 
+    private void OpenAccessManagement_Click(object sender, RoutedEventArgs e)
+    {
+        SelectedModuleTitle = "Usuários, perfis e permissões";
+        SelectedModuleDetail = "Gestão administrativa pela API oficial, com usuários, perfis, alçadas, permissões, matriz RBAC e auditoria persistida.";
+        var window = new AccessManagementWindow(Terminal)
+        {
+            Owner = this
+        };
+
+        window.ShowDialog();
+    }
+
     private void OpenOutboxFolder_Click(object sender, RoutedEventArgs e)
     {
         try

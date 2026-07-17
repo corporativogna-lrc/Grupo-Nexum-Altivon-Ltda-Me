@@ -108,6 +108,123 @@ public sealed class DesktopApiClient
             payload,
             cancellationToken);
 
+    public Task<DesktopApiDataResult<List<DesktopUsuarioAcesso>>> GetAccessUsersAsync(
+        TerminalProfile profile,
+        string token,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<List<DesktopUsuarioAcesso>>(
+            profile, token, HttpMethod.Get, "/api/admin/usuarios", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<List<string>>> GetAdministrativeRolesAsync(
+        TerminalProfile profile,
+        string token,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<List<string>>(
+            profile, token, HttpMethod.Get, "/api/admin/usuarios/perfis", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopUsuarioAcesso>> SaveAccessUserAsync(
+        TerminalProfile profile,
+        string token,
+        DesktopUsuarioAcessoRequest payload,
+        int? id,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<DesktopUsuarioAcesso>(
+            profile,
+            token,
+            id.HasValue ? HttpMethod.Put : HttpMethod.Post,
+            id.HasValue ? $"/api/admin/usuarios/{id.Value}" : "/api/admin/usuarios",
+            payload,
+            cancellationToken);
+
+    public Task<DesktopApiDataResult<List<DesktopPerfilAcesso>>> GetAccessProfilesAsync(
+        TerminalProfile profile,
+        string token,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<List<DesktopPerfilAcesso>>(
+            profile, token, HttpMethod.Get, "/api/perfis", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopPerfilAcesso>> SaveAccessProfileAsync(
+        TerminalProfile profile,
+        string token,
+        DesktopPerfilAcessoRequest payload,
+        int? id,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<DesktopPerfilAcesso>(
+            profile,
+            token,
+            id.HasValue ? HttpMethod.Put : HttpMethod.Post,
+            id.HasValue ? $"/api/perfis/{id.Value}" : "/api/perfis",
+            payload,
+            cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopPerfilAcesso>> DeactivateAccessProfileAsync(
+        TerminalProfile profile,
+        string token,
+        int id,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<DesktopPerfilAcesso>(
+            profile, token, HttpMethod.Delete, $"/api/perfis/{id}", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<List<DesktopPermissaoAcesso>>> GetPermissionsAsync(
+        TerminalProfile profile,
+        string token,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<List<DesktopPermissaoAcesso>>(
+            profile, token, HttpMethod.Get, "/api/permissoes", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopPermissaoAcesso>> SavePermissionAsync(
+        TerminalProfile profile,
+        string token,
+        DesktopPermissaoAcessoRequest payload,
+        int? id,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<DesktopPermissaoAcesso>(
+            profile,
+            token,
+            id.HasValue ? HttpMethod.Put : HttpMethod.Post,
+            id.HasValue ? $"/api/permissoes/{id.Value}" : "/api/permissoes",
+            payload,
+            cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopPermissaoAcesso>> DeactivatePermissionAsync(
+        TerminalProfile profile,
+        string token,
+        int id,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<DesktopPermissaoAcesso>(
+            profile, token, HttpMethod.Delete, $"/api/permissoes/{id}", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<List<DesktopPerfilPermissao>>> GetProfilePermissionsAsync(
+        TerminalProfile profile,
+        string token,
+        int profileId,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<List<DesktopPerfilPermissao>>(
+            profile, token, HttpMethod.Get, $"/api/perfis/{profileId}/permissoes", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopPerfilPermissao>> SaveProfilePermissionAsync(
+        TerminalProfile profile,
+        string token,
+        int profileId,
+        DesktopPerfilPermissaoRequest payload,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<DesktopPerfilPermissao>(
+            profile, token, HttpMethod.Post, $"/api/perfis/{profileId}/permissoes", payload, cancellationToken);
+
+    public Task<DesktopApiDataResult<JsonElement>> RemoveProfilePermissionAsync(
+        TerminalProfile profile,
+        string token,
+        int profileId,
+        int permissionId,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<JsonElement>(
+            profile,
+            token,
+            HttpMethod.Delete,
+            $"/api/perfis/{profileId}/permissoes/{permissionId}",
+            null,
+            cancellationToken);
+
     public Task<DesktopApiDataResult<List<DesktopCrmCampanha>>> GetMarketingCampaignsAsync(
         TerminalProfile profile,
         string token,
@@ -347,13 +464,7 @@ public sealed class DesktopApiClient
                 if (!response.IsSuccessStatusCode)
                 {
                     var detail = $"{(int)response.StatusCode} {ExtractErrorMessage(content, response.ReasonPhrase)}";
-                    if ((int)response.StatusCode is 400 or 401 or 403 or 404 or 409 or 422 or 424)
-                    {
-                        return new DesktopApiDataResult<T>(false, default, detail);
-                    }
-
-                    failures.Add($"{endpoint}: {detail}");
-                    continue;
+                    return new DesktopApiDataResult<T>(false, default, $"{endpoint}: {detail}");
                 }
 
                 if (response.StatusCode == System.Net.HttpStatusCode.NoContent)
@@ -572,6 +683,74 @@ public sealed record DesktopLoginResponse(string Token, string RefreshToken, Dat
 public sealed record DesktopUser(int Id, string Nome, string Email, string Perfil);
 public sealed record DesktopApiEnvelope<T>(bool Sucesso, string Mensagem, T? Dados, List<string>? Erros);
 public sealed record DesktopApiDataResult<T>(bool Success, T? Data, string Detail);
+
+public sealed record DesktopUsuarioAcesso(
+    int Id,
+    string Nome,
+    string Email,
+    string Perfil,
+    bool Ativo,
+    string? Telefone,
+    DateTime? UltimoLogin,
+    DateTime UpdatedAt);
+
+public sealed record DesktopUsuarioAcessoRequest(
+    string Nome,
+    string Email,
+    string Perfil,
+    bool Ativo,
+    string? Telefone,
+    string? Senha);
+
+public sealed record DesktopPerfilAcesso(
+    int Id,
+    string Nome,
+    string? Descricao,
+    decimal AlcadaMaxima,
+    int NivelHierarquico,
+    bool Ativo,
+    DateTime CriadoEm);
+
+public sealed record DesktopPerfilAcessoRequest(
+    string Nome,
+    string? Descricao,
+    decimal AlcadaMaxima,
+    int NivelHierarquico,
+    bool Ativo);
+
+public sealed record DesktopPermissaoAcesso(
+    int Id,
+    string Modulo,
+    string Funcionalidade,
+    string Chave,
+    string? Descricao,
+    bool Ativo);
+
+public sealed record DesktopPermissaoAcessoRequest(
+    string Modulo,
+    string Funcionalidade,
+    string Chave,
+    string? Descricao,
+    bool Ativo);
+
+public sealed record DesktopPerfilPermissao(
+    int Id,
+    int PerfilId,
+    int PermissaoId,
+    string Modulo,
+    string Funcionalidade,
+    string Chave,
+    bool Leitura,
+    bool Escrita,
+    bool Exclusao,
+    bool Impressao);
+
+public sealed record DesktopPerfilPermissaoRequest(
+    int PermissaoId,
+    bool Leitura,
+    bool Escrita,
+    bool Exclusao,
+    bool Impressao);
 
 public sealed record DesktopCrmSegmento(
     Guid Id,

@@ -2505,6 +2505,7 @@ app.MapPost("/api/admin/usuarios", [Authorize(Policy = "Admin")] async (
     UsuarioAcessoUpsertRequest request,
     NexumDbContext db,
     ClaimsPrincipal principal,
+    HttpContext httpContext,
     CancellationToken ct) =>
 {
     var nome = TrimOrNull(request.Nome);
@@ -2522,9 +2523,15 @@ app.MapPost("/api/admin/usuarios", [Authorize(Policy = "Admin")] async (
         return Results.BadRequest(ApiResponse<UsuarioAcessoDto>.Erro("A senha inicial deve ter pelo menos 8 caracteres."));
     }
 
-    if (!Enum.TryParse<PerfilUsuario>(perfilRaw, true, out var perfil) || perfil == PerfilUsuario.SuperAdmin)
+    if (!Enum.TryParse<PerfilUsuario>(perfilRaw, true, out var perfil))
     {
-        perfil = PerfilUsuario.Vendedor;
+        return Results.BadRequest(ApiResponse<UsuarioAcessoDto>.Erro("Perfil informado nao existe."));
+    }
+
+    var currentRole = principal.FindFirstValue("perfil") ?? principal.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+    if (perfil == PerfilUsuario.SuperAdmin && !string.Equals(currentRole, "SuperAdmin", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.Forbid();
     }
 
     var existe = await db.Usuarios.AnyAsync(usuario => usuario.Email == email, ct);
@@ -2545,11 +2552,18 @@ app.MapPost("/api/admin/usuarios", [Authorize(Policy = "Admin")] async (
         UpdatedAt = DateTime.UtcNow
     };
 
-    db.Usuarios.Add(usuario);
-    await db.SaveChangesAsync(ct);
+    return await ExecuteWithDatabaseStrategyAsync(db, async () =>
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        db.Usuarios.Add(usuario);
+        await db.SaveChangesAsync(ct);
 
-    var response = ToUsuarioAcessoDto(usuario);
-    return Results.Created($"/api/admin/usuarios/{usuario.Id}", ApiResponse<UsuarioAcessoDto>.Ok(response, "Usuario administrativo criado."));
+        var response = ToUsuarioAcessoDto(usuario);
+        db.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "usuarios", usuario.Id, AcaoAuditoria.INSERT, null, response));
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return Results.Created($"/api/admin/usuarios/{usuario.Id}", ApiResponse<UsuarioAcessoDto>.Ok(response, "Usuario administrativo criado."));
+    });
 })
 .WithName("AdminUsuariosCriar");
 
@@ -2558,6 +2572,7 @@ app.MapPut("/api/admin/usuarios/{id:int}", [Authorize(Policy = "Admin")] async (
     UsuarioAcessoUpsertRequest request,
     NexumDbContext db,
     ClaimsPrincipal principal,
+    HttpContext httpContext,
     CancellationToken ct) =>
 {
     var usuario = await db.Usuarios.FirstOrDefaultAsync(item => item.Id == id, ct);
@@ -2603,6 +2618,7 @@ app.MapPut("/api/admin/usuarios/{id:int}", [Authorize(Policy = "Admin")] async (
         return Results.BadRequest(ApiResponse<UsuarioAcessoDto>.Erro("O usuario logado nao pode desativar o proprio acesso."));
     }
 
+    var anterior = ToUsuarioAcessoDto(usuario);
     usuario.Nome = nome;
     usuario.Email = email;
     usuario.Perfil = perfil;
@@ -2622,16 +2638,25 @@ app.MapPut("/api/admin/usuarios/{id:int}", [Authorize(Policy = "Admin")] async (
         usuario.TokenRefreshExpiraEm = null;
     }
 
-    await db.SaveChangesAsync(ct);
+    var atualizado = ToUsuarioAcessoDto(usuario);
+    return await ExecuteWithDatabaseStrategyAsync(db, async () =>
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        db.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "usuarios", usuario.Id, AcaoAuditoria.UPDATE, anterior, atualizado));
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
 
-    return Results.Ok(ApiResponse<UsuarioAcessoDto>.Ok(ToUsuarioAcessoDto(usuario), "Usuario administrativo atualizado."));
+        return Results.Ok(ApiResponse<UsuarioAcessoDto>.Ok(atualizado, "Usuario administrativo atualizado."));
+    });
 })
 .WithName("AdminUsuariosAtualizar");
 
-app.MapGet("/api/admin/usuarios/perfis", [Authorize(Policy = "Admin")] () =>
+app.MapGet("/api/admin/usuarios/perfis", [Authorize(Policy = "Admin")] (ClaimsPrincipal principal) =>
 {
+    var currentRole = principal.FindFirstValue("perfil") ?? principal.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+    var isSuperAdmin = string.Equals(currentRole, "SuperAdmin", StringComparison.OrdinalIgnoreCase);
     var perfis = Enum.GetNames<PerfilUsuario>()
-        .Where(perfil => perfil != PerfilUsuario.SuperAdmin.ToString())
+        .Where(perfil => isSuperAdmin || perfil != PerfilUsuario.SuperAdmin.ToString())
         .ToList();
 
     return Results.Ok(ApiResponse<List<string>>.Ok(perfis, "Perfis administrativos disponiveis."));
@@ -2662,6 +2687,8 @@ app.MapGet("/api/perfis", [Authorize(Policy = "Admin")] async (NexumDbContext db
 app.MapPost("/api/perfis", [Authorize(Policy = "Admin")] async (
     PerfilAcessoUpsertRequest request,
     NexumDbContext db,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
     CancellationToken ct) =>
 {
     var nome = TrimOrNull(request.Nome);
@@ -2676,16 +2703,23 @@ app.MapPost("/api/perfis", [Authorize(Policy = "Admin")] async (
         return Results.BadRequest(ApiResponse<PerfilAcessoDto>.Erro("Perfil conflita com regras SoD.", conflitos));
     }
 
-    await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        INSERT INTO adm_perfis (prf_nome, prf_descricao, prf_alcada_maxima, prf_nivel_hierarquico, prf_ativo, prf_data_cadastro)
-        VALUES ({nome}, {TrimOrNull(request.Descricao)}, {request.AlcadaMaxima}, {request.NivelHierarquico}, {request.Ativo}, UTC_TIMESTAMP())
-        """,
-        ct);
+    return await ExecuteWithDatabaseStrategyAsync(db, async () =>
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            INSERT INTO adm_perfis (prf_nome, prf_descricao, prf_alcada_maxima, prf_nivel_hierarquico, prf_ativo, prf_data_cadastro)
+            VALUES ({nome}, {TrimOrNull(request.Descricao)}, {request.AlcadaMaxima}, {request.NivelHierarquico}, {request.Ativo}, UTC_TIMESTAMP())
+            """,
+            ct);
 
-    var id = await db.Database.SqlQueryRaw<int>("SELECT LAST_INSERT_ID() AS Value").SingleAsync(ct);
-    var perfil = await LoadPerfilAsync(db, id, ct);
-    return Results.Created($"/api/perfis/{id}", ApiResponse<PerfilAcessoDto>.Ok(perfil!, "Perfil corporativo criado."));
+        var id = await db.Database.SqlQueryRaw<int>("SELECT LAST_INSERT_ID() AS Value").SingleAsync(ct);
+        var perfil = await LoadPerfilAsync(db, id, ct);
+        db.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "adm_perfis", id, AcaoAuditoria.INSERT, null, perfil));
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return Results.Created($"/api/perfis/{id}", ApiResponse<PerfilAcessoDto>.Ok(perfil!, "Perfil corporativo criado."));
+    });
 })
 .WithName("GrcPerfisCriar");
 
@@ -2693,6 +2727,8 @@ app.MapPut("/api/perfis/{id:int}", [Authorize(Policy = "Admin")] async (
     int id,
     PerfilAcessoUpsertRequest request,
     NexumDbContext db,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
     CancellationToken ct) =>
 {
     var atual = await LoadPerfilAsync(db, id, ct);
@@ -2707,23 +2743,36 @@ app.MapPut("/api/perfis/{id:int}", [Authorize(Policy = "Admin")] async (
         return Results.BadRequest(ApiResponse<PerfilAcessoDto>.Erro("Nome do perfil e obrigatorio."));
     }
 
-    await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        UPDATE adm_perfis
-        SET prf_nome = {nome},
-            prf_descricao = {TrimOrNull(request.Descricao)},
-            prf_alcada_maxima = {request.AlcadaMaxima},
-            prf_nivel_hierarquico = {request.NivelHierarquico},
-            prf_ativo = {request.Ativo}
-        WHERE prf_id = {id}
-        """,
-        ct);
+    return await ExecuteWithDatabaseStrategyAsync(db, async () =>
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE adm_perfis
+            SET prf_nome = {nome},
+                prf_descricao = {TrimOrNull(request.Descricao)},
+                prf_alcada_maxima = {request.AlcadaMaxima},
+                prf_nivel_hierarquico = {request.NivelHierarquico},
+                prf_ativo = {request.Ativo}
+            WHERE prf_id = {id}
+            """,
+            ct);
 
-    return Results.Ok(ApiResponse<PerfilAcessoDto>.Ok((await LoadPerfilAsync(db, id, ct))!, "Perfil corporativo atualizado."));
+        var atualizado = await LoadPerfilAsync(db, id, ct);
+        db.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "adm_perfis", id, AcaoAuditoria.UPDATE, atual, atualizado));
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return Results.Ok(ApiResponse<PerfilAcessoDto>.Ok(atualizado!, "Perfil corporativo atualizado."));
+    });
 })
 .WithName("GrcPerfisAtualizar");
 
-app.MapDelete("/api/perfis/{id:int}", [Authorize(Policy = "Admin")] async (int id, NexumDbContext db, CancellationToken ct) =>
+app.MapDelete("/api/perfis/{id:int}", [Authorize(Policy = "Admin")] async (
+    int id,
+    NexumDbContext db,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
+    CancellationToken ct) =>
 {
     var atual = await LoadPerfilAsync(db, id, ct);
     if (atual is null)
@@ -2731,8 +2780,16 @@ app.MapDelete("/api/perfis/{id:int}", [Authorize(Policy = "Admin")] async (int i
         return Results.NotFound(ApiResponse<PerfilAcessoDto>.Erro("Perfil nao encontrado."));
     }
 
-    await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE adm_perfis SET prf_ativo = 0 WHERE prf_id = {id}", ct);
-    return Results.Ok(ApiResponse<PerfilAcessoDto>.Ok(atual with { Ativo = false }, "Perfil desativado com soft delete operacional."));
+    var desativado = atual with { Ativo = false };
+    return await ExecuteWithDatabaseStrategyAsync(db, async () =>
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE adm_perfis SET prf_ativo = 0 WHERE prf_id = {id}", ct);
+        db.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "adm_perfis", id, AcaoAuditoria.DELETE, atual, desativado));
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return Results.Ok(ApiResponse<PerfilAcessoDto>.Ok(desativado, "Perfil desativado com soft delete operacional."));
+    });
 })
 .WithName("GrcPerfisExcluir");
 
@@ -2759,6 +2816,8 @@ app.MapGet("/api/permissoes", [Authorize(Policy = "Admin")] async (NexumDbContex
 app.MapPost("/api/permissoes", [Authorize(Policy = "Admin")] async (
     PermissaoAcessoUpsertRequest request,
     NexumDbContext db,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
     CancellationToken ct) =>
 {
     var modulo = NormalizeBusinessKey(request.Modulo);
@@ -2769,15 +2828,23 @@ app.MapPost("/api/permissoes", [Authorize(Policy = "Admin")] async (
         return Results.BadRequest(ApiResponse<PermissaoAcessoDto>.Erro("Modulo, funcionalidade e chave sao obrigatorios."));
     }
 
-    await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        INSERT INTO adm_permissoes (prm_modulo, prm_funcionalidade, prm_chave, prm_descricao, prm_ativo)
-        VALUES ({modulo}, {funcionalidade}, {chave}, {TrimOrNull(request.Descricao)}, {request.Ativo})
-        """,
-        ct);
+    return await ExecuteWithDatabaseStrategyAsync(db, async () =>
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            INSERT INTO adm_permissoes (prm_modulo, prm_funcionalidade, prm_chave, prm_descricao, prm_ativo)
+            VALUES ({modulo}, {funcionalidade}, {chave}, {TrimOrNull(request.Descricao)}, {request.Ativo})
+            """,
+            ct);
 
-    var id = await db.Database.SqlQueryRaw<int>("SELECT LAST_INSERT_ID() AS Value").SingleAsync(ct);
-    return Results.Created($"/api/permissoes/{id}", ApiResponse<PermissaoAcessoDto>.Ok((await LoadPermissaoAsync(db, id, ct))!, "Permissao criada."));
+        var id = await db.Database.SqlQueryRaw<int>("SELECT LAST_INSERT_ID() AS Value").SingleAsync(ct);
+        var permissao = await LoadPermissaoAsync(db, id, ct);
+        db.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "adm_permissoes", id, AcaoAuditoria.INSERT, null, permissao));
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return Results.Created($"/api/permissoes/{id}", ApiResponse<PermissaoAcessoDto>.Ok(permissao!, "Permissao criada."));
+    });
 })
 .WithName("GrcPermissoesCriar");
 
@@ -2785,6 +2852,8 @@ app.MapPut("/api/permissoes/{id:int}", [Authorize(Policy = "Admin")] async (
     int id,
     PermissaoAcessoUpsertRequest request,
     NexumDbContext db,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
     CancellationToken ct) =>
 {
     var atual = await LoadPermissaoAsync(db, id, ct);
@@ -2801,23 +2870,36 @@ app.MapPut("/api/permissoes/{id:int}", [Authorize(Policy = "Admin")] async (
         return Results.BadRequest(ApiResponse<PermissaoAcessoDto>.Erro("Modulo, funcionalidade e chave sao obrigatorios."));
     }
 
-    await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        UPDATE adm_permissoes
-        SET prm_modulo = {modulo},
-            prm_funcionalidade = {funcionalidade},
-            prm_chave = {chave},
-            prm_descricao = {TrimOrNull(request.Descricao)},
-            prm_ativo = {request.Ativo}
-        WHERE prm_id = {id}
-        """,
-        ct);
+    return await ExecuteWithDatabaseStrategyAsync(db, async () =>
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE adm_permissoes
+            SET prm_modulo = {modulo},
+                prm_funcionalidade = {funcionalidade},
+                prm_chave = {chave},
+                prm_descricao = {TrimOrNull(request.Descricao)},
+                prm_ativo = {request.Ativo}
+            WHERE prm_id = {id}
+            """,
+            ct);
 
-    return Results.Ok(ApiResponse<PermissaoAcessoDto>.Ok((await LoadPermissaoAsync(db, id, ct))!, "Permissao atualizada."));
+        var atualizada = await LoadPermissaoAsync(db, id, ct);
+        db.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "adm_permissoes", id, AcaoAuditoria.UPDATE, atual, atualizada));
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return Results.Ok(ApiResponse<PermissaoAcessoDto>.Ok(atualizada!, "Permissao atualizada."));
+    });
 })
 .WithName("GrcPermissoesAtualizar");
 
-app.MapDelete("/api/permissoes/{id:int}", [Authorize(Policy = "Admin")] async (int id, NexumDbContext db, CancellationToken ct) =>
+app.MapDelete("/api/permissoes/{id:int}", [Authorize(Policy = "Admin")] async (
+    int id,
+    NexumDbContext db,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
+    CancellationToken ct) =>
 {
     var atual = await LoadPermissaoAsync(db, id, ct);
     if (atual is null)
@@ -2825,8 +2907,16 @@ app.MapDelete("/api/permissoes/{id:int}", [Authorize(Policy = "Admin")] async (i
         return Results.NotFound(ApiResponse<PermissaoAcessoDto>.Erro("Permissao nao encontrada."));
     }
 
-    await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE adm_permissoes SET prm_ativo = 0 WHERE prm_id = {id}", ct);
-    return Results.Ok(ApiResponse<PermissaoAcessoDto>.Ok(atual with { Ativo = false }, "Permissao desativada."));
+    var desativada = atual with { Ativo = false };
+    return await ExecuteWithDatabaseStrategyAsync(db, async () =>
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE adm_permissoes SET prm_ativo = 0 WHERE prm_id = {id}", ct);
+        db.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "adm_permissoes", id, AcaoAuditoria.DELETE, atual, desativada));
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return Results.Ok(ApiResponse<PermissaoAcessoDto>.Ok(desativada, "Permissao desativada."));
+    });
 })
 .WithName("GrcPermissoesExcluir");
 
@@ -2846,6 +2936,8 @@ app.MapPost("/api/perfis/{id:int}/permissoes", [Authorize(Policy = "Admin")] asy
     int id,
     PerfilPermissaoUpsertRequest request,
     NexumDbContext db,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
     CancellationToken ct) =>
 {
     if (await LoadPerfilAsync(db, id, ct) is null)
@@ -2858,20 +2950,36 @@ app.MapPost("/api/perfis/{id:int}/permissoes", [Authorize(Policy = "Admin")] asy
         return Results.NotFound(ApiResponse<PerfilPermissaoDto>.Erro("Permissao nao encontrada."));
     }
 
-    await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        INSERT INTO adm_perfil_permissoes (ppr_perfil_id, ppr_permissao_id, ppr_leitura, ppr_escrita, ppr_exclusao, ppr_impressao)
-        VALUES ({id}, {request.PermissaoId}, {request.Leitura}, {request.Escrita}, {request.Exclusao}, {request.Impressao})
-        ON DUPLICATE KEY UPDATE
-            ppr_leitura = VALUES(ppr_leitura),
-            ppr_escrita = VALUES(ppr_escrita),
-            ppr_exclusao = VALUES(ppr_exclusao),
-            ppr_impressao = VALUES(ppr_impressao)
-        """,
-        ct);
+    var anterior = (await LoadPerfilPermissoesAsync(db, id, ct))
+        .FirstOrDefault(item => item.PermissaoId == request.PermissaoId);
+    return await ExecuteWithDatabaseStrategyAsync(db, async () =>
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            INSERT INTO adm_perfil_permissoes (ppr_perfil_id, ppr_permissao_id, ppr_leitura, ppr_escrita, ppr_exclusao, ppr_impressao)
+            VALUES ({id}, {request.PermissaoId}, {request.Leitura}, {request.Escrita}, {request.Exclusao}, {request.Impressao})
+            ON DUPLICATE KEY UPDATE
+                ppr_leitura = VALUES(ppr_leitura),
+                ppr_escrita = VALUES(ppr_escrita),
+                ppr_exclusao = VALUES(ppr_exclusao),
+                ppr_impressao = VALUES(ppr_impressao)
+            """,
+            ct);
 
-    var permissao = (await LoadPerfilPermissoesAsync(db, id, ct)).First(item => item.PermissaoId == request.PermissaoId);
-    return Results.Ok(ApiResponse<PerfilPermissaoDto>.Ok(permissao, "Permissao vinculada ao perfil."));
+        var permissao = (await LoadPerfilPermissoesAsync(db, id, ct)).First(item => item.PermissaoId == request.PermissaoId);
+        db.LogsAuditoria.Add(CreateIamAuditLog(
+            principal,
+            httpContext,
+            "adm_perfil_permissoes",
+            permissao.Id,
+            anterior is null ? AcaoAuditoria.INSERT : AcaoAuditoria.UPDATE,
+            anterior,
+            permissao));
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return Results.Ok(ApiResponse<PerfilPermissaoDto>.Ok(permissao, "Permissao vinculada ao perfil."));
+    });
 })
 .WithName("GrcPerfilPermissoesVincular");
 
@@ -2879,13 +2987,29 @@ app.MapDelete("/api/perfis/{id:int}/permissoes/{permissaoId:int}", [Authorize(Po
     int id,
     int permissaoId,
     NexumDbContext db,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
     CancellationToken ct) =>
 {
-    await db.Database.ExecuteSqlInterpolatedAsync(
-        $"DELETE FROM adm_perfil_permissoes WHERE ppr_perfil_id = {id} AND ppr_permissao_id = {permissaoId}",
-        ct);
+    var anterior = (await LoadPerfilPermissoesAsync(db, id, ct))
+        .FirstOrDefault(item => item.PermissaoId == permissaoId);
+    if (anterior is null)
+    {
+        return Results.NotFound(ApiResponse<object>.Erro("Vinculo de permissao nao encontrado."));
+    }
 
-    return Results.Ok(ApiResponse<object>.Ok(new { PerfilId = id, PermissaoId = permissaoId }, "Vinculo de permissao removido do perfil."));
+    return await ExecuteWithDatabaseStrategyAsync(db, async () =>
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"DELETE FROM adm_perfil_permissoes WHERE ppr_perfil_id = {id} AND ppr_permissao_id = {permissaoId}",
+            ct);
+
+        db.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "adm_perfil_permissoes", anterior.Id, AcaoAuditoria.DELETE, anterior, null));
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return Results.Ok(ApiResponse<object>.Ok(new { PerfilId = id, PermissaoId = permissaoId }, "Vinculo de permissao removido do perfil."));
+    });
 })
 .WithName("GrcPerfilPermissoesRemover");
 
@@ -12115,6 +12239,36 @@ static UsuarioAcessoDto ToUsuarioAcessoDto(Usuario usuario) =>
         usuario.UltimoLogin,
         usuario.UpdatedAt);
 
+static LogAuditoria CreateIamAuditLog(
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
+    string tabela,
+    int registroId,
+    AcaoAuditoria acao,
+    object? dadosAnteriores,
+    object? dadosNovos)
+{
+    var usuarioId = GetCurrentUserId(principal);
+    var userAgent = httpContext.Request.Headers.UserAgent.ToString();
+    return new LogAuditoria
+    {
+        Tabela = tabela,
+        RegistroId = registroId,
+        Acao = acao,
+        UsuarioId = usuarioId > 0 ? usuarioId : null,
+        UsuarioTipo = TipoUsuarioAuditoria.Usuario,
+        IpAddress = httpContext.Connection.RemoteIpAddress?.ToString(),
+        UserAgent = userAgent.Length <= 255 ? userAgent : userAgent[..255],
+        DadosAnteriores = dadosAnteriores is null ? null : JsonSerializer.Serialize(dadosAnteriores),
+        DadosNovos = dadosNovos is null ? null : JsonSerializer.Serialize(dadosNovos),
+        Endpoint = httpContext.Request.Path.Value,
+        CreatedAt = DateTime.UtcNow
+    };
+}
+
+static Task<T> ExecuteWithDatabaseStrategyAsync<T>(NexumDbContext db, Func<Task<T>> operation) =>
+    db.Database.CreateExecutionStrategy().ExecuteAsync(operation);
+
 static async Task<PerfilAcessoDto?> LoadPerfilAsync(NexumDbContext db, int id, CancellationToken ct) =>
     await db.Database.SqlQueryRaw<PerfilAcessoDto>(
         """
@@ -16309,6 +16463,8 @@ static async Task EnsureGrcIamSchemaAsync(NexumDbContext db)
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE adm_perfil_permissoes ADD COLUMN IF NOT EXISTS ppr_exclusao TINYINT(1) NOT NULL DEFAULT 0;");
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE adm_perfil_permissoes ADD COLUMN IF NOT EXISTS ppr_impressao TINYINT(1) NOT NULL DEFAULT 0;");
 
+    await EnsureGrcIamKeysAsync(db);
+
     await db.Database.ExecuteSqlRawAsync(
         """
         INSERT IGNORE INTO adm_perfis (prf_nome, prf_descricao, prf_alcada_maxima, prf_nivel_hierarquico, prf_ativo)
@@ -16335,6 +16491,98 @@ static async Task EnsureGrcIamSchemaAsync(NexumDbContext db)
             ('COMPRAS', 'Aprovar compras', 'SCM_COMPRAS_APROVAR', 'Aprova cotacoes, pedidos e entradas.', 1),
             ('RH', 'Gerenciar folha', 'RH_FOLHA_ADMIN', 'Acessa folha, ponto e eventos de pessoal.', 1)
         """);
+}
+
+static async Task EnsureGrcIamKeysAsync(NexumDbContext db)
+{
+    var tables = new[]
+    {
+        new GrcIdentityTable(
+            "adm_perfis",
+            "prf_id",
+            "SELECT COUNT(*) AS Value FROM `adm_perfis`",
+            "ALTER TABLE `adm_perfis` MODIFY COLUMN `prf_id` INT NOT NULL AUTO_INCREMENT, ADD PRIMARY KEY (`prf_id`);",
+            "ALTER TABLE `adm_perfis` MODIFY COLUMN `prf_id` INT NOT NULL AUTO_INCREMENT;"),
+        new GrcIdentityTable(
+            "adm_permissoes",
+            "prm_id",
+            "SELECT COUNT(*) AS Value FROM `adm_permissoes`",
+            "ALTER TABLE `adm_permissoes` MODIFY COLUMN `prm_id` INT NOT NULL AUTO_INCREMENT, ADD PRIMARY KEY (`prm_id`);",
+            "ALTER TABLE `adm_permissoes` MODIFY COLUMN `prm_id` INT NOT NULL AUTO_INCREMENT;"),
+        new GrcIdentityTable(
+            "adm_perfil_permissoes",
+            "ppr_id",
+            "SELECT COUNT(*) AS Value FROM `adm_perfil_permissoes`",
+            "ALTER TABLE `adm_perfil_permissoes` MODIFY COLUMN `ppr_id` INT NOT NULL AUTO_INCREMENT, ADD PRIMARY KEY (`ppr_id`);",
+            "ALTER TABLE `adm_perfil_permissoes` MODIFY COLUMN `ppr_id` INT NOT NULL AUTO_INCREMENT;")
+    };
+
+    foreach (var table in tables)
+    {
+        var hasPrimaryKey = await GrcSchemaCountAsync(
+            db,
+            "SELECT COUNT(*) AS Value FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = {0} AND index_name = 'PRIMARY'",
+            table.Name) > 0;
+        var hasAutoIncrement = await GrcSchemaCountAsync(
+            db,
+            "SELECT COUNT(*) AS Value FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = {0} AND column_name = {1} AND extra LIKE '%auto_increment%'",
+            table.Name,
+            table.IdentityColumn) > 0;
+
+        if (!hasPrimaryKey)
+        {
+            var rowCount = await db.Database.SqlQueryRaw<long>(table.RowCountSql).SingleAsync();
+            if (rowCount > 0)
+            {
+                throw new InvalidOperationException(
+                    $"A tabela {table.Name} possui {rowCount} linha(s), mas nao possui chave primaria. A inicializacao foi bloqueada para impedir reenumeracao e perda de relacionamento.");
+            }
+
+            await db.Database.ExecuteSqlRawAsync(table.AddPrimaryKeySql);
+            hasAutoIncrement = true;
+        }
+
+        if (!hasAutoIncrement)
+        {
+            await db.Database.ExecuteSqlRawAsync(table.EnsureAutoIncrementSql);
+        }
+    }
+
+    await EnsureGrcIndexAsync(db, "adm_perfis", "ux_adm_perfis_nome", "ALTER TABLE `adm_perfis` ADD UNIQUE KEY `ux_adm_perfis_nome` (`prf_nome`);");
+    await EnsureGrcIndexAsync(db, "adm_permissoes", "ux_adm_permissoes_chave", "ALTER TABLE `adm_permissoes` ADD UNIQUE KEY `ux_adm_permissoes_chave` (`prm_chave`);");
+    await EnsureGrcIndexAsync(db, "adm_permissoes", "ix_adm_permissoes_modulo", "ALTER TABLE `adm_permissoes` ADD KEY `ix_adm_permissoes_modulo` (`prm_modulo`);");
+    await EnsureGrcIndexAsync(db, "adm_perfil_permissoes", "ux_adm_perfil_permissoes_perfil_permissao", "ALTER TABLE `adm_perfil_permissoes` ADD UNIQUE KEY `ux_adm_perfil_permissoes_perfil_permissao` (`ppr_perfil_id`, `ppr_permissao_id`);");
+    await EnsureGrcIndexAsync(db, "adm_perfil_permissoes", "ix_adm_perfil_permissoes_permissao", "ALTER TABLE `adm_perfil_permissoes` ADD KEY `ix_adm_perfil_permissoes_permissao` (`ppr_permissao_id`);");
+    await EnsureGrcForeignKeyAsync(db, "fk_adm_perfil_permissoes_perfil", "ALTER TABLE `adm_perfil_permissoes` ADD CONSTRAINT `fk_adm_perfil_permissoes_perfil` FOREIGN KEY (`ppr_perfil_id`) REFERENCES `adm_perfis` (`prf_id`);");
+    await EnsureGrcForeignKeyAsync(db, "fk_adm_perfil_permissoes_permissao", "ALTER TABLE `adm_perfil_permissoes` ADD CONSTRAINT `fk_adm_perfil_permissoes_permissao` FOREIGN KEY (`ppr_permissao_id`) REFERENCES `adm_permissoes` (`prm_id`);");
+}
+
+static async Task<long> GrcSchemaCountAsync(NexumDbContext db, string sql, params object[] parameters) =>
+    await db.Database.SqlQueryRaw<long>(sql, parameters).SingleAsync();
+
+static async Task EnsureGrcIndexAsync(NexumDbContext db, string table, string index, string command)
+{
+    var exists = await GrcSchemaCountAsync(
+        db,
+        "SELECT COUNT(*) AS Value FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = {0} AND index_name = {1}",
+        table,
+        index) > 0;
+    if (!exists)
+    {
+        await db.Database.ExecuteSqlRawAsync(command);
+    }
+}
+
+static async Task EnsureGrcForeignKeyAsync(NexumDbContext db, string constraint, string command)
+{
+    var exists = await GrcSchemaCountAsync(
+        db,
+        "SELECT COUNT(*) AS Value FROM information_schema.referential_constraints WHERE constraint_schema = DATABASE() AND constraint_name = {0}",
+        constraint) > 0;
+    if (!exists)
+    {
+        await db.Database.ExecuteSqlRawAsync(command);
+    }
 }
 
 static async Task EnsureMasterDataSchemaAsync(NexumDbContext db)
@@ -18467,6 +18715,13 @@ public sealed record PerfilPermissaoUpsertRequest(
     bool Escrita,
     bool Exclusao,
     bool Impressao);
+
+public sealed record GrcIdentityTable(
+    string Name,
+    string IdentityColumn,
+    string RowCountSql,
+    string AddPrimaryKeySql,
+    string EnsureAutoIncrementSql);
 
 public sealed record AuditoriaOperacionalDto(
     long Id,

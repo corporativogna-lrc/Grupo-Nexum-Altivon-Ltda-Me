@@ -171,7 +171,7 @@
                 <MenuItem Header="Categorias e subcategorias" Click="OpenWorkspace_Click" />
                 <MenuItem Header="Empresas do grupo" Click="OpenWorkspace_Click" />
                 <MenuItem Header="Centros de custo" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Usuários, perfis e permissões" Click="OpenWorkspace_Click" />
+                <MenuItem Header="Usuários, perfis e permissões" Click="OpenAccessManagement_Click" />
             </MenuItem>
             <MenuItem Header="_Compras">
                 <MenuItem Header="Solicitação de compra" Click="OpenWorkspace_Click" />

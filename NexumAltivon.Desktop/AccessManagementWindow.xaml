@@ -1,0 +1,265 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ -->
+<Window x:Class="NexumAltivon.Desktop.AccessManagementWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GenesisGest.Net - Usuários e RBAC"
+        Width="1420" Height="860" MinWidth="1180" MinHeight="720"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource ShellBackground}"
+        FontFamily="Segoe UI">
+    <Window.Resources>
+        <Style x:Key="Panel" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackground}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="18" />
+        </Style>
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+            <Setter Property="Margin" Value="0,0,0,5" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Style="{StaticResource Panel}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="SETOR 02 / GRC E IAM" Foreground="{StaticResource AccentGold}" FontWeight="Bold" />
+                    <TextBlock Text="Usuários, perfis e autorizações" Foreground="{StaticResource TextPrimary}" FontSize="28" FontWeight="Bold" Margin="0,5,0,0" />
+                    <TextBlock Text="Operações persistidas pela API oficial, com segregação de nível e auditoria no banco." Foreground="{StaticResource TextSecondary}" Margin="0,6,0,0" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                    <TextBlock Text="IAM-02" Foreground="{StaticResource AccentGold}" FontWeight="Bold" HorizontalAlignment="Right" />
+                    <TextBlock Text="{Binding SessionLabel}" Foreground="{StaticResource TextPrimary}" FontWeight="Bold" Margin="0,5,0,0" HorizontalAlignment="Right" />
+                    <TextBlock Text="{Binding EndpointLabel}" Foreground="{StaticResource AccentGreen}" Margin="0,5,0,0" HorizontalAlignment="Right" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2" Style="{StaticResource Panel}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2*" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="2*" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="1.2*" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="E-mail administrativo" Style="{StaticResource FieldLabel}" />
+                    <TextBox Text="{Binding LoginEmail, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+                <StackPanel Grid.Column="2">
+                    <TextBlock Text="Senha" Style="{StaticResource FieldLabel}" />
+                    <PasswordBox x:Name="LoginPassword" />
+                </StackPanel>
+                <StackPanel Grid.Column="4">
+                    <TextBlock Text="MFA" Style="{StaticResource FieldLabel}" />
+                    <TextBox Text="{Binding MfaCode, UpdateSourceTrigger=PropertyChanged}" MaxLength="8" />
+                </StackPanel>
+                <Button Grid.Column="6" Content="Autenticar e carregar" Click="Authenticate_Click" Padding="22,10" VerticalAlignment="Bottom" />
+            </Grid>
+        </Border>
+
+        <TabControl Grid.Row="4" IsEnabled="{Binding IsAuthenticated}">
+            <TabItem Header="Usuários">
+                <Grid Margin="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="0.82*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="1.18*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource Panel}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <DockPanel>
+                                    <TextBlock Text="Cadastro administrativo" Foreground="{StaticResource TextPrimary}" FontSize="19" FontWeight="Bold" />
+                                    <Button Content="Novo" Click="NewUser_Click" DockPanel.Dock="Right" Padding="14,6" />
+                                </DockPanel>
+                                <TextBlock Text="Nome" Style="{StaticResource FieldLabel}" Margin="0,14,0,5" />
+                                <TextBox Text="{Binding UserName, UpdateSourceTrigger=PropertyChanged}" MaxLength="150" />
+                                <TextBlock Text="E-mail" Style="{StaticResource FieldLabel}" Margin="0,10,0,5" />
+                                <TextBox Text="{Binding UserEmail, UpdateSourceTrigger=PropertyChanged}" MaxLength="150" />
+                                <TextBlock Text="Telefone" Style="{StaticResource FieldLabel}" Margin="0,10,0,5" />
+                                <TextBox Text="{Binding UserPhone, UpdateSourceTrigger=PropertyChanged}" MaxLength="20" />
+                                <TextBlock Text="Perfil do sistema" Style="{StaticResource FieldLabel}" Margin="0,10,0,5" />
+                                <ComboBox ItemsSource="{Binding AdministrativeRoles}" SelectedItem="{Binding UserRole}" />
+                                <TextBlock Text="Senha inicial ou nova senha" Style="{StaticResource FieldLabel}" Margin="0,10,0,5" />
+                                <PasswordBox x:Name="UserPassword" />
+                                <TextBlock Text="Na alteração, deixe a senha vazia para mantê-la. Uma nova senha revoga o refresh-token atual." Foreground="{StaticResource TextMuted}" TextWrapping="Wrap" Margin="0,5,0,0" />
+                                <CheckBox Content="Acesso ativo" IsChecked="{Binding UserActive}" Margin="0,14,0,0" />
+                                <Button Content="Salvar usuário" Click="SaveUser_Click" Padding="18,10" HorizontalAlignment="Left" Margin="0,14,0,0" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                    <Border Grid.Column="2" Style="{StaticResource Panel}">
+                        <Grid>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                            <DockPanel>
+                                <TextBlock Text="Usuários confirmados pela API" Foreground="{StaticResource TextPrimary}" FontSize="19" FontWeight="Bold" />
+                                <Button Content="Atualizar" Click="Reload_Click" DockPanel.Dock="Right" Padding="14,6" />
+                            </DockPanel>
+                            <DataGrid Grid.Row="1" ItemsSource="{Binding Users}" SelectedItem="{Binding SelectedUser}" AutoGenerateColumns="False" IsReadOnly="True" Margin="0,12,0,0">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Nome" Binding="{Binding Nome}" Width="*" />
+                                    <DataGridTextColumn Header="E-mail" Binding="{Binding Email}" Width="1.2*" />
+                                    <DataGridTextColumn Header="Perfil" Binding="{Binding Perfil}" Width="110" />
+                                    <DataGridCheckBoxColumn Header="Ativo" Binding="{Binding Ativo}" Width="65" />
+                                    <DataGridTextColumn Header="Último acesso" Binding="{Binding UltimoLogin, StringFormat=dd/MM/yyyy HH:mm}" Width="135" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Perfis corporativos">
+                <Grid Margin="10">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="0.78*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="1.22*" /></Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource Panel}">
+                        <StackPanel>
+                            <DockPanel>
+                                <TextBlock Text="Definição do perfil" Foreground="{StaticResource TextPrimary}" FontSize="19" FontWeight="Bold" />
+                                <Button Content="Novo" Click="NewProfile_Click" DockPanel.Dock="Right" Padding="14,6" />
+                            </DockPanel>
+                            <TextBlock Text="Nome" Style="{StaticResource FieldLabel}" Margin="0,14,0,5" />
+                            <TextBox Text="{Binding ProfileName, UpdateSourceTrigger=PropertyChanged}" MaxLength="100" />
+                            <TextBlock Text="Descrição" Style="{StaticResource FieldLabel}" Margin="0,10,0,5" />
+                            <TextBox Text="{Binding ProfileDescription, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" Height="70" TextWrapping="Wrap" />
+                            <TextBlock Text="Alçada máxima" Style="{StaticResource FieldLabel}" Margin="0,10,0,5" />
+                            <TextBox Text="{Binding ProfileApprovalLimit, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Text="Nível hierárquico" Style="{StaticResource FieldLabel}" Margin="0,10,0,5" />
+                            <TextBox Text="{Binding ProfileHierarchyLevel, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox Content="Perfil ativo" IsChecked="{Binding ProfileActive}" Margin="0,14,0,0" />
+                            <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                                <Button Content="Salvar perfil" Click="SaveProfile_Click" Padding="18,10" />
+                                <Button Content="Desativar" Click="DeactivateProfile_Click" Padding="18,10" Margin="10,0,0,0" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="2" Style="{StaticResource Panel}">
+                        <Grid><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                            <TextBlock Text="Perfis e alçadas persistidos" Foreground="{StaticResource TextPrimary}" FontSize="19" FontWeight="Bold" />
+                            <DataGrid Grid.Row="1" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" AutoGenerateColumns="False" IsReadOnly="True" Margin="0,12,0,0">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Perfil" Binding="{Binding Nome}" Width="*" />
+                                    <DataGridTextColumn Header="Descrição" Binding="{Binding Descricao}" Width="1.4*" />
+                                    <DataGridTextColumn Header="Alçada" Binding="{Binding AlcadaMaxima, StringFormat=N2}" Width="105" />
+                                    <DataGridTextColumn Header="Nível" Binding="{Binding NivelHierarquico}" Width="70" />
+                                    <DataGridCheckBoxColumn Header="Ativo" Binding="{Binding Ativo}" Width="65" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Permissões">
+                <Grid Margin="10">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="0.78*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="1.22*" /></Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource Panel}">
+                        <StackPanel>
+                            <DockPanel>
+                                <TextBlock Text="Catálogo de autorização" Foreground="{StaticResource TextPrimary}" FontSize="19" FontWeight="Bold" />
+                                <Button Content="Nova" Click="NewPermission_Click" DockPanel.Dock="Right" Padding="14,6" />
+                            </DockPanel>
+                            <TextBlock Text="Módulo" Style="{StaticResource FieldLabel}" Margin="0,14,0,5" />
+                            <TextBox Text="{Binding PermissionModule, UpdateSourceTrigger=PropertyChanged}" MaxLength="80" />
+                            <TextBlock Text="Funcionalidade" Style="{StaticResource FieldLabel}" Margin="0,10,0,5" />
+                            <TextBox Text="{Binding PermissionFunctionality, UpdateSourceTrigger=PropertyChanged}" MaxLength="120" />
+                            <TextBlock Text="Chave de autorização" Style="{StaticResource FieldLabel}" Margin="0,10,0,5" />
+                            <TextBox Text="{Binding PermissionKey, UpdateSourceTrigger=PropertyChanged}" MaxLength="160" />
+                            <TextBlock Text="Descrição" Style="{StaticResource FieldLabel}" Margin="0,10,0,5" />
+                            <TextBox Text="{Binding PermissionDescription, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" Height="70" TextWrapping="Wrap" />
+                            <CheckBox Content="Permissão ativa" IsChecked="{Binding PermissionActive}" Margin="0,14,0,0" />
+                            <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                                <Button Content="Salvar permissão" Click="SavePermission_Click" Padding="18,10" />
+                                <Button Content="Desativar" Click="DeactivatePermission_Click" Padding="18,10" Margin="10,0,0,0" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="2" Style="{StaticResource Panel}">
+                        <Grid><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                            <TextBlock Text="Permissões registradas" Foreground="{StaticResource TextPrimary}" FontSize="19" FontWeight="Bold" />
+                            <DataGrid Grid.Row="1" ItemsSource="{Binding Permissions}" SelectedItem="{Binding SelectedPermission}" AutoGenerateColumns="False" IsReadOnly="True" Margin="0,12,0,0">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Módulo" Binding="{Binding Modulo}" Width="120" />
+                                    <DataGridTextColumn Header="Funcionalidade" Binding="{Binding Funcionalidade}" Width="*" />
+                                    <DataGridTextColumn Header="Chave" Binding="{Binding Chave}" Width="1.2*" />
+                                    <DataGridCheckBoxColumn Header="Ativa" Binding="{Binding Ativo}" Width="65" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Matriz RBAC">
+                <Grid Margin="10">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="0.75*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="1.25*" /></Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource Panel}">
+                        <StackPanel>
+                            <TextBlock Text="Vínculo perfil e permissão" Foreground="{StaticResource TextPrimary}" FontSize="19" FontWeight="Bold" />
+                            <TextBlock Text="Perfil corporativo" Style="{StaticResource FieldLabel}" Margin="0,14,0,5" />
+                            <ComboBox ItemsSource="{Binding Profiles}" DisplayMemberPath="Nome" SelectedItem="{Binding MatrixProfile}" SelectionChanged="MatrixProfileSelectionChanged" />
+                            <TextBlock Text="Permissão" Style="{StaticResource FieldLabel}" Margin="0,10,0,5" />
+                            <ComboBox ItemsSource="{Binding ActivePermissions}" DisplayMemberPath="Chave" SelectedItem="{Binding MatrixPermission}" />
+                            <UniformGrid Columns="2" Margin="0,14,0,0">
+                                <CheckBox Content="Leitura" IsChecked="{Binding MatrixRead}" Margin="0,0,10,10" />
+                                <CheckBox Content="Escrita" IsChecked="{Binding MatrixWrite}" Margin="0,0,0,10" />
+                                <CheckBox Content="Exclusão" IsChecked="{Binding MatrixDelete}" Margin="0,0,10,0" />
+                                <CheckBox Content="Impressão" IsChecked="{Binding MatrixPrint}" />
+                            </UniformGrid>
+                            <Button Content="Aplicar autorização" Click="SaveProfilePermission_Click" Padding="18,10" HorizontalAlignment="Left" Margin="0,16,0,0" />
+                            <TextBlock Text="A API aplica regras de segregação de funções antes de persistir o vínculo." Foreground="{StaticResource TextMuted}" TextWrapping="Wrap" Margin="0,12,0,0" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="2" Style="{StaticResource Panel}">
+                        <Grid><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                            <TextBlock Text="Autorizações efetivas do perfil" Foreground="{StaticResource TextPrimary}" FontSize="19" FontWeight="Bold" />
+                            <DataGrid Grid.Row="1" ItemsSource="{Binding ProfilePermissions}" SelectedItem="{Binding SelectedProfilePermission}" AutoGenerateColumns="False" IsReadOnly="True" Margin="0,12,0,0">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Módulo" Binding="{Binding Modulo}" Width="110" />
+                                    <DataGridTextColumn Header="Funcionalidade" Binding="{Binding Funcionalidade}" Width="*" />
+                                    <DataGridTextColumn Header="Chave" Binding="{Binding Chave}" Width="1.1*" />
+                                    <DataGridCheckBoxColumn Header="L" Binding="{Binding Leitura}" Width="45" />
+                                    <DataGridCheckBoxColumn Header="E" Binding="{Binding Escrita}" Width="45" />
+                                    <DataGridCheckBoxColumn Header="X" Binding="{Binding Exclusao}" Width="45" />
+                                    <DataGridCheckBoxColumn Header="I" Binding="{Binding Impressao}" Width="45" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                            <Button Grid.Row="2" Content="Remover vínculo selecionado" Click="RemoveProfilePermission_Click" Padding="14,7" HorizontalAlignment="Right" Margin="0,12,0,0" />
+                        </Grid>
+                    </Border>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <Border Grid.Row="6" Style="{StaticResource Panel}" Padding="14">
+            <TextBlock Text="{Binding Status}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" />
+        </Border>
+    </Grid>
+</Window>
