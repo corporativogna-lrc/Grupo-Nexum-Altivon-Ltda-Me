@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7182
+ * Versão: 1.1.5.7183
  */
 
 using System.Globalization;
@@ -133,6 +133,44 @@ public sealed class DesktopApiClient
             token,
             HttpMethod.Get,
             $"/api/logistica/rastreamento/{Uri.EscapeDataString(codigo.Trim())}",
+            null,
+            cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopFiscalManualEmissaoResponse>> PrepareManualNfeAsync(
+        TerminalProfile profile,
+        string token,
+        DesktopFiscalManualEmissaoRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopFiscalManualEmissaoResponse>(
+            profile,
+            token,
+            HttpMethod.Post,
+            "/api/fiscal/preparar-emissao-manual",
+            request,
+            cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopFiscalManualDraftSaved>> SaveManualNfeDraftAsync(
+        TerminalProfile profile,
+        string token,
+        DesktopFiscalManualEmissaoRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopFiscalManualDraftSaved>(
+            profile,
+            token,
+            HttpMethod.Post,
+            "/api/fiscal/rascunho-manual",
+            request,
+            cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopFiscalManualDraftRead>> GetManualNfeDraftAsync(
+        TerminalProfile profile,
+        string token,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopFiscalManualDraftRead>(
+            profile,
+            token,
+            HttpMethod.Get,
+            "/api/fiscal/rascunho-manual",
             null,
             cancellationToken);
 
@@ -1016,6 +1054,50 @@ public sealed record DesktopLogisticaRastreamentoEvento(
     string Status,
     string? Local,
     string? Descricao);
+
+public sealed record DesktopFiscalManualEmissaoRequest(
+    string EmpresaEmissora,
+    string CnpjEmissor,
+    string ClienteDestinatario,
+    string DocumentoDestinatario,
+    string NaturezaOperacao,
+    string Cfop,
+    decimal Subtotal,
+    decimal Frete,
+    decimal ImpostosEstimados,
+    decimal MargemMinima,
+    string? Observacoes,
+    string TipoOperacao,
+    string EstadoOrigem,
+    string EstadoDestino,
+    string? CategoriaFiscal,
+    string? SubcategoriaFiscal,
+    bool ExigeMarketplace,
+    bool ExigeDropshipping,
+    bool RequerSaidaNfe,
+    bool RequerEntradaNfe);
+
+public sealed record DesktopFiscalManualEmissaoResponse(
+    bool CertificadoOperacional,
+    string CertificadoStatus,
+    string? CertificadoReferencia,
+    string RoteamentoResumo,
+    string? CodigoEmpresaSelecionada,
+    string? RazaoSocialSelecionada,
+    string? CnpjSelecionado,
+    string? EstadoSelecionado,
+    List<string> Pendencias,
+    DateTime GeradoEm);
+
+public sealed record DesktopFiscalManualDraftSaved(
+    bool Salvo,
+    string Chave,
+    DateTime SalvoEm);
+
+public sealed record DesktopFiscalManualDraftRead(
+    bool Existe,
+    string? Valor,
+    DateTime? UpdatedAt);
 
 public sealed record DesktopUsuarioAcesso(
     int Id,

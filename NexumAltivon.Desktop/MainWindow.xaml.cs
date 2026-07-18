@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7182
+ * Versão: 1.1.5.7183
  */
 
 using System.Collections.ObjectModel;
@@ -430,7 +430,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void OpenManualNfe_Click(object sender, RoutedEventArgs e)
     {
-        var window = new ManualNfeWindow();
+        var window = new ManualNfeWindow(Terminal);
 
         window.ShowDialog();
     }

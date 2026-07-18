@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7182
+ * Versão: 1.1.5.7183
  */
 
 using System.Globalization;
@@ -17038,10 +17038,17 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
             grupo VARCHAR(50) NULL,
             editavel TINYINT(1) NOT NULL DEFAULT 1,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_by_user_id CHAR(36) CHARACTER SET ascii COLLATE ascii_general_ci NULL,
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            updated_by_user_id CHAR(36) CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+            deleted_at DATETIME(6) NULL,
+            is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+            row_version BLOB NULL,
+            tenant_id CHAR(36) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
             PRIMARY KEY (id),
-            UNIQUE KEY ux_configuracoes_sistema_chave (chave),
-            KEY ix_configuracoes_sistema_grupo (grupo)
+            UNIQUE KEY ux_configuracoes_sistema_tenant_chave (tenant_id, chave),
+            KEY ix_configuracoes_sistema_grupo (grupo),
+            KEY ix_configuracoes_sistema_tenant_deleted (tenant_id, is_deleted)
         );
         """);
 

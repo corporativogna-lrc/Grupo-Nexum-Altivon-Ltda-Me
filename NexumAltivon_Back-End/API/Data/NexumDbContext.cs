@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7182
+ * Versão: 1.1.5.7183
  */
 
 using NexumAltivon.API.Models;
@@ -423,6 +423,11 @@ public class NexumDbContext : DbContext
         );
 
         ConfigureAuditShadowProperties(modelBuilder);
+
+        modelBuilder.Entity<ConfiguracaoSistema>()
+            .HasIndex("TenantId", nameof(ConfiguracaoSistema.Chave))
+            .IsUnique()
+            .HasDatabaseName("ux_configuracoes_sistema_tenant_chave");
     }
 
     public override int SaveChanges()

@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7182
+ * Versão: 1.1.5.7183
  */
 
 using System.Net;
@@ -697,7 +697,8 @@ public sealed class FinancePdfReportServiceTests
         using var document = PdfReader.Open(new MemoryStream(bytes), PdfDocumentOpenMode.Import);
         document.PageCount.Should().Be(1);
         document.Info.Title.Should().Be("GenesisGest.Net - Contas a pagar");
-        document.Info.Creator.Should().Be("GenesisGest.Net v1.1.5.7182");
+        var assemblyVersion = typeof(FinancePdfReportService).Assembly.GetName().Version;
+        document.Info.Creator.Should().Be($"GenesisGest.Net v{assemblyVersion}");
     }
 
     [Fact]
