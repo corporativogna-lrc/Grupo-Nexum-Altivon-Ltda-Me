@@ -167,6 +167,8 @@ const normalizeRecord = (record) => {
     frete_prazo_dias: record.frete_prazo_dias ?? record.fretePrazoDias,
     frete_codigo_rastreio: record.frete_codigo_rastreio ?? record.freteCodigoRastreio,
     instrucao_pagamento: record.instrucao_pagamento ?? record.instrucaoPagamento,
+    status_fiscal: record.status_fiscal ?? record.statusFiscal,
+    alerta_operacional: record.alerta_operacional ?? record.alertaOperacional,
     cliente_nome: record.cliente_nome ?? record.clienteNome,
     updated_at: record.updated_at ?? record.updatedAt,
     created_at: record.created_at ?? record.createdAt,

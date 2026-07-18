@@ -412,6 +412,7 @@ export function CheckoutStepper({ step }) {
 export function CheckoutSuccess({ pedido, clienteEmail, onContinue }) {
   const formatPrice = (price) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
+  const possuiAlertaOperacional = Boolean(pedido.alerta_operacional);
   const acompanharPedidoUrl = `/acompanhar-pedido?pedido=${encodeURIComponent(pedido.numero_pedido || '')}${
     clienteEmail ? `&email=${encodeURIComponent(clienteEmail)}` : ''
   }`;
@@ -419,9 +420,21 @@ export function CheckoutSuccess({ pedido, clienteEmail, onContinue }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#050505] py-12 text-white">
       <div className="max-w-2xl rounded-3xl border border-[#2A2A2A] bg-[#111111] p-8 text-center shadow-[0_28px_100px_rgba(0,0,0,0.42)]" data-testid="pedido-sucesso">
-        <div className="mb-4 text-7xl text-emerald-400">✓</div>
-        <h2 className="mb-2 text-3xl font-black text-white">Pedido Realizado!</h2>
-        <p className="mb-6 text-[#A0A0A0]">Seu pedido foi processado com sucesso.</p>
+        <div className={`mb-4 text-7xl ${possuiAlertaOperacional ? 'text-amber-400' : 'text-emerald-400'}`}>
+          {possuiAlertaOperacional ? '!' : '✓'}
+        </div>
+        <h2 className="mb-2 text-3xl font-black text-white">
+          {possuiAlertaOperacional ? 'Pedido registrado com pendência' : 'Pedido realizado'}
+        </h2>
+        <p className="mb-6 text-[#A0A0A0]">
+          {possuiAlertaOperacional ? 'A compra foi registrada e requer acompanhamento operacional.' : 'Seu pedido foi processado.'}
+        </p>
+
+        {possuiAlertaOperacional && (
+          <p className="mb-6 rounded-2xl border border-amber-400/35 bg-amber-400/10 p-4 text-left text-sm font-bold text-amber-100">
+            {pedido.alerta_operacional}
+          </p>
+        )}
 
         <div className="mb-6 rounded-2xl border border-[#2A2A2A] bg-[#080808] p-6 text-left">
           <p className="text-sm text-[#A0A0A0]">Número do Pedido:</p>
@@ -444,6 +457,12 @@ export function CheckoutSuccess({ pedido, clienteEmail, onContinue }) {
               <p className="mt-1 font-bold text-white">{pedido.frete_metodo || 'Entrega a combinar'}</p>
               <p className="text-[#A0A0A0]">{pedido.frete_transportadora || 'Nexum Altivon'}</p>
             </div>
+            {pedido.status_fiscal && (
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-[#777]">Fiscal</p>
+                <p className="mt-1 font-bold text-white">{pedido.status_fiscal}</p>
+              </div>
+            )}
           </div>
           {pedido.instrucao_pagamento && (
             <p className="mt-4 rounded-xl border border-[#C9A227]/30 bg-[#C9A227]/10 p-3 text-sm font-semibold text-[#F7E7A6]">

@@ -297,7 +297,8 @@ export default function Checkout() {
       setStep(4);
     } catch (err) {
       const detail = err.response?.data?.detail;
-      setError(detail || err.message || 'Erro ao processar pedido. Nenhum pedido foi registrado.');
+      const apiMessage = err.response?.data?.mensagem ?? err.response?.data?.Mensagem;
+      setError(detail || apiMessage || err.message || 'A API nao confirmou o resultado do pedido.');
       setCheckoutInfo(previousCheckoutInfo);
     } finally {
       setLoading(false);

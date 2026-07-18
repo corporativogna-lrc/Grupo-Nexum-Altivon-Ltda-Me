@@ -7209,6 +7209,7 @@ app.MapPost("/api/pedidos", async (
     INotificacaoService notificacaoService,
     IHttpClientFactory httpClientFactory,
     IServiceProvider services,
+    ILoggerFactory loggerFactory,
     HttpContext http,
     CancellationToken ct) =>
 {
@@ -7239,6 +7240,9 @@ app.MapPost("/api/pedidos", async (
         lojaId = lojaIdParsed;
     }
 
+    var checkoutExecutionStrategy = db.Database.CreateExecutionStrategy();
+    var checkoutCreation = await checkoutExecutionStrategy.ExecuteAsync(async () =>
+    {
     await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
     var produtoSlugs = itensSolicitados.Select(item => item.ProdutoId).ToList();
     var produtosMap = await FiltrarProdutosPublicaveis(db.Produtos)
@@ -7248,7 +7252,7 @@ app.MapPost("/api/pedidos", async (
 
     if (produtosMap.Count != produtoSlugs.Count)
     {
-        return Results.BadRequest(ApiResponse<string>.Erro("Um ou mais produtos nao estao liberados para venda."));
+        return CheckoutCreationResult.Fail(Results.BadRequest(ApiResponse<string>.Erro("Um ou mais produtos nao estao liberados para venda.")));
     }
 
     decimal subtotal = 0m;
@@ -7258,20 +7262,20 @@ app.MapPost("/api/pedidos", async (
     {
         if (!produtosMap.TryGetValue(item.ProdutoId, out var produto))
         {
-            return Results.BadRequest(ApiResponse<string>.Erro("Produto invalido."));
+            return CheckoutCreationResult.Fail(Results.BadRequest(ApiResponse<string>.Erro("Produto invalido.")));
         }
 
         if (produto.TipoProduto == NexumAltivon.API.Models.TipoProduto.Dropshipping && produto.FornecedorId is null)
         {
-            return Results.BadRequest(ApiResponse<string>.Erro(
-                $"O produto {produto.Nome} está marcado como dropshipping, mas ainda não possui fornecedor vinculado."));
+            return CheckoutCreationResult.Fail(Results.BadRequest(ApiResponse<string>.Erro(
+                $"O produto {produto.Nome} está marcado como dropshipping, mas ainda não possui fornecedor vinculado.")));
         }
 
         var estoqueDisponivel = produto.EstoqueAtual - produto.EstoqueReservado;
         if (estoqueDisponivel < item.Quantidade)
         {
-            return Results.BadRequest(ApiResponse<string>.Erro(
-                $"Estoque insuficiente para {produto.Nome}. Disponivel: {Math.Max(0, estoqueDisponivel)}."));
+            return CheckoutCreationResult.Fail(Results.BadRequest(ApiResponse<string>.Erro(
+                $"Estoque insuficiente para {produto.Nome}. Disponivel: {Math.Max(0, estoqueDisponivel)}.")));
         }
 
         var precoUnitario = produto.PrecoPromocional ?? produto.Preco;
@@ -7304,28 +7308,28 @@ app.MapPost("/api/pedidos", async (
         cupomAplicado = await db.Cupons.FirstOrDefaultAsync(c => c.Codigo == codigoCupom && c.Ativo, ct);
         if (cupomAplicado is null)
         {
-            return Results.BadRequest(ApiResponse<string>.Erro("Cupom invalido ou inativo."));
+            return CheckoutCreationResult.Fail(Results.BadRequest(ApiResponse<string>.Erro("Cupom invalido ou inativo.")));
         }
 
         if (cupomAplicado.ValidoDe.HasValue && cupomAplicado.ValidoDe.Value.Date > agora.Date)
         {
-            return Results.BadRequest(ApiResponse<string>.Erro("Cupom ainda nao esta vigente."));
+            return CheckoutCreationResult.Fail(Results.BadRequest(ApiResponse<string>.Erro("Cupom ainda nao esta vigente.")));
         }
 
         if (cupomAplicado.ValidoAte.HasValue && cupomAplicado.ValidoAte.Value.Date < agora.Date)
         {
-            return Results.BadRequest(ApiResponse<string>.Erro("Cupom expirado."));
+            return CheckoutCreationResult.Fail(Results.BadRequest(ApiResponse<string>.Erro("Cupom expirado.")));
         }
 
         if (cupomAplicado.QuantidadeUsos.HasValue && cupomAplicado.UsosAtuais >= cupomAplicado.QuantidadeUsos.Value)
         {
-            return Results.Conflict(ApiResponse<string>.Erro("Cupom esgotado."));
+            return CheckoutCreationResult.Fail(Results.Conflict(ApiResponse<string>.Erro("Cupom esgotado.")));
         }
 
         if (subtotal < cupomAplicado.ValorMinimoPedido)
         {
-            return Results.BadRequest(ApiResponse<string>.Erro(
-                $"Subtotal minimo para este cupom: {cupomAplicado.ValorMinimoPedido.ToString("C", CultureInfo.GetCultureInfo("pt-BR"))}."));
+            return CheckoutCreationResult.Fail(Results.BadRequest(ApiResponse<string>.Erro(
+                $"Subtotal minimo para este cupom: {cupomAplicado.ValorMinimoPedido.ToString("C", CultureInfo.GetCultureInfo("pt-BR"))}.")));
         }
 
         if (cupomAplicado.QuantidadePorCliente > 0)
@@ -7337,7 +7341,7 @@ app.MapPost("/api/pedidos", async (
                 ct);
             if (usosCliente >= cupomAplicado.QuantidadePorCliente)
             {
-                return Results.Conflict(ApiResponse<string>.Erro("Limite de uso deste cupom por cliente atingido."));
+                return CheckoutCreationResult.Fail(Results.Conflict(ApiResponse<string>.Erro("Limite de uso deste cupom por cliente atingido.")));
             }
         }
 
@@ -7348,7 +7352,7 @@ app.MapPost("/api/pedidos", async (
                 ct);
             if (possuiPedido)
             {
-                return Results.Conflict(ApiResponse<string>.Erro("Cupom exclusivo para a primeira compra."));
+                return CheckoutCreationResult.Fail(Results.Conflict(ApiResponse<string>.Erro("Cupom exclusivo para a primeira compra.")));
             }
         }
 
@@ -7402,7 +7406,7 @@ app.MapPost("/api/pedidos", async (
 
     if (enderecoRequest is null || string.IsNullOrWhiteSpace(enderecoRequest.Cep))
     {
-        return Results.BadRequest(ApiResponse<string>.Erro("CEP de entrega obrigatorio para calcular o frete."));
+        return CheckoutCreationResult.Fail(Results.BadRequest(ApiResponse<string>.Erro("CEP de entrega obrigatorio para calcular o frete.")));
     }
 
     var freteRequest = new FreteCotacaoRequest(
@@ -7427,7 +7431,7 @@ app.MapPost("/api/pedidos", async (
 
     if (freteSelecionado is null)
     {
-        return Results.BadRequest(ApiResponse<string>.Erro("Opcao de frete invalida ou indisponivel. Refaca a cotacao."));
+        return CheckoutCreationResult.Fail(Results.BadRequest(ApiResponse<string>.Erro("Opcao de frete invalida ou indisponivel. Refaca a cotacao.")));
     }
 
     if (cupomAplicado?.Tipo == TipoCupom.FreteGratis)
@@ -7488,18 +7492,158 @@ app.MapPost("/api/pedidos", async (
     await db.SaveChangesAsync(ct);
     await transaction.CommitAsync(ct);
 
-    try
+    return CheckoutCreationResult.Success(pedido);
+    });
+
+    if (checkoutCreation.Error is not null)
     {
-        await EnsurePedidoFiscalAutomationAsync(pedido, cliente, request, db, fiscalRoutingEngine, ct);
-        await db.SaveChangesAsync(ct);
-    }
-    catch
-    {
-        // A automacao fiscal nao pode derrubar a venda: o pedido ja foi gravado e commitado.
+        return checkoutCreation.Error;
     }
 
-    await TryCreateGenesisContaReceberPedidoAsync(services, pedido, cliente, ct);
-    await notificacaoService.EnviarConfirmacaoPedidoAsync(cliente, pedido, ct);
+    var pedido = checkoutCreation.Pedido
+        ?? throw new InvalidOperationException("A transacao de checkout terminou sem retornar o pedido persistido.");
+
+    StatusNfe? checkoutFiscalStatus = null;
+    string? fiscalOperationalAlert = null;
+    string? genesisOperationalAlert = null;
+    string? notificationOperationalAlert = null;
+    var checkoutLogger = loggerFactory.CreateLogger("NexumAltivon.Checkout");
+    try
+    {
+        checkoutFiscalStatus = await EnsureCheckoutFiscalAutomationAsync(
+            services,
+            pedido,
+            cliente,
+            request,
+            fiscalRoutingEngine,
+            ct);
+    }
+    catch (Exception fiscalException)
+    {
+        checkoutLogger.LogError(
+            fiscalException,
+            "Falha na preparacao fiscal posterior ao commit do pedido {PedidoId} ({NumeroPedido}).",
+            pedido.Id,
+            pedido.NumeroPedido);
+
+        try
+        {
+            using var incidentTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var incidentReference = await RegisterCheckoutFiscalIncidentAsync(
+                services,
+                pedido,
+                fiscalException,
+                http,
+                incidentTimeout.Token);
+            fiscalOperationalAlert = $"Pedido registrado. A preparacao fiscal requer revisao operacional sob a referencia {incidentReference}.";
+            checkoutFiscalStatus = StatusNfe.Pendente;
+        }
+        catch (Exception incidentException)
+        {
+            checkoutLogger.LogCritical(
+                incidentException,
+                "Pedido {PedidoId} ({NumeroPedido}) foi commitado, mas o incidente fiscal nao foi persistido.",
+                pedido.Id,
+                pedido.NumeroPedido);
+
+            return Results.Problem(
+                detail: $"O pedido {pedido.NumeroPedido} foi registrado, mas a preparacao fiscal e o registro do incidente falharam. Nao repita a compra; informe este numero ao atendimento.",
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Pedido registrado com falha operacional critica");
+        }
+
+        if (fiscalException is OperationCanceledException && ct.IsCancellationRequested)
+        {
+            throw;
+        }
+    }
+
+    var genesisResult = await TryCreateGenesisContaReceberPedidoAsync(services, pedido, cliente, ct);
+    if (!genesisResult.Succeeded)
+    {
+        checkoutLogger.LogError(
+            "Conta a receber Genesis nao foi confirmada para o pedido {PedidoId} ({NumeroPedido}). Codigo {FailureCode}.",
+            pedido.Id,
+            pedido.NumeroPedido,
+            genesisResult.FailureCode);
+
+        try
+        {
+            using var incidentTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var incidentReference = await RegisterCheckoutPostCommitIncidentAsync(
+                services,
+                pedido,
+                cliente,
+                "GENESIS",
+                genesisResult.FailureCode ?? "GENESIS-UNKNOWN",
+                "Integracao financeira Genesis pendente",
+                "A conta a receber do pedido deve ser reconciliada com o financeiro Genesis.",
+                http,
+                incidentTimeout.Token);
+            genesisOperationalAlert = $"Integracao financeira pendente sob a referencia {incidentReference}.";
+        }
+        catch (Exception incidentException)
+        {
+            checkoutLogger.LogCritical(
+                incidentException,
+                "Pedido {PedidoId} ({NumeroPedido}) foi commitado, mas o incidente Genesis nao foi persistido.",
+                pedido.Id,
+                pedido.NumeroPedido);
+            return Results.Problem(
+                detail: $"O pedido {pedido.NumeroPedido} foi registrado, mas a integracao financeira e o registro do incidente falharam. Nao repita a compra; informe este numero ao atendimento.",
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Pedido registrado com falha operacional critica");
+        }
+    }
+
+    try
+    {
+        await notificacaoService.EnviarConfirmacaoPedidoAsync(cliente, pedido, ct);
+    }
+    catch (Exception notificationException)
+    {
+        var failureCode = BuildOperationalFailureCode(notificationException);
+        checkoutLogger.LogError(
+            notificationException,
+            "Confirmacao externa nao enviada para o pedido {PedidoId} ({NumeroPedido}). Codigo {FailureCode}.",
+            pedido.Id,
+            pedido.NumeroPedido,
+            failureCode);
+
+        try
+        {
+            using var incidentTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var incidentReference = await RegisterCheckoutPostCommitIncidentAsync(
+                services,
+                pedido,
+                cliente,
+                "NOTIFICACAO",
+                failureCode,
+                "Confirmacao externa do pedido pendente",
+                "O pedido foi registrado, mas a confirmacao por e-mail ainda precisa ser reenviada.",
+                http,
+                incidentTimeout.Token);
+            notificationOperationalAlert = $"Confirmacao por e-mail pendente sob a referencia {incidentReference}.";
+        }
+        catch (Exception incidentException)
+        {
+            checkoutLogger.LogCritical(
+                incidentException,
+                "Pedido {PedidoId} ({NumeroPedido}) foi commitado, mas o incidente de notificacao nao foi persistido.",
+                pedido.Id,
+                pedido.NumeroPedido);
+            return Results.Problem(
+                detail: $"O pedido {pedido.NumeroPedido} foi registrado, mas a confirmacao externa e o registro do incidente falharam. Nao repita a compra; informe este numero ao atendimento.",
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Pedido registrado com falha operacional critica");
+        }
+
+        if (notificationException is OperationCanceledException && ct.IsCancellationRequested)
+        {
+            throw;
+        }
+    }
+
     var metodoPagamento = (request.MetodoPagamento ?? string.Empty).Trim().ToLowerInvariant();
     var gatewayResult = metodoPagamento switch
     {
@@ -7533,6 +7677,15 @@ app.MapPost("/api/pedidos", async (
         .OrderByDescending(item => item.CreatedAt)
         .FirstOrDefault();
 
+    var checkoutOperationalAlert = string.Join(
+        " ",
+        new[] { fiscalOperationalAlert, genesisOperationalAlert, notificationOperationalAlert }
+            .Where(alert => !string.IsNullOrWhiteSpace(alert)));
+    if (string.IsNullOrWhiteSpace(checkoutOperationalAlert))
+    {
+        checkoutOperationalAlert = null;
+    }
+
     var dto = new PedidoLojaDto(
         pedido.Id,
         pedido.NumeroPedido,
@@ -7551,8 +7704,16 @@ app.MapPost("/api/pedidos", async (
         BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId),
         pagamentoFinal?.Parcelas ?? 1,
         pagamentoFinal?.PixQrcode,
-        pagamentoFinal?.BoletoUrl);
-    return Results.Ok(ApiResponse<PedidoLojaDto>.Ok(dto, "Pedido criado com sucesso."));
+        pagamentoFinal?.BoletoUrl,
+        checkoutFiscalStatus?.ToString(),
+        checkoutOperationalAlert);
+
+    var checkoutResponse = ApiResponse<PedidoLojaDto>.Ok(
+        dto,
+        checkoutOperationalAlert ?? "Pedido criado com sucesso.");
+    return checkoutOperationalAlert is null
+        ? Results.Ok(checkoutResponse)
+        : Results.Json(checkoutResponse, statusCode: StatusCodes.Status202Accepted);
 })
 .AllowAnonymous()
 .WithName("CriarPedido")
@@ -11108,7 +11269,7 @@ static async Task EnsurePedidoFiscalAutomationAsync(
         return;
     }
 
-    var estadoDestino = InferDestinationState(request.EnderecoEntrega, cliente);
+    var estadoDestino = InferDestinationState(request.EnderecoEntrega);
     var empresaOrigemPadrao = empresas
         .OrderByDescending(item => item.EmitentePreferencial)
         .ThenBy(item => item.PrioridadeFiscal)
@@ -11144,6 +11305,25 @@ static async Task EnsurePedidoFiscalAutomationAsync(
 
     var resumoPagamento = BuildFiscalPaymentSummary(pedido.MeioPagamento, pedido.GatewayPagamento);
     var perfilTributacao = empresaEmitente.PerfilTributacao ?? "TributacaoAtual";
+    var numeroNfeReservado = empresaEmitente.ProximaNfeNumero;
+
+    if (numeroNfeReservado.HasValue)
+    {
+        var newRowVersion = Guid.NewGuid().ToByteArray();
+        var empresasAtualizadas = await db.EmpresasGrupo
+            .Where(item => item.Id == empresaEmitente.Id && item.ProximaNfeNumero == numeroNfeReservado.Value)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(item => item.ProximaNfeNumero, numeroNfeReservado.Value + 1)
+                    .SetProperty(item => item.UpdatedAt, DateTime.UtcNow)
+                    .SetProperty(item => EF.Property<byte[]>(item, "RowVersion"), newRowVersion),
+                ct);
+        if (empresasAtualizadas != 1)
+        {
+            throw new DbUpdateConcurrencyException(
+                $"A numeracao fiscal da empresa {empresaEmitente.CodigoEmpresa ?? empresaEmitente.Id.ToString(CultureInfo.InvariantCulture)} foi alterada por outra operacao.");
+        }
+    }
 
     db.Fiscais.Add(new Fiscal
     {
@@ -11152,7 +11332,7 @@ static async Task EnsurePedidoFiscalAutomationAsync(
         EmpresaEmitente = empresaEmitente.RazaoSocial,
         CodigoEmpresaEmitente = empresaEmitente.CodigoEmpresa,
         CnpjEmitente = empresaEmitente.Cnpj,
-        NumeroNfe = empresaEmitente.ProximaNfeNumero?.ToString(),
+        NumeroNfe = numeroNfeReservado?.ToString(CultureInfo.InvariantCulture),
         Serie = empresaEmitente.SerieNfe,
         ValorTotal = pedido.Total,
         Cfop = cfop,
@@ -11214,33 +11394,31 @@ static async Task EnsurePedidoFiscalAutomationAsync(
         UpdatedAt = DateTime.UtcNow
     });
 
-    if (empresaEmitente.ProximaNfeNumero.HasValue)
-    {
-        empresaEmitente.ProximaNfeNumero += 1;
-        db.EmpresasGrupo.Update(empresaEmitente);
-    }
 }
 
-static string InferDestinationState(object? enderecoEntrega, Cliente cliente)
+static string InferDestinationState(object? enderecoEntrega)
 {
-    if (enderecoEntrega is not null)
+    if (enderecoEntrega is null)
     {
-        try
-        {
-            var json = JsonSerializer.Serialize(enderecoEntrega);
-            var enderecoRequest = JsonSerializer.Deserialize<EnderecoEntregaRequest>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            var estado = TrimOrNull(enderecoRequest?.Estado);
-            if (!string.IsNullOrWhiteSpace(estado))
-            {
-                return estado.ToUpperInvariant();
-            }
-        }
-        catch
-        {
-        }
+        throw new InvalidOperationException("Endereco de entrega obrigatorio para definir a UF fiscal do pedido.");
     }
 
-    return "SP";
+    try
+    {
+        var json = JsonSerializer.Serialize(enderecoEntrega);
+        var enderecoRequest = JsonSerializer.Deserialize<EnderecoEntregaRequest>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        var estado = TrimOrNull(enderecoRequest?.Estado)?.ToUpperInvariant();
+        if (estado is not ("AC" or "AL" or "AP" or "AM" or "BA" or "CE" or "DF" or "ES" or "GO" or "MA" or "MT" or "MS" or "MG" or "PA" or "PB" or "PR" or "PE" or "PI" or "RJ" or "RN" or "RS" or "RO" or "RR" or "SC" or "SP" or "SE" or "TO"))
+        {
+            throw new InvalidOperationException("UF do endereco de entrega ausente ou invalida para preparacao fiscal.");
+        }
+
+        return estado;
+    }
+    catch (Exception exception) when (exception is JsonException or NotSupportedException)
+    {
+        throw new InvalidOperationException("Endereco de entrega possui formato invalido para preparacao fiscal.", exception);
+    }
 }
 
 static string BuildFiscalPaymentSummary(string? metodoPagamento, string? gatewayPagamento)
@@ -11300,6 +11478,194 @@ static LoginResponse CreateLoginResponse(
         refreshToken ?? string.Empty,
         expiresAt,
         new UsuarioDto(id, nome, email, perfil));
+}
+
+static async Task<StatusNfe> EnsureCheckoutFiscalAutomationAsync(
+    IServiceProvider services,
+    Pedido pedido,
+    Cliente cliente,
+    PedidoRequest request,
+    IFiscalRoutingEngine fiscalRoutingEngine,
+    CancellationToken ct)
+{
+    using var scope = services.CreateScope();
+    var fiscalDb = scope.ServiceProvider.GetRequiredService<NexumDbContext>();
+    var strategy = fiscalDb.Database.CreateExecutionStrategy();
+
+    return await strategy.ExecuteAsync(async () =>
+    {
+        await using var transaction = await fiscalDb.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+        await EnsurePedidoFiscalAutomationAsync(pedido, cliente, request, fiscalDb, fiscalRoutingEngine, ct);
+        await fiscalDb.SaveChangesAsync(ct);
+
+        var fiscal = await fiscalDb.Fiscais
+            .AsNoTracking()
+            .FirstOrDefaultAsync(item => item.PedidoId == pedido.Id, ct)
+            ?? throw new InvalidOperationException("A preparacao fiscal terminou sem registro persistido para o pedido.");
+
+        await transaction.CommitAsync(ct);
+        return fiscal.StatusNfe;
+    });
+}
+
+static async Task<string> RegisterCheckoutFiscalIncidentAsync(
+    IServiceProvider services,
+    Pedido pedido,
+    Exception exception,
+    HttpContext http,
+    CancellationToken ct)
+{
+    using var scope = services.CreateScope();
+    var incidentDb = scope.ServiceProvider.GetRequiredService<NexumDbContext>();
+    var strategy = incidentDb.Database.CreateExecutionStrategy();
+    var occurredAt = DateTime.UtcNow;
+    var incidentReference = $"FISC-{pedido.Id}-{occurredAt:yyyyMMddHHmmss}";
+    var failureCode = BuildOperationalFailureCode(exception);
+
+    await strategy.ExecuteAsync(async () =>
+    {
+        await using var transaction = await incidentDb.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+        var fiscal = await incidentDb.Fiscais.FirstOrDefaultAsync(item => item.PedidoId == pedido.Id, ct);
+        if (fiscal is null)
+        {
+            fiscal = new Fiscal
+            {
+                PedidoId = pedido.Id,
+                ValorTotal = pedido.Total,
+                NaturezaOperacao = "Venda de mercadoria",
+                ModeloDocumento = "NFe",
+                AmbienteDocumento = "Pendente",
+                StatusNfe = StatusNfe.Pendente,
+                CreatedAt = occurredAt
+            };
+            incidentDb.Fiscais.Add(fiscal);
+        }
+        else if (fiscal.StatusNfe is not StatusNfe.Autorizada and not StatusNfe.Cancelada)
+        {
+            fiscal.StatusNfe = StatusNfe.Pendente;
+        }
+
+        fiscal.StatusAutomacao = "Preparacao fiscal falhou";
+        fiscal.ResumoRoteamento = $"Revisao operacional obrigatoria. Referencia {incidentReference}.";
+        fiscal.PayloadOperacao = JsonSerializer.Serialize(new
+        {
+            pedidoId = pedido.Id,
+            pedido.NumeroPedido,
+            etapa = "preparacao_fiscal_checkout",
+            status = "pendente_revisao",
+            codigoFalha = failureCode,
+            referencia = incidentReference,
+            ocorridoEm = occurredAt
+        });
+        fiscal.UpdatedAt = occurredAt;
+        await incidentDb.SaveChangesAsync(ct);
+
+        incidentDb.LogsAuditoria.Add(new LogAuditoria
+        {
+            Tabela = "fiscal",
+            RegistroId = fiscal.Id,
+            Acao = AcaoAuditoria.ERRO,
+            UsuarioTipo = TipoUsuarioAuditoria.Sistema,
+            IpAddress = Truncate(http.Connection.RemoteIpAddress?.ToString(), 45),
+            UserAgent = Truncate(http.Request.Headers.UserAgent.ToString(), 255),
+            Endpoint = Truncate(http.Request.Path.Value, 255),
+            DadosNovos = fiscal.PayloadOperacao,
+            CreatedAt = occurredAt
+        });
+        await incidentDb.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+    });
+
+    return incidentReference;
+}
+
+static async Task<string> RegisterCheckoutPostCommitIncidentAsync(
+    IServiceProvider services,
+    Pedido pedido,
+    Cliente cliente,
+    string area,
+    string failureCode,
+    string title,
+    string operationalMessage,
+    HttpContext http,
+    CancellationToken ct)
+{
+    using var scope = services.CreateScope();
+    var incidentDb = scope.ServiceProvider.GetRequiredService<NexumDbContext>();
+    var strategy = incidentDb.Database.CreateExecutionStrategy();
+    var occurredAt = DateTime.UtcNow;
+    var areaCode = new string(area.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+    if (string.IsNullOrWhiteSpace(areaCode))
+    {
+        throw new ArgumentException("Area operacional obrigatoria para registrar o incidente.", nameof(area));
+    }
+
+    var incidentReference = $"{areaCode}-{pedido.Id}-{occurredAt:yyyyMMddHHmmss}";
+    await strategy.ExecuteAsync(async () =>
+    {
+        await using var transaction = await incidentDb.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+        var existing = await incidentDb.Notificacoes.FirstOrDefaultAsync(
+            item => item.Mensagem != null && item.Mensagem.Contains(incidentReference),
+            ct);
+        if (existing is null)
+        {
+            var payload = JsonSerializer.Serialize(new
+            {
+                pedidoId = pedido.Id,
+                pedido.NumeroPedido,
+                clienteId = cliente.Id,
+                area = areaCode,
+                status = "pendente_revisao",
+                codigoFalha = failureCode,
+                referencia = incidentReference,
+                ocorridoEm = occurredAt
+            });
+            var notification = new Notificacao
+            {
+                Tipo = TipoNotificacao.Pedido,
+                Titulo = title.Length <= 200 ? title : title[..200],
+                Mensagem = $"Pedido {pedido.NumeroPedido}. {operationalMessage} Referencia {incidentReference}.",
+                DestinatarioTipo = DestinatarioTipo.Cliente,
+                DestinatarioId = cliente.Id,
+                Lida = false,
+                LinkAcao = $"/admin/pedidos/{pedido.Id}",
+                CreatedAt = occurredAt
+            };
+            incidentDb.Notificacoes.Add(notification);
+            await incidentDb.SaveChangesAsync(ct);
+
+            incidentDb.LogsAuditoria.Add(new LogAuditoria
+            {
+                Tabela = "notificacoes",
+                RegistroId = notification.Id,
+                Acao = AcaoAuditoria.ERRO,
+                UsuarioTipo = TipoUsuarioAuditoria.Sistema,
+                IpAddress = Truncate(http.Connection.RemoteIpAddress?.ToString(), 45),
+                UserAgent = Truncate(http.Request.Headers.UserAgent.ToString(), 255),
+                Endpoint = Truncate(http.Request.Path.Value, 255),
+                DadosNovos = payload,
+                CreatedAt = occurredAt
+            });
+            await incidentDb.SaveChangesAsync(ct);
+        }
+
+        await transaction.CommitAsync(ct);
+    });
+
+    return incidentReference;
+}
+
+static string BuildOperationalFailureCode(Exception exception)
+{
+    var root = exception.GetBaseException();
+    return root switch
+    {
+        MySqlException mySqlException => $"MYSQL-{mySqlException.Number}",
+        DbUpdateConcurrencyException => "EF-CONCURRENCY",
+        DbUpdateException => "EF-DBUPDATE",
+        OperationCanceledException => "OPERATION-CANCELLED",
+        _ => $"{root.GetType().Name.ToUpperInvariant()}-{root.HResult:X8}"
+    };
 }
 
 static ClaimsPrincipal? ValidateExpiredJwtToken(string token, string issuer, string audience, SymmetricSecurityKey signingKey)
@@ -13217,7 +13583,7 @@ static string AppendOperationalObservation(string? current, string note)
         : $"{normalized}{Environment.NewLine}{note}";
 }
 
-static async Task TryCreateGenesisContaReceberPedidoAsync(
+static async Task<CheckoutIntegrationResult> TryCreateGenesisContaReceberPedidoAsync(
     IServiceProvider services,
     Pedido pedido,
     Cliente cliente,
@@ -13226,16 +13592,21 @@ static async Task TryCreateGenesisContaReceberPedidoAsync(
     try
     {
         var genesisDb = services.GetService<GenesisDbContext>();
-        if (genesisDb is null || !await genesisDb.Database.CanConnectAsync(ct))
+        if (genesisDb is null)
         {
-            return;
+            return CheckoutIntegrationResult.Failure("GENESIS-CONTEXT-UNAVAILABLE");
+        }
+
+        if (!await genesisDb.Database.CanConnectAsync(ct))
+        {
+            return CheckoutIntegrationResult.Failure("GENESIS-DATABASE-UNAVAILABLE");
         }
 
         var existe = await genesisDb.ContasReceber
             .AnyAsync(item => item.NumeroPedidoReferencia == pedido.NumeroPedido || item.NumeroDocumento == pedido.NumeroPedido, ct);
         if (existe)
         {
-            return;
+            return CheckoutIntegrationResult.Success();
         }
 
         genesisDb.ContasReceber.Add(new GenesisContaReceber
@@ -13256,10 +13627,11 @@ static async Task TryCreateGenesisContaReceberPedidoAsync(
         });
 
         await genesisDb.SaveChangesAsync(ct);
+        return CheckoutIntegrationResult.Success();
     }
-    catch
+    catch (Exception exception)
     {
-        // O pedido e o financeiro local permanecem como fonte oficial caso o banco Genesis esteja indisponivel.
+        return CheckoutIntegrationResult.Failure(BuildOperationalFailureCode(exception));
     }
 }
 
@@ -16858,20 +17230,14 @@ static async Task EnsureIntPrimaryKeyAsync(NexumDbContext db, string tableName, 
             var addPrimaryKeySql = "ALTER TABLE " + table + " ADD PRIMARY KEY (" + column + ");";
             await db.Database.ExecuteSqlRawAsync(addPrimaryKeySql);
         }
-        catch
+        catch (MySqlException exception) when (exception.Number == 1068)
         {
-            return;
+            // Outra instancia concluiu a criacao da chave primaria entre a consulta e o ALTER TABLE.
         }
     }
 
-    try
-    {
-        var modifyIdentitySql = "ALTER TABLE " + table + " MODIFY COLUMN " + column + " INT NOT NULL AUTO_INCREMENT;";
-        await db.Database.ExecuteSqlRawAsync(modifyIdentitySql);
-    }
-    catch
-    {
-    }
+    var modifyIdentitySql = "ALTER TABLE " + table + " MODIFY COLUMN " + column + " INT NOT NULL AUTO_INCREMENT;";
+    await db.Database.ExecuteSqlRawAsync(modifyIdentitySql);
 }
 
 static string QuoteMySqlIdentifier(string? identifier)
@@ -19756,6 +20122,20 @@ public sealed record StatusUpdateRequest(
 
 public sealed record PedidoItemRequest(string ProdutoId, int Quantidade);
 
+public sealed record CheckoutCreationResult(Pedido? Pedido, IResult? Error)
+{
+    public static CheckoutCreationResult Success(Pedido pedido) => new(pedido, null);
+
+    public static CheckoutCreationResult Fail(IResult error) => new(null, error);
+}
+
+public sealed record CheckoutIntegrationResult(bool Succeeded, string? FailureCode)
+{
+    public static CheckoutIntegrationResult Success() => new(true, null);
+
+    public static CheckoutIntegrationResult Failure(string failureCode) => new(false, failureCode);
+}
+
 public sealed record PedidoRequest(
     [property: JsonPropertyName("cliente_id")] int ClienteId,
     [property: JsonPropertyName("loja_id")] string LojaId,
@@ -19805,7 +20185,9 @@ public sealed record PedidoLojaDto(
     string InstrucaoPagamento,
     int Parcelas,
     string? PixQrcode,
-    string? PaymentUrl);
+    string? PaymentUrl,
+    string? StatusFiscal = null,
+    string? AlertaOperacional = null);
 
 public sealed record PedidoLogisticaRequest(
     [property: JsonPropertyName("frete_metodo")] string? FreteMetodo,
