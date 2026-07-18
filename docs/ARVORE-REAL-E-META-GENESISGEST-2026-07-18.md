@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7181
 -->
 
 # Arvore Real e Arvore Meta do GenesisGest.Net
@@ -61,7 +61,8 @@ GenesisGest.Net v1.1.5
 |   `-- Gestao dedicada das seis lojas pendente
 |-- 04 FICO [parcial]
 |   |-- Lancamentos, razao, conciliacao, DRE e fechamento
-|   `-- PDFs financeiros gerados; consumo completo por tela/API pendente
+|   |-- PDFs de contas a pagar/receber integrados no WPF e homologados na API local/publica com dados MySQL
+|   `-- PDF de DRE/razao/fechamento ainda pendente de fatos contabeis completos
 |-- 05 SCM e WMS [parcial]
 |   |-- Compras, solicitacoes, cotacoes, pedidos e entradas
 |   `-- WMS completo e portaria ainda sem homologacao ponta a ponta
@@ -134,7 +135,7 @@ GenesisGest.Net concluido
 | CAP-03 | Compras e abastecimento | Parcial | Provar solicitacao, cotacao, aprovacao, pedido, entrada, estoque e financeiro |
 | CAP-04 | WMS | Parcial | Provar movimentacao, inventario, kardex, localizacao e transferencia com concorrencia |
 | CAP-05 | Fiscal explicavel | Parcial | Exibir roteamento, motivo, numeracao, XML, chave, protocolo e eventos oficiais |
-| CAP-06 | FICO corporativo | Parcial avancado | Contas a pagar/receber, baixas e conciliacao bancaria usam janelas, contratos, persistencia, concorrencia e auditoria proprios; concluir tesouraria, fechamento, DRE e PDFs em tela/API oficial |
+| CAP-06 | FICO corporativo | Parcial avancado | Contas a pagar/receber, baixas, PDFs de pagar/receber e conciliacao bancaria usam janelas, contratos, persistencia, tenant, concorrencia e auditoria proprios; PDFs foram homologados na API local/publica e o acionamento WPF compilado; concluir homologacao interativa WPF, tesouraria, fechamento, razao e DRE |
 | CAP-07 | Logistica e fulfillment | Parcial | Provar cotacao, expedicao, rastreamento externo, entrega e ocorrencias |
 | CAP-08 | CRM e atendimento Yara | Parcial | Provar pipeline, oportunidade, atividade, ticket e atendimento com chave real, sem seletor de persona |
 | CAP-09 | HCM | Parcial | Provar admissao, ponto, folha, beneficios, avaliacao, desligamento e eSocial |

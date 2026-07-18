@@ -3,7 +3,7 @@
 # Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
 # Sistema de gestão: GenesisGest.Net
 # Ano Início: 04/2024 Publicado e operacional: 05/2026
-# Versão: 1.1.5
+# Versão: 1.1.5.7181
 #
 
 [CmdletBinding()]
@@ -290,7 +290,7 @@ $lines.Add(("Propriedade intelectual: Lu{0}s Rodrigo da Costa" -f [char]0x00ED))
 $lines.Add("Com apoio: IA Chatgpt/Codex que atende por nome: Sophia")
 $lines.Add(("Sistema de gest{0}o: GenesisGest.Net" -f [char]0x00E3))
 $lines.Add(("Ano In{0}cio: 04/2024 Publicado e operacional: 05/2026" -f [char]0x00ED))
-$lines.Add(("Vers{0}o: 1.1.5" -f [char]0x00E3))
+$lines.Add(("Vers{0}o: 1.1.5.7181" -f [char]0x00E3))
 $lines.Add("-->")
 $lines.Add("")
 $lines.Add("# Matriz de Paridade Banco-WPF")

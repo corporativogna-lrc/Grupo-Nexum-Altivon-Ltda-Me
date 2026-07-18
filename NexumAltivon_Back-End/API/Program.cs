@@ -3,11 +3,12 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7181
  */
 
 using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
+using System.Reflection;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.Http.Headers;
@@ -30,6 +31,7 @@ using MySqlConnector;
 using NexumAltivon.API.Data;
 using NexumAltivon.API.ERP.FiscalRouting;
 using NexumAltivon.API.ERP.SharedData;
+using NexumAltivon.API.Infrastructure.Reports;
 using NexumAltivon.API.Infrastructure.Storage;
 using NexumAltivon.API.Infrastructure.Tenancy;
 using NexumAltivon.API.Models;
@@ -46,6 +48,7 @@ var builderOptions = new WebApplicationOptions
         : Path.GetFullPath(bootstrapPublicWebRoot.Trim())
 };
 var builder = WebApplication.CreateBuilder(builderOptions);
+var releaseVersion = GetReleaseVersion();
 Console.WriteLine("[NexumStartup] Builder criado.");
 
 builder.Logging.ClearProviders();
@@ -197,7 +200,7 @@ builder.Services.AddSwaggerGen(options =>
     options.SwaggerDoc("v1", new OpenApiInfo
     {
         Title = "Nexum Altivon API",
-        Version = "v1.1.5",
+        Version = $"v{releaseVersion}",
         Description = "API funcional inicial para site e painel administrativo Nexum Altivon."
     });
 
@@ -229,6 +232,7 @@ builder.Services.AddSwaggerGen(options =>
 builder.Services.AddHealthChecks();
 builder.Services.AddScoped<ITenantContext, TenantContext>();
 builder.Services.AddSingleton<IFiscalRoutingEngine, FiscalRoutingEngine>();
+builder.Services.AddSingleton<FinancePdfReportService>();
 builder.Services.AddHttpClient("mercado-pago", client =>
 {
     client.BaseAddress = new Uri("https://api.mercadopago.com/");
@@ -237,7 +241,7 @@ builder.Services.AddHttpClient("mercado-pago", client =>
 builder.Services.AddHttpClient("melhor-envio", client =>
 {
     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-    client.DefaultRequestHeaders.UserAgent.ParseAdd("NexumAltivon/1.1.5");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd($"NexumAltivon/{releaseVersion}");
 });
 builder.Services.AddHttpClient("mercado-livre", client =>
 {
@@ -247,12 +251,12 @@ builder.Services.AddHttpClient("mercado-livre", client =>
 builder.Services.AddHttpClient("marketplace-sync", client =>
 {
     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-    client.DefaultRequestHeaders.UserAgent.ParseAdd("GenesisGest.Net/1.1.5");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd($"GenesisGest.Net/{releaseVersion}");
 });
 builder.Services.AddHttpClient("fiscal-sefaz", client =>
 {
     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-    client.DefaultRequestHeaders.UserAgent.ParseAdd("GenesisGest.Net/1.1.5");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd($"GenesisGest.Net/{releaseVersion}");
 });
 builder.Services.AddHttpClient("Notificacoes", client =>
 {
@@ -610,6 +614,70 @@ app.MapGet("/api/erp/genesis/financeiro/contas-receber", async (GenesisDbContext
 })
 .RequireAuthorization("Financeiro")
 .WithName("GenesisContasReceberListar");
+
+app.MapGet("/api/erp/genesis/financeiro/contas-pagar/relatorio.pdf", async (
+    DateTime? inicio,
+    DateTime? fim,
+    string? status,
+    GenesisDbContext db,
+    ITenantContext tenantContext,
+    FinancePdfReportService reports,
+    CancellationToken ct) =>
+{
+    try
+    {
+        var itens = await GenesisFinanceService.ListarContasPagarAsync(db, inicio, fim, status, ct);
+        if (itens.Count == 0)
+        {
+            return Results.NotFound(ApiResponse<object>.Erro("Nenhuma conta a pagar foi encontrada para os filtros informados."));
+        }
+
+        var generatedAtUtc = DateTime.UtcNow;
+        var pdf = reports.CreatePayablesReport(itens, tenantContext.TenantId, inicio, fim, status, generatedAtUtc);
+        return Results.File(
+            pdf,
+            "application/pdf",
+            $"genesis-contas-pagar-{generatedAtUtc:yyyyMMdd-HHmmss}.pdf");
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(ApiResponse<object>.Erro(ex.Message));
+    }
+})
+.RequireAuthorization("Financeiro")
+.WithName("GenesisContasPagarRelatorioPdf");
+
+app.MapGet("/api/erp/genesis/financeiro/contas-receber/relatorio.pdf", async (
+    DateTime? inicio,
+    DateTime? fim,
+    string? status,
+    GenesisDbContext db,
+    ITenantContext tenantContext,
+    FinancePdfReportService reports,
+    CancellationToken ct) =>
+{
+    try
+    {
+        var itens = await GenesisFinanceService.ListarContasReceberAsync(db, inicio, fim, status, ct);
+        if (itens.Count == 0)
+        {
+            return Results.NotFound(ApiResponse<object>.Erro("Nenhuma conta a receber foi encontrada para os filtros informados."));
+        }
+
+        var generatedAtUtc = DateTime.UtcNow;
+        var pdf = reports.CreateReceivablesReport(itens, tenantContext.TenantId, inicio, fim, status, generatedAtUtc);
+        return Results.File(
+            pdf,
+            "application/pdf",
+            $"genesis-contas-receber-{generatedAtUtc:yyyyMMdd-HHmmss}.pdf");
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(ApiResponse<object>.Erro(ex.Message));
+    }
+})
+.RequireAuthorization("Financeiro")
+.WithName("GenesisContasReceberRelatorioPdf");
 
 app.MapPost("/api/erp/genesis/financeiro/contas-pagar", async (
     GenesisDbContext db,
@@ -1416,7 +1484,7 @@ app.MapGet("/", (IHostEnvironment environment) =>
         {
             status = "online",
             service = "Nexum Altivon API",
-            version = "1.1.5"
+            version = releaseVersion
         }));
 
 app.MapPost("/api/auth/login", async (
@@ -10340,6 +10408,10 @@ static string? ResolveFiscalOperationPath(IConfiguration configuration, string m
         $"Integracoes:DFe:{operationKey}");
 }
 
+static string GetReleaseVersion() =>
+    Assembly.GetExecutingAssembly().GetName().Version?.ToString(4)
+    ?? throw new InvalidOperationException("A versao do assembly da API nao foi definida.");
+
 static Uri? BuildFiscalProviderEndpoint(string endpointBase, string operationPath)
 {
     if (Uri.TryCreate(operationPath, UriKind.Absolute, out var absolute))
@@ -10365,7 +10437,7 @@ static object BuildFiscalEmissionPayload(
 {
     return new
     {
-        sistema = new { nome = "GenesisGest.Net", versao = "1.1.5" },
+        sistema = new { nome = "GenesisGest.Net", versao = GetReleaseVersion() },
         operacao = "emitir",
         modelo = modeloDocumento,
         ambiente = modeloDocumento == "NFCe" ? empresa.AmbienteNfce ?? empresa.AmbienteNfe : empresa.AmbienteNfe,
@@ -10455,7 +10527,7 @@ static object BuildFiscalEventPayload(Fiscal fiscal, EmpresaGrupo empresa, strin
 {
     return new
     {
-        sistema = new { nome = "GenesisGest.Net", versao = "1.1.5" },
+        sistema = new { nome = "GenesisGest.Net", versao = GetReleaseVersion() },
         operacao,
         modelo = modeloDocumento,
         ambiente = modeloDocumento == "NFCe" ? empresa.AmbienteNfce ?? empresa.AmbienteNfe : empresa.AmbienteNfe,
@@ -17753,6 +17825,8 @@ static async Task EnsureGenesisSharedSchemaAsync(IServiceProvider services, ILog
         await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_fluxo_caixa ADD COLUMN IF NOT EXISTS criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP;");
         await BackfillLegacyGenesisCashFlowAsync(genesisDb);
 
+        await EnsureGenesisFinanceAuditSchemaAsync(genesisDb);
+
         await SyncGenesisReceivablesFromNexumAsync(services, genesisDb);
         await SyncGenesisPayablesFromNexumAsync(services, genesisDb);
     }
@@ -17760,6 +17834,63 @@ static async Task EnsureGenesisSharedSchemaAsync(IServiceProvider services, ILog
     {
         logger.LogCritical(ex, "Falha obrigatoria ao ajustar o schema financeiro compartilhado GenesisGest.Net.");
         throw;
+    }
+}
+
+static async Task EnsureGenesisFinanceAuditSchemaAsync(GenesisDbContext genesisDb)
+{
+    foreach (var tableName in new[] { "erp_contas_pagar", "erp_contas_receber", "erp_fluxo_caixa" })
+    {
+        var table = QuoteMySqlIdentifier(tableName);
+        var createdAtSource = tableName switch
+        {
+            "erp_contas_pagar" => "data_emissao",
+            "erp_contas_receber" => "data_emissao",
+            "erp_fluxo_caixa" => "COALESCE(criado_em, data)",
+            _ => throw new InvalidOperationException($"Tabela financeira sem fonte de auditoria configurada: {tableName}.")
+        };
+        await genesisDb.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE " + table + " " +
+            "ADD COLUMN IF NOT EXISTS tenant_id CHAR(36) NULL, " +
+            "ADD COLUMN IF NOT EXISTS row_version BINARY(16) NULL, " +
+            "ADD COLUMN IF NOT EXISTS created_at DATETIME(6) NULL, " +
+            "ADD COLUMN IF NOT EXISTS created_by_user_id CHAR(36) NULL, " +
+            "ADD COLUMN IF NOT EXISTS updated_at DATETIME NULL, " +
+            "ADD COLUMN IF NOT EXISTS updated_by_user_id CHAR(36) NULL, " +
+            "ADD COLUMN IF NOT EXISTS is_deleted TINYINT(1) NOT NULL DEFAULT 0, " +
+            "ADD COLUMN IF NOT EXISTS deleted_at DATETIME NULL;");
+
+        await genesisDb.Database.ExecuteSqlRawAsync(
+            "UPDATE " + table + " SET tenant_id = '" + TenantContext.DefaultTenantId +
+            "' WHERE tenant_id IS NULL OR tenant_id = '' OR tenant_id = '00000000-0000-0000-0000-000000000000';");
+        await genesisDb.Database.ExecuteSqlRawAsync(
+            "UPDATE " + table + " SET created_at = COALESCE(" + createdAtSource + ", UTC_TIMESTAMP(6)) WHERE created_at IS NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync(
+            "UPDATE " + table + " SET row_version = UNHEX(REPLACE(UUID(), '-', '')) WHERE row_version IS NULL OR OCTET_LENGTH(row_version) <> 16;");
+        await genesisDb.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE " + table +
+            " MODIFY COLUMN tenant_id CHAR(36) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL," +
+            " MODIFY COLUMN row_version BINARY(16) NOT NULL," +
+            " MODIFY COLUMN created_at DATETIME(6) NOT NULL;");
+
+        var indexName = $"ix_{tableName}_tenant_deleted";
+        var indexExists = await ExecuteScalarAsync<long>(
+            genesisDb,
+            """
+            SELECT COUNT(*)
+            FROM information_schema.statistics
+            WHERE table_schema = DATABASE()
+              AND table_name = @tableName
+              AND index_name = @indexName
+            """,
+            CancellationToken.None,
+            ("@tableName", tableName),
+            ("@indexName", indexName));
+        if (indexExists == 0)
+        {
+            await genesisDb.Database.ExecuteSqlRawAsync(
+                "CREATE INDEX " + QuoteMySqlIdentifier(indexName) + " ON " + table + " (tenant_id, is_deleted);");
+        }
     }
 }
 

@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7181
  -->
 <Project Sdk="Microsoft.NET.Sdk">
 
@@ -16,10 +16,6 @@
     <RootNamespace>NexumAltivon.Desktop</RootNamespace>
     <AssemblyName>NexumAltivon.Desktop</AssemblyName>
     <ApplicationIcon>Assets\GenesisGest.ico</ApplicationIcon>
-    <Version>1.1.5</Version>
-    <AssemblyVersion>1.1.5.0</AssemblyVersion>
-    <FileVersion>1.1.5.0</FileVersion>
-    <InformationalVersion>1.1.5</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>

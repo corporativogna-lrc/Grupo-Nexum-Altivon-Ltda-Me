@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7181
  */
 
 using System.ComponentModel.DataAnnotations;
@@ -11,8 +11,36 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace NexumAltivon.API.ERP.SharedData;
 
+public abstract class GenesisLegacyAuditableEntity
+{
+    [Column("tenant_id", TypeName = "char(36)")]
+    public Guid TenantId { get; set; }
+
+    [Column("row_version", TypeName = "binary(16)")]
+    [ConcurrencyCheck]
+    public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; }
+
+    [Column("created_by_user_id", TypeName = "char(36)")]
+    public Guid? CreatedByUserId { get; set; }
+
+    [Column("updated_at")]
+    public DateTime? UpdatedAt { get; set; }
+
+    [Column("updated_by_user_id", TypeName = "char(36)")]
+    public Guid? UpdatedByUserId { get; set; }
+
+    [Column("is_deleted")]
+    public bool IsDeleted { get; set; }
+
+    [Column("deleted_at")]
+    public DateTime? DeletedAt { get; set; }
+}
+
 [Table("erp_contas_pagar")]
-public sealed class GenesisContaPagar
+public sealed class GenesisContaPagar : GenesisLegacyAuditableEntity
 {
     [Key]
     [Column("id")]
@@ -67,7 +95,7 @@ public sealed class GenesisContaPagar
 }
 
 [Table("erp_contas_receber")]
-public sealed class GenesisContaReceber
+public sealed class GenesisContaReceber : GenesisLegacyAuditableEntity
 {
     [Key]
     [Column("id")]
@@ -122,7 +150,7 @@ public sealed class GenesisContaReceber
 }
 
 [Table("erp_fluxo_caixa")]
-public sealed class GenesisFluxoCaixa
+public sealed class GenesisFluxoCaixa : GenesisLegacyAuditableEntity
 {
     [Key]
     [Column("id")]

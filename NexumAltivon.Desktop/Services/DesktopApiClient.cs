@@ -3,10 +3,11 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7181
  */
 
 using System.Globalization;
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -85,6 +86,13 @@ public sealed class DesktopApiClient
         => SendAuthorizedAsync<List<DesktopContaPagar>>(
             profile, token, HttpMethod.Get, "/api/erp/genesis/financeiro/contas-pagar", null, cancellationToken);
 
+    public Task<DesktopFileDownloadResult> GetContasPagarPdfAsync(
+        TerminalProfile profile,
+        string token,
+        CancellationToken cancellationToken = default)
+        => DownloadAuthorizedPdfAsync(
+            profile, token, "/api/erp/genesis/financeiro/contas-pagar/relatorio.pdf", cancellationToken);
+
     public Task<DesktopApiDataResult<DesktopContaPagar>> CreateContaPagarAsync(
         TerminalProfile profile,
         string token,
@@ -108,6 +116,13 @@ public sealed class DesktopApiClient
         CancellationToken cancellationToken = default)
         => SendAuthorizedAsync<List<DesktopContaReceber>>(
             profile, token, HttpMethod.Get, "/api/erp/genesis/financeiro/contas-receber", null, cancellationToken);
+
+    public Task<DesktopFileDownloadResult> GetContasReceberPdfAsync(
+        TerminalProfile profile,
+        string token,
+        CancellationToken cancellationToken = default)
+        => DownloadAuthorizedPdfAsync(
+            profile, token, "/api/erp/genesis/financeiro/contas-receber/relatorio.pdf", cancellationToken);
 
     public Task<DesktopApiDataResult<DesktopContaReceber>> CreateContaReceberAsync(
         TerminalProfile profile,
@@ -599,6 +614,83 @@ public sealed class DesktopApiClient
         return new DesktopApiDataResult<T>(false, default, string.Join(" | ", failures));
     }
 
+    private static async Task<DesktopFileDownloadResult> DownloadAuthorizedPdfAsync(
+        TerminalProfile profile,
+        string token,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return new DesktopFileDownloadResult(false, null, null, string.Empty, "Sessao administrativa ausente.");
+        }
+
+        var failures = new List<string>();
+        foreach (var endpoint in GetEndpoints(profile))
+        {
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, $"{endpoint}{path}");
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                using var response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                    var detail = $"{(int)response.StatusCode} {ExtractErrorMessage(content, response.ReasonPhrase)}";
+                    return new DesktopFileDownloadResult(false, null, null, string.Empty, $"{endpoint}: {detail}");
+                }
+
+                var contentType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
+                if (!string.Equals(contentType, "application/pdf", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new DesktopFileDownloadResult(
+                        false,
+                        null,
+                        null,
+                        contentType,
+                        $"{endpoint}: a API respondeu sem um documento PDF valido.");
+                }
+
+                var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+                if (bytes.Length < 5
+                    || bytes[0] != (byte)'%'
+                    || bytes[1] != (byte)'P'
+                    || bytes[2] != (byte)'D'
+                    || bytes[3] != (byte)'F'
+                    || bytes[4] != (byte)'-')
+                {
+                    return new DesktopFileDownloadResult(false, null, null, contentType, $"{endpoint}: assinatura PDF invalida.");
+                }
+
+                var responseName = response.Content.Headers.ContentDisposition?.FileNameStar
+                    ?? response.Content.Headers.ContentDisposition?.FileName;
+                if (string.IsNullOrWhiteSpace(responseName))
+                {
+                    return new DesktopFileDownloadResult(false, null, null, contentType, $"{endpoint}: nome do arquivo ausente na resposta.");
+                }
+
+                var fileName = Path.GetFileName(responseName.Trim().Trim('"'));
+                if (string.IsNullOrWhiteSpace(fileName) || !fileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new DesktopFileDownloadResult(false, null, null, contentType, $"{endpoint}: nome de arquivo PDF invalido.");
+                }
+
+                return new DesktopFileDownloadResult(
+                    true,
+                    bytes,
+                    fileName,
+                    contentType,
+                    $"Documento de {bytes.Length:N0} bytes recebido de {endpoint}.");
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
+            {
+                failures.Add($"{endpoint}: {ex.Message}");
+            }
+        }
+
+        return new DesktopFileDownloadResult(false, null, null, string.Empty, string.Join(" | ", failures));
+    }
+
     private static string[] GetEndpoints(TerminalProfile profile)
         => new[] { profile.ApiBaseUrl, profile.PublicApiUrl }
             .Where(url => !string.IsNullOrWhiteSpace(url))
@@ -792,6 +884,12 @@ public sealed record DesktopLoginResponse(string Token, string RefreshToken, Dat
 public sealed record DesktopUser(int Id, string Nome, string Email, string Perfil);
 public sealed record DesktopApiEnvelope<T>(bool Sucesso, string Mensagem, T? Dados, List<string>? Erros);
 public sealed record DesktopApiDataResult<T>(bool Success, T? Data, string Detail);
+public sealed record DesktopFileDownloadResult(
+    bool Success,
+    byte[]? Content,
+    string? FileName,
+    string ContentType,
+    string Detail);
 
 public sealed record DesktopUsuarioAcesso(
     int Id,

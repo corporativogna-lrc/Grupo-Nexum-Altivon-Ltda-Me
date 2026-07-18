@@ -3,14 +3,16 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7181
  */
 
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows;
+using Microsoft.Win32;
 using NexumAltivon.Desktop.Models;
 using NexumAltivon.Desktop.Services;
 
@@ -99,6 +101,52 @@ public partial class ContasReceberWindow : Window, INotifyPropertyChanged
     private async void Window_Loaded(object sender, RoutedEventArgs e) => await CarregarAsync();
 
     private async void Recarregar_Click(object sender, RoutedEventArgs e) => await CarregarAsync();
+
+    private async void ExportarPdf_Click(object sender, RoutedEventArgs e)
+    {
+        SetBusy(true);
+        try
+        {
+            var result = await _api.GetContasReceberPdfAsync(_terminal, _terminal.DesktopAccessToken);
+            if (!result.Success || result.Content is null || string.IsNullOrWhiteSpace(result.FileName))
+            {
+                Status = $"Relatório de contas a receber não gerado. {result.Detail}";
+                return;
+            }
+
+            var dialog = new SaveFileDialog
+            {
+                Title = "Salvar relatório de contas a receber",
+                FileName = result.FileName,
+                DefaultExt = ".pdf",
+                Filter = "Documento PDF (*.pdf)|*.pdf",
+                AddExtension = true,
+                OverwritePrompt = true
+            };
+            if (dialog.ShowDialog(this) != true)
+            {
+                Status = "Exportação cancelada antes da gravação do arquivo.";
+                return;
+            }
+
+            await File.WriteAllBytesAsync(dialog.FileName, result.Content);
+            var savedLength = new FileInfo(dialog.FileName).Length;
+            if (savedLength != result.Content.LongLength)
+            {
+                throw new IOException("O tamanho gravado no disco diverge do documento recebido da API.");
+            }
+
+            Status = $"Relatório PDF confirmado em {dialog.FileName} ({savedLength:N0} bytes).";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            Status = $"Falha ao gravar relatório PDF. {ex.Message}";
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
 
     private void Novo_Click(object sender, RoutedEventArgs e) => NovoTitulo();
 

@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7181
  */
 
 using System.Net;
@@ -11,10 +11,15 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using NexumAltivon.API.ERP.SharedData;
+using NexumAltivon.API.Infrastructure.Reports;
+using NexumAltivon.API.Infrastructure.Tenancy;
 using NexumAltivon.API.Models;
 using NexumAltivon.API.Services;
+using PdfSharp.Pdf.IO;
 using Xunit;
 
 namespace NexumAltivon.API.Tests;
@@ -535,6 +540,140 @@ public sealed class NotificacaoServiceTests
 
         return new ConfigurationBuilder().AddInMemoryCollection(values).Build();
     }
+}
+
+public sealed class FinancePdfReportServiceTests
+{
+    [Fact]
+    public void CreatePayablesReport_DeveProduzirPdfLegivelComDadosFinanceiros()
+    {
+        var items = new[]
+        {
+            new GenesisContaPagarDto(
+                17,
+                "NF-2026-0718",
+                42,
+                "Aquisição de insumos operacionais",
+                1_250.75m,
+                250.75m,
+                1_000m,
+                new DateTime(2026, 7, 10),
+                new DateTime(2026, 7, 25),
+                null,
+                "PARCIAL",
+                "PIX",
+                null)
+        };
+        var generatedAt = new DateTime(2026, 7, 18, 12, 30, 0, DateTimeKind.Utc);
+
+        var bytes = new FinancePdfReportService().CreatePayablesReport(
+            items,
+            TenantContext.DefaultTenantId,
+            new DateTime(2026, 7, 1),
+            new DateTime(2026, 7, 31),
+            "PARCIAL",
+            generatedAt);
+
+        Encoding.ASCII.GetString(bytes, 0, 5).Should().Be("%PDF-");
+        bytes.Length.Should().BeGreaterThan(10_000);
+        using var document = PdfReader.Open(new MemoryStream(bytes), PdfDocumentOpenMode.Import);
+        document.PageCount.Should().Be(1);
+        document.Info.Title.Should().Be("GenesisGest.Net - Contas a pagar");
+        document.Info.Creator.Should().Be("GenesisGest.Net v1.1.5.7181");
+    }
+
+    [Fact]
+    public void CreateReceivablesReport_DeveRecusarColecaoVazia()
+    {
+        var action = () => new FinancePdfReportService().CreateReceivablesReport(
+            Array.Empty<GenesisContaReceberDto>(),
+            TenantContext.DefaultTenantId,
+            null,
+            null,
+            null,
+            DateTime.UtcNow);
+
+        action.Should().Throw<ArgumentException>().WithMessage("*ao menos um titulo persistido*");
+    }
+
+    [Fact]
+    public async Task ListarContasPagarAsync_DeveFiltrarNoBancoEIsolarTenant()
+    {
+        var databaseName = $"finance-pdf-{Guid.NewGuid():N}";
+        var options = new DbContextOptionsBuilder<GenesisDbContext>()
+            .UseInMemoryDatabase(databaseName)
+            .Options;
+        var tenantPrincipal = new TenantContext();
+        var tenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var userId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        tenantPrincipal.SetTenant(tenantId);
+        tenantPrincipal.SetUser(userId, "financeiro@nexumaltivon.com");
+
+        await using (var writer = new GenesisDbContext(options, tenantPrincipal))
+        {
+            writer.ContasPagar.AddRange(
+                BuildPayable("CP-FILTRO", new DateTime(2026, 7, 18), "PENDENTE"),
+                BuildPayable("CP-LIQUIDADA", new DateTime(2026, 7, 18), "PAGO"),
+                BuildPayable("CP-FORA-PERIODO", new DateTime(2026, 8, 18), "PENDENTE"));
+            await writer.SaveChangesAsync();
+
+            var persisted = await writer.ContasPagar.IgnoreQueryFilters().OrderBy(item => item.Id).ToListAsync();
+            persisted.Should().OnlyContain(item => item.TenantId == tenantId);
+            persisted.Should().OnlyContain(item => item.CreatedByUserId == userId);
+            persisted.Should().OnlyContain(item => item.CreatedAt > DateTime.MinValue);
+            persisted.Should().OnlyContain(item => item.RowVersion.Length == 16);
+        }
+
+        await using (var reader = new GenesisDbContext(options, tenantPrincipal))
+        {
+            var result = await GenesisFinanceService.ListarContasPagarAsync(
+                reader,
+                new DateTime(2026, 7, 1),
+                new DateTime(2026, 7, 31),
+                "pendente",
+                CancellationToken.None);
+
+            result.Should().ContainSingle();
+            result.Single().NumeroDocumento.Should().Be("CP-FILTRO");
+            result.Single().ValorAberto.Should().Be(500m);
+        }
+
+        var tenantEstranho = new TenantContext();
+        tenantEstranho.SetTenant(Guid.Parse("22222222-2222-2222-2222-222222222222"));
+        await using var isolatedReader = new GenesisDbContext(options, tenantEstranho);
+        var isolatedResult = await GenesisFinanceService.ListarContasPagarAsync(isolatedReader, CancellationToken.None);
+        isolatedResult.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ListarContasReceberAsync_DeveRecusarStatusForaDoDominio()
+    {
+        var options = new DbContextOptionsBuilder<GenesisDbContext>()
+            .UseInMemoryDatabase($"finance-status-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new GenesisDbContext(options, new TenantContext());
+
+        var action = () => GenesisFinanceService.ListarContasReceberAsync(
+            db,
+            null,
+            null,
+            "QUITADO_MANUALMENTE",
+            CancellationToken.None);
+
+        await action.Should().ThrowAsync<ArgumentException>().WithMessage("*Status financeiro invalido*");
+    }
+
+    private static GenesisContaPagar BuildPayable(string document, DateTime dueAt, string status) =>
+        new()
+        {
+            NumeroDocumento = document,
+            Descricao = $"Obrigação {document}",
+            ValorOriginal = 500m,
+            ValorPago = status == "PAGO" ? 500m : 0m,
+            DataEmissao = dueAt.AddDays(-10),
+            DataVencimento = dueAt,
+            Status = status
+        };
 }
 
 internal sealed class StaticHttpClientFactory : IHttpClientFactory

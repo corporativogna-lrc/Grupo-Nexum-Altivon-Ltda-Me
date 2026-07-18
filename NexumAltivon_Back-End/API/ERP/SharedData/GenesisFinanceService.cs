@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7181
  */
 
 using System.Data;
@@ -21,6 +21,16 @@ public static class GenesisFinanceService
     private static readonly HashSet<string> StatusReceberEmAberto = new(StringComparer.OrdinalIgnoreCase)
     {
         "PENDENTE", "PARCIAL", "EM_ABERTO", "VENCIDO"
+    };
+
+    private static readonly HashSet<string> StatusPagarRelatorio = new(StatusPagarEmAberto, StringComparer.OrdinalIgnoreCase)
+    {
+        "PAGO"
+    };
+
+    private static readonly HashSet<string> StatusReceberRelatorio = new(StatusReceberEmAberto, StringComparer.OrdinalIgnoreCase)
+    {
+        "RECEBIDO"
     };
 
     private static string NormalizarStatusPagar(decimal valorOriginal, decimal valorPago)
@@ -79,24 +89,116 @@ public static class GenesisFinanceService
             DateTime.UtcNow);
     }
 
-    public static async Task<List<GenesisContaPagarDto>> ListarContasPagarAsync(GenesisDbContext genesisDb, CancellationToken ct)
+    public static Task<List<GenesisContaPagarDto>> ListarContasPagarAsync(GenesisDbContext genesisDb, CancellationToken ct)
+        => ListarContasPagarAsync(genesisDb, null, null, null, ct);
+
+    public static async Task<List<GenesisContaPagarDto>> ListarContasPagarAsync(
+        GenesisDbContext genesisDb,
+        DateTime? inicio,
+        DateTime? fim,
+        string? status,
+        CancellationToken ct)
     {
-        var entities = await genesisDb.ContasPagar
-            .AsNoTracking()
+        var statusNormalizado = ValidarFiltrosRelatorio(inicio, fim, status, StatusPagarRelatorio);
+        var query = genesisDb.ContasPagar.AsNoTracking();
+        if (inicio.HasValue)
+        {
+            var inicioInclusivo = inicio.Value.Date;
+            query = query.Where(item => item.DataVencimento >= inicioInclusivo);
+        }
+
+        if (fim.HasValue)
+        {
+            var fimExclusivo = fim.Value.Date.AddDays(1);
+            query = query.Where(item => item.DataVencimento < fimExclusivo);
+        }
+
+        if (statusNormalizado is not null)
+        {
+            query = query.Where(item => item.Status == statusNormalizado);
+        }
+
+        var entities = await query
             .OrderBy(item => item.DataVencimento)
+            .ThenBy(item => item.NumeroDocumento)
             .ToListAsync(ct);
 
         return entities.Select(ToContaPagarDto).ToList();
     }
 
-    public static async Task<List<GenesisContaReceberDto>> ListarContasReceberAsync(GenesisDbContext genesisDb, CancellationToken ct)
+    public static Task<List<GenesisContaReceberDto>> ListarContasReceberAsync(GenesisDbContext genesisDb, CancellationToken ct)
+        => ListarContasReceberAsync(genesisDb, null, null, null, ct);
+
+    public static async Task<List<GenesisContaReceberDto>> ListarContasReceberAsync(
+        GenesisDbContext genesisDb,
+        DateTime? inicio,
+        DateTime? fim,
+        string? status,
+        CancellationToken ct)
     {
-        var entities = await genesisDb.ContasReceber
-            .AsNoTracking()
+        var statusNormalizado = ValidarFiltrosRelatorio(inicio, fim, status, StatusReceberRelatorio);
+        var query = genesisDb.ContasReceber.AsNoTracking();
+        if (inicio.HasValue)
+        {
+            var inicioInclusivo = inicio.Value.Date;
+            query = query.Where(item => item.DataVencimento >= inicioInclusivo);
+        }
+
+        if (fim.HasValue)
+        {
+            var fimExclusivo = fim.Value.Date.AddDays(1);
+            query = query.Where(item => item.DataVencimento < fimExclusivo);
+        }
+
+        if (statusNormalizado is not null)
+        {
+            query = query.Where(item => item.Status == statusNormalizado);
+        }
+
+        var entities = await query
             .OrderBy(item => item.DataVencimento)
+            .ThenBy(item => item.NumeroDocumento)
             .ToListAsync(ct);
 
         return entities.Select(ToContaReceberDto).ToList();
+    }
+
+    private static string? ValidarFiltrosRelatorio(
+        DateTime? inicio,
+        DateTime? fim,
+        string? status,
+        IReadOnlySet<string> statusPermitidos)
+    {
+        if (inicio.HasValue && fim.HasValue)
+        {
+            if (fim.Value.Date < inicio.Value.Date)
+            {
+                throw new ArgumentException("A data final nao pode ser anterior a data inicial.");
+            }
+
+            if ((fim.Value.Date - inicio.Value.Date).TotalDays > 366)
+            {
+                throw new ArgumentException("O periodo do relatorio nao pode exceder 366 dias.");
+            }
+        }
+
+        if (fim.HasValue && fim.Value.Date == DateTime.MaxValue.Date)
+        {
+            throw new ArgumentException("A data final informada esta fora do intervalo suportado.");
+        }
+
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            return null;
+        }
+
+        var normalized = status.Trim().ToUpperInvariant();
+        if (!statusPermitidos.Contains(normalized))
+        {
+            throw new ArgumentException($"Status financeiro invalido: {normalized}.");
+        }
+
+        return normalized;
     }
 
     public static async Task<GenesisContaPagarDto?> ObterContaPagarAsync(GenesisDbContext genesisDb, int id, CancellationToken ct)
