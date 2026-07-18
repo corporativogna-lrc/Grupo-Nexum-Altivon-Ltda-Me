@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7181
+ * Versão: 1.1.5.7182
  */
 
 using System.Net;
@@ -14,8 +14,10 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using NexumAltivon.API.Data;
 using NexumAltivon.API.ERP.SharedData;
 using NexumAltivon.API.Infrastructure.Reports;
+using NexumAltivon.API.Infrastructure.Logistics;
 using NexumAltivon.API.Infrastructure.Tenancy;
 using NexumAltivon.API.Models;
 using NexumAltivon.API.Services;
@@ -542,6 +544,122 @@ public sealed class NotificacaoServiceTests
     }
 }
 
+public sealed class LogisticaTrackingServiceTests
+{
+    [Fact]
+    public async Task ConsultarAsync_DeveBloquearSemCredenciaisSemExecutarHttp()
+    {
+        var transport = new RecordingHttpMessageHandler();
+        var service = CreateService(transport, new Dictionary<string, string?>());
+
+        var result = await service.ConsultarAsync("BR123456789", CancellationToken.None);
+
+        result.Configurada.Should().BeFalse();
+        result.Operacional.Should().BeFalse();
+        result.Pendencias.Should().Contain(item => item.Contains("MelhorEnvio__Token", StringComparison.Ordinal));
+        transport.Requests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ConsultarAsync_DevePesquisarEtiquetaEConsultarStatusOficial()
+    {
+        var responses = new Queue<HttpResponseMessage>(
+        [
+            JsonResponse(HttpStatusCode.OK, "{\"data\":[{\"id\":\"etiqueta-9a31\",\"tracking\":\"BR123456789\"}]}"),
+            JsonResponse(HttpStatusCode.OK, "{\"etiqueta-9a31\":{\"status\":\"posted\",\"events\":[{\"status\":\"posted\",\"description\":\"Objeto postado\",\"location\":\"Bauru/SP\",\"date\":\"2026-07-18T09:30:00Z\"}]}}")
+        ]);
+        var transport = new RecordingHttpMessageHandler((_, _) => Task.FromResult(responses.Dequeue()));
+        var service = CreateService(transport, MelhorEnvioConfiguration());
+
+        var result = await service.ConsultarAsync("BR123456789", CancellationToken.None);
+
+        result.Configurada.Should().BeTrue();
+        result.Operacional.Should().BeTrue();
+        result.Fonte.Should().Be("Melhor Envio Sandbox");
+        result.StatusExterno.Should().Be("posted");
+        result.Eventos.Should().ContainSingle(item => item.Descricao == "Objeto postado" && item.Local == "Bauru/SP");
+        result.RespostaSha256.Should().MatchRegex("^[a-f0-9]{64}$");
+        transport.Requests.Should().HaveCount(2);
+        transport.Requests[0].Method.Should().Be(HttpMethod.Get);
+        transport.Requests[0].Uri.Should().Be("https://sandbox.melhorenvio.com.br/api/v2/me/orders/search?q=BR123456789");
+        transport.Requests[1].Method.Should().Be(HttpMethod.Post);
+        using var requestBody = JsonDocument.Parse(transport.Requests[1].Body);
+        requestBody.RootElement.GetProperty("orders")[0].GetString().Should().Be("etiqueta-9a31");
+    }
+
+    [Fact]
+    public async Task ConsultarAsync_DeveRecusarRespostaVaziaComoOperacaoConcluida()
+    {
+        var responses = new Queue<HttpResponseMessage>(
+        [
+            JsonResponse(HttpStatusCode.OK, "{\"data\":[{\"id\":\"etiqueta-9a31\",\"tracking\":\"BR123456789\"}]}"),
+            JsonResponse(HttpStatusCode.OK, "{\"etiqueta-9a31\":{}}")
+        ]);
+        var service = CreateService(
+            new RecordingHttpMessageHandler((_, _) => Task.FromResult(responses.Dequeue())),
+            MelhorEnvioConfiguration());
+
+        var result = await service.ConsultarAsync("BR123456789", CancellationToken.None);
+
+        result.Operacional.Should().BeFalse();
+        result.HttpStatusCode.Should().Be(200);
+        result.Pendencias.Should().ContainSingle(item => item.Contains("sem status ou eventos", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ConsultaPersistida_DeveReceberTenantAuditoriaERowVersion()
+    {
+        var tenant = new TenantContext();
+        var tenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        tenant.SetTenant(tenantId);
+        var options = new DbContextOptionsBuilder<NexumDbContext>()
+            .UseInMemoryDatabase($"logistica-auditoria-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new NexumDbContext(options, tenant);
+        var entity = new LogisticaRastreamentoConsulta
+        {
+            PedidoId = 91,
+            CodigoRastreio = "BR123456789",
+            Provedor = "Melhor Envio Sandbox",
+            Configurada = true,
+            Operacional = true,
+            HttpStatusCode = 200,
+            StatusExterno = "posted",
+            QuantidadeEventos = 1,
+            EventosJson = "[]",
+            PendenciasJson = "[]",
+            ConsultadoAt = DateTime.UtcNow
+        };
+
+        db.LogisticaRastreamentoConsultas.Add(entity);
+        await db.SaveChangesAsync();
+
+        entity.TenantId.Should().Be(tenantId);
+        entity.RowVersion.Should().HaveCount(16);
+        entity.CreatedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(5));
+        (await db.LogisticaRastreamentoConsultas.CountAsync()).Should().Be(1);
+    }
+
+    private static LogisticaTrackingService CreateService(
+        RecordingHttpMessageHandler transport,
+        IReadOnlyDictionary<string, string?> values)
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
+        return new LogisticaTrackingService(configuration, new StaticHttpClientFactory(new HttpClient(transport)));
+    }
+
+    private static IReadOnlyDictionary<string, string?> MelhorEnvioConfiguration() =>
+        new Dictionary<string, string?>
+        {
+            ["MelhorEnvio:Token"] = "credencial-homologacao-isolada",
+            ["MelhorEnvio:Sandbox"] = "true",
+            ["MelhorEnvio:ContatoTecnico"] = "integracoes@nexumaltivon.com.br"
+        };
+
+    private static HttpResponseMessage JsonResponse(HttpStatusCode status, string body) =>
+        new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+}
+
 public sealed class FinancePdfReportServiceTests
 {
     [Fact]
@@ -579,7 +697,7 @@ public sealed class FinancePdfReportServiceTests
         using var document = PdfReader.Open(new MemoryStream(bytes), PdfDocumentOpenMode.Import);
         document.PageCount.Should().Be(1);
         document.Info.Title.Should().Be("GenesisGest.Net - Contas a pagar");
-        document.Info.Creator.Should().Be("GenesisGest.Net v1.1.5.7181");
+        document.Info.Creator.Should().Be("GenesisGest.Net v1.1.5.7182");
     }
 
     [Fact]

@@ -3,7 +3,7 @@
 # Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
 # Sistema de gestão: GenesisGest.Net
 # Ano Início: 04/2024 Publicado e operacional: 05/2026
-# Versão: 1.1.5
+# Versão: 1.1.5.7182
 #
 
 services:
@@ -34,6 +34,9 @@ services:
       ApiSettings__CorsOrigins__7: https://pdv.nexumaltivon.com.br
       Integracoes__MercadoPago__AccessToken: ${MP_ACCESS_TOKEN}
       Integracoes__SendGrid__ApiKey: ${SENDGRID_API_KEY}
+      MelhorEnvio__Token: ${MELHOR_ENVIO_TOKEN:-}
+      MelhorEnvio__ContatoTecnico: ${MELHOR_ENVIO_CONTATO_TECNICO:-}
+      MelhorEnvio__Sandbox: ${MELHOR_ENVIO_SANDBOX:-false}
       OpenAI__Enabled: ${OPENAI_ENABLED:-false}
       OpenAI__ApiKey: ${OPENAI_API_KEY}
       OpenAI__BaseUrl: ${OPENAI_API_BASE_URL:-https://api.openai.com/v1/}

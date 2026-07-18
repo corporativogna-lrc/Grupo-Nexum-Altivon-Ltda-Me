@@ -3,7 +3,7 @@
 # Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
 # Sistema de gestão: GenesisGest.Net
 # Ano Início: 04/2024 Publicado e operacional: 05/2026
-# Versão: 1.1.5
+# Versão: 1.1.5.7182
 #
 
 version: '3.8'
@@ -58,6 +58,9 @@ services:
       JwtSettings__SecretKey: ${JWT_SECRET_KEY:?configure JWT_SECRET_KEY no arquivo .env local}
       Redis__ConnectionString: ${REDIS_CONNECTION_STRING:-redis:6379}
       Hangfire__Storage__Redis: ${REDIS_CONNECTION_STRING:-redis:6379}
+      MelhorEnvio__Token: ${MELHOR_ENVIO_TOKEN:-}
+      MelhorEnvio__ContatoTecnico: ${MELHOR_ENVIO_CONTATO_TECNICO:-}
+      MelhorEnvio__Sandbox: ${MELHOR_ENVIO_SANDBOX:-true}
       OpenAI__Enabled: ${OPENAI_ENABLED:-false}
       OpenAI__ApiKey: ${OPENAI_API_KEY:-}
       OpenAI__BaseUrl: ${OPENAI_API_BASE_URL:-https://api.openai.com/v1/}

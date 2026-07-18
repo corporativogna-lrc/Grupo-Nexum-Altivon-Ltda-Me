@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7182
  */
 import axios from 'axios';
 import { HTTP_UNAUTHORIZED, STORAGE_KEYS } from '../constants';
@@ -172,6 +172,15 @@ const normalizeRecord = (record) => {
     cliente_nome: record.cliente_nome ?? record.clienteNome,
     updated_at: record.updated_at ?? record.updatedAt,
     created_at: record.created_at ?? record.createdAt,
+    rastreamento_status_externo: record.rastreamento_status_externo ?? record.rastreamentoStatusExterno,
+    rastreamento_consultado_em: record.rastreamento_consultado_em ?? record.rastreamentoConsultadoEm,
+    rastreamento_eventos: (record.rastreamento_eventos ?? record.rastreamentoEventos ?? []).map((event) => ({
+      ...event,
+      data_hora: event.data_hora ?? event.dataHora,
+      status: event.status,
+      local: event.local,
+      descricao: event.descricao,
+    })),
     configurada: record.configurada ?? record.Configurada,
     operacional: record.operacional ?? record.Operacional,
     detalhe: record.detalhe ?? record.Detalhe,
@@ -489,6 +498,9 @@ export const freteAPI = {
 
 export const logisticaAPI = {
   rotear: (data) => api.post('/logistica/roteamento', data),
+  listarExpedicoes: (params) => api.get('/logistica/expedicoes', { params }),
+  atualizarExpedicao: (pedidoId, data) => api.put(`/pedidos/${pedidoId}/logistica`, data),
+  consultarRastreamento: (codigo) => api.get(`/logistica/rastreamento/${encodeURIComponent(codigo)}`),
 };
 
 export default api;

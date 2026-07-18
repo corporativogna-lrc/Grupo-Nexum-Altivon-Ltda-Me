@@ -3,11 +3,11 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7182
  */
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AlertCircle, CheckCircle2, LoaderCircle, PackageSearch, Truck } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Clock3, LoaderCircle, MapPin, PackageSearch, Truck } from 'lucide-react';
 import { pedidoAPI } from '../services/api';
 import { getPagamentoLabel } from '../utils/formatters';
 
@@ -32,6 +32,7 @@ export default function AcompanharPedido() {
   const [pedido, setPedido] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const trackingEvents = pedido?.rastreamento_eventos || pedido?.rastreamentoEventos || [];
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -80,7 +81,6 @@ export default function AcompanharPedido() {
                 onChange={(event) => setNumero(event.target.value)}
                 required
                 className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 font-mono text-white outline-none transition focus:border-[#C9A227]"
-                placeholder="Ex: NX26062304132918"
                 data-testid="acompanhar-numero"
               />
             </div>
@@ -92,7 +92,6 @@ export default function AcompanharPedido() {
                 onChange={(event) => setIdentificador(event.target.value)}
                 required
                 className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white outline-none transition focus:border-[#C9A227]"
-                placeholder="cliente@email.com ou documento"
                 data-testid="acompanhar-identificador"
               />
             </div>
@@ -149,6 +148,32 @@ export default function AcompanharPedido() {
                   <p><span className="font-black text-zinc-100">Prazo:</span> {(pedido.frete_prazo_dias || pedido.fretePrazoDias || 0) > 0 ? `${pedido.frete_prazo_dias || pedido.fretePrazoDias} dias` : 'Em definicao'}</p>
                   <p><span className="font-black text-zinc-100">Rastreio:</span> {pedido.frete_codigo_rastreio || pedido.freteCodigoRastreio || 'Ainda nao informado'}</p>
                 </div>
+
+                {(pedido.rastreamento_status_externo || pedido.rastreamentoStatusExterno) && (
+                  <div className="mt-5 border-t border-white/10 pt-5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-black text-white">Status confirmado: {pedido.rastreamento_status_externo || pedido.rastreamentoStatusExterno}</p>
+                      <p className="inline-flex items-center gap-2 text-xs text-zinc-400">
+                        <Clock3 size={14} />
+                        {formatDate(pedido.rastreamento_consultado_em || pedido.rastreamentoConsultadoEm)}
+                      </p>
+                    </div>
+                    {trackingEvents.length > 0 && (
+                      <ol className="mt-4 space-y-3" data-testid="rastreamento-eventos">
+                        {trackingEvents.map((event, index) => (
+                          <li key={`${event.data_hora || event.dataHora || 'evento'}-${index}`} className="grid grid-cols-[18px_1fr] gap-3 border-l border-[#C9A227]/50 pl-4">
+                            <MapPin size={16} className="mt-1 text-[#C9A227]" />
+                            <div>
+                              <p className="font-black text-zinc-100">{event.status}</p>
+                              <p className="text-sm text-zinc-400">{formatDate(event.data_hora || event.dataHora)}{event.local ? ` | ${event.local}` : ''}</p>
+                              {event.descricao && <p className="mt-1 text-sm text-zinc-300">{event.descricao}</p>}
+                            </div>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                  </div>
+                )}
               </div>
 
               {pedido.instrucao_pagamento && (
@@ -164,7 +189,7 @@ export default function AcompanharPedido() {
               </div>
               <h2 className="mt-6 text-2xl font-black">Aguardando consulta</h2>
               <p className="mt-3 max-w-md text-zinc-400">
-                Esta area ajuda o atendimento e o cliente a conferir pedido, pagamento e entrega enquanto as integracoes externas ficam em espera.
+                Informe os dados da compra para consultar o pedido, o pagamento e os eventos logísticos confirmados.
               </p>
             </div>
           )}

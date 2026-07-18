@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7182
  */
 
 using NexumAltivon.API.Models;
@@ -53,6 +53,7 @@ public class NexumDbContext : DbContext
     public DbSet<DropshippingConfig> DropshippingConfigs { get; set; } = null!;
     public DbSet<EmpresaGrupo> EmpresasGrupo { get; set; } = null!;
     public DbSet<SiteMidia> SiteMidias { get; set; } = null!;
+    public DbSet<LogisticaRastreamentoConsulta> LogisticaRastreamentoConsultas { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -286,6 +287,23 @@ public class NexumDbContext : DbContext
         modelBuilder.Entity<Pedido>()
             .Property(pedido => pedido.Origem)
             .HasConversion<string>();
+
+        modelBuilder.Entity<LogisticaRastreamentoConsulta>()
+            .Property(consulta => consulta.RowVersion)
+            .IsConcurrencyToken()
+            .ValueGeneratedNever();
+
+        modelBuilder.Entity<LogisticaRastreamentoConsulta>()
+            .HasIndex(consulta => new { consulta.PedidoId, consulta.ConsultadoAt });
+
+        modelBuilder.Entity<LogisticaRastreamentoConsulta>()
+            .HasIndex(consulta => new { consulta.CodigoRastreio, consulta.ConsultadoAt });
+
+        modelBuilder.Entity<LogisticaRastreamentoConsulta>()
+            .HasOne(consulta => consulta.Pedido)
+            .WithMany()
+            .HasForeignKey(consulta => consulta.PedidoId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<PedidoItem>()
             .Property(item => item.TipoFulfillment)

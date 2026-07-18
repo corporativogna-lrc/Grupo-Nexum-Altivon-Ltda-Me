@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7181
+ * Versão: 1.1.5.7182
  */
 
 using System.Globalization;
@@ -12,6 +12,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using NexumAltivon.Desktop.Models;
 
 namespace NexumAltivon.Desktop.Services;
@@ -78,6 +79,62 @@ public sealed class DesktopApiClient
 
         return new DesktopLoginResult(false, null, null, "API local e publica indisponiveis para autenticacao.");
     }
+
+    public Task<DesktopApiDataResult<List<DesktopLogisticaExpedicao>>> GetLogisticaExpedicoesAsync(
+        TerminalProfile profile,
+        string token,
+        string? status = null,
+        CancellationToken cancellationToken = default)
+    {
+        var path = "/api/logistica/expedicoes?limite=200";
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            path += $"&status={Uri.EscapeDataString(status.Trim())}";
+        }
+
+        return SendAuthorizedAsync<List<DesktopLogisticaExpedicao>>(
+            profile, token, HttpMethod.Get, path, null, cancellationToken);
+    }
+
+    public Task<DesktopApiDataResult<DesktopPedidoLogisticaAtualizada>> UpdatePedidoLogisticaAsync(
+        TerminalProfile profile,
+        string token,
+        int pedidoId,
+        DesktopPedidoLogisticaRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopPedidoLogisticaAtualizada>(
+            profile,
+            token,
+            HttpMethod.Put,
+            $"/api/pedidos/{pedidoId}/logistica",
+            request,
+            cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopPedidoLogisticaAtualizada>> AdvancePedidoFluxoAsync(
+        TerminalProfile profile,
+        string token,
+        int pedidoId,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopPedidoLogisticaAtualizada>(
+            profile,
+            token,
+            HttpMethod.Post,
+            $"/api/pedidos/{pedidoId}/fluxo-operacional",
+            null,
+            cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopLogisticaRastreamento>> GetLogisticaRastreamentoAsync(
+        TerminalProfile profile,
+        string token,
+        string codigo,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopLogisticaRastreamento>(
+            profile,
+            token,
+            HttpMethod.Get,
+            $"/api/logistica/rastreamento/{Uri.EscapeDataString(codigo.Trim())}",
+            null,
+            cancellationToken);
 
     public Task<DesktopApiDataResult<List<DesktopContaPagar>>> GetContasPagarAsync(
         TerminalProfile profile,
@@ -890,6 +947,75 @@ public sealed record DesktopFileDownloadResult(
     string? FileName,
     string ContentType,
     string Detail);
+
+public sealed record DesktopLogisticaExpedicao(
+    int PedidoId,
+    string NumeroPedido,
+    string ClienteNome,
+    string Status,
+    string? FreteMetodo,
+    string? FreteTransportadora,
+    int FretePrazoDias,
+    string? FreteCodigoRastreio,
+    DateTime? DataEnvio,
+    DateTime? DataEntrega,
+    DateTime? PrevisaoEntrega,
+    bool UltimoRastreamentoOperacional,
+    string? UltimoStatusExterno,
+    DateTime? UltimaConsultaEm,
+    string RowVersion,
+    DateTime CreatedAt,
+    DateTime UpdatedAt);
+
+public sealed record DesktopPedidoLogisticaRequest(
+    [property: JsonPropertyName("frete_metodo")] string FreteMetodo,
+    [property: JsonPropertyName("frete_transportadora")] string FreteTransportadora,
+    [property: JsonPropertyName("frete_prazo_dias")] int FretePrazoDias,
+    [property: JsonPropertyName("frete_codigo_rastreio")] string FreteCodigoRastreio,
+    [property: JsonPropertyName("row_version")] string RowVersion);
+
+public sealed record DesktopPedidoLogisticaAtualizada(
+    int Id,
+    string NumeroPedido,
+    decimal Total,
+    string Status,
+    DateTime CreatedAt,
+    string StatusPagamento,
+    string? MeioPagamento,
+    string? GatewayPagamento,
+    string? GatewayTransacaoId,
+    decimal FreteValor,
+    string? FreteMetodo,
+    string? FreteTransportadora,
+    int FretePrazoDias,
+    string? FreteCodigoRastreio);
+
+public sealed record DesktopLogisticaRastreamento(
+    Guid ConsultaId,
+    string CodigoRastreio,
+    int PedidoId,
+    string NumeroPedido,
+    string? Transportadora,
+    string? MetodoFrete,
+    string StatusInterno,
+    DateTime? DataEnvio,
+    DateTime? DataEntrega,
+    DateTime? PrevisaoEntrega,
+    bool RastreamentoExternoConfigurado,
+    bool RastreamentoExternoOperacional,
+    string FonteExterna,
+    int? HttpStatusCode,
+    string? StatusExterno,
+    List<DesktopLogisticaRastreamentoEvento> Eventos,
+    List<string> Pendencias,
+    string? RespostaSha256,
+    DateTime ConsultadoEm);
+
+public sealed record DesktopLogisticaRastreamentoEvento(
+    DateTime? DataHora,
+    string Status,
+    string? Local,
+    string? Descricao);
 
 public sealed record DesktopUsuarioAcesso(
     int Id,

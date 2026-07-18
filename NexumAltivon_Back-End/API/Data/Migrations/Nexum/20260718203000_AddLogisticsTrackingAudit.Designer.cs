@@ -11,6 +11,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NexumAltivon.API.Data;
 
@@ -19,9 +20,11 @@ using NexumAltivon.API.Data;
 namespace NexumAltivon.API.Data.Migrations.Nexum
 {
     [DbContext(typeof(NexumDbContext))]
-    partial class NexumDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260718203000_AddLogisticsTrackingAudit")]
+    partial class AddLogisticsTrackingAudit
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

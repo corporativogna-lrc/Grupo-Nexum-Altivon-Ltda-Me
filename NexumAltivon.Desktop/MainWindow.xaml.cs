@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7182
  */
 
 using System.Collections.ObjectModel;
@@ -399,7 +399,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (IsLogisticsWorkspace(title))
         {
-            var logisticsWindow = new LogisticsWindow(title);
+            var logisticsWindow = new LogisticsWindow(title, Terminal);
             logisticsWindow.ShowDialog();
             return;
         }

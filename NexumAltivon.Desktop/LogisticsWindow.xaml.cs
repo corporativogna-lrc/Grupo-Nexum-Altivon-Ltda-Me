@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7182
  */
 
 using System.Collections.ObjectModel;
@@ -19,278 +19,243 @@ namespace NexumAltivon.Desktop;
 public partial class LogisticsWindow : Window, INotifyPropertyChanged
 {
     private readonly DesktopApiClient _api = new();
-    private readonly LocalOutboxService _outbox = new();
-    private readonly TerminalProfile _terminal = new();
-    private string _codigo = string.Empty;
-    private string _tipo;
-    private string _pedidoReferencia = string.Empty;
-    private string _clienteDestino = string.Empty;
-    private string _transportadora = string.Empty;
-    private string _origem = "Loja / Centro de distribuição";
-    private string _destino = string.Empty;
-    private string _statusEntrega = "Aguardando separação";
-    private string _custoFrete = "0,00";
-    private DateTime _previsaoColeta = DateTime.Today;
-    private DateTime _previsaoEntrega = DateTime.Today.AddDays(2);
-    private bool _notificarCliente = true;
-    private string _canalNotificacao = "WhatsApp e e-mail";
-    private string _observacoes = string.Empty;
-    private string _status = "Pronto para registrar logística local.";
+    private readonly TerminalProfile _terminal;
+    private DesktopLogisticaExpedicao? _selectedExpedicao;
+    private string _freteMetodo = string.Empty;
+    private string _freteTransportadora = string.Empty;
+    private string _freteCodigoRastreio = string.Empty;
+    private string _fretePrazoDias = string.Empty;
+    private string _status = "Aguardando carregamento da API oficial.";
+    private bool _busy;
 
-    public LogisticsWindow(string operationType)
+    public LogisticsWindow(string operationType, TerminalProfile terminal)
     {
-        _tipo = operationType;
-        OperationTypes = new ObservableCollection<string>
-        {
-            "Coleta",
-            "Entrega",
-            "Rastreamento",
-            "Transportadoras",
-            "Status do pedido",
-            "Comunicação ao cliente"
-        };
-        StatusOptions = new ObservableCollection<string>
-        {
-            "Aguardando separação",
-            "Pronto para coleta",
-            "Coletado",
-            "Em trânsito",
-            "Saiu para entrega",
-            "Entregue",
-            "Ocorrência"
-        };
-        NotificationChannels = new ObservableCollection<string>
-        {
-            "WhatsApp e e-mail",
-            "WhatsApp",
-            "E-mail",
-            "Sem notificação"
-        };
-
-        NovoDocumento();
+        _ = operationType;
+        _terminal = terminal ?? throw new ArgumentNullException(nameof(terminal));
         InitializeComponent();
         DataContext = this;
     }
 
-    public ObservableCollection<string> OperationTypes { get; }
-    public ObservableCollection<string> StatusOptions { get; }
-    public ObservableCollection<string> NotificationChannels { get; }
-    public string WindowTitle => $"GenesisGest.Net - {Tipo}";
+    public ObservableCollection<DesktopLogisticaExpedicao> Expedicoes { get; } = new();
+    public ObservableCollection<DesktopLogisticaRastreamentoEvento> Eventos { get; } = new();
+    public string TenantLabel => $"Loja {_terminal.StoreCode}";
+    public bool PodeOperar => !_busy;
+    public string QuantidadeLabel => $"{Expedicoes.Count} pedido(s)";
+    public string CodigoContexto => SelectedExpedicao is null ? "EXPEDIÇÕES" : $"PEDIDO {SelectedExpedicao.NumeroPedido}";
+    public string EstadoContexto => SelectedExpedicao?.Status ?? "AGUARDANDO SELEÇÃO";
+    public string PedidoSelecionadoLabel => SelectedExpedicao is null
+        ? "Selecione um pedido na grade."
+        : $"{SelectedExpedicao.ClienteNome} | atualizado em {SelectedExpedicao.UpdatedAt:dd/MM/yyyy HH:mm}";
 
-    public string Codigo
+    public DesktopLogisticaExpedicao? SelectedExpedicao
     {
-        get => _codigo;
-        set => SetField(ref _codigo, value);
-    }
-
-    public string Tipo
-    {
-        get => _tipo;
+        get => _selectedExpedicao;
         set
         {
-            if (SetField(ref _tipo, value))
+            if (!SetField(ref _selectedExpedicao, value))
             {
-                NovoDocumento(false);
-                OnPropertyChanged(nameof(WindowTitle));
+                return;
             }
+
+            FreteMetodo = value?.FreteMetodo ?? string.Empty;
+            FreteTransportadora = value?.FreteTransportadora ?? string.Empty;
+            FreteCodigoRastreio = value?.FreteCodigoRastreio ?? string.Empty;
+            FretePrazoDias = value?.FretePrazoDias > 0
+                ? value.FretePrazoDias.ToString(CultureInfo.InvariantCulture)
+                : string.Empty;
+            Eventos.Clear();
+            NotifyContext();
         }
     }
 
-    public string PedidoReferencia
-    {
-        get => _pedidoReferencia;
-        set => SetField(ref _pedidoReferencia, value);
-    }
-
-    public string ClienteDestino
-    {
-        get => _clienteDestino;
-        set => SetField(ref _clienteDestino, value);
-    }
-
-    public string Transportadora
-    {
-        get => _transportadora;
-        set => SetField(ref _transportadora, value);
-    }
-
-    public string Origem
-    {
-        get => _origem;
-        set => SetField(ref _origem, value);
-    }
-
-    public string Destino
-    {
-        get => _destino;
-        set => SetField(ref _destino, value);
-    }
-
-    public string StatusEntrega
-    {
-        get => _statusEntrega;
-        set => SetField(ref _statusEntrega, value);
-    }
-
-    public string CustoFrete
-    {
-        get => _custoFrete;
-        set => SetField(ref _custoFrete, value);
-    }
-
-    public DateTime PrevisaoColeta
-    {
-        get => _previsaoColeta;
-        set
-        {
-            if (SetField(ref _previsaoColeta, value))
-            {
-                AtualizarResumo();
-            }
-        }
-    }
-
-    public DateTime PrevisaoEntrega
-    {
-        get => _previsaoEntrega;
-        set
-        {
-            if (SetField(ref _previsaoEntrega, value))
-            {
-                AtualizarResumo();
-            }
-        }
-    }
-
-    public bool NotificarCliente
-    {
-        get => _notificarCliente;
-        set
-        {
-            if (SetField(ref _notificarCliente, value))
-            {
-                AtualizarResumo();
-            }
-        }
-    }
-
-    public string CanalNotificacao
-    {
-        get => _canalNotificacao;
-        set
-        {
-            if (SetField(ref _canalNotificacao, value))
-            {
-                AtualizarResumo();
-            }
-        }
-    }
-
-    public string Observacoes
-    {
-        get => _observacoes;
-        set => SetField(ref _observacoes, value);
-    }
-
-    public string Status
-    {
-        get => _status;
-        set => SetField(ref _status, value);
-    }
-
-    public string PrazoLabel => $"D+{Math.Max(0, (PrevisaoEntrega.Date - PrevisaoColeta.Date).Days)}";
-    public string ComunicaçãoLabel => NotificarCliente
-        ? $"Cliente será avisado por {CanalNotificacao} na sincronização."
-        : "Notificação automática desativada para esta operação.";
+    public string FreteMetodo { get => _freteMetodo; set => SetField(ref _freteMetodo, value); }
+    public string FreteTransportadora { get => _freteTransportadora; set => SetField(ref _freteTransportadora, value); }
+    public string FreteCodigoRastreio { get => _freteCodigoRastreio; set => SetField(ref _freteCodigoRastreio, value); }
+    public string FretePrazoDias { get => _fretePrazoDias; set => SetField(ref _fretePrazoDias, value); }
+    public string Status { get => _status; private set => SetField(ref _status, value); }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    private async void Window_Loaded(object sender, RoutedEventArgs e) => await CarregarAsync();
+    private async void Recarregar_Click(object sender, RoutedEventArgs e) => await CarregarAsync();
+
     private async void Salvar_Click(object sender, RoutedEventArgs e)
     {
-        var draft = new LogisticsOperationDraft
+        if (SelectedExpedicao is null)
         {
-            Codigo = Codigo,
-            Tipo = Tipo,
-            PedidoReferencia = PedidoReferencia.Trim(),
-            ClienteDestino = ClienteDestino.Trim(),
-            Transportadora = Transportadora.Trim(),
-            Origem = Origem.Trim(),
-            Destino = Destino.Trim(),
-            StatusEntrega = StatusEntrega.Trim(),
-            CustoFrete = ParseDecimal(CustoFrete),
-            PrevisaoColeta = PrevisaoColeta,
-            PrevisaoEntrega = PrevisaoEntrega,
-            NotificarCliente = NotificarCliente,
-            CanalNotificacao = CanalNotificacao.Trim(),
-            Observacoes = Observacoes.Trim()
-        };
-
-        var submit = await _api.SubmitOperationAsync(_terminal, "logistica", Codigo, draft);
-        if (submit.Success)
-        {
-            Status = $"Operação logística gravada no servidor: {submit.ServerReference ?? submit.Detail}";
+            Status = "Selecione um pedido antes de salvar a logística.";
             return;
         }
 
-        var path = await _outbox.SaveOperationAsync("logistica", Codigo, draft);
-        Status = $"API indisponível. Operação logística salva em contingência local: {path}. Motivo: {submit.Detail}";
-    }
-
-    private void Novo_Click(object sender, RoutedEventArgs e)
-    {
-        NovoDocumento();
-    }
-
-    private void Fechar_Click(object sender, RoutedEventArgs e)
-    {
-        Close();
-    }
-
-    private void NovoDocumento(bool clearFields = true)
-    {
-        Codigo = $"LOG-{NormalizeCode(Tipo)}-{DateTime.Now:yyyyMMdd-HHmmss}";
-        if (clearFields)
+        if (string.IsNullOrWhiteSpace(FreteMetodo)
+            || string.IsNullOrWhiteSpace(FreteTransportadora)
+            || string.IsNullOrWhiteSpace(FreteCodigoRastreio))
         {
-            PedidoReferencia = string.Empty;
-            ClienteDestino = string.Empty;
-            Transportadora = string.Empty;
-            Origem = "Loja / Centro de distribuição";
-            Destino = string.Empty;
-            StatusEntrega = "Aguardando separação";
-            CustoFrete = "0,00";
-            PrevisaoColeta = DateTime.Today;
-            PrevisaoEntrega = DateTime.Today.AddDays(2);
-            NotificarCliente = true;
-            CanalNotificacao = "WhatsApp e e-mail";
-            Observacoes = string.Empty;
+            Status = "Método, transportadora e código de rastreio real são obrigatórios.";
+            return;
         }
 
-        Status = "Nova operação logística pronta para preenchimento.";
-        AtualizarResumo();
-    }
-
-    private void AtualizarResumo()
-    {
-        OnPropertyChanged(nameof(PrazoLabel));
-        OnPropertyChanged(nameof(ComunicaçãoLabel));
-    }
-
-    private static decimal ParseDecimal(string value)
-    {
-        if (decimal.TryParse(value, NumberStyles.Number, CultureInfo.GetCultureInfo("pt-BR"), out var pt))
+        if (!int.TryParse(FretePrazoDias, NumberStyles.None, CultureInfo.InvariantCulture, out var prazoDias)
+            || prazoDias is < 1 or > 120)
         {
-            return pt;
+            Status = "Prazo deve ser um número inteiro entre 1 e 120 dias.";
+            return;
         }
 
-        return decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var invariant)
-            ? invariant
-            : 0m;
+        var selectedId = SelectedExpedicao.PedidoId;
+        SetBusy(true);
+        try
+        {
+            var request = new DesktopPedidoLogisticaRequest(
+                FreteMetodo.Trim(),
+                FreteTransportadora.Trim(),
+                prazoDias,
+                FreteCodigoRastreio.Trim(),
+                SelectedExpedicao.RowVersion);
+            var result = await _api.UpdatePedidoLogisticaAsync(
+                _terminal,
+                _terminal.DesktopAccessToken,
+                selectedId,
+                request);
+            if (!result.Success || result.Data is null)
+            {
+                Status = $"Logística não gravada. {result.Detail}";
+                return;
+            }
+
+            await CarregarAsync(false, selectedId);
+            Status = $"Logística do pedido {result.Data.NumeroPedido} confirmada no banco oficial.";
+        }
+        finally
+        {
+            SetBusy(false);
+        }
     }
 
-    private static string NormalizeCode(string value)
+    private async void AvancarFluxo_Click(object sender, RoutedEventArgs e)
     {
-        var chars = value.ToUpperInvariant().Where(char.IsLetterOrDigit).Take(10).ToArray();
-        return chars.Length == 0 ? "DOC" : new string(chars);
+        if (SelectedExpedicao is null)
+        {
+            Status = "Selecione um pedido antes de avançar o fluxo.";
+            return;
+        }
+
+        var selectedId = SelectedExpedicao.PedidoId;
+        SetBusy(true);
+        try
+        {
+            var result = await _api.AdvancePedidoFluxoAsync(_terminal, _terminal.DesktopAccessToken, selectedId);
+            if (!result.Success || result.Data is null)
+            {
+                Status = $"Fluxo não avançado. {result.Detail}";
+                return;
+            }
+
+            await CarregarAsync(false, selectedId);
+            Status = $"Pedido {result.Data.NumeroPedido} avançado para {result.Data.Status} com persistência operacional.";
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private async void ConsultarRastreamento_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedExpedicao is null || string.IsNullOrWhiteSpace(FreteCodigoRastreio))
+        {
+            Status = "Selecione uma expedição com código de rastreio salvo.";
+            return;
+        }
+
+        SetBusy(true);
+        try
+        {
+            Eventos.Clear();
+            var result = await _api.GetLogisticaRastreamentoAsync(
+                _terminal,
+                _terminal.DesktopAccessToken,
+                FreteCodigoRastreio);
+            if (!result.Success || result.Data is null)
+            {
+                await CarregarAsync(false, SelectedExpedicao.PedidoId);
+                Status = $"Consulta externa não confirmada; a tentativa foi auditada pela API. {result.Detail}";
+                return;
+            }
+
+            var selectedId = SelectedExpedicao.PedidoId;
+            await CarregarAsync(false, selectedId);
+            foreach (var item in result.Data.Eventos)
+            {
+                Eventos.Add(item);
+            }
+
+            Status = $"Consulta {result.Data.ConsultaId} confirmada em {result.Data.FonteExterna}; status {result.Data.StatusExterno ?? "sem status textual"}.";
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private void Fechar_Click(object sender, RoutedEventArgs e) => Close();
+
+    private async Task CarregarAsync(bool updateStatus = true, int? selectedId = null, bool clearEvents = true)
+    {
+        if (string.IsNullOrWhiteSpace(_terminal.DesktopAccessToken))
+        {
+            Status = "Sessão JWT ausente. Autentique o terminal em Configurações antes de operar a logística.";
+            return;
+        }
+
+        var previousId = selectedId ?? SelectedExpedicao?.PedidoId;
+        SetBusy(true);
+        try
+        {
+            var result = await _api.GetLogisticaExpedicoesAsync(_terminal, _terminal.DesktopAccessToken);
+            if (!result.Success || result.Data is null)
+            {
+                Status = $"Expedições não carregadas. {result.Detail}";
+                return;
+            }
+
+            Expedicoes.Clear();
+            foreach (var item in result.Data)
+            {
+                Expedicoes.Add(item);
+            }
+
+            SelectedExpedicao = previousId.HasValue
+                ? Expedicoes.FirstOrDefault(item => item.PedidoId == previousId.Value)
+                : Expedicoes.FirstOrDefault();
+            if (clearEvents)
+            {
+                Eventos.Clear();
+            }
+
+            OnPropertyChanged(nameof(QuantidadeLabel));
+            if (updateStatus)
+            {
+                Status = $"{Expedicoes.Count} expedição(ões) carregada(s) do banco oficial.";
+            }
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private void SetBusy(bool value)
+    {
+        _busy = value;
+        OnPropertyChanged(nameof(PodeOperar));
+    }
+
+    private void NotifyContext()
+    {
+        OnPropertyChanged(nameof(CodigoContexto));
+        OnPropertyChanged(nameof(EstadoContexto));
+        OnPropertyChanged(nameof(PedidoSelecionadoLabel));
     }
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
@@ -305,8 +270,6 @@ public partial class LogisticsWindow : Window, INotifyPropertyChanged
         return true;
     }
 
-    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
-    {
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-    }
 }
