@@ -17,6 +17,7 @@ Apuracao integrada de MFA, refresh-token e logout: 2026-07-17.
 Apuracao integrada de Services, testes e cobertura: 2026-07-17.
 Planejamento clinico de unificacao dos bancos: 2026-07-17.
 Apuracao integrada de usuarios, perfis, permissoes e RBAC no Desktop: 2026-07-17.
+Apuracao transacional do checkout e incidentes pos-commit: 2026-07-18.
 
 ## Medicao Estrita de Conclusao
 
@@ -117,6 +118,10 @@ Regra de preservacao: nenhuma tabela sera escolhida apenas pelo nome ou pela qua
 | Integridade estrutural IAM | As tabelas legadas `adm_perfis`, `adm_permissoes` e `adm_perfil_permissoes` existiam sem PK, `AUTO_INCREMENT`, unicidade ou FKs. A inicializacao oficial agora interrompe claramente se encontrar tabela sem PK contendo dados desconhecidos; como as tabelas estavam vazias apos a limpeza controlada, foram reparadas com 3 PKs, 3 `AUTO_INCREMENT`, indices unicos e 2 FKs, e os seeds canonicos ficaram estabilizados em 6 perfis e 9 permissoes sem duplicacao em reinicios |
 | Rotacao da credencial MySQL operacional | `scripts/server/rotacionar-credencial-mysql-runtime.ps1` gera 256 bits por CSPRNG, altera todas as contas encontradas do usuario de runtime, atualiza somente o arquivo privado ignorado pelo Git, valida acesso aos dois schemas e reverte banco/configuracao em falha. A execucao real atualizou 2 contas, validou 2 schemas e foi seguida de republicacao na unica porta 5010; health local/publico e os dois bancos responderam 200 sob a nova credencial |
 | Referencias societarias encerradas | Removidas das fontes, seeds, contato, rodape, documentacao e bundle estatico; varredura integral no projeto oficial retornou zero ocorrencias do nome solicitado |
+| Checkout transacional e numeracao fiscal | O checkout passou a executar a escrita principal pela estrategia de execucao do EF Core, com transacao unica para cliente, pedido, itens, estoque, financeiro e pagamento. A reserva de numero fiscal usa atualizacao atomica condicional em `empresas_grupo`, incrementa `ProximaNfeNumero` e renova `RowVersion`; conflito encerra a preparacao sem duplicar numero |
+| Incidentes pos-commit sem sucesso falso | Falhas de preparacao fiscal, integracao Genesis e notificacao sao persistidas em `notificacoes` e `logs_auditoria` com referencia e codigo seguro. Quando a venda ja foi confirmada, a API retorna HTTP 202 com `StatusFiscal`/`AlertaOperacional`; se nem o incidente puder ser persistido, retorna erro critico com o numero do pedido e proibe reenvio automatico |
+| Ensaio controlado do checkout | Cenario fiscal recusado retornou HTTP 202, gravou estado `Preparacao fiscal falhou`, codigo MySQL e auditoria, sem consumir a numeracao. Cenario normal reservou o numero 7, avancou a empresa para 8, gravou pre-emissao, financeiro, pagamento e integracao Genesis; a indisponibilidade real do SendGrid foi registrada e exposta como pendencia. Dados controlados foram removidos e numeracao/estoque foram restaurados aos valores anteriores |
+| Validacao integral da entrega de checkout | Em 2026-07-18, a solution Release compilou os cinco projetos com 0 avisos e 0 erros; o frontend compilou o bundle `main.301e9934.js`; `29/29` testes passaram com `70,84%` de cobertura de linhas dos Services. A API foi republicada na porta unica 5010 sob PID `12508`; tarefa `SYSTEM`, boot exclusivo, MySQL/Cloudflared automaticos e health local/publico retornaram HTTP 200 |
 | Publicacao Marketing | Commit `6933f98` enviado para `main`; CI/CD `29306776375` e Pages `29306776372` concluiram com sucesso. Portal respondeu 200 com bundle `main.260894af.js`, contendo `Marketing operacional` e sem a referencia societaria removida |
 | Rotas de banco ativas | Runtime oficial usa `127.0.0.1:3309/nexum_altivon` e `127.0.0.1:3309/genesis_bd`; `health/db` e `health/db/genesis` retornaram 200 local e publico |
 | Configuracoes versionadas da API | `API/appsettings.json` e template privado nao carregam mais `192.168.1.72`, porta `3306` ou segredos aparentes; sem env privado, a API falha de forma clara |
@@ -131,7 +136,7 @@ Regra de preservacao: nenhuma tabela sera escolhida apenas pelo nome ou pela qua
 | Backup local 2h | Task `NexumAltivon Backup Local 2h` corrigida de `Y:\...` para `D:\Nexum Altivon\NexumAltivon.com\scripts\backup-nexum-local-2h.ps1`; execucao manual retornou `Último resultado: 0` |
 | ERP isolado | Commit `5611329` ajustou navegacoes nullable e headers no `NexumAltivon_ERP`; `dotnet build NexumAltivon.ERP.sln -c Release` passou com 0 erros e 0 avisos |
 | API ativa | Commit `07a465e` alinhou auditoria tenant, migrations, confirmacao de cadastro, Melhor Envio real e filtros de produto publicavel; `dotnet build NexumAltivon_Back-End\NexumAltivon.API.csproj -c Release` passou com 0 erros e 0 avisos |
-| Banco local oficial | MySQL XAMPP validado em `127.0.0.1:3309`; schemas `nexum_altivon` e `genesis_bd` existem, com 212 e 47 tabelas respectivamente |
+| Banco local oficial | MySQL XAMPP validado em `127.0.0.1:3309`; em 2026-07-18, `nexum_altivon` possui 203 tabelas base e 12 views, e `genesis_bd` possui 48 tabelas base |
 | Catalogo publico | Consulta direta no banco confirmou 91 produtos ativos e 91 produtos publicaveis pelo filtro atual da API |
 | API oficial 5010 | Task `NexumAltivonApi24h` validada em 2026-07-13T00:53:39 como `Running`, usuario `SISTEMA`, `RunLevel Highest`, processo `dotnet.exe NexumAltivon.API.dll`, PID `10928`, `/health`, `/health/db`, `/health/db/genesis` e `/api/site/configuracoes/publico` com HTTP 200 |
 | GitHub oficial atualizado | `origin/main` e `origin/work/delivery-2026-06-13` alinhados no commit `8d58edb fix: api - limpar base de teste e corrigir seeds auditaveis` |
@@ -142,7 +147,7 @@ O painel HTML removido foi recuperado somente para leitura pelo historico Git (`
 
 | Ferramenta prometida | Tela React oficial | API/persistencia | Status clinico em 2026-07-14 | Evidencia ou bloqueio atual |
 |---|---|---|---|---|
-| Dashboard | Existe em `Dashboard.js` | `/api/dashboard/resumo` e `/api/admin/dashboard/completo` | Parcial validado | KPIs reais existem; ainda ha indicadores textuais de arquitetura a revisar para nao aparentarem integracao homologada |
+| Dashboard | Existe em `Dashboard.js` | `/api/dashboard/resumo` e `/api/admin/dashboard/completo` | Parcial validado | KPIs reais existem; a serie semanal de linhas 453-459 ainda e estatica e deve ser substituida por consulta real por tenant e periodo antes de aceite |
 | Pedidos | Existe | `/api/pedidos*`, MySQL `pedidos` | Parcial validado | Lista e alteracao de status existem; fluxo venda-pagamento-fiscal-logistica-financeiro ainda nao foi homologado integralmente |
 | Produtos | Existe | `/api/produtos*`, MySQL `produtos` | Parcial validado | CRUD e catalogo existem; falta homologar todas as restricoes de estoque/tenant e marketplace |
 | Clientes | Existe | `/api/clientes*`, MySQL `clientes` | Parcial validado | CRUD, portal e confirmacao existem; falta teste completo de isolamento e historico operacional |
@@ -150,7 +155,7 @@ O painel HTML removido foi recuperado somente para leitura pelo historico Git (`
 | Financeiro | Existe | `/api/financeiro*` e `/api/erp/genesis/financeiro*` | Parcial avancado | Lancamentos, razao, conciliacao, DRE e fechamento existem; PDFs foram corrigidos, mas fluxo e tela completa ainda requerem homologacao |
 | Fiscal | Existe | `/api/fiscal*` | Parcial real bloqueado externamente | Endpoints bloqueiam sem certificado/provedor; falta certificado e homologacao SEFAZ real |
 | Logistica | Existe | `/api/frete*`, `/api/logistica*`, estoque/transportes | Parcial real | Cotacao interna identificada funciona; tracking externo exige endpoint/token real e retorna bloqueio rastreavel sem eles |
-| CRM | Existe | `/api/crm/leads*`, MySQL `crm_leads` | Parcial | Leads possuem persistencia confirmada; pipelines, oportunidades, tickets, atividades, campanhas e segmentos ainda nao estao completos na API/tela |
+| CRM | Existe | `/api/crm/leads*`, campanhas e segmentos | Parcial avancado | Leads, campanhas e segmentos possuem persistencia comprovada; pipelines, oportunidades, tickets e atividades ainda nao estao completos na API/tela |
 | Cupons | Implementada nesta rodada em `CupomAdminPanel.js` | `/api/admin/cupons*` e `/api/cupons/{codigo}`, MySQL `cupons` | Concluido e validado no escopo CRUD/uso publico | Em 2026-07-14, no runtime oficial `127.0.0.1:5010`: POST retornou 201 e ID persistido, subtotal abaixo do minimo retornou 400, consulta publica com vigencia `DATE` retornou 200, PUT retornou 200, DELETE desativou com 200 e nova consulta publica retornou 404. A limpeza controlada confirmou zero registros residuais no MySQL |
 | Marketing | Implementada em `MarketingAdminPanel.js` | `/api/crm/campanhas*`, `/api/crm/segmentos*`, MySQL `crm_campanhas` e `crm_segmentos` | Concluido e validado no escopo CRUD/segmentacao e metricas | Tela oficial possui campanhas, segmentos, investimento, resultados e transicoes de estado. Ensaio autenticado em 2026-07-14 confirmou criacao 201, atualizacao 200, concorrencia 409, consulta 200, exclusao 204, soft-delete no MySQL e limpeza final sem linhas controladas |
 | Marketplaces | Diagnostico e formulario de sincronizacao em Integracoes | `/api/marketplaces/{canal}/sync` e services | Parcial bloqueado por credenciais | Tela React envia canal, direcao, entidade e limite para a API real. Mercado Livre/B2W/Via responderam 424 local e publicamente sem tokens, sem registrar sucesso; Shopee/Amazon nao gravam mais sucesso fabricado, mas conectores oficiais continuam pendentes |
@@ -160,6 +165,28 @@ O painel HTML removido foi recuperado somente para leitura pelo historico Git (`
 | Auditoria | Implementada nesta rodada em `AccessAuditPanel.js` | `/api/auditoria*`, MySQL `logs_auditoria` | Parcial validado | API local e publica retornaram HTTP 200 e 42 eventos; tela de filtros/detalhe compilou. Cobertura de toda escrita ainda nao foi comprovada |
 
 Regra de aceite para cada ferramenta: somente marcar `Concluido` quando houver tela oficial, endpoint Minimal API, persistencia/consulta real quando aplicavel, autorizacao, tratamento de erro, build e teste HTTP autenticado. Integracao externa tambem exige chamada aceita pelo provedor oficial e persistencia do identificador retornado.
+
+## Capacidades Estruturais Incorporadas ao Checklist
+
+A arvore comprovada e a arvore de aceite integral estao em `docs/ARVORE-REAL-E-META-GENESISGEST-2026-07-18.md`. O documento estrutural historico foi usado apenas para recuperar amplitude funcional; suas alegacoes nao foram aceitas como evidencia. Estes itens detalham requisitos ja contidos na Definition of Done e nao aumentam o numerador separadamente.
+
+| ID | Capacidade recuperada | Status clinico | Evidencia obrigatoria para concluir |
+|---|---|---|---|
+| CAP-01 | Cockpit executivo dinamico | Parcial | KPIs e series por tenant/periodo provenientes da API e conferidos no banco |
+| CAP-02 | Venda omnicanal | Parcial | Correlacao unica de pedido, pagamento, estoque, fiscal, entrega e financeiro |
+| CAP-03 | Compras e abastecimento | Parcial | Solicitacao, cotacao, aprovacao, pedido, entrada, estoque e financeiro comprovados |
+| CAP-04 | WMS | Parcial | Movimentacao, inventario, kardex, localizacao e transferencia com concorrencia |
+| CAP-05 | Fiscal explicavel | Parcial | Roteamento, numeracao, XML, chave, protocolo e eventos oficiais visiveis e persistidos |
+| CAP-06 | FICO corporativo | Parcial | Lancamentos, conciliacao, fechamento, DRE e PDFs integrados em API e tela |
+| CAP-07 | Logistica e fulfillment | Parcial | Cotacao, expedicao, tracking externo, entrega e ocorrencias comprovados |
+| CAP-08 | CRM e atendimento Yara | Parcial | Pipeline, oportunidade, atividade, ticket e atendimento com chave oficial |
+| CAP-09 | HCM | Parcial | Admissao, ponto, folha, beneficios, avaliacao, desligamento e eSocial comprovados |
+| CAP-10 | MES e OPS | Parcial | OS, apontamento, manutencao e ativos com telas React/WPF especificas |
+| CAP-11 | Paridade Desktop | Parcial | Operacoes criticas usam a API oficial e confirmam releitura persistida |
+| CAP-12 | Marketplaces e dropshipping | Bloqueado externamente | Retorno aceito e identificador oficial de cada seller/provedor persistido |
+| CAP-13 | Portal visual dinamico | Parcial | Midias reais de lojas/produtos, conteudo administravel e validacao Chrome responsiva |
+| CAP-14 | Operacao observavel | Parcial | Logs, traces, metricas, Redis, jobs, backup e restore comprovados |
+| CAP-15 | Banco canonico | Pendente programado | UBD-01 a UBD-08 concluidos com reconciliacao e reversao |
 
 ## Ferramentas que nao podem mais ser tratadas como prontas sem evidencia
 
@@ -216,18 +243,18 @@ Regra de aceite para cada ferramenta: somente marcar `Concluido` quando houver t
 | Termos proibidos no codigo ativo | Parcial | Blocos commitados nesta auditoria foram varridos; ainda restam Desktop, docs antigos e services legados nao compilados para triagem |
 | Header de IP em todos os arquivos | Parcial | Blocos commitados nesta auditoria receberam header; falta varredura completa nos arquivos remanescentes |
 | Fluxo cadastro a BI isolado por empresa | Pendente | Executar roteiro ponta a ponta com dados reais |
-| Ferramentas ficticias convertidas em reais ou bloqueadas claramente | Em execucao | O login administrativo alternativo fora do banco foi removido; MFA, refresh e logout agora persistem e revogam estado real. Shopee/Amazon deixam de gravar sucesso falso; marketplace sync Mercado Livre/B2W/Via foi implementado com HTTP externo e bloqueio por credencial; landing legada e admin estatico legado foram removidos da exposicao operacional; PDF financeiro agora gera arquivo real; tracking logistico externo e emissao/eventos NF-e/NFC-e foram implementados com dependencia explicita e sem sucesso fabricado | Concluir demais achados da secao acima e validar com credenciais reais de cada integracao externa |
-| Falha fiscal engolida apos venda | Pendente real: o checkout do `Program.cs` ainda possui `catch` vazio depois do commit da venda; o pedido pode prosseguir sem registrar a causa da falha fiscal | Substituir a supressao por persistencia auditavel do erro, estado fiscal pendente e retorno operacional coerente sem desfazer a venda ja confirmada |
+| Ferramentas ficticias convertidas em reais ou bloqueadas claramente | Em execucao | O login administrativo alternativo fora do banco foi removido; MFA, refresh e logout persistem e revogam estado real. Shopee/Amazon deixam de gravar sucesso falso; marketplace sync Mercado Livre/B2W/Via exige chamada externa; PDF financeiro gera arquivo real; tracking externo e emissao/eventos NF-e/NFC-e bloqueiam sem configuracao oficial; checkout registra falha fiscal, Genesis e notificacao depois da venda sem ocultar a pendencia | Concluir demais achados da secao acima e validar com credenciais reais de cada integracao externa |
+| Falha fiscal engolida apos venda | Concluido no escopo do checkout | A venda confirmada preserva o pedido, registra estado fiscal pendente, notificacao e auditoria com referencia/codigo seguro e responde HTTP 202. Se o incidente nao puder ser persistido, a API retorna erro critico com numero do pedido e proibe reenvio automatico. Ensaios de falha e caminho normal foram conferidos no MySQL e integralmente limpos |
 
 ## GitHub e Commit
 
 Estado apurado:
 
 - Branch local: `work/delivery-2026-06-13`.
-- Base local e remota antes da entrega de workflow: `4405fa6 fix: servidor - iniciar api no boot sem login`.
-- Entrega de workflow: commit atomico `feat: workflow - validar maquina de estados real`, destinado igualmente a `origin/work/delivery-2026-06-13` e `origin/main`.
-- Antes do commit desta entrega, `HEAD`, `origin/work/delivery-2026-06-13` e `origin/main` estavam alinhados sem divergencia no commit `4405fa6`.
-- Estado do worktree antes desta atualizacao documental: limpo.
+- Base local e remota antes da entrega atual: `fa58e2d feat: iam - operar usuarios e rbac no desktop`.
+- Antes dos commits desta entrega, `HEAD`, `origin/work/delivery-2026-06-13` e `origin/main` estavam alinhados sem divergencia no commit `fa58e2d`.
+- Endurecimento transacional do checkout: `4b4c3ba fix: checkout - registrar incidentes pos-commit reais`.
+- A entrega documental atual consolida a arvore real/meta e as capacidades recuperadas; os hashes remotos devem ser conferidos depois do push.
 - Commits atomicos enviados nesta rodada de saneamento: `8d58edb`, `0b8212e`, `a7c23d9`, `5848622`, `fd988d0`, `d766314`, `4918d30`, `3879914`, `937512d`, `404468b`, `6dbf1f0`.
 - Publicacao GitHub permanece seletiva e auditada; nao publicar arquivos legados/falsos sem validacao direta no projeto oficial.
 
