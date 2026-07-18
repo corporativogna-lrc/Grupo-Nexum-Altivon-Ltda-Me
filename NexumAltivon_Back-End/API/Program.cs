@@ -590,51 +590,154 @@ app.MapGet("/api/anexos/download/{**storageKey}", async (
 app.MapGet("/api/erp/genesis/financeiro/resumo", async (GenesisDbContext db, CancellationToken ct) =>
 {
     var resumo = await GenesisFinanceService.GetResumoAsync(db, ct);
-    return Results.Ok(resumo);
+    return Results.Ok(ApiResponse<GenesisFinanceSummaryDto>.Ok(resumo, "Resumo financeiro carregado do banco GenesisGest.Net."));
 })
-.RequireAuthorization("Financeiro");
+.RequireAuthorization("Financeiro")
+.WithName("GenesisFinanceiroResumo");
 
 app.MapGet("/api/erp/genesis/financeiro/contas-pagar", async (GenesisDbContext db, CancellationToken ct) =>
 {
     var itens = await GenesisFinanceService.ListarContasPagarAsync(db, ct);
-    return Results.Ok(itens);
+    return Results.Ok(ApiResponse<List<GenesisContaPagarDto>>.Ok(itens, "Contas a pagar carregadas do banco GenesisGest.Net.", itens.Count));
 })
-.RequireAuthorization("Financeiro");
+.RequireAuthorization("Financeiro")
+.WithName("GenesisContasPagarListar");
 
 app.MapGet("/api/erp/genesis/financeiro/contas-receber", async (GenesisDbContext db, CancellationToken ct) =>
 {
     var itens = await GenesisFinanceService.ListarContasReceberAsync(db, ct);
-    return Results.Ok(itens);
+    return Results.Ok(ApiResponse<List<GenesisContaReceberDto>>.Ok(itens, "Contas a receber carregadas do banco GenesisGest.Net.", itens.Count));
 })
-.RequireAuthorization("Financeiro");
+.RequireAuthorization("Financeiro")
+.WithName("GenesisContasReceberListar");
 
-app.MapPost("/api/erp/genesis/financeiro/contas-pagar", async (GenesisDbContext db, GenesisContaPagarCreateRequest request, CancellationToken ct) =>
+app.MapPost("/api/erp/genesis/financeiro/contas-pagar", async (
+    GenesisDbContext db,
+    NexumDbContext auditDb,
+    GenesisContaPagarCreateRequest request,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
+    CancellationToken ct) =>
 {
-    var created = await GenesisFinanceService.CriarContaPagarAsync(db, request, ct);
-    return Results.Created($"/api/erp/genesis/financeiro/contas-pagar/{created.Id}", created);
+    try
+    {
+        var created = await GenesisFinanceService.CriarContaPagarAsync(db, request, ct);
+        auditDb.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "erp_contas_pagar", created.Id, AcaoAuditoria.INSERT, null, created));
+        await auditDb.SaveChangesAsync(ct);
+        return Results.Created(
+            $"/api/erp/genesis/financeiro/contas-pagar/{created.Id}",
+            ApiResponse<GenesisContaPagarDto>.Ok(created, "Conta a pagar persistida e relida do banco GenesisGest.Net."));
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(ApiResponse<GenesisContaPagarDto>.Erro(ex.Message));
+    }
+    catch (InvalidOperationException ex) when (ex.Message.StartsWith("Ja existe", StringComparison.Ordinal))
+    {
+        return Results.Conflict(ApiResponse<GenesisContaPagarDto>.Erro(ex.Message));
+    }
 })
-.RequireAuthorization("Financeiro");
+.RequireAuthorization("Financeiro")
+.WithName("GenesisContasPagarCriar");
 
-app.MapPost("/api/erp/genesis/financeiro/contas-receber", async (GenesisDbContext db, GenesisContaReceberCreateRequest request, CancellationToken ct) =>
+app.MapPost("/api/erp/genesis/financeiro/contas-receber", async (
+    GenesisDbContext db,
+    NexumDbContext auditDb,
+    GenesisContaReceberCreateRequest request,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
+    CancellationToken ct) =>
 {
-    var created = await GenesisFinanceService.CriarContaReceberAsync(db, request, ct);
-    return Results.Created($"/api/erp/genesis/financeiro/contas-receber/{created.Id}", created);
+    try
+    {
+        var created = await GenesisFinanceService.CriarContaReceberAsync(db, request, ct);
+        auditDb.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "erp_contas_receber", created.Id, AcaoAuditoria.INSERT, null, created));
+        await auditDb.SaveChangesAsync(ct);
+        return Results.Created(
+            $"/api/erp/genesis/financeiro/contas-receber/{created.Id}",
+            ApiResponse<GenesisContaReceberDto>.Ok(created, "Conta a receber persistida e relida do banco GenesisGest.Net."));
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(ApiResponse<GenesisContaReceberDto>.Erro(ex.Message));
+    }
+    catch (InvalidOperationException ex) when (ex.Message.StartsWith("Ja existe", StringComparison.Ordinal))
+    {
+        return Results.Conflict(ApiResponse<GenesisContaReceberDto>.Erro(ex.Message));
+    }
 })
-.RequireAuthorization("Financeiro");
+.RequireAuthorization("Financeiro")
+.WithName("GenesisContasReceberCriar");
 
-app.MapPost("/api/erp/genesis/financeiro/contas-pagar/{id:int}/baixa", async (int id, GenesisDbContext db, GenesisBaixaPagarRequest request, CancellationToken ct) =>
+app.MapPost("/api/erp/genesis/financeiro/contas-pagar/{id:int}/baixa", async (
+    int id,
+    GenesisDbContext db,
+    NexumDbContext auditDb,
+    GenesisBaixaPagarRequest request,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
+    CancellationToken ct) =>
 {
-    var updated = await GenesisFinanceService.BaixarContaPagarAsync(db, id, request, ct);
-    return updated is null ? Results.NotFound() : Results.Ok(updated);
-})
-.RequireAuthorization("Financeiro");
+    try
+    {
+        var anterior = await GenesisFinanceService.ObterContaPagarAsync(db, id, ct);
+        if (anterior is null)
+        {
+            return Results.NotFound(ApiResponse<GenesisContaPagarDto>.Erro("Conta a pagar nao encontrada."));
+        }
 
-app.MapPost("/api/erp/genesis/financeiro/contas-receber/{id:int}/baixa", async (int id, GenesisDbContext db, GenesisBaixaReceberRequest request, CancellationToken ct) =>
-{
-    var updated = await GenesisFinanceService.BaixarContaReceberAsync(db, id, request, ct);
-    return updated is null ? Results.NotFound() : Results.Ok(updated);
+        var updated = await GenesisFinanceService.BaixarContaPagarAsync(db, id, request, ct);
+        if (updated is null)
+        {
+            return Results.NotFound(ApiResponse<GenesisContaPagarDto>.Erro("Conta a pagar deixou de existir durante a baixa."));
+        }
+
+        auditDb.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "erp_contas_pagar", id, AcaoAuditoria.UPDATE, anterior, updated));
+        await auditDb.SaveChangesAsync(ct);
+        return Results.Ok(ApiResponse<GenesisContaPagarDto>.Ok(updated, "Baixa da conta a pagar persistida e relida do banco GenesisGest.Net."));
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(ApiResponse<GenesisContaPagarDto>.Erro(ex.Message));
+    }
 })
-.RequireAuthorization("Financeiro");
+.RequireAuthorization("Financeiro")
+.WithName("GenesisContasPagarBaixar");
+
+app.MapPost("/api/erp/genesis/financeiro/contas-receber/{id:int}/baixa", async (
+    int id,
+    GenesisDbContext db,
+    NexumDbContext auditDb,
+    GenesisBaixaReceberRequest request,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
+    CancellationToken ct) =>
+{
+    try
+    {
+        var anterior = await GenesisFinanceService.ObterContaReceberAsync(db, id, ct);
+        if (anterior is null)
+        {
+            return Results.NotFound(ApiResponse<GenesisContaReceberDto>.Erro("Conta a receber nao encontrada."));
+        }
+
+        var updated = await GenesisFinanceService.BaixarContaReceberAsync(db, id, request, ct);
+        if (updated is null)
+        {
+            return Results.NotFound(ApiResponse<GenesisContaReceberDto>.Erro("Conta a receber deixou de existir durante o recebimento."));
+        }
+
+        auditDb.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "erp_contas_receber", id, AcaoAuditoria.UPDATE, anterior, updated));
+        await auditDb.SaveChangesAsync(ct);
+        return Results.Ok(ApiResponse<GenesisContaReceberDto>.Ok(updated, "Baixa da conta a receber persistida e relida do banco GenesisGest.Net."));
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(ApiResponse<GenesisContaReceberDto>.Erro(ex.Message));
+    }
+})
+.RequireAuthorization("Financeiro")
+.WithName("GenesisContasReceberBaixar");
 
 app.MapGet("/api/erp/genesis/financeiro/boletos", async (GenesisDbContext db, CancellationToken ct) =>
 {
@@ -17321,8 +17424,7 @@ static async Task EnsureGenesisSharedSchemaAsync(IServiceProvider services, ILog
     {
         if (!await genesisDb.Database.CanConnectAsync())
         {
-            logger.LogWarning("Banco GenesisGest.Net indisponivel durante a verificacao de schema compartilhado.");
-            return;
+            throw new InvalidOperationException("Banco GenesisGest.Net indisponivel durante a verificacao obrigatoria do schema financeiro.");
         }
 
         await genesisDb.Database.ExecuteSqlRawAsync(
@@ -17362,9 +17464,7 @@ static async Task EnsureGenesisSharedSchemaAsync(IServiceProvider services, ILog
         await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_receber ADD COLUMN IF NOT EXISTS forma_recebimento VARCHAR(50) NULL;");
         await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_receber ADD COLUMN IF NOT EXISTS numero_pedido_referencia VARCHAR(100) NULL;");
         await DropForeignKeyIfExistsAsync(genesisDb, "erp_contas_receber", "FK_erp_contas_receber_Clientes_ClienteId");
-        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_receber ADD COLUMN IF NOT EXISTS ClienteId INT NULL;");
-        await genesisDb.Database.ExecuteSqlRawAsync("UPDATE erp_contas_receber SET ClienteId = NULL WHERE ClienteId IS NOT NULL;");
-        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_receber MODIFY COLUMN ClienteId INT NULL;");
+        await BackfillLegacyGenesisReceivablesAsync(genesisDb);
 
         await genesisDb.Database.ExecuteSqlRawAsync(
             """
@@ -17404,20 +17504,140 @@ static async Task EnsureGenesisSharedSchemaAsync(IServiceProvider services, ILog
         await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar ADD COLUMN IF NOT EXISTS numero_boleto VARCHAR(100) NULL;");
         await DropForeignKeyIfExistsAsync(genesisDb, "erp_contas_pagar", "FK_erp_contas_pagar_erp_centros_custo_CentroCustoId");
         await DropForeignKeyIfExistsAsync(genesisDb, "erp_contas_pagar", "FK_erp_contas_pagar_erp_fornecedores_FornecedorId");
-        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar ADD COLUMN IF NOT EXISTS CentroCustoId INT NULL;");
-        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar ADD COLUMN IF NOT EXISTS FornecedorId INT NULL;");
-        await genesisDb.Database.ExecuteSqlRawAsync("UPDATE erp_contas_pagar SET CentroCustoId = NULL WHERE CentroCustoId IS NOT NULL;");
-        await genesisDb.Database.ExecuteSqlRawAsync("UPDATE erp_contas_pagar SET FornecedorId = NULL WHERE FornecedorId IS NOT NULL;");
-        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar MODIFY COLUMN CentroCustoId INT NULL;");
-        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_contas_pagar MODIFY COLUMN FornecedorId INT NULL;");
+        await BackfillLegacyGenesisPayablesAsync(genesisDb);
+
+        await genesisDb.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS erp_fluxo_caixa (
+                id INT NOT NULL AUTO_INCREMENT,
+                data DATETIME NOT NULL,
+                tipo VARCHAR(50) NOT NULL,
+                descricao VARCHAR(100) NOT NULL,
+                valor DECIMAL(18,2) NOT NULL,
+                categoria VARCHAR(50) NULL,
+                conta_pagar_id INT NULL,
+                conta_receber_id INT NULL,
+                forma_pagamento VARCHAR(50) NULL,
+                conta_bancaria VARCHAR(100) NULL,
+                observacoes VARCHAR(500) NULL,
+                criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (id)
+            );
+            """);
+
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_fluxo_caixa ADD COLUMN IF NOT EXISTS conta_pagar_id INT NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_fluxo_caixa ADD COLUMN IF NOT EXISTS conta_receber_id INT NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_fluxo_caixa ADD COLUMN IF NOT EXISTS forma_pagamento VARCHAR(50) NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_fluxo_caixa ADD COLUMN IF NOT EXISTS conta_bancaria VARCHAR(100) NULL;");
+        await genesisDb.Database.ExecuteSqlRawAsync("ALTER TABLE erp_fluxo_caixa ADD COLUMN IF NOT EXISTS criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP;");
+        await BackfillLegacyGenesisCashFlowAsync(genesisDb);
 
         await SyncGenesisReceivablesFromNexumAsync(services, genesisDb);
         await SyncGenesisPayablesFromNexumAsync(services, genesisDb);
     }
     catch (Exception ex)
     {
-        logger.LogWarning(ex, "Falha ao ajustar schema financeiro compartilhado GenesisGest.Net.");
+        logger.LogCritical(ex, "Falha obrigatoria ao ajustar o schema financeiro compartilhado GenesisGest.Net.");
+        throw;
     }
+}
+
+static async Task BackfillLegacyGenesisReceivablesAsync(GenesisDbContext genesisDb)
+{
+    if (!await GenesisColumnExistsAsync(genesisDb, "erp_contas_receber", "NumeroDocumento"))
+    {
+        return;
+    }
+
+    await genesisDb.Database.ExecuteSqlRawAsync(
+        """
+        UPDATE erp_contas_receber
+        SET numero_documento = NumeroDocumento,
+            cliente_id = ClienteId,
+            valor_original = ValorOriginal,
+            valor_recebido = ValorRecebido,
+            valor_multa = ValorMulta,
+            valor_juros = ValorJuros,
+            valor_desconto = ValorDesconto,
+            data_emissao = DataEmissao,
+            data_vencimento = DataVencimento,
+            data_recebimento = DataRecebimento,
+            forma_recebimento = FormaRecebimento,
+            numero_pedido_referencia = NumeroPedidoReferencia
+        WHERE (numero_documento IS NULL OR TRIM(numero_documento) = '')
+          AND NumeroDocumento IS NOT NULL
+          AND TRIM(NumeroDocumento) <> '';
+        """);
+}
+
+static async Task BackfillLegacyGenesisPayablesAsync(GenesisDbContext genesisDb)
+{
+    if (!await GenesisColumnExistsAsync(genesisDb, "erp_contas_pagar", "NumeroDocumento"))
+    {
+        return;
+    }
+
+    await genesisDb.Database.ExecuteSqlRawAsync(
+        """
+        UPDATE erp_contas_pagar
+        SET numero_documento = NumeroDocumento,
+            fornecedor_id = FornecedorId,
+            valor_original = ValorOriginal,
+            valor_pago = ValorPago,
+            valor_multa = ValorMulta,
+            valor_juros = ValorJuros,
+            valor_desconto = ValorDesconto,
+            data_emissao = DataEmissao,
+            data_vencimento = DataVencimento,
+            data_pagamento = DataPagamento,
+            forma_pagamento = FormaPagamento,
+            numero_boleto = NumeroBoleto
+        WHERE (numero_documento IS NULL OR TRIM(numero_documento) = '')
+          AND NumeroDocumento IS NOT NULL
+          AND TRIM(NumeroDocumento) <> '';
+        """);
+}
+
+static async Task BackfillLegacyGenesisCashFlowAsync(GenesisDbContext genesisDb)
+{
+    if (!await GenesisColumnExistsAsync(genesisDb, "erp_fluxo_caixa", "ContaPagarId"))
+    {
+        return;
+    }
+
+    await genesisDb.Database.ExecuteSqlRawAsync(
+        """
+        UPDATE erp_fluxo_caixa
+        SET conta_pagar_id = COALESCE(conta_pagar_id, ContaPagarId),
+            conta_receber_id = COALESCE(conta_receber_id, ContaReceberId),
+            forma_pagamento = COALESCE(NULLIF(forma_pagamento, ''), FormaPagamento),
+            conta_bancaria = COALESCE(NULLIF(conta_bancaria, ''), ContaBancaria),
+            criado_em = CASE
+                WHEN CriadoEm IS NOT NULL AND YEAR(CriadoEm) > 0 THEN CriadoEm
+                ELSE criado_em
+            END
+        WHERE conta_pagar_id IS NULL
+           OR conta_receber_id IS NULL
+           OR forma_pagamento IS NULL
+           OR conta_bancaria IS NULL;
+        """);
+}
+
+static async Task<bool> GenesisColumnExistsAsync(GenesisDbContext genesisDb, string tableName, string columnName)
+{
+    var count = await genesisDb.Database.SqlQueryRaw<int>(
+        """
+        SELECT COUNT(*) AS Value
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = {0}
+          AND BINARY COLUMN_NAME = {1}
+        """,
+        tableName,
+        columnName)
+        .SingleAsync();
+
+    return count > 0;
 }
 
 static async Task SyncGenesisReceivablesFromNexumAsync(IServiceProvider services, GenesisDbContext genesisDb)

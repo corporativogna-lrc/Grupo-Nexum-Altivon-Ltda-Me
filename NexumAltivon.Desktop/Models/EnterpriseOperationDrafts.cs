@@ -8,28 +8,6 @@
 
 namespace NexumAltivon.Desktop.Models;
 
-public sealed class FinancialLedgerDraft
-{
-    public string Codigo { get; init; } = string.Empty;
-    public string Tipo { get; init; } = string.Empty;
-    public string Empresa { get; init; } = string.Empty;
-    public string Pessoa { get; init; } = string.Empty;
-    public string Documento { get; init; } = string.Empty;
-    public string CentroCusto { get; init; } = string.Empty;
-    public string ContaFinanceira { get; init; } = string.Empty;
-    public decimal Valor { get; init; }
-    public decimal Desconto { get; init; }
-    public decimal JurosMulta { get; init; }
-    public DateTime Vencimento { get; init; }
-    public string Status { get; init; } = "Registrado localmente";
-    public string Aprovacao { get; init; } = string.Empty;
-    public string NivelAlcada { get; init; } = string.Empty;
-    public string AprovadorResponsavel { get; init; } = string.Empty;
-    public bool BloquearPagamentoSemAprovacao { get; init; }
-    public string Observacoes { get; init; } = string.Empty;
-    public DateTime CriadoEm { get; init; } = DateTime.Now;
-}
-
 public sealed class ProcurementDraft
 {
     public string Codigo { get; init; } = string.Empty;

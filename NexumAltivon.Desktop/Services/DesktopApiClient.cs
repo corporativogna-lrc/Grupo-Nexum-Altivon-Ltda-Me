@@ -77,6 +77,67 @@ public sealed class DesktopApiClient
         return new DesktopLoginResult(false, null, null, "API local e publica indisponiveis para autenticacao.");
     }
 
+    public Task<DesktopApiDataResult<List<DesktopContaPagar>>> GetContasPagarAsync(
+        TerminalProfile profile,
+        string token,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<List<DesktopContaPagar>>(
+            profile, token, HttpMethod.Get, "/api/erp/genesis/financeiro/contas-pagar", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopContaPagar>> CreateContaPagarAsync(
+        TerminalProfile profile,
+        string token,
+        DesktopContaPagarCreateRequest payload,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<DesktopContaPagar>(
+            profile, token, HttpMethod.Post, "/api/erp/genesis/financeiro/contas-pagar", payload, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopContaPagar>> BaixarContaPagarAsync(
+        TerminalProfile profile,
+        string token,
+        int id,
+        DesktopBaixaPagarRequest payload,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<DesktopContaPagar>(
+            profile, token, HttpMethod.Post, $"/api/erp/genesis/financeiro/contas-pagar/{id}/baixa", payload, cancellationToken);
+
+    public Task<DesktopApiDataResult<List<DesktopContaReceber>>> GetContasReceberAsync(
+        TerminalProfile profile,
+        string token,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<List<DesktopContaReceber>>(
+            profile, token, HttpMethod.Get, "/api/erp/genesis/financeiro/contas-receber", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopContaReceber>> CreateContaReceberAsync(
+        TerminalProfile profile,
+        string token,
+        DesktopContaReceberCreateRequest payload,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<DesktopContaReceber>(
+            profile, token, HttpMethod.Post, "/api/erp/genesis/financeiro/contas-receber", payload, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopContaReceber>> BaixarContaReceberAsync(
+        TerminalProfile profile,
+        string token,
+        int id,
+        DesktopBaixaReceberRequest payload,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<DesktopContaReceber>(
+            profile, token, HttpMethod.Post, $"/api/erp/genesis/financeiro/contas-receber/{id}/baixa", payload, cancellationToken);
+
+    public Task<DesktopApiDataResult<List<DesktopAuditoriaOperacional>>> GetAuditoriaAsync(
+        TerminalProfile profile,
+        string token,
+        string tabela,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<List<DesktopAuditoriaOperacional>>(
+            profile,
+            token,
+            HttpMethod.Get,
+            $"/api/auditoria?tabela={Uri.EscapeDataString(tabela)}",
+            null,
+            cancellationToken);
+
     public Task<DesktopApiDataResult<List<DesktopCrmSegmento>>> GetMarketingSegmentsAsync(
         TerminalProfile profile,
         string token,

@@ -33,13 +33,15 @@ public sealed record GenesisContaReceberCreateRequest(
 public sealed record GenesisBaixaPagarRequest(
     decimal ValorPago,
     DateTime? DataPagamento,
-    string? FormaPagamento
+    string? FormaPagamento,
+    string? Observacoes
 );
 
 public sealed record GenesisBaixaReceberRequest(
     decimal ValorRecebido,
     DateTime? DataRecebimento,
-    string? FormaRecebimento
+    string? FormaRecebimento,
+    string? Observacoes
 );
 
 public sealed record GenesisBoletoCreateRequest(

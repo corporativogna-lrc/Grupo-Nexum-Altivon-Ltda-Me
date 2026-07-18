@@ -333,10 +333,33 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        if (title == "Contas a pagar")
+        {
+            var financialWindow = new ContasPagarWindow(Terminal)
+            {
+                Owner = this
+            };
+            financialWindow.ShowDialog();
+            return;
+        }
+
+        if (title == "Contas a receber")
+        {
+            var financialWindow = new ContasReceberWindow(Terminal)
+            {
+                Owner = this
+            };
+            financialWindow.ShowDialog();
+            return;
+        }
+
         if (IsFinancialWorkspace(title))
         {
-            var financialWindow = new FinancialLedgerWindow(title);
-            financialWindow.ShowDialog();
+            MessageBox.Show(
+                $"A operação {title} está bloqueada porque ainda não possui contrato de domínio e persistência auditada próprios. Nenhum dado foi gravado.",
+                "Operação financeira bloqueada",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
             return;
         }
 
@@ -539,9 +562,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private static bool IsFinancialWorkspace(string title)
     {
-        return title is "Contas a pagar"
-            or "Contas a receber"
-            or "Caixa e conciliação"
+        return title is "Caixa e conciliação"
             or "Tesouraria"
             or "Alçadas de aprovação"
             or "Conciliação bancária";

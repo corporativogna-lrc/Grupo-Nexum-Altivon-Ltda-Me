@@ -1,0 +1,221 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ -->
+<Window x:Class="NexumAltivon.Desktop.ContasPagarWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GenesisGest.Net - Contas a pagar"
+        Width="1280"
+        Height="780"
+        MinWidth="1080"
+        MinHeight="680"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource ShellBackground}"
+        FontFamily="Segoe UI"
+        Loaded="Window_Loaded">
+    <Window.Resources>
+        <Style x:Key="Section" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackground}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="16" />
+        </Style>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+            <Setter Property="Margin" Value="0,0,0,5" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Style="{StaticResource Section}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="FICO / CONTAS A PAGAR" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold" />
+                    <TextBlock Text="Contas a pagar" Foreground="{StaticResource TextPrimary}" FontSize="25" FontWeight="Bold" Margin="0,4,0,0" />
+                    <StackPanel Orientation="Horizontal" Margin="0,7,0,0">
+                        <TextBlock Text="{Binding CodigoContexto}" Foreground="{StaticResource TextPrimary}" FontWeight="SemiBold" />
+                        <TextBlock Text="  |  " Foreground="{StaticResource TextMuted}" />
+                        <TextBlock Text="{Binding TenantLabel}" Foreground="{StaticResource TextSecondary}" />
+                        <TextBlock Text="  |  " Foreground="{StaticResource TextMuted}" />
+                        <TextBlock Text="{Binding EstadoContexto}" Foreground="{StaticResource AccentGreen}" />
+                    </StackPanel>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="Recarregar" Click="Recarregar_Click" Margin="0,0,8,0" IsEnabled="{Binding PodeOperar}" />
+                    <Button Content="Novo" Click="Novo_Click" Margin="0,0,8,0" IsEnabled="{Binding PodeOperar}" />
+                    <Button Content="Salvar título" Click="Salvar_Click" Background="{StaticResource AccentGold}" Foreground="#080704" IsEnabled="{Binding PodeOperar}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <TabControl Grid.Row="2">
+            <TabItem Header="Títulos e cadastro">
+                <Grid Margin="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="0.82*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="1.18*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Style="{StaticResource Section}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="Cabeçalho do título" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                            <UniformGrid Grid.Row="1" Columns="2" Margin="0,14,0,0">
+                                <StackPanel Margin="0,0,10,10">
+                                    <TextBlock Text="Documento" Style="{StaticResource Label}" />
+                                    <TextBox Text="{Binding NumeroDocumento, UpdateSourceTrigger=PropertyChanged}" MaxLength="40" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,0,10">
+                                    <TextBlock Text="Fornecedor ID" Style="{StaticResource Label}" />
+                                    <TextBox Text="{Binding FornecedorId, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,10,10">
+                                    <TextBlock Text="Emissão" Style="{StaticResource Label}" />
+                                    <DatePicker SelectedDate="{Binding DataEmissao}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,0,10">
+                                    <TextBlock Text="Vencimento" Style="{StaticResource Label}" />
+                                    <DatePicker SelectedDate="{Binding DataVencimento}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,10,10">
+                                    <TextBlock Text="Valor original" Style="{StaticResource Label}" />
+                                    <TextBox Text="{Binding ValorOriginal, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,0,10">
+                                    <TextBlock Text="Forma de pagamento" Style="{StaticResource Label}" />
+                                    <TextBox Text="{Binding FormaPagamento, UpdateSourceTrigger=PropertyChanged}" MaxLength="50" />
+                                </StackPanel>
+                            </UniformGrid>
+                            <StackPanel Grid.Row="2" Margin="0,2,0,0">
+                                <TextBlock Text="Descrição" Style="{StaticResource Label}" />
+                                <TextBox Text="{Binding Descricao, UpdateSourceTrigger=PropertyChanged}" MaxLength="200" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="3" Margin="0,10,0,0">
+                                <TextBlock Text="Número do boleto" Style="{StaticResource Label}" />
+                                <TextBox Text="{Binding NumeroBoleto, UpdateSourceTrigger=PropertyChanged}" MaxLength="100" />
+                            </StackPanel>
+                            <TextBlock Grid.Row="4" Text="{Binding ValidacaoCadastro}" Foreground="{StaticResource AccentAmber}" TextWrapping="Wrap" Margin="0,14,0,0" />
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Column="2" Style="{StaticResource Section}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <DockPanel>
+                                <TextBlock Text="Títulos persistidos" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                                <TextBlock Text="{Binding QuantidadeLabel}" Foreground="{StaticResource TextSecondary}" DockPanel.Dock="Right" />
+                            </DockPanel>
+                            <DataGrid Grid.Row="1" ItemsSource="{Binding Titulos}" SelectedItem="{Binding SelectedTitulo}"
+                                      AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" Margin="0,12,0,0">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Documento" Binding="{Binding NumeroDocumento}" Width="130" />
+                                    <DataGridTextColumn Header="Descrição" Binding="{Binding Descricao}" Width="*" />
+                                    <DataGridTextColumn Header="Vencimento" Binding="{Binding DataVencimento, StringFormat=dd/MM/yyyy}" Width="95" />
+                                    <DataGridTextColumn Header="Original" Binding="{Binding ValorOriginal, StringFormat=N2}" Width="90" />
+                                    <DataGridTextColumn Header="Aberto" Binding="{Binding ValorAberto, StringFormat=N2}" Width="90" />
+                                    <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Baixa">
+                <Grid Margin="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1.15*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="0.85*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource Section}">
+                        <StackPanel>
+                            <TextBlock Text="Título selecionado" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                            <TextBlock Text="{Binding TituloSelecionadoLabel}" Foreground="{StaticResource TextPrimary}" FontSize="22" FontWeight="SemiBold" Margin="0,16,0,0" />
+                            <TextBlock Text="{Binding TituloSelecionadoDetalhe}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="2" Style="{StaticResource Section}">
+                        <StackPanel>
+                            <TextBlock Text="Registrar pagamento" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                            <TextBlock Text="Valor pago" Style="{StaticResource Label}" Margin="0,16,0,5" />
+                            <TextBox Text="{Binding ValorBaixa, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Text="Data do pagamento" Style="{StaticResource Label}" Margin="0,12,0,5" />
+                            <DatePicker SelectedDate="{Binding DataBaixa}" />
+                            <TextBlock Text="Forma de pagamento" Style="{StaticResource Label}" Margin="0,12,0,5" />
+                            <TextBox Text="{Binding FormaBaixa, UpdateSourceTrigger=PropertyChanged}" MaxLength="50" />
+                            <TextBlock Text="Observações" Style="{StaticResource Label}" Margin="0,12,0,5" />
+                            <TextBox Text="{Binding ObservacoesBaixa, UpdateSourceTrigger=PropertyChanged}"
+                                     MaxLength="500" AcceptsReturn="True" Height="64" TextWrapping="Wrap" />
+                            <Button Content="Confirmar baixa" Click="Baixar_Click" Background="{StaticResource AccentGreen}" Margin="0,18,0,0" IsEnabled="{Binding PodeOperar}" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Auditoria">
+                <Border Style="{StaticResource Section}" Margin="10">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="Trilha de escrita em erp_contas_pagar" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                        <DataGrid Grid.Row="1" ItemsSource="{Binding Auditoria}" AutoGenerateColumns="False" IsReadOnly="True" Margin="0,12,0,0">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Data" Binding="{Binding CreatedAt, StringFormat=dd/MM/yyyy HH:mm:ss}" Width="145" />
+                                <DataGridTextColumn Header="Registro" Binding="{Binding RegistroId}" Width="80" />
+                                <DataGridTextColumn Header="Ação" Binding="{Binding Acao}" Width="90" />
+                                <DataGridTextColumn Header="Usuário" Binding="{Binding UsuarioId}" Width="80" />
+                                <DataGridTextColumn Header="Endpoint" Binding="{Binding Endpoint}" Width="*" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Grid>
+                </Border>
+            </TabItem>
+        </TabControl>
+
+        <Border Grid.Row="4" Style="{StaticResource Section}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding Status}" Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <TextBlock Text="Total original: " Foreground="{StaticResource TextSecondary}" />
+                    <TextBlock Text="{Binding TotalOriginalLabel}" Foreground="{StaticResource TextPrimary}" FontWeight="Bold" />
+                    <TextBlock Text="   Total aberto: " Foreground="{StaticResource TextSecondary}" />
+                    <TextBlock Text="{Binding TotalAbertoLabel}" Foreground="{StaticResource AccentGold}" FontWeight="Bold" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

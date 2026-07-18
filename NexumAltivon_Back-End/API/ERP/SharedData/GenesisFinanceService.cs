@@ -6,6 +6,7 @@
  * Versão: 1.1.5
  */
 
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace NexumAltivon.API.ERP.SharedData;
@@ -14,7 +15,7 @@ public static class GenesisFinanceService
 {
     private static readonly HashSet<string> StatusPagarEmAberto = new(StringComparer.OrdinalIgnoreCase)
     {
-        "PENDENTE", "PARCIAL", "EM_ABERTO", "VENCIDO"
+        "ABERTO", "PENDENTE", "PARCIAL", "EM_ABERTO", "VENCIDO"
     };
 
     private static readonly HashSet<string> StatusReceberEmAberto = new(StringComparer.OrdinalIgnoreCase)
@@ -80,104 +81,116 @@ public static class GenesisFinanceService
 
     public static async Task<List<GenesisContaPagarDto>> ListarContasPagarAsync(GenesisDbContext genesisDb, CancellationToken ct)
     {
-        return await genesisDb.ContasPagar
+        var entities = await genesisDb.ContasPagar
             .AsNoTracking()
             .OrderBy(item => item.DataVencimento)
-            .Select(item => new GenesisContaPagarDto(
-                item.Id,
-                item.NumeroDocumento ?? string.Empty,
-                item.FornecedorId,
-                item.Descricao ?? "Conta a pagar sem descricao",
-                item.ValorOriginal,
-                item.ValorPago,
-                item.ValorOriginal - item.ValorPago,
-                item.DataEmissao,
-                item.DataVencimento,
-                item.DataPagamento,
-                item.Status ?? "PENDENTE",
-                item.FormaPagamento,
-                item.NumeroBoleto))
             .ToListAsync(ct);
+
+        return entities.Select(ToContaPagarDto).ToList();
     }
 
     public static async Task<List<GenesisContaReceberDto>> ListarContasReceberAsync(GenesisDbContext genesisDb, CancellationToken ct)
     {
-        return await genesisDb.ContasReceber
+        var entities = await genesisDb.ContasReceber
             .AsNoTracking()
             .OrderBy(item => item.DataVencimento)
-            .Select(item => new GenesisContaReceberDto(
-                item.Id,
-                item.NumeroDocumento ?? string.Empty,
-                item.ClienteId,
-                item.Descricao ?? "Conta a receber sem descricao",
-                item.ValorOriginal,
-                item.ValorRecebido,
-                item.ValorOriginal - item.ValorRecebido,
-                item.DataEmissao,
-                item.DataVencimento,
-                item.DataRecebimento,
-                item.Status ?? "PENDENTE",
-                item.FormaRecebimento,
-                item.NumeroPedidoReferencia))
             .ToListAsync(ct);
+
+        return entities.Select(ToContaReceberDto).ToList();
+    }
+
+    public static async Task<GenesisContaPagarDto?> ObterContaPagarAsync(GenesisDbContext genesisDb, int id, CancellationToken ct)
+    {
+        var entity = await genesisDb.ContasPagar.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id, ct);
+        return entity is null ? null : ToContaPagarDto(entity);
+    }
+
+    public static async Task<GenesisContaReceberDto?> ObterContaReceberAsync(GenesisDbContext genesisDb, int id, CancellationToken ct)
+    {
+        var entity = await genesisDb.ContasReceber.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id, ct);
+        return entity is null ? null : ToContaReceberDto(entity);
     }
 
     public static async Task<GenesisContaPagarDto> CriarContaPagarAsync(GenesisDbContext genesisDb, GenesisContaPagarCreateRequest request, CancellationToken ct)
     {
-        var entity = new GenesisContaPagar
+        ValidarContaPagar(request);
+        var numeroDocumento = request.NumeroDocumento.Trim().ToUpperInvariant();
+        var strategy = genesisDb.Database.CreateExecutionStrategy();
+        var createdId = await strategy.ExecuteAsync(async () =>
         {
-            NumeroDocumento = request.NumeroDocumento.Trim(),
-            FornecedorId = request.FornecedorId,
-            Descricao = request.Descricao.Trim(),
-            ValorOriginal = request.ValorOriginal,
-            ValorPago = 0m,
-            ValorMulta = 0m,
-            ValorJuros = 0m,
-            ValorDesconto = 0m,
-            DataEmissao = request.DataEmissao,
-            DataVencimento = request.DataVencimento,
-            DataPagamento = null,
-            Status = "PENDENTE",
-            FormaPagamento = request.FormaPagamento?.Trim(),
-            NumeroBoleto = request.NumeroBoleto?.Trim()
-        };
+            await using var transaction = await genesisDb.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            if (await genesisDb.ContasPagar.AnyAsync(item => item.NumeroDocumento == numeroDocumento, ct))
+            {
+                throw new InvalidOperationException($"Ja existe conta a pagar com o documento {numeroDocumento}.");
+            }
 
-        genesisDb.ContasPagar.Add(entity);
-        await genesisDb.SaveChangesAsync(ct);
+            var entity = new GenesisContaPagar
+            {
+                NumeroDocumento = numeroDocumento,
+                FornecedorId = request.FornecedorId,
+                Descricao = request.Descricao.Trim(),
+                ValorOriginal = request.ValorOriginal,
+                ValorPago = 0m,
+                ValorMulta = 0m,
+                ValorJuros = 0m,
+                ValorDesconto = 0m,
+                DataEmissao = request.DataEmissao,
+                DataVencimento = request.DataVencimento,
+                DataPagamento = null,
+                Status = "PENDENTE",
+                FormaPagamento = request.FormaPagamento?.Trim(),
+                NumeroBoleto = request.NumeroBoleto?.Trim()
+            };
 
-        return new GenesisContaPagarDto(
-            entity.Id, entity.NumeroDocumento, entity.FornecedorId, entity.Descricao, entity.ValorOriginal, entity.ValorPago,
-            entity.ValorOriginal - entity.ValorPago, entity.DataEmissao, entity.DataVencimento, entity.DataPagamento, entity.Status ?? "PENDENTE",
-            entity.FormaPagamento, entity.NumeroBoleto);
+            genesisDb.ContasPagar.Add(entity);
+            await genesisDb.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return entity.Id;
+        });
+
+        return await ObterContaPagarAsync(genesisDb, createdId, ct)
+            ?? throw new InvalidOperationException("Conta a pagar foi gravada, mas nao pode ser relida do banco GenesisGest.Net.");
     }
 
     public static async Task<GenesisContaReceberDto> CriarContaReceberAsync(GenesisDbContext genesisDb, GenesisContaReceberCreateRequest request, CancellationToken ct)
     {
-        var entity = new GenesisContaReceber
+        ValidarContaReceber(request);
+        var numeroDocumento = request.NumeroDocumento.Trim().ToUpperInvariant();
+        var strategy = genesisDb.Database.CreateExecutionStrategy();
+        var createdId = await strategy.ExecuteAsync(async () =>
         {
-            NumeroDocumento = request.NumeroDocumento.Trim(),
-            ClienteId = request.ClienteId,
-            Descricao = request.Descricao.Trim(),
-            ValorOriginal = request.ValorOriginal,
-            ValorRecebido = 0m,
-            ValorMulta = 0m,
-            ValorJuros = 0m,
-            ValorDesconto = 0m,
-            DataEmissao = request.DataEmissao,
-            DataVencimento = request.DataVencimento,
-            DataRecebimento = null,
-            Status = "PENDENTE",
-            FormaRecebimento = request.FormaRecebimento?.Trim(),
-            NumeroPedidoReferencia = request.NumeroPedidoReferencia?.Trim()
-        };
+            await using var transaction = await genesisDb.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            if (await genesisDb.ContasReceber.AnyAsync(item => item.NumeroDocumento == numeroDocumento, ct))
+            {
+                throw new InvalidOperationException($"Ja existe conta a receber com o documento {numeroDocumento}.");
+            }
 
-        genesisDb.ContasReceber.Add(entity);
-        await genesisDb.SaveChangesAsync(ct);
+            var entity = new GenesisContaReceber
+            {
+                NumeroDocumento = numeroDocumento,
+                ClienteId = request.ClienteId,
+                Descricao = request.Descricao.Trim(),
+                ValorOriginal = request.ValorOriginal,
+                ValorRecebido = 0m,
+                ValorMulta = 0m,
+                ValorJuros = 0m,
+                ValorDesconto = 0m,
+                DataEmissao = request.DataEmissao,
+                DataVencimento = request.DataVencimento,
+                DataRecebimento = null,
+                Status = "PENDENTE",
+                FormaRecebimento = request.FormaRecebimento?.Trim(),
+                NumeroPedidoReferencia = request.NumeroPedidoReferencia?.Trim()
+            };
 
-        return new GenesisContaReceberDto(
-            entity.Id, entity.NumeroDocumento, entity.ClienteId, entity.Descricao, entity.ValorOriginal, entity.ValorRecebido,
-            entity.ValorOriginal - entity.ValorRecebido, entity.DataEmissao, entity.DataVencimento, entity.DataRecebimento, entity.Status ?? "PENDENTE",
-            entity.FormaRecebimento, entity.NumeroPedidoReferencia);
+            genesisDb.ContasReceber.Add(entity);
+            await genesisDb.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return entity.Id;
+        });
+
+        return await ObterContaReceberAsync(genesisDb, createdId, ct)
+            ?? throw new InvalidOperationException("Conta a receber foi gravada, mas nao pode ser relida do banco GenesisGest.Net.");
     }
 
     public static async Task<List<GenesisFinanceReferenciaDto>> ListarReferenciasAsync(GenesisDbContext genesisDb, string? tipo, CancellationToken ct)
@@ -256,67 +269,219 @@ public static class GenesisFinanceService
 
     public static async Task<GenesisContaPagarDto?> BaixarContaPagarAsync(GenesisDbContext genesisDb, int id, GenesisBaixaPagarRequest request, CancellationToken ct)
     {
-        var entity = await genesisDb.ContasPagar.FirstOrDefaultAsync(item => item.Id == id, ct);
-        if (entity is null) return null;
-
-        entity.ValorPago += request.ValorPago;
-        entity.DataPagamento = request.DataPagamento ?? DateTime.Now;
-        entity.FormaPagamento = request.FormaPagamento?.Trim() ?? entity.FormaPagamento;
-        entity.Status = NormalizarStatusPagar(entity.ValorOriginal, entity.ValorPago);
-
-        genesisDb.FluxoCaixa.Add(new GenesisFluxoCaixa
+        if (request.ValorPago <= 0m)
         {
-            Data = entity.DataPagamento.Value,
-            Tipo = "SAIDA",
-            Descricao = $"Baixa CP {entity.NumeroDocumento}",
-            Valor = request.ValorPago,
-            Categoria = "CONTAS_PAGAR",
-            ContaPagarId = entity.Id,
-            FormaPagamento = entity.FormaPagamento,
-            ContaBancaria = null,
-            Observacoes = "Baixa automática via ERP local",
-            CriadoEm = DateTime.Now
+            throw new ArgumentException("Valor da baixa deve ser maior que zero.");
+        }
+
+        ValidarObservacoes(request.Observacoes);
+
+        var dataPagamento = request.DataPagamento ?? DateTime.Now;
+        if (dataPagamento > DateTime.Now.AddMinutes(5))
+        {
+            throw new ArgumentException("Data da baixa nao pode estar no futuro.");
+        }
+
+        var strategy = genesisDb.Database.CreateExecutionStrategy();
+        var updatedId = await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await genesisDb.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            var entity = await genesisDb.ContasPagar.FirstOrDefaultAsync(item => item.Id == id, ct);
+            if (entity is null) return (int?)null;
+
+            var valorAberto = entity.ValorOriginal - entity.ValorPago;
+            if (valorAberto <= 0m)
+            {
+                throw new ArgumentException("Conta a pagar ja esta integralmente baixada.");
+            }
+
+            if (request.ValorPago > valorAberto)
+            {
+                throw new ArgumentException($"Valor da baixa excede o saldo aberto de R$ {valorAberto:N2}.");
+            }
+
+            entity.ValorPago += request.ValorPago;
+            entity.DataPagamento = dataPagamento;
+            entity.FormaPagamento = request.FormaPagamento?.Trim() ?? entity.FormaPagamento;
+            entity.Status = NormalizarStatusPagar(entity.ValorOriginal, entity.ValorPago);
+
+            genesisDb.FluxoCaixa.Add(new GenesisFluxoCaixa
+            {
+                Data = entity.DataPagamento.Value,
+                Tipo = "SAIDA",
+                Descricao = $"Baixa CP {entity.NumeroDocumento}",
+                Valor = request.ValorPago,
+                Categoria = "CONTAS_PAGAR",
+                ContaPagarId = entity.Id,
+                FormaPagamento = entity.FormaPagamento,
+                ContaBancaria = null,
+                Observacoes = request.Observacoes?.Trim(),
+                CriadoEm = DateTime.Now
+            });
+
+            await genesisDb.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return entity.Id;
         });
 
-        await genesisDb.SaveChangesAsync(ct);
-
-        return new GenesisContaPagarDto(
-            entity.Id, entity.NumeroDocumento, entity.FornecedorId, entity.Descricao, entity.ValorOriginal, entity.ValorPago,
-            entity.ValorOriginal - entity.ValorPago, entity.DataEmissao, entity.DataVencimento, entity.DataPagamento, entity.Status ?? "PENDENTE",
-            entity.FormaPagamento, entity.NumeroBoleto);
+        return updatedId.HasValue ? await ObterContaPagarAsync(genesisDb, updatedId.Value, ct) : null;
     }
 
     public static async Task<GenesisContaReceberDto?> BaixarContaReceberAsync(GenesisDbContext genesisDb, int id, GenesisBaixaReceberRequest request, CancellationToken ct)
     {
-        var entity = await genesisDb.ContasReceber.FirstOrDefaultAsync(item => item.Id == id, ct);
-        if (entity is null) return null;
-
-        entity.ValorRecebido += request.ValorRecebido;
-        entity.DataRecebimento = request.DataRecebimento ?? DateTime.Now;
-        entity.FormaRecebimento = request.FormaRecebimento?.Trim() ?? entity.FormaRecebimento;
-        entity.Status = NormalizarStatusReceber(entity.ValorOriginal, entity.ValorRecebido);
-
-        genesisDb.FluxoCaixa.Add(new GenesisFluxoCaixa
+        if (request.ValorRecebido <= 0m)
         {
-            Data = entity.DataRecebimento.Value,
-            Tipo = "ENTRADA",
-            Descricao = $"Baixa CR {entity.NumeroDocumento}",
-            Valor = request.ValorRecebido,
-            Categoria = "CONTAS_RECEBER",
-            ContaReceberId = entity.Id,
-            FormaPagamento = entity.FormaRecebimento,
-            ContaBancaria = null,
-            Observacoes = "Baixa automática via ERP local",
-            CriadoEm = DateTime.Now
+            throw new ArgumentException("Valor do recebimento deve ser maior que zero.");
+        }
+
+        ValidarObservacoes(request.Observacoes);
+
+        var dataRecebimento = request.DataRecebimento ?? DateTime.Now;
+        if (dataRecebimento > DateTime.Now.AddMinutes(5))
+        {
+            throw new ArgumentException("Data do recebimento nao pode estar no futuro.");
+        }
+
+        var strategy = genesisDb.Database.CreateExecutionStrategy();
+        var updatedId = await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await genesisDb.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            var entity = await genesisDb.ContasReceber.FirstOrDefaultAsync(item => item.Id == id, ct);
+            if (entity is null) return (int?)null;
+
+            var valorAberto = entity.ValorOriginal - entity.ValorRecebido;
+            if (valorAberto <= 0m)
+            {
+                throw new ArgumentException("Conta a receber ja esta integralmente baixada.");
+            }
+
+            if (request.ValorRecebido > valorAberto)
+            {
+                throw new ArgumentException($"Valor do recebimento excede o saldo aberto de R$ {valorAberto:N2}.");
+            }
+
+            entity.ValorRecebido += request.ValorRecebido;
+            entity.DataRecebimento = dataRecebimento;
+            entity.FormaRecebimento = request.FormaRecebimento?.Trim() ?? entity.FormaRecebimento;
+            entity.Status = NormalizarStatusReceber(entity.ValorOriginal, entity.ValorRecebido);
+
+            genesisDb.FluxoCaixa.Add(new GenesisFluxoCaixa
+            {
+                Data = entity.DataRecebimento.Value,
+                Tipo = "ENTRADA",
+                Descricao = $"Baixa CR {entity.NumeroDocumento}",
+                Valor = request.ValorRecebido,
+                Categoria = "CONTAS_RECEBER",
+                ContaReceberId = entity.Id,
+                FormaPagamento = entity.FormaRecebimento,
+                ContaBancaria = null,
+                Observacoes = request.Observacoes?.Trim(),
+                CriadoEm = DateTime.Now
+            });
+
+            await genesisDb.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return entity.Id;
         });
 
-        await genesisDb.SaveChangesAsync(ct);
-
-        return new GenesisContaReceberDto(
-            entity.Id, entity.NumeroDocumento, entity.ClienteId, entity.Descricao, entity.ValorOriginal, entity.ValorRecebido,
-            entity.ValorOriginal - entity.ValorRecebido, entity.DataEmissao, entity.DataVencimento, entity.DataRecebimento, entity.Status ?? "PENDENTE",
-            entity.FormaRecebimento, entity.NumeroPedidoReferencia);
+        return updatedId.HasValue ? await ObterContaReceberAsync(genesisDb, updatedId.Value, ct) : null;
     }
+
+    private static void ValidarContaPagar(GenesisContaPagarCreateRequest request)
+    {
+        ValidarTitulo(request.NumeroDocumento, request.Descricao, request.ValorOriginal, request.DataEmissao, request.DataVencimento);
+        if (request.FornecedorId is <= 0)
+        {
+            throw new ArgumentException("FornecedorId deve ser positivo quando informado.");
+        }
+    }
+
+    private static void ValidarContaReceber(GenesisContaReceberCreateRequest request)
+    {
+        ValidarTitulo(request.NumeroDocumento, request.Descricao, request.ValorOriginal, request.DataEmissao, request.DataVencimento);
+        if (request.ClienteId is <= 0)
+        {
+            throw new ArgumentException("ClienteId deve ser positivo quando informado.");
+        }
+    }
+
+    private static void ValidarTitulo(string? numeroDocumento, string? descricao, decimal valorOriginal, DateTime dataEmissao, DateTime dataVencimento)
+    {
+        if (string.IsNullOrWhiteSpace(numeroDocumento))
+        {
+            throw new ArgumentException("Numero do documento e obrigatorio.");
+        }
+
+        if (numeroDocumento.Trim().Length > 40)
+        {
+            throw new ArgumentException("Numero do documento deve ter no maximo 40 caracteres.");
+        }
+
+        if (string.IsNullOrWhiteSpace(descricao))
+        {
+            throw new ArgumentException("Descricao do titulo e obrigatoria.");
+        }
+
+        if (descricao.Trim().Length > 200)
+        {
+            throw new ArgumentException("Descricao do titulo deve ter no maximo 200 caracteres.");
+        }
+
+        if (valorOriginal <= 0m)
+        {
+            throw new ArgumentException("Valor original deve ser maior que zero.");
+        }
+
+        if (dataEmissao == default || dataVencimento == default)
+        {
+            throw new ArgumentException("Datas de emissao e vencimento sao obrigatorias.");
+        }
+
+        if (dataVencimento.Date < dataEmissao.Date)
+        {
+            throw new ArgumentException("Vencimento nao pode ser anterior a emissao.");
+        }
+    }
+
+    private static void ValidarObservacoes(string? observacoes)
+    {
+        if (observacoes?.Trim().Length > 500)
+        {
+            throw new ArgumentException("Observacoes devem ter no maximo 500 caracteres.");
+        }
+    }
+
+    private static GenesisContaPagarDto ToContaPagarDto(GenesisContaPagar entity) =>
+        new(
+            entity.Id,
+            entity.NumeroDocumento ?? string.Empty,
+            entity.FornecedorId,
+            entity.Descricao ?? string.Empty,
+            entity.ValorOriginal,
+            entity.ValorPago,
+            Math.Max(0m, entity.ValorOriginal - entity.ValorPago),
+            entity.DataEmissao,
+            entity.DataVencimento,
+            entity.DataPagamento,
+            entity.Status ?? string.Empty,
+            entity.FormaPagamento,
+            entity.NumeroBoleto);
+
+    private static GenesisContaReceberDto ToContaReceberDto(GenesisContaReceber entity) =>
+        new(
+            entity.Id,
+            entity.NumeroDocumento ?? string.Empty,
+            entity.ClienteId,
+            entity.Descricao ?? string.Empty,
+            entity.ValorOriginal,
+            entity.ValorRecebido,
+            Math.Max(0m, entity.ValorOriginal - entity.ValorRecebido),
+            entity.DataEmissao,
+            entity.DataVencimento,
+            entity.DataRecebimento,
+            entity.Status ?? string.Empty,
+            entity.FormaRecebimento,
+            entity.NumeroPedidoReferencia);
 
     public static async Task<List<GenesisBoletoDto>> ListarBoletosAsync(GenesisDbContext genesisDb, CancellationToken ct)
     {

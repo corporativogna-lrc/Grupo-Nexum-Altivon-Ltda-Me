@@ -19,7 +19,7 @@ public sealed class GenesisContaPagar
     public int Id { get; set; }
 
     [Column("numero_documento")]
-    [MaxLength(20)]
+    [MaxLength(40)]
     public string NumeroDocumento { get; set; } = string.Empty;
 
     [Column("fornecedor_id")]
@@ -74,7 +74,7 @@ public sealed class GenesisContaReceber
     public int Id { get; set; }
 
     [Column("numero_documento")]
-    [MaxLength(20)]
+    [MaxLength(40)]
     public string NumeroDocumento { get; set; } = string.Empty;
 
     [Column("cliente_id")]
