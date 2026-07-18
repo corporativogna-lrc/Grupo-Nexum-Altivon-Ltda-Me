@@ -59,18 +59,20 @@ Este programa e criterio de aceite do Desktop e nao aumenta isoladamente o numer
 
 | ID | Criterio obrigatorio | Status real |
 |---|---|---|
-| WPFDB-01 Inventario | Catalogar as tabelas de `nexum_altivon` e `genesis_bd` como administrativa, transacional, filha de agregado, integracao, auditoria ou tecnica | Pendente programado |
-| WPFDB-02 Linhagem | Vincular cada tabela administrativa a modulo, entidade, endpoint Minimal API, permissao, formulario WPF e operacoes permitidas | Pendente programado |
-| WPFDB-03 Contrato oficial | Proibir acesso MySQL direto no Desktop; toda leitura/escrita deve passar pela API oficial com DTO validado e `CancellationToken` | Parcial |
+| WPFDB-01 Inventario | Catalogar as tabelas de `nexum_altivon` e `genesis_bd` como administrativa, transacional, filha de agregado, integracao, auditoria ou tecnica | Parcial avancado: auditor reproduzivel inventariou 263 objetos; a classificacao automatica integral ainda exige confirmacao clinica |
+| WPFDB-02 Linhagem | Vincular cada tabela administrativa a modulo, entidade, endpoint Minimal API, permissao, formulario WPF e operacoes permitidas | Em andamento: 97 objetos possuem referencia literal na API e 25 no Desktop; a correspondencia EF/DTO sem nome fisico ainda precisa ser reconciliada |
+| WPFDB-03 Contrato oficial | Proibir acesso MySQL direto no Desktop; toda leitura/escrita deve passar pela API oficial com DTO validado e `CancellationToken` | Parcial: `ManualNfeWindow` ainda instancia `HttpClient` diretamente e deve migrar para `DesktopApiClient` |
 | WPFDB-04 Formulario individual | Entregar formulario profissional especifico para cada processo administrativo, sem tela generica usada como conclusao funcional | Parcial |
 | WPFDB-05 Separacao de dominios | Contas a pagar, contas a receber, conciliacao, tesouraria, fiscal, estoque e demais dominios devem possuir comandos, validacoes e persistencia separados | Pendente programado |
 | WPFDB-06 Padrao transacional | Cada formulario deve conter contexto, codigo, tenant, status, acoes, cabecalho, itens/servicos, financeiro, anexos, auditoria, totalizadores e validacao em tempo real quando aplicavel | Parcial |
 | WPFDB-07 Seguranca | Aplicar JWT em memoria, RBAC, tenant, reautenticacao para acao sensivel e mascaramento de segredos | Parcial |
-| WPFDB-08 Integridade | Aplicar concorrencia, idempotencia, tratamento de erro HTTP, releitura persistida e nenhuma confirmacao apenas visual | Parcial |
+| WPFDB-08 Integridade | Aplicar concorrencia, idempotencia, tratamento de erro HTTP, releitura persistida e nenhuma confirmacao apenas visual | Parcial: 7 janelas escrevem contingencia local, mas o reprocessamento, a confirmacao no servidor e a remocao segura ainda nao foram comprovados |
 | WPFDB-09 Relacionamentos | Exibir e operar relacoes pai-filho no agregado correto sem gravacao cruzada ambigua entre dominios | Pendente programado |
 | WPFDB-10 Homologacao | Provar formulario por formulario com API, banco, auditoria, permissao, erro controlado, build WPF e limpeza de dados de validacao | Pendente programado |
 
 Regra de aceite: a cobertura WPF somente sera concluida quando a matriz tabela-endpoint-formulario-permissao atingir 100%, sem tabelas administrativas orfas e sem formulario que grave em dominio diferente daquele declarado.
+
+Evidencia de 2026-07-18: `scripts/server/auditar-paridade-banco-wpf.ps1` consulta os dois schemas oficiais e gera `docs/MATRIZ-PARIDADE-BANCO-WPF-2026-07-18.md`. Foram encontrados 251 tabelas base, 12 views e 13 janelas WPF. Seis janelas usam o endpoint generico que registra payload em `genesis_bd.sys_operacoes_desktop`; esse registro nao equivale a gravacao nas tabelas de cadastro, financeiro, fiscal, logistica ou compras e bloqueia o aceite funcional dessas telas.
 
 ## Bloqueadores B1 a B14
 
