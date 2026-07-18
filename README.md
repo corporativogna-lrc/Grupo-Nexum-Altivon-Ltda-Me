@@ -1,3 +1,11 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5.7184
+-->
+
 # NEXUM ALTIVON COMMERCE PLATFORM
 ## FASE 1 — Estrutura Base, Banco, API e Autenticação
 
@@ -105,24 +113,24 @@ NexumAltivon.com
 
 | Endpoint | Metodo | Acesso | Descricao |
 |---|---|---|---|
-| /api/auth/login | POST | Publico | Login com JWT |
-| /api/auth/refresh | POST | Publico | Renova token |
-| /api/auth/registrar | POST | SuperAdmin | Novo usuario |
-| /api/lojas | GET | Publico | Lista 6 lojas |
-| /api/lojas/{id} | GET | Publico | Detalhes da loja |
-| /api/produtos | GET | Publico | Lista produtos |
-| /api/produtos/destaques | GET | Publico | Produtos em destaque |
-| /api/clientes | GET | Vendedor | Lista clientes |
-| /api/clientes | POST | Publico | Cadastro cliente |
-| /api/carrinho | GET | Publico | Ver carrinho |
-| /api/carrinho/adicionar | POST | Publico | Adicionar item |
-| /api/pedidos | GET | Vendedor | Lista pedidos |
-| /api/pedidos | POST | Publico | Criar pedido |
-| /api/crm/leads | GET | Vendedor | Lista leads |
-| /api/crm/leads | POST | Publico | Novo lead |
-| /api/financeiro/faturamento | GET | Financeiro | Faturamento por periodo |
-| /health | GET | Publico | Health check |
-| /swagger | GET | Dev/Staging | Documentacao API |
+| `/api/auth/login` | `POST` | Publico | Login com JWT |
+| `/api/auth/refresh` | `POST` | Publico | Renova token |
+| `/api/auth/registrar` | `POST` | SuperAdmin | Novo usuario |
+| `/api/lojas` | `GET` | Publico | Lista 6 lojas |
+| `/api/lojas/{id}` | `GET` | Publico | Detalhes da loja |
+| `/api/produtos` | `GET` | Publico | Lista produtos |
+| `/api/produtos/destaques` | `GET` | Publico | Produtos em destaque |
+| `/api/clientes` | `GET` | Vendedor | Lista clientes |
+| `/api/clientes` | `POST` | Publico | Cadastro cliente |
+| `/api/carrinho` | `GET` | Publico | Ver carrinho |
+| `/api/carrinho/adicionar` | `POST` | Publico | Adicionar item |
+| `/api/pedidos` | `GET` | Vendedor | Lista pedidos |
+| `/api/pedidos` | `POST` | Publico | Criar pedido |
+| `/api/crm/leads` | `GET` | Vendedor | Lista leads |
+| `/api/crm/leads` | `POST` | Publico | Novo lead |
+| `/api/financeiro/faturamento` | `GET` | Financeiro | Faturamento por periodo |
+| `/health` | `GET` | Publico | Health check |
+| `/swagger` | `GET` | Dev/Staging | Documentacao API |
 
 ---
 ```
