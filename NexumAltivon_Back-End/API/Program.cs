@@ -8383,14 +8383,28 @@ app.MapPost("/api/webhooks/mercadopago", async (
 .WithName("WebhookMercadoPago")
 ;
 
-app.MapGet("/api/dashboard/resumo", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+app.MapGet("/api/dashboard/resumo", [Authorize(Policy = "Gerente")] async (int? dias, NexumDbContext db, CancellationToken ct) =>
 {
-    var hoje = DateTime.UtcNow.Date;
-    var inicioMes = new DateTime(hoje.Year, hoje.Month, 1);
+    var periodoDias = dias ?? 7;
+    if (periodoDias is not (7 or 30 or 90))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("O periodo do cockpit deve ser de 7, 30 ou 90 dias."));
+    }
 
-    var pedidosHoje = await db.Pedidos.AsNoTracking().CountAsync(pedido => pedido.CreatedAt >= hoje, ct);
+    var agoraUtc = DateTime.UtcNow;
+    var fusoOperacional = TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo");
+    var dataAtual = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(agoraUtc, fusoOperacional));
+    var dataInicial = dataAtual.AddDays(-(periodoDias - 1));
+    var inicioPeriodoUtc = ConvertBusinessDateToUtc(dataInicial, fusoOperacional);
+    var fimPeriodoUtc = ConvertBusinessDateToUtc(dataAtual.AddDays(1), fusoOperacional);
+    var inicioHojeUtc = ConvertBusinessDateToUtc(dataAtual, fusoOperacional);
+    var inicioMesLocal = new DateOnly(dataAtual.Year, dataAtual.Month, 1);
+    var inicioMesUtc = ConvertBusinessDateToUtc(inicioMesLocal, fusoOperacional);
+    var inicioProximoMesUtc = ConvertBusinessDateToUtc(inicioMesLocal.AddMonths(1), fusoOperacional);
+
+    var pedidosHoje = await db.Pedidos.AsNoTracking()
+        .CountAsync(pedido => pedido.CreatedAt >= inicioHojeUtc && pedido.CreatedAt < fimPeriodoUtc, ct);
     var totalClientes = await db.Clientes.AsNoTracking().CountAsync(ct);
-    var faturamentoMes = await db.Pedidos.AsNoTracking().Where(pedido => pedido.CreatedAt >= inicioMes).SumAsync(pedido => (decimal?)pedido.Total, ct) ?? 0m;
     var leadsNovos = await db.CrmLeads.AsNoTracking().CountAsync(lead => lead.Status == StatusLead.Novo, ct);
     var produtosEstoqueBaixo = await db.Produtos.AsNoTracking().CountAsync(produto => produto.Ativo && produto.EstoqueAtual <= produto.EstoqueMinimo, ct);
 
@@ -8398,9 +8412,38 @@ app.MapGet("/api/dashboard/resumo", [Authorize(Policy = "Gerente")] async (Nexum
     var leadsConvertidos = await db.CrmLeads.AsNoTracking().CountAsync(lead => lead.Status == StatusLead.Convertido, ct);
     var conversao = totalLeads == 0 ? 0m : Math.Round((decimal)leadsConvertidos / totalLeads * 100m, 2);
 
-    var ticketMedio = await db.Pedidos.AsNoTracking()
-        .Where(pedido => pedido.CreatedAt >= inicioMes)
+    var vendasConfirmadas = db.Pedidos.AsNoTracking()
+        .Where(pedido =>
+            pedido.StatusPagamento == StatusPagamento.Aprovado &&
+            pedido.Status != StatusPedido.Cancelado &&
+            pedido.Status != StatusPedido.Reembolsado);
+    var faturamentoMes = await vendasConfirmadas
+        .Where(pedido => pedido.CreatedAt >= inicioMesUtc && pedido.CreatedAt < inicioProximoMesUtc)
+        .SumAsync(pedido => (decimal?)pedido.Total, ct) ?? 0m;
+    var ticketMedio = await vendasConfirmadas
+        .Where(pedido => pedido.CreatedAt >= inicioMesUtc && pedido.CreatedAt < inicioProximoMesUtc)
         .AverageAsync(pedido => (decimal?)pedido.Total, ct) ?? 0m;
+
+    var vendasPeriodo = await vendasConfirmadas
+        .Where(pedido => pedido.CreatedAt >= inicioPeriodoUtc && pedido.CreatedAt < fimPeriodoUtc)
+        .Select(pedido => new { pedido.CreatedAt, pedido.Total })
+        .ToListAsync(ct);
+    var vendasPorData = vendasPeriodo
+        .GroupBy(pedido => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(
+            DateTime.SpecifyKind(pedido.CreatedAt, DateTimeKind.Utc),
+            fusoOperacional)))
+        .ToDictionary(
+            grupo => grupo.Key,
+            grupo => new { Pedidos = grupo.Count(), Receita = grupo.Sum(pedido => pedido.Total) });
+    var serieVendas = Enumerable.Range(0, periodoDias)
+        .Select(indice =>
+        {
+            var data = dataInicial.AddDays(indice);
+            return vendasPorData.TryGetValue(data, out var venda)
+                ? new DashboardVendaDiaDto(data, venda.Pedidos, venda.Receita)
+                : new DashboardVendaDiaDto(data, 0, 0m);
+        })
+        .ToList();
 
     var resumo = new DashboardResumoDto(
         pedidosHoje,
@@ -8409,7 +8452,12 @@ app.MapGet("/api/dashboard/resumo", [Authorize(Policy = "Gerente")] async (Nexum
         leadsNovos,
         produtosEstoqueBaixo,
         conversao,
-        ticketMedio);
+        ticketMedio,
+        periodoDias,
+        dataInicial,
+        dataAtual,
+        agoraUtc,
+        serieVendas);
 
     return Results.Ok(ApiResponse<DashboardResumoDto>.Ok(resumo));
 })
@@ -11666,6 +11714,17 @@ static string BuildOperationalFailureCode(Exception exception)
         OperationCanceledException => "OPERATION-CANCELLED",
         _ => $"{root.GetType().Name.ToUpperInvariant()}-{root.HResult:X8}"
     };
+}
+
+static DateTime ConvertBusinessDateToUtc(DateOnly date, TimeZoneInfo timeZone)
+{
+    var localDateTime = DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified);
+    if (timeZone.IsInvalidTime(localDateTime))
+    {
+        throw new InvalidOperationException($"A data operacional {date:yyyy-MM-dd} nao possui inicio valido no fuso {timeZone.Id}.");
+    }
+
+    return TimeZoneInfo.ConvertTimeToUtc(localDateTime, timeZone);
 }
 
 static ClaimsPrincipal? ValidateExpiredJwtToken(string token, string issuer, string audience, SymmetricSecurityKey signingKey)
@@ -20535,7 +20594,17 @@ public sealed record DashboardResumoDto(
     int LeadsNovos,
     int ProdutosEstoqueBaixo,
     decimal Conversao,
-    decimal TicketMedio);
+    decimal TicketMedio,
+    int PeriodoDias,
+    DateOnly PeriodoInicio,
+    DateOnly PeriodoFim,
+    DateTime AtualizadoEm,
+    IReadOnlyList<DashboardVendaDiaDto> VendasPeriodo);
+
+public sealed record DashboardVendaDiaDto(
+    DateOnly Data,
+    int PedidosConfirmados,
+    decimal ReceitaConfirmada);
 
 public sealed record GestaoCorporativaPainelDto(
     List<GestaoCorporativaIndicadorDto> Indicadores,

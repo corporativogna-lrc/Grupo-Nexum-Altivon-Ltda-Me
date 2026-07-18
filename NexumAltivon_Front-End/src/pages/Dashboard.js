@@ -15,10 +15,9 @@ import AccessAuditPanel from '../components/AccessAuditPanel';
 import MarketingAdminPanel from '../components/MarketingAdminPanel';
 import DropshippingAdminPanel from '../components/DropshippingAdminPanel';
 import SiteMediaLibrary from '../components/SiteMediaLibrary';
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
   Activity,
-  ArrowDownRight,
-  ArrowUpRight,
   Bell,
   Boxes,
   Building2,
@@ -447,17 +446,15 @@ const emptyResumo = {
   produtos_estoque_baixo: 0,
   conversao: 0,
   ticket_medio: 0,
+  periodo_dias: 7,
+  periodo_inicio: null,
+  periodo_fim: null,
+  atualizado_em: null,
+  vendas_periodo: [],
 };
-
-const chart = [
-  { label: 'Seg', value: 42 },
-  { label: 'Ter', value: 68 },
-  { label: 'Qua', value: 54 },
-  { label: 'Qui', value: 83 },
-  { label: 'Sex', value: 76 },
-  { label: 'Sáb', value: 92 },
-  { label: 'Dom', value: 61 },
-];
+const salesPeriodOptions = [7, 30, 90];
+const salesDateFormatter = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' });
+const salesWeekdayFormatter = new Intl.DateTimeFormat('pt-BR', { weekday: 'short' });
 
 const normalizeText = (value) => String(value ?? '').trim().toLowerCase();
 const normalizeDocument = (value) => String(value ?? '').replace(/\D/g, '');
@@ -655,7 +652,7 @@ const getEmpresaGrupoDuplicateMessage = (form, empresas) => {
   return '';
 };
 
-function StatCard({ title, value, detail, icon: Icon, trend, tone = 'slate' }) {
+function StatCard({ title, value, detail, icon: Icon, tone = 'slate' }) {
   const toneClass = {
     slate: 'bg-slate-950 text-white',
     amber: 'bg-amber-400 text-slate-950',
@@ -674,11 +671,7 @@ function StatCard({ title, value, detail, icon: Icon, trend, tone = 'slate' }) {
           <Icon size={22} />
         </div>
       </div>
-      <div className="mt-5 flex items-center gap-2 text-sm font-bold text-slate-500">
-        {trend >= 0 ? <ArrowUpRight className="text-emerald-600" size={17} /> : <ArrowDownRight className="text-rose-600" size={17} />}
-        <span className={trend >= 0 ? 'text-emerald-700' : 'text-rose-700'}>{Math.abs(trend)}%</span>
-        <span>{detail}</span>
-      </div>
+      <p className="mt-5 text-sm font-bold text-slate-500">{detail}</p>
     </div>
   );
 }
@@ -729,6 +722,9 @@ export default function Dashboard() {
   const [siteConfigStatus, setSiteConfigStatus] = useState({ type: '', message: '' });
   const [siteConfigSaving, setSiteConfigSaving] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [salesPeriodDays, setSalesPeriodDays] = useState(7);
+  const [salesPeriodLoading, setSalesPeriodLoading] = useState(false);
+  const [salesPeriodError, setSalesPeriodError] = useState('');
   const sophiaEmail = siteConfigForm.site_sophia_email || siteConfigForm.site_email_contato || 'corporativo.gna@gmail.com';
   const sophiaMailTo = `mailto:${encodeURIComponent(sophiaEmail)}?subject=Sophia%20-%20Apoio%20administrativo&body=Ol%C3%A1%20Sophia%2C%20preciso%20de%20apoio%20administrativo%20por%20mensagem%20instant%C3%A2nea%20para%20d%C3%BAvidas%20internas%20e%20solu%C3%A7%C3%B5es%20operacionais.`;
 
@@ -750,7 +746,11 @@ export default function Dashboard() {
         siteAPI.getAll(),
         fiscalAPI.getRascunhoManual(),
       ]);
-      if (resumoRes.data) setResumo(resumoRes.data);
+      if (!resumoRes.data || !Array.isArray(resumoRes.data.vendas_periodo)) {
+        throw new Error('A API nao retornou a serie operacional de vendas do cockpit.');
+      }
+      setResumo(resumoRes.data);
+      setSalesPeriodDays(resumoRes.data.periodo_dias);
       setPedidos(Array.isArray(pedidosRes.data) ? pedidosRes.data : []);
       setLeads(Array.isArray(leadsRes.data) ? leadsRes.data : []);
       setProdutos(Array.isArray(produtosRes.data) ? produtosRes.data : []);
@@ -801,6 +801,26 @@ export default function Dashboard() {
       setLoading(false);
     }
   }, []);
+
+  const changeSalesPeriod = async (days) => {
+    if (salesPeriodLoading || days === salesPeriodDays) return;
+
+    setSalesPeriodLoading(true);
+    setSalesPeriodError('');
+    try {
+      const response = await dashboardAPI.getResumo(days);
+      if (!response.data || !Array.isArray(response.data.vendas_periodo) || response.data.periodo_dias !== days) {
+        throw new Error('A API nao confirmou o periodo solicitado para o cockpit.');
+      }
+
+      setResumo(response.data);
+      setSalesPeriodDays(days);
+    } catch (error) {
+      setSalesPeriodError(getApiErrorMessage(error, 'Nao foi possivel atualizar o periodo de vendas.'));
+    } finally {
+      setSalesPeriodLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -1242,6 +1262,23 @@ export default function Dashboard() {
       return acc;
     }, {});
   }, [pedidos]);
+  const salesSeries = useMemo(() => (
+    resumo.vendas_periodo.map((item) => {
+      const date = new Date(`${item.data}T12:00:00`);
+      const dateLabel = salesDateFormatter.format(date);
+      return {
+        data: item.data,
+        label: salesPeriodDays === 7 ? `${salesWeekdayFormatter.format(date)} ${dateLabel}` : dateLabel,
+        receita: Number(item.receita_confirmada),
+        pedidos: Number(item.pedidos_confirmados),
+      };
+    })
+  ), [resumo.vendas_periodo, salesPeriodDays]);
+  const salesTotals = useMemo(() => salesSeries.reduce(
+    (total, item) => ({ receita: total.receita + item.receita, pedidos: total.pedidos + item.pedidos }),
+    { receita: 0, pedidos: 0 },
+  ), [salesSeries]);
+  const salesChartTickInterval = salesPeriodDays === 7 ? 0 : salesPeriodDays === 30 ? 4 : 14;
 
   if (authLoading) {
     return (
@@ -1304,10 +1341,12 @@ export default function Dashboard() {
               <p className="text-xs font-black uppercase tracking-[0.18em]">Operação real</p>
             </div>
             <p className="mt-3 text-2xl font-black">{formatPrice(resumo.faturamento_mes)}</p>
-            <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-              <div className="h-full w-[72%] rounded-full bg-[#C9A227]" />
-            </div>
-            <p className="mt-3 text-xs font-semibold text-zinc-400">Base operacional conectada à API e ao banco real.</p>
+            <p className="mt-3 text-xs font-semibold text-zinc-400">Receita aprovada no mês corrente.</p>
+            {resumo.atualizado_em && (
+              <p className="mt-2 text-[0.68rem] font-bold uppercase text-zinc-600">
+                Atualizado {new Date(resumo.atualizado_em).toLocaleString('pt-BR')}
+              </p>
+            )}
           </div>
         </div>
       </aside>
@@ -1389,60 +1428,72 @@ export default function Dashboard() {
               {activeTab === 'overview' && (
                 <div className="space-y-6">
                   <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-                    <StatCard title="Pedidos hoje" value={resumo.pedidos_hoje} detail="vs. ontem" trend={12} icon={ShoppingBag} tone="slate" />
-                    <StatCard title="Clientes" value={resumo.total_clientes} detail="base ativa" trend={8} icon={Users} tone="emerald" />
-                    <StatCard title="Faturamento" value={formatPrice(resumo.faturamento_mes)} detail="no mês" trend={18} icon={TrendingUp} tone="amber" />
-                    <StatCard title="Leads novos" value={resumo.leads_novos} detail="em qualificação" trend={-3} icon={UserRound} tone="indigo" />
+                    <StatCard title="Pedidos hoje" value={resumo.pedidos_hoje} detail="Recebidos no dia operacional" icon={ShoppingBag} tone="slate" />
+                    <StatCard title="Clientes" value={resumo.total_clientes} detail="Cadastros visíveis para o tenant" icon={Users} tone="emerald" />
+                    <StatCard title="Faturamento" value={formatPrice(resumo.faturamento_mes)} detail="Pagamentos aprovados no mês" icon={TrendingUp} tone="amber" />
+                    <StatCard title="Leads novos" value={resumo.leads_novos} detail="Aguardando qualificação" icon={UserRound} tone="indigo" />
                   </div>
-
-                  <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <h2 className="text-xl font-black text-slate-950">Arquitetura operacional integrada</h2>
-                        <p className="mt-1 text-sm text-slate-500">
-                          E-commerce, dropshipping, logística, gateways de pagamento e módulos empresariais conectados pelo canal de API.
-                        </p>
-                      </div>
-                      <span className="rounded-full bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-800">API pública conectada</span>
-                    </div>
-                    <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                      {[
-                        { label: 'E-commerce', status: 'Operante', icon: ShoppingBag },
-                        { label: 'Cadastros reais', status: 'Em uso', icon: PackagePlus },
-                        { label: 'Dropshipping', status: 'Paralelo', icon: Handshake },
-                        { label: 'Logística', status: 'Paralelo', icon: Boxes },
-                        { label: 'Gateways/API', status: 'Paralelo', icon: Database },
-                      ].map((item) => {
-                        const Icon = item.icon;
-                        return (
-                          <div key={item.label} className="rounded-lg border border-slate-100 bg-slate-50 p-4">
-                            <Icon className="text-amber-600" size={22} />
-                            <p className="mt-3 text-sm font-black text-slate-950">{item.label}</p>
-                            <p className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-500">{item.status}</p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </section>
 
                   <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(360px,1fr)]">
                     <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div>
                           <h2 className="text-xl font-black text-slate-950">Performance de vendas</h2>
-                          <p className="mt-1 text-sm text-slate-500">Receita por dia da semana e tendência operacional.</p>
+                          <p className="mt-1 text-sm text-slate-500">Receita com pagamento aprovado, consolidada no fuso de São Paulo.</p>
                         </div>
-                        <span className="rounded-full bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-800">Conversão {resumo.conversao}%</span>
+                        <div className="inline-flex self-start rounded-lg border border-slate-200 bg-slate-100 p-1" aria-label="Período do gráfico de vendas">
+                          {salesPeriodOptions.map((days) => (
+                            <button
+                              key={days}
+                              type="button"
+                              onClick={() => changeSalesPeriod(days)}
+                              disabled={salesPeriodLoading}
+                              aria-pressed={salesPeriodDays === days}
+                              className={`min-w-14 rounded-md px-3 py-2 text-xs font-black transition disabled:cursor-wait disabled:opacity-60 ${
+                                salesPeriodDays === days ? 'bg-slate-950 text-white' : 'text-slate-600 hover:bg-white'
+                              }`}
+                            >
+                              {days}d
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                      <div className="mt-8 flex h-72 items-end gap-3">
-                        {chart.map((item) => (
-                          <div key={item.label} className="flex h-full flex-1 flex-col justify-end gap-3">
-                            <div className="relative flex flex-1 items-end rounded-lg bg-slate-100">
-                              <div className="w-full rounded-lg bg-slate-950" style={{ height: `${item.value}%` }} />
-                            </div>
-                            <p className="text-center text-xs font-black text-slate-500">{item.label}</p>
+                      <div className="mt-5 flex flex-wrap gap-3">
+                        <span className="rounded-md bg-emerald-50 px-3 py-2 text-sm font-black text-emerald-800">
+                          {formatPrice(salesTotals.receita)} confirmados
+                        </span>
+                        <span className="rounded-md bg-slate-100 px-3 py-2 text-sm font-black text-slate-700">
+                          {salesTotals.pedidos} pedidos pagos
+                        </span>
+                        <span className="rounded-md bg-amber-50 px-3 py-2 text-sm font-black text-amber-800">
+                          Conversão CRM {resumo.conversao}%
+                        </span>
+                      </div>
+                      {salesPeriodError && (
+                        <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-800">{salesPeriodError}</p>
+                      )}
+                      <div className="mt-6 h-72" aria-busy={salesPeriodLoading}>
+                        {salesTotals.pedidos === 0 ? (
+                          <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-6 text-center">
+                            <TrendingUp className="text-slate-400" size={30} />
+                            <p className="mt-3 font-black text-slate-800">Nenhuma venda com pagamento aprovado no período</p>
+                            <p className="mt-1 text-sm text-slate-500">Pedidos pendentes ou recusados não são contabilizados como faturamento.</p>
                           </div>
-                        ))}
+                        ) : (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={salesSeries} margin={{ top: 12, right: 12, left: 4, bottom: 0 }}>
+                              <CartesianGrid stroke="#E2E8F0" strokeDasharray="4 4" vertical={false} />
+                              <XAxis dataKey="label" interval={salesChartTickInterval} tick={{ fill: '#64748B', fontSize: 11, fontWeight: 700 }} tickLine={false} axisLine={false} />
+                              <YAxis tickFormatter={(value) => `R$ ${Number(value).toLocaleString('pt-BR')}`} tick={{ fill: '#64748B', fontSize: 11, fontWeight: 700 }} tickLine={false} axisLine={false} width={78} />
+                              <Tooltip
+                                formatter={(value) => [formatPrice(value), 'Receita aprovada']}
+                                labelFormatter={(label) => `Data ${label}`}
+                                contentStyle={{ border: '1px solid #CBD5E1', borderRadius: 8, fontWeight: 700 }}
+                              />
+                              <Area type="monotone" dataKey="receita" stroke="#0F172A" strokeWidth={3} fill="#C9A227" fillOpacity={0.28} activeDot={{ r: 5, fill: '#C9A227', stroke: '#0F172A', strokeWidth: 2 }} />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        )}
                       </div>
                     </section>
 
@@ -1458,7 +1509,7 @@ export default function Dashboard() {
                         {[
                           { label: 'Estoque baixo', value: resumo.produtos_estoque_baixo, icon: Boxes, tone: 'text-orange-700 bg-orange-50' },
                           { label: 'Ticket médio', value: formatPrice(resumo.ticket_medio), icon: CreditCard, tone: 'text-emerald-700 bg-emerald-50' },
-                          { label: 'Pedidos em processamento', value: statusCounts.Processando || statusCounts.Pendente || 0, icon: PackageCheck, tone: 'text-indigo-700 bg-indigo-50' },
+                          { label: 'Pedidos em processamento', value: (statusCounts.Processando || 0) + (statusCounts.Pendente || 0), icon: PackageCheck, tone: 'text-indigo-700 bg-indigo-50' },
                         ].map((item) => {
                           const Icon = item.icon;
                           return (

@@ -7,6 +7,7 @@
  */
 
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
 import '@/App.css';
 import { AuthProvider } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
@@ -22,13 +23,22 @@ import Contato from './pages/Contato';
 import Carrinho from './pages/Carrinho';
 import Checkout from './pages/Checkout';
 import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
 import AreaCliente from './pages/AreaCliente';
 import AcompanharPedido from './pages/AcompanharPedido';
 import ConfirmarCadastro from './pages/ConfirmarCadastro';
 import Institucional from './pages/Institucional';
 import PoliticaPrivacidade from './pages/PoliticaPrivacidade';
 import PoliticaReembolso from './pages/PoliticaReembolso';
+
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+
+function DashboardRoute() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-[#050505] text-sm font-black text-white">Carregando painel administrativo...</div>}>
+      <Dashboard />
+    </Suspense>
+  );
+}
 
 function getRouterBasename() {
   const publicUrl = process.env.PUBLIC_URL || '';
@@ -68,7 +78,7 @@ function AppShell() {
         <Route path="/politica-reembolso" element={<PoliticaReembolso />} />
         <Route path="/login" element={<Login />} />
         <Route path="/area-cliente" element={<AreaCliente />} />
-        <Route path="/dashboard/*" element={<Dashboard />} />
+        <Route path="/dashboard/*" element={<DashboardRoute />} />
         <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

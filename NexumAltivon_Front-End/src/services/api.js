@@ -191,6 +191,15 @@ const normalizeRecord = (record) => {
     leads_novos: record.leads_novos ?? record.leadsNovos,
     produtos_estoque_baixo: record.produtos_estoque_baixo ?? record.produtosEstoqueBaixo,
     ticket_medio: record.ticket_medio ?? record.ticketMedio,
+    periodo_dias: record.periodo_dias ?? record.periodoDias,
+    periodo_inicio: record.periodo_inicio ?? record.periodoInicio,
+    periodo_fim: record.periodo_fim ?? record.periodoFim,
+    atualizado_em: record.atualizado_em ?? record.atualizadoEm,
+    vendas_periodo: (record.vendas_periodo ?? record.vendasPeriodo ?? []).map((item) => ({
+      ...item,
+      pedidos_confirmados: item.pedidos_confirmados ?? item.pedidosConfirmados,
+      receita_confirmada: item.receita_confirmada ?? item.receitaConfirmada,
+    })),
   };
 };
 
@@ -429,7 +438,7 @@ export const leadAPI = {
 };
 
 export const dashboardAPI = {
-  getResumo: () => api.get('/dashboard/resumo'),
+  getResumo: (dias = 7) => api.get('/dashboard/resumo', { params: { dias } }),
   getCorporativoPainel: () => api.get('/gestao-corporativa/painel'),
   getDicionarioDados: () => api.get('/gestao-corporativa/dicionario-dados'),
   getCicloOperacional: () => api.get('/gestao-corporativa/ciclo-operacional'),
