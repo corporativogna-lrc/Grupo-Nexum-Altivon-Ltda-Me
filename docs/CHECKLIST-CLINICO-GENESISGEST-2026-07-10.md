@@ -18,6 +18,7 @@ Apuracao integrada de Services, testes e cobertura: 2026-07-17.
 Planejamento clinico de unificacao dos bancos: 2026-07-17.
 Apuracao integrada de usuarios, perfis, permissoes e RBAC no Desktop: 2026-07-17.
 Apuracao transacional do checkout e incidentes pos-commit: 2026-07-18.
+Diretriz de paridade administrativa entre tabelas e formularios WPF: 2026-07-18.
 
 ## Medicao Estrita de Conclusao
 
@@ -51,6 +52,25 @@ Objetivo aprovado: substituir o uso permanente de `nexum_altivon` e `genesis_bd`
 | UBD-08 Desativacao | Remover o schema antigo somente depois de todos os consumidores, backups, observabilidade e periodo de estabilidade apontarem exclusivamente para o schema canonico | Pendente programado |
 
 Regra de preservacao: nenhuma tabela sera escolhida apenas pelo nome ou pela quantidade de linhas. A decisao por entidade deve considerar completude, chaves, relacoes, atualidade, consistencia, valor fiscal/financeiro e consumidor operacional. Nao sera usado CRUD MySQL direto no Desktop para executar esta fusao.
+
+## Programa de Paridade Administrativa Banco-WPF
+
+Este programa e criterio de aceite do Desktop e nao aumenta isoladamente o numerador da Definition of Done. Cada tabela administrativa deve possuir responsabilidade funcional inequívoca e cobertura WPF comprovada. Tabelas filhas podem integrar abas do formulario de seu agregado, mas nao podem ficar sem operacao, relacao e auditoria visiveis. Tabelas estritamente tecnicas exigem classificacao e justificativa formal para nao receber tela direta.
+
+| ID | Criterio obrigatorio | Status real |
+|---|---|---|
+| WPFDB-01 Inventario | Catalogar as tabelas de `nexum_altivon` e `genesis_bd` como administrativa, transacional, filha de agregado, integracao, auditoria ou tecnica | Pendente programado |
+| WPFDB-02 Linhagem | Vincular cada tabela administrativa a modulo, entidade, endpoint Minimal API, permissao, formulario WPF e operacoes permitidas | Pendente programado |
+| WPFDB-03 Contrato oficial | Proibir acesso MySQL direto no Desktop; toda leitura/escrita deve passar pela API oficial com DTO validado e `CancellationToken` | Parcial |
+| WPFDB-04 Formulario individual | Entregar formulario profissional especifico para cada processo administrativo, sem tela generica usada como conclusao funcional | Parcial |
+| WPFDB-05 Separacao de dominios | Contas a pagar, contas a receber, conciliacao, tesouraria, fiscal, estoque e demais dominios devem possuir comandos, validacoes e persistencia separados | Pendente programado |
+| WPFDB-06 Padrao transacional | Cada formulario deve conter contexto, codigo, tenant, status, acoes, cabecalho, itens/servicos, financeiro, anexos, auditoria, totalizadores e validacao em tempo real quando aplicavel | Parcial |
+| WPFDB-07 Seguranca | Aplicar JWT em memoria, RBAC, tenant, reautenticacao para acao sensivel e mascaramento de segredos | Parcial |
+| WPFDB-08 Integridade | Aplicar concorrencia, idempotencia, tratamento de erro HTTP, releitura persistida e nenhuma confirmacao apenas visual | Parcial |
+| WPFDB-09 Relacionamentos | Exibir e operar relacoes pai-filho no agregado correto sem gravacao cruzada ambigua entre dominios | Pendente programado |
+| WPFDB-10 Homologacao | Provar formulario por formulario com API, banco, auditoria, permissao, erro controlado, build WPF e limpeza de dados de validacao | Pendente programado |
+
+Regra de aceite: a cobertura WPF somente sera concluida quando a matriz tabela-endpoint-formulario-permissao atingir 100%, sem tabelas administrativas orfas e sem formulario que grave em dominio diferente daquele declarado.
 
 ## Bloqueadores B1 a B14
 
@@ -147,7 +167,7 @@ O painel HTML removido foi recuperado somente para leitura pelo historico Git (`
 
 | Ferramenta prometida | Tela React oficial | API/persistencia | Status clinico em 2026-07-14 | Evidencia ou bloqueio atual |
 |---|---|---|---|---|
-| Dashboard | Existe em `Dashboard.js` | `/api/dashboard/resumo` e `/api/admin/dashboard/completo` | Parcial validado | KPIs reais existem; a serie semanal de linhas 453-459 ainda e estatica e deve ser substituida por consulta real por tenant e periodo antes de aceite |
+| Dashboard | Existe em `Dashboard.js` | `/api/dashboard/resumo` e `/api/admin/dashboard/completo` | Parcial avancado | Em 2026-07-18, a serie semanal estatica e os percentuais/tendencias fabricados foram removidos. `/api/dashboard/resumo?dias=7|30|90` passou a consolidar somente pagamentos aprovados, excluindo cancelados e reembolsados, no fuso de Sao Paulo e sob os filtros globais de tenant e soft-delete. A API local e a publica retornaram series identicas; 90 dias totalizaram 6 pedidos e R$ 5.289,73, exatamente iguais a consulta direta no MySQL. Ainda faltam prova com dois tenants distintos e homologacao visual publicada no Chrome. |
 | Pedidos | Existe | `/api/pedidos*`, MySQL `pedidos` | Parcial validado | Lista e alteracao de status existem; fluxo venda-pagamento-fiscal-logistica-financeiro ainda nao foi homologado integralmente |
 | Produtos | Existe | `/api/produtos*`, MySQL `produtos` | Parcial validado | CRUD e catalogo existem; falta homologar todas as restricoes de estoque/tenant e marketplace |
 | Clientes | Existe | `/api/clientes*`, MySQL `clientes` | Parcial validado | CRUD, portal e confirmacao existem; falta teste completo de isolamento e historico operacional |
@@ -172,7 +192,7 @@ A arvore comprovada e a arvore de aceite integral estao em `docs/ARVORE-REAL-E-M
 
 | ID | Capacidade recuperada | Status clinico | Evidencia obrigatoria para concluir |
 |---|---|---|---|
-| CAP-01 | Cockpit executivo dinamico | Parcial | KPIs e series por tenant/periodo provenientes da API e conferidos no banco |
+| CAP-01 | Cockpit executivo dinamico | Parcial avancado | Series reais de 7, 30 e 90 dias foram conferidas entre API local, API publica e MySQL em 2026-07-18; concluir com teste de isolamento entre dois tenants e homologacao visual publicada no Chrome |
 | CAP-02 | Venda omnicanal | Parcial | Correlacao unica de pedido, pagamento, estoque, fiscal, entrega e financeiro |
 | CAP-03 | Compras e abastecimento | Parcial | Solicitacao, cotacao, aprovacao, pedido, entrada, estoque e financeiro comprovados |
 | CAP-04 | WMS | Parcial | Movimentacao, inventario, kardex, localizacao e transferencia com concorrencia |
@@ -233,6 +253,7 @@ A arvore comprovada e a arvore de aceite integral estao em `docs/ARVORE-REAL-E-M
 | Acesso local ao Desktop WPF | Concluido no servidor de desenvolvimento | Em 2026-07-14 foi criado e validado `GenesisGest.Net Desktop.lnk` na Area de Trabalho do usuario, apontando para o executavel Release oficial dentro de `D:\Nexum Altivon\NexumAltivon.com` |
 | Gestao de usuarios e RBAC no Desktop | Concluido no escopo funcional | `AccessManagementWindow` executa cadastro, alteracao, ativacao/desativacao, troca de perfil, perfis corporativos, permissoes e matriz RBAC pela API oficial. Build completo passou com 0 avisos/erros; ensaio autenticado confirmou HTTP 200/201, persistencia, 9 eventos de auditoria e limpeza final sem residuos controlados |
 | Gestao superior de infraestrutura no Desktop | Pendente programado | Implementar sob `SuperAdmin` a gestao de conexoes de bancos, endpoints, servicos e integracoes sensiveis, com mascaramento, autenticacao recente, validacao antes de salvar, auditoria e aplicacao controlada sem reinicio silencioso |
+| Paridade integral entre tabelas administrativas e WPF | Pendente programado | Cumprir WPFDB-01 a WPFDB-10: inventariar e reconciliar 100% da matriz tabela-endpoint-formulario-permissao, separar dominios e homologar cada formulario na API, banco, auditoria e Desktop |
 | Unificacao de `nexum_altivon` e `genesis_bd` | Pendente programado, sem alteracao fisica autorizada nesta etapa | Cumprir UBD-01 a UBD-08 com inventario, linhagem, modelo canonico, ensaio, reconciliacao, backup, reversao e corte controlado; somente entao remover a segunda connection string |
 | Reestruturacao visual do Desktop WPF | Pendente programado | Manter identidade e cores, aplicar fundo fume translucido com efeito de cristal/acrylic que preserve a visibilidade controlada da Area de Trabalho, bordas arredondadas e janela sempre contida na area util do monitor. Remover barras de rolagem estruturais horizontais/verticais e reduzir a poluicao do dashboard: manter navegacao lateral e menus suspensos, com um unico grafico central selecionavel e conteudo operacional organizado sem sobreposicao |
 | Portal dinamico administravel | Parcial avancado | Em 2026-07-14 foi implementada a biblioteca de midia em `SiteMediaLibrary.js`, endpoints protegidos `/api/site/midias`, tabela MySQL `site_midias`, validacao binaria PNG/JPEG/WebP, dimensoes, limite de 8 MB, tenant, soft-delete e concorrencia por `RowVersion`. O `wwwroot` oficial passou a ser servido pelo processo da API na unica porta 5010. Ensaio autenticado real confirmou login 200, upload 201, listagem do ID, arquivo local/publico 200 com 11.080 bytes, atualizacao 200, concorrencia 409, exclusao 204, `is_deleted=1`, logout 200 e limpeza final sem linha ou arquivo controlado residual. Em 2026-07-17, `Salvar configuracao publica` foi corrigido e validado com confirmacao da API, payload publico, MySQL e persistencia apos reinicio. React compilou com codigo 0; ainda faltam evolucao visual ampla, administracao especifica de imagens de loja/produto e validacao Chrome dos fluxos responsivos publicados |

@@ -129,7 +129,7 @@ GenesisGest.Net concluido
 
 | ID | Capacidade | Estado atual | Gate para conclusao |
 |---|---|---|---|
-| CAP-01 | Cockpit executivo dinamico | Parcial | Remover series estaticas e provar KPIs por tenant/periodo com API, MySQL e tela |
+| CAP-01 | Cockpit executivo dinamico | Parcial avancado | Series estaticas removidas e periodos 7/30/90 reconciliados entre API local, API publica e MySQL; falta provar isolamento entre dois tenants e homologar a tela publicada no Chrome |
 | CAP-02 | Venda omnicanal | Parcial | Provar pedido, pagamento, reserva/baixa, fiscal, entrega e financeiro na mesma correlacao |
 | CAP-03 | Compras e abastecimento | Parcial | Provar solicitacao, cotacao, aprovacao, pedido, entrada, estoque e financeiro |
 | CAP-04 | WMS | Parcial | Provar movimentacao, inventario, kardex, localizacao e transferencia com concorrencia |
