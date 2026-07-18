@@ -80,3 +80,24 @@ public sealed record DesktopAuditoriaOperacional(
     string? IpAddress,
     string? Endpoint,
     DateTime CreatedAt);
+
+public sealed record DesktopConciliacaoFinanceira(
+    int LancamentoFinanceiroId,
+    string? Descricao,
+    decimal Valor,
+    DateTime? DataPagamento,
+    string? MeioPagamento,
+    string? ContaBancaria,
+    string Status,
+    int? ConciliacaoId,
+    string? ReferenciaBancaria,
+    string? Observacoes,
+    DateTime? DataConciliacao,
+    string? RowVersion);
+
+public sealed record DesktopConciliacaoFinanceiraRequest(
+    int LancamentoFinanceiroId,
+    string Status,
+    string? ReferenciaBancaria,
+    string? Observacoes,
+    string? RowVersion);

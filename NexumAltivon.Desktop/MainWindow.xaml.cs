@@ -353,6 +353,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        if (title == "Conciliação bancária")
+        {
+            var conciliacaoWindow = new ConciliacaoFinanceiraWindow(Terminal)
+            {
+                Owner = this
+            };
+            conciliacaoWindow.ShowDialog();
+            return;
+        }
+
         if (IsFinancialWorkspace(title))
         {
             MessageBox.Show(
@@ -564,8 +574,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         return title is "Caixa e conciliação"
             or "Tesouraria"
-            or "Alçadas de aprovação"
-            or "Conciliação bancária";
+            or "Alçadas de aprovação";
     }
 
     private static bool IsMasterDataWorkspace(string title)

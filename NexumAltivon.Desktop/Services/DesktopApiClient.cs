@@ -6,6 +6,7 @@
  * Versão: 1.1.5
  */
 
+using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -136,6 +137,53 @@ public sealed class DesktopApiClient
             HttpMethod.Get,
             $"/api/auditoria?tabela={Uri.EscapeDataString(tabela)}",
             null,
+            cancellationToken);
+
+    public Task<DesktopApiDataResult<List<DesktopConciliacaoFinanceira>>> GetConciliacoesFinanceirasAsync(
+        TerminalProfile profile,
+        string token,
+        DateTime? inicio,
+        DateTime? fim,
+        string? status,
+        CancellationToken cancellationToken = default)
+    {
+        var query = new List<string>();
+        if (inicio.HasValue)
+        {
+            query.Add($"inicio={Uri.EscapeDataString(inicio.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))}");
+        }
+
+        if (fim.HasValue)
+        {
+            query.Add($"fim={Uri.EscapeDataString(fim.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            query.Add($"status={Uri.EscapeDataString(status.Trim())}");
+        }
+
+        var suffix = query.Count == 0 ? string.Empty : $"?{string.Join("&", query)}";
+        return SendAuthorizedAsync<List<DesktopConciliacaoFinanceira>>(
+            profile,
+            token,
+            HttpMethod.Get,
+            $"/api/financeiro/conciliacao{suffix}",
+            null,
+            cancellationToken);
+    }
+
+    public Task<DesktopApiDataResult<DesktopConciliacaoFinanceira>> SaveConciliacaoFinanceiraAsync(
+        TerminalProfile profile,
+        string token,
+        DesktopConciliacaoFinanceiraRequest payload,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<DesktopConciliacaoFinanceira>(
+            profile,
+            token,
+            HttpMethod.Post,
+            "/api/financeiro/conciliacao",
+            payload,
             cancellationToken);
 
     public Task<DesktopApiDataResult<List<DesktopCrmSegmento>>> GetMarketingSegmentsAsync(

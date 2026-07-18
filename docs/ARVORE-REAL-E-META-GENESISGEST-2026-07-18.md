@@ -134,12 +134,12 @@ GenesisGest.Net concluido
 | CAP-03 | Compras e abastecimento | Parcial | Provar solicitacao, cotacao, aprovacao, pedido, entrada, estoque e financeiro |
 | CAP-04 | WMS | Parcial | Provar movimentacao, inventario, kardex, localizacao e transferencia com concorrencia |
 | CAP-05 | Fiscal explicavel | Parcial | Exibir roteamento, motivo, numeracao, XML, chave, protocolo e eventos oficiais |
-| CAP-06 | FICO corporativo | Parcial avancado | Contas a pagar/receber usam janelas, contratos, baixas, fluxo de caixa e auditoria proprios; concluir conciliacao, fechamento, DRE e PDFs em tela/API oficial |
+| CAP-06 | FICO corporativo | Parcial avancado | Contas a pagar/receber, baixas e conciliacao bancaria usam janelas, contratos, persistencia, concorrencia e auditoria proprios; concluir tesouraria, fechamento, DRE e PDFs em tela/API oficial |
 | CAP-07 | Logistica e fulfillment | Parcial | Provar cotacao, expedicao, rastreamento externo, entrega e ocorrencias |
 | CAP-08 | CRM e atendimento Yara | Parcial | Provar pipeline, oportunidade, atividade, ticket e atendimento com chave real, sem seletor de persona |
 | CAP-09 | HCM | Parcial | Provar admissao, ponto, folha, beneficios, avaliacao, desligamento e eSocial |
 | CAP-10 | MES e OPS | Parcial | Entregar telas React/WPF e provar OS, apontamento, manutencao e ativos |
-| CAP-11 | Paridade Desktop | Parcial avancado | Contas a pagar/receber confirmam releitura; substituir as cinco janelas genericas e reconciliar 100% da matriz tabela-endpoint-formulario-permissao |
+| CAP-11 | Paridade Desktop | Parcial avancado | Contas a pagar/receber e conciliacao bancaria confirmam releitura; substituir as cinco janelas genericas e reconciliar 100% da matriz tabela-endpoint-formulario-permissao |
 | CAP-12 | Marketplaces e dropshipping | Bloqueado externamente | Homologar cada seller e provedor com credencial e identificador oficial |
 | CAP-13 | Portal visual dinamico | Parcial | Simplificar banners/slides com selecao, upload, ordem, ativacao e substituicao sem URL manual; administrar imagens de lojas/produtos, validar responsividade e remover conteudo estatico operacional |
 | CAP-14 | Operacao observavel | Parcial | Comprovar logs, traces, metricas, jobs, Redis, backup e restore |

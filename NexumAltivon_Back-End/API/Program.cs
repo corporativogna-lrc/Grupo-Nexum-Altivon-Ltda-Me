@@ -6479,67 +6479,19 @@ app.MapGet("/api/financeiro/conciliacao", [Authorize(Policy = "Financeiro")] asy
     DateTime? fim,
     string? status,
     NexumDbContext db,
+    ITenantContext tenantContext,
     CancellationToken ct) =>
-{
-    var conciliacao = await db.Database.SqlQueryRaw<ConciliacaoFinanceiraDto>(
-        """
-        SELECT
-            f.id AS LancamentoFinanceiroId,
-            f.descricao AS Descricao,
-            f.valor AS Valor,
-            f.data_pagamento AS DataPagamento,
-            f.meio_pagamento AS MeioPagamento,
-            f.conta_bancaria AS ContaBancaria,
-            COALESCE(c.cnc_status, CASE WHEN f.status = 2 THEN 'PENDENTE' ELSE 'NAO_APLICAVEL' END) AS Status,
-            c.cnc_id AS ConciliacaoId,
-            c.cnc_referencia_bancaria AS ReferenciaBancaria,
-            c.cnc_data_conciliacao AS DataConciliacao
-        FROM financeiros f
-        LEFT JOIN ctb_conciliacoes c ON c.cnc_financeiro_id = f.id
-        WHERE ({0} IS NULL OR f.data_pagamento >= {0})
-          AND ({1} IS NULL OR f.data_pagamento <= {1})
-          AND ({2} IS NULL OR c.cnc_status = {2})
-        ORDER BY COALESCE(f.data_pagamento, f.created_at) DESC
-        LIMIT 500
-        """,
-        (object?)inicio ?? DBNull.Value,
-        (object?)fim ?? DBNull.Value,
-        (object?)NormalizeConciliacaoStatus(status) ?? DBNull.Value)
-        .ToListAsync(ct);
-
-    return Results.Ok(ApiResponse<List<ConciliacaoFinanceiraDto>>.Ok(conciliacao, "Conciliacao financeira carregada.", conciliacao.Count));
-})
+    await ListarConciliacoesFinanceirasAsync(inicio, fim, status, db, tenantContext, ct))
 .WithName("FicoConciliacaoListar");
 
 app.MapPost("/api/financeiro/conciliacao", [Authorize(Policy = "Financeiro")] async (
     ConciliacaoFinanceiraRequest request,
     NexumDbContext db,
     ClaimsPrincipal principal,
+    ITenantContext tenantContext,
+    HttpContext httpContext,
     CancellationToken ct) =>
-{
-    if (request.LancamentoFinanceiroId <= 0)
-    {
-        return Results.BadRequest(ApiResponse<string>.Erro("Lancamento financeiro e obrigatorio."));
-    }
-
-    await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        INSERT INTO ctb_conciliacoes
-            (cnc_financeiro_id, cnc_status, cnc_referencia_bancaria, cnc_observacoes, cnc_usuario_id, cnc_data_conciliacao)
-        VALUES
-            ({request.LancamentoFinanceiroId}, {NormalizeConciliacaoStatus(request.Status)}, {TrimOrNull(request.ReferenciaBancaria)},
-             {TrimOrNull(request.Observacoes)}, {GetCurrentUserId(principal)}, UTC_TIMESTAMP())
-        ON DUPLICATE KEY UPDATE
-            cnc_status = VALUES(cnc_status),
-            cnc_referencia_bancaria = VALUES(cnc_referencia_bancaria),
-            cnc_observacoes = VALUES(cnc_observacoes),
-            cnc_usuario_id = VALUES(cnc_usuario_id),
-            cnc_data_conciliacao = UTC_TIMESTAMP()
-        """,
-        ct);
-
-    return Results.Ok(ApiResponse<object>.Ok(new { request.LancamentoFinanceiroId }, "Conciliacao financeira registrada."));
-})
+    await RegistrarConciliacaoFinanceiraAsync(request, db, principal, tenantContext, httpContext, ct))
 .WithName("FicoConciliacaoRegistrar");
 
 app.MapGet("/api/financeiro/dre", [Authorize(Policy = "Financeiro")] async (
@@ -6686,67 +6638,19 @@ app.MapGet("/api/financeiro/contabil/conciliacao", [Authorize(Policy = "Financei
     DateTime? fim,
     string? status,
     NexumDbContext db,
+    ITenantContext tenantContext,
     CancellationToken ct) =>
-{
-    var conciliacao = await db.Database.SqlQueryRaw<ConciliacaoFinanceiraDto>(
-        """
-        SELECT
-            f.id AS LancamentoFinanceiroId,
-            f.descricao AS Descricao,
-            f.valor AS Valor,
-            f.data_pagamento AS DataPagamento,
-            f.meio_pagamento AS MeioPagamento,
-            f.conta_bancaria AS ContaBancaria,
-            COALESCE(c.cnc_status, CASE WHEN f.status = 2 THEN 'PENDENTE' ELSE 'NAO_APLICAVEL' END) AS Status,
-            c.cnc_id AS ConciliacaoId,
-            c.cnc_referencia_bancaria AS ReferenciaBancaria,
-            c.cnc_data_conciliacao AS DataConciliacao
-        FROM financeiros f
-        LEFT JOIN ctb_conciliacoes c ON c.cnc_financeiro_id = f.id
-        WHERE ({0} IS NULL OR f.data_pagamento >= {0})
-          AND ({1} IS NULL OR f.data_pagamento <= {1})
-          AND ({2} IS NULL OR c.cnc_status = {2})
-        ORDER BY COALESCE(f.data_pagamento, f.created_at) DESC
-        LIMIT 500
-        """,
-        (object?)inicio ?? DBNull.Value,
-        (object?)fim ?? DBNull.Value,
-        (object?)NormalizeConciliacaoStatus(status) ?? DBNull.Value)
-        .ToListAsync(ct);
-
-    return Results.Ok(ApiResponse<List<ConciliacaoFinanceiraDto>>.Ok(conciliacao, "Conciliacao financeira carregada.", conciliacao.Count));
-})
+    await ListarConciliacoesFinanceirasAsync(inicio, fim, status, db, tenantContext, ct))
 .WithName("FicoContabilConciliacaoListar");
 
 app.MapPost("/api/financeiro/contabil/conciliacao", [Authorize(Policy = "Financeiro")] async (
     ConciliacaoFinanceiraRequest request,
     NexumDbContext db,
     ClaimsPrincipal principal,
+    ITenantContext tenantContext,
+    HttpContext httpContext,
     CancellationToken ct) =>
-{
-    if (request.LancamentoFinanceiroId <= 0)
-    {
-        return Results.BadRequest(ApiResponse<string>.Erro("Lancamento financeiro e obrigatorio."));
-    }
-
-    await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        INSERT INTO ctb_conciliacoes
-            (cnc_financeiro_id, cnc_status, cnc_referencia_bancaria, cnc_observacoes, cnc_usuario_id, cnc_data_conciliacao)
-        VALUES
-            ({request.LancamentoFinanceiroId}, {NormalizeConciliacaoStatus(request.Status)}, {TrimOrNull(request.ReferenciaBancaria)},
-             {TrimOrNull(request.Observacoes)}, {GetCurrentUserId(principal)}, UTC_TIMESTAMP())
-        ON DUPLICATE KEY UPDATE
-            cnc_status = VALUES(cnc_status),
-            cnc_referencia_bancaria = VALUES(cnc_referencia_bancaria),
-            cnc_observacoes = VALUES(cnc_observacoes),
-            cnc_usuario_id = VALUES(cnc_usuario_id),
-            cnc_data_conciliacao = UTC_TIMESTAMP()
-        """,
-        ct);
-
-    return Results.Ok(ApiResponse<object>.Ok(new { request.LancamentoFinanceiroId }, "Conciliacao financeira registrada."));
-})
+    await RegistrarConciliacaoFinanceiraAsync(request, db, principal, tenantContext, httpContext, ct))
 .WithName("FicoContabilConciliacaoRegistrar");
 
 app.MapGet("/api/financeiro/contabil/dre", [Authorize(Policy = "Financeiro")] async (
@@ -13057,16 +12961,303 @@ static string? NormalizePartidaTipo(string? value)
     };
 }
 
-static string NormalizeConciliacaoStatus(string? value)
+static string? NormalizeConciliacaoStatus(string? value)
 {
     var normalized = NormalizeBusinessKey(value);
     return normalized switch
     {
+        "" => null,
+        "PENDENTE" => "PENDENTE",
         "CONCILIADO" or "CONCILIADA" => "CONCILIADO",
         "DIVERGENTE" => "DIVERGENTE",
         "IGNORADO" or "IGNORADA" => "IGNORADO",
-        _ => "PENDENTE"
+        _ => null
     };
+}
+
+static async Task<IResult> ListarConciliacoesFinanceirasAsync(
+    DateTime? inicio,
+    DateTime? fim,
+    string? status,
+    NexumDbContext db,
+    ITenantContext tenantContext,
+    CancellationToken ct)
+{
+    if (inicio.HasValue && fim.HasValue && fim.Value.Date < inicio.Value.Date)
+    {
+        return Results.BadRequest(ApiResponse<List<ConciliacaoFinanceiraDto>>.Erro("Data final nao pode ser anterior a data inicial."));
+    }
+
+    if (inicio.HasValue && fim.HasValue && (fim.Value.Date - inicio.Value.Date).TotalDays > 366)
+    {
+        return Results.BadRequest(ApiResponse<List<ConciliacaoFinanceiraDto>>.Erro("Periodo de conciliacao deve ter no maximo 366 dias."));
+    }
+
+    var normalizedStatus = NormalizeConciliacaoStatus(status);
+    if (!string.IsNullOrWhiteSpace(status) && normalizedStatus is null)
+    {
+        return Results.BadRequest(ApiResponse<List<ConciliacaoFinanceiraDto>>.Erro("Status deve ser PENDENTE, CONCILIADO, DIVERGENTE ou IGNORADO."));
+    }
+
+    var conciliacoes = await db.Database.SqlQueryRaw<ConciliacaoFinanceiraDto>(
+        """
+        SELECT
+            f.id AS LancamentoFinanceiroId,
+            f.descricao AS Descricao,
+            f.valor AS Valor,
+            f.data_pagamento AS DataPagamento,
+            f.meio_pagamento AS MeioPagamento,
+            f.conta_bancaria AS ContaBancaria,
+            CASE
+                WHEN f.status = 'Pago' THEN COALESCE(c.cnc_status, 'PENDENTE')
+                ELSE 'NAO_APLICAVEL'
+            END AS Status,
+            c.cnc_id AS ConciliacaoId,
+            c.cnc_referencia_bancaria AS ReferenciaBancaria,
+            c.cnc_observacoes AS Observacoes,
+            c.cnc_data_conciliacao AS DataConciliacao,
+            CASE WHEN c.row_version IS NULL THEN NULL ELSE LOWER(HEX(c.row_version)) END AS RowVersion
+        FROM financeiro f
+        LEFT JOIN ctb_conciliacoes c
+          ON c.cnc_financeiro_id = f.id
+         AND c.tenant_id = f.tenant_id
+         AND c.is_deleted = 0
+        WHERE f.tenant_id = {3}
+          AND f.is_deleted = 0
+          AND ({0} IS NULL OR f.data_pagamento >= {0})
+          AND ({1} IS NULL OR f.data_pagamento < {1})
+          AND ({2} IS NULL OR CASE
+                WHEN f.status = 'Pago' THEN COALESCE(c.cnc_status, 'PENDENTE')
+                ELSE 'NAO_APLICAVEL'
+              END = {2})
+        ORDER BY COALESCE(f.data_pagamento, f.created_at) DESC, f.id DESC
+        LIMIT 500
+        """,
+        (object?)inicio?.Date ?? DBNull.Value,
+        (object?)fim?.Date.AddDays(1) ?? DBNull.Value,
+        (object?)normalizedStatus ?? DBNull.Value,
+        tenantContext.TenantId.ToString())
+        .ToListAsync(ct);
+
+    return Results.Ok(ApiResponse<List<ConciliacaoFinanceiraDto>>.Ok(
+        conciliacoes,
+        "Conciliacao financeira carregada do banco oficial.",
+        conciliacoes.Count));
+}
+
+static async Task<IResult> RegistrarConciliacaoFinanceiraAsync(
+    ConciliacaoFinanceiraRequest request,
+    NexumDbContext db,
+    ClaimsPrincipal principal,
+    ITenantContext tenantContext,
+    HttpContext httpContext,
+    CancellationToken ct)
+{
+    if (request.LancamentoFinanceiroId <= 0)
+    {
+        return Results.BadRequest(ApiResponse<ConciliacaoFinanceiraDto>.Erro("Lancamento financeiro e obrigatorio."));
+    }
+
+    var normalizedStatus = NormalizeConciliacaoStatus(request.Status);
+    if (normalizedStatus is null)
+    {
+        return Results.BadRequest(ApiResponse<ConciliacaoFinanceiraDto>.Erro("Status deve ser PENDENTE, CONCILIADO, DIVERGENTE ou IGNORADO."));
+    }
+
+    var referencia = TrimOrNull(request.ReferenciaBancaria);
+    var observacoes = TrimOrNull(request.Observacoes);
+    if (referencia?.Length > 120)
+    {
+        return Results.BadRequest(ApiResponse<ConciliacaoFinanceiraDto>.Erro("Referencia bancaria deve ter no maximo 120 caracteres."));
+    }
+
+    if (observacoes?.Length > 2000)
+    {
+        return Results.BadRequest(ApiResponse<ConciliacaoFinanceiraDto>.Erro("Observacoes devem ter no maximo 2000 caracteres."));
+    }
+
+    if (normalizedStatus == "CONCILIADO" && string.IsNullOrWhiteSpace(referencia))
+    {
+        return Results.BadRequest(ApiResponse<ConciliacaoFinanceiraDto>.Erro("Referencia bancaria e obrigatoria para concluir a conciliacao."));
+    }
+
+    var lancamento = await db.Database.SqlQueryRaw<FinanceiroConciliavelRow>(
+        """
+        SELECT id AS Id, status AS Status, data_pagamento AS DataPagamento
+        FROM financeiro
+        WHERE id = {0}
+          AND tenant_id = {1}
+          AND is_deleted = 0
+        LIMIT 1
+        """,
+        request.LancamentoFinanceiroId,
+        tenantContext.TenantId.ToString())
+        .SingleOrDefaultAsync(ct);
+
+    if (lancamento is null)
+    {
+        return Results.NotFound(ApiResponse<ConciliacaoFinanceiraDto>.Erro("Lancamento financeiro nao encontrado para o tenant autenticado."));
+    }
+
+    if (!string.Equals(lancamento.Status, "Pago", StringComparison.OrdinalIgnoreCase) || !lancamento.DataPagamento.HasValue)
+    {
+        return Results.Conflict(ApiResponse<ConciliacaoFinanceiraDto>.Erro("Somente lancamento pago e com data de pagamento pode ser conciliado."));
+    }
+
+    var anterior = await LoadConciliacaoFinanceiraAsync(db, tenantContext.TenantId, request.LancamentoFinanceiroId, ct);
+    var existe = anterior?.ConciliacaoId.HasValue == true;
+    var expectedRowVersion = TrimOrNull(request.RowVersion)?.ToLowerInvariant();
+    if (existe && string.IsNullOrWhiteSpace(expectedRowVersion))
+    {
+        return Results.Json(
+            ApiResponse<ConciliacaoFinanceiraDto>.Erro("RowVersion atual e obrigatoria para atualizar a conciliacao."),
+            statusCode: StatusCodes.Status428PreconditionRequired);
+    }
+
+    if (!string.IsNullOrWhiteSpace(expectedRowVersion)
+        && (expectedRowVersion.Length != 32 || expectedRowVersion.Any(ch => !Uri.IsHexDigit(ch))))
+    {
+        return Results.BadRequest(ApiResponse<ConciliacaoFinanceiraDto>.Erro("RowVersion invalida."));
+    }
+
+    if (existe && !string.Equals(anterior!.RowVersion, expectedRowVersion, StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.Conflict(ApiResponse<ConciliacaoFinanceiraDto>.Erro("A conciliacao foi alterada por outro usuario. Recarregue os dados."));
+    }
+
+    var strategy = db.Database.CreateExecutionStrategy();
+    try
+    {
+        var persistida = await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            int affected;
+            if (existe)
+            {
+                affected = await db.Database.ExecuteSqlRawAsync(
+                    """
+                    UPDATE ctb_conciliacoes
+                    SET cnc_status = {0},
+                        cnc_referencia_bancaria = {1},
+                        cnc_observacoes = {2},
+                        cnc_usuario_id = {3},
+                        cnc_data_conciliacao = UTC_TIMESTAMP(),
+                        updated_at = UTC_TIMESTAMP(),
+                        row_version = UNHEX(REPLACE(UUID(), '-', ''))
+                    WHERE cnc_financeiro_id = {4}
+                      AND tenant_id = {5}
+                      AND is_deleted = 0
+                      AND row_version = UNHEX({6})
+                    """,
+                    new object[]
+                    {
+                        normalizedStatus,
+                        (object?)referencia ?? DBNull.Value,
+                        (object?)observacoes ?? DBNull.Value,
+                        GetCurrentUserId(principal),
+                        request.LancamentoFinanceiroId,
+                        tenantContext.TenantId.ToString(),
+                        expectedRowVersion!
+                    },
+                    ct);
+            }
+            else
+            {
+                affected = await db.Database.ExecuteSqlRawAsync(
+                    """
+                    INSERT INTO ctb_conciliacoes
+                        (cnc_financeiro_id, cnc_status, cnc_referencia_bancaria, cnc_observacoes, cnc_usuario_id,
+                         cnc_data_conciliacao, tenant_id, row_version, created_at, updated_at, is_deleted)
+                    VALUES
+                        ({0}, {1}, {2}, {3}, {4}, UTC_TIMESTAMP(), {5}, UNHEX(REPLACE(UUID(), '-', '')),
+                         UTC_TIMESTAMP(), UTC_TIMESTAMP(), 0)
+                    """,
+                    new object[]
+                    {
+                        request.LancamentoFinanceiroId,
+                        normalizedStatus,
+                        (object?)referencia ?? DBNull.Value,
+                        (object?)observacoes ?? DBNull.Value,
+                        GetCurrentUserId(principal),
+                        tenantContext.TenantId.ToString()
+                    },
+                    ct);
+            }
+
+            if (affected != 1)
+            {
+                throw new DbUpdateConcurrencyException("Conciliacao alterada simultaneamente.");
+            }
+
+            var persisted = await LoadConciliacaoFinanceiraAsync(db, tenantContext.TenantId, request.LancamentoFinanceiroId, ct)
+                ?? throw new InvalidOperationException("Conciliacao foi gravada, mas nao pode ser relida do banco oficial.");
+            db.LogsAuditoria.Add(CreateIamAuditLog(
+                principal,
+                httpContext,
+                "ctb_conciliacoes",
+                persisted.ConciliacaoId!.Value,
+                existe ? AcaoAuditoria.UPDATE : AcaoAuditoria.INSERT,
+                existe ? anterior : null,
+                persisted));
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return persisted;
+        });
+
+        var response = ApiResponse<ConciliacaoFinanceiraDto>.Ok(
+            persistida,
+            "Conciliacao persistida, auditada e relida do banco oficial.");
+        return existe
+            ? Results.Ok(response)
+            : Results.Created($"/api/financeiro/conciliacao/{persistida.ConciliacaoId}", response);
+    }
+    catch (DbUpdateConcurrencyException)
+    {
+        return Results.Conflict(ApiResponse<ConciliacaoFinanceiraDto>.Erro("Conciliacao alterada simultaneamente. Recarregue os dados."));
+    }
+    catch (MySqlException ex) when (ex.Number == 1062)
+    {
+        return Results.Conflict(ApiResponse<ConciliacaoFinanceiraDto>.Erro("A conciliacao deste lancamento foi criada simultaneamente. Recarregue os dados."));
+    }
+}
+
+static async Task<ConciliacaoFinanceiraDto?> LoadConciliacaoFinanceiraAsync(
+    NexumDbContext db,
+    Guid tenantId,
+    int lancamentoFinanceiroId,
+    CancellationToken ct)
+{
+    return await db.Database.SqlQueryRaw<ConciliacaoFinanceiraDto>(
+        """
+        SELECT
+            f.id AS LancamentoFinanceiroId,
+            f.descricao AS Descricao,
+            f.valor AS Valor,
+            f.data_pagamento AS DataPagamento,
+            f.meio_pagamento AS MeioPagamento,
+            f.conta_bancaria AS ContaBancaria,
+            CASE
+                WHEN f.status = 'Pago' THEN COALESCE(c.cnc_status, 'PENDENTE')
+                ELSE 'NAO_APLICAVEL'
+            END AS Status,
+            c.cnc_id AS ConciliacaoId,
+            c.cnc_referencia_bancaria AS ReferenciaBancaria,
+            c.cnc_observacoes AS Observacoes,
+            c.cnc_data_conciliacao AS DataConciliacao,
+            CASE WHEN c.row_version IS NULL THEN NULL ELSE LOWER(HEX(c.row_version)) END AS RowVersion
+        FROM financeiro f
+        LEFT JOIN ctb_conciliacoes c
+          ON c.cnc_financeiro_id = f.id
+         AND c.tenant_id = f.tenant_id
+         AND c.is_deleted = 0
+        WHERE f.id = {0}
+          AND f.tenant_id = {1}
+          AND f.is_deleted = 0
+        LIMIT 1
+        """,
+        lancamentoFinanceiroId,
+        tenantId.ToString())
+        .SingleOrDefaultAsync(ct);
 }
 
 static string? NormalizeSpedTipo(string? value)
@@ -17318,11 +17509,41 @@ static async Task EnsureFicoSchemaAsync(NexumDbContext db)
             cnc_observacoes TEXT NULL,
             cnc_usuario_id INT NULL,
             cnc_data_conciliacao TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            tenant_id CHAR(36) NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
+            row_version BINARY(16) NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_by_user_id CHAR(36) NULL,
+            updated_at DATETIME NULL,
+            updated_by_user_id CHAR(36) NULL,
+            is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+            deleted_at DATETIME NULL,
             PRIMARY KEY (cnc_id),
             UNIQUE KEY ux_ctb_conciliacoes_financeiro (cnc_financeiro_id),
-            KEY ix_ctb_conciliacoes_status (cnc_status)
+            KEY ix_ctb_conciliacoes_status (cnc_status),
+            KEY ix_ctb_conciliacoes_tenant_deleted (tenant_id, is_deleted)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         """);
+
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE ctb_conciliacoes ADD COLUMN IF NOT EXISTS tenant_id CHAR(36) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE ctb_conciliacoes ADD COLUMN IF NOT EXISTS row_version BINARY(16) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE ctb_conciliacoes ADD COLUMN IF NOT EXISTS created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE ctb_conciliacoes ADD COLUMN IF NOT EXISTS created_by_user_id CHAR(36) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE ctb_conciliacoes ADD COLUMN IF NOT EXISTS updated_at DATETIME NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE ctb_conciliacoes ADD COLUMN IF NOT EXISTS updated_by_user_id CHAR(36) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE ctb_conciliacoes ADD COLUMN IF NOT EXISTS is_deleted TINYINT(1) NOT NULL DEFAULT 0;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE ctb_conciliacoes ADD COLUMN IF NOT EXISTS deleted_at DATETIME NULL;");
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        UPDATE ctb_conciliacoes c
+        INNER JOIN financeiro f ON f.id = c.cnc_financeiro_id
+        SET c.tenant_id = f.tenant_id
+        WHERE c.tenant_id IS NULL OR c.tenant_id = '';
+        """);
+    await db.Database.ExecuteSqlRawAsync("UPDATE ctb_conciliacoes SET tenant_id = '00000000-0000-0000-0000-000000000001' WHERE tenant_id IS NULL OR tenant_id = '';");
+    await db.Database.ExecuteSqlRawAsync("UPDATE ctb_conciliacoes SET row_version = UNHEX(REPLACE(UUID(), '-', '')) WHERE row_version IS NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE ctb_conciliacoes MODIFY COLUMN tenant_id CHAR(36) NOT NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE ctb_conciliacoes MODIFY COLUMN row_version BINARY(16) NOT NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE ctb_conciliacoes ADD INDEX IF NOT EXISTS ix_ctb_conciliacoes_tenant_deleted (tenant_id, is_deleted);");
 
     await db.Database.ExecuteSqlRawAsync(
         """
@@ -19607,13 +19828,21 @@ public sealed record ConciliacaoFinanceiraDto(
     string Status,
     int? ConciliacaoId,
     string? ReferenciaBancaria,
-    DateTime? DataConciliacao);
+    string? Observacoes,
+    DateTime? DataConciliacao,
+    string? RowVersion);
 
 public sealed record ConciliacaoFinanceiraRequest(
     int LancamentoFinanceiroId,
     string? Status,
     string? ReferenciaBancaria,
-    string? Observacoes);
+    string? Observacoes,
+    string? RowVersion);
+
+public sealed record FinanceiroConciliavelRow(
+    int Id,
+    string Status,
+    DateTime? DataPagamento);
 
 public sealed record DreGerencialDto(
     int EmpresaId,

@@ -30,6 +30,7 @@ if ($apiUri.AbsoluteUri.TrimEnd('/') -ne "http://127.0.0.1:5010") {
 
 $resolvedProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
 $apiProject = Join-Path $resolvedProjectRoot "NexumAltivon_Back-End\NexumAltivon.API.csproj"
+$apiAssets = Join-Path $resolvedProjectRoot "NexumAltivon_Back-End\obj\project.assets.json"
 $publishDir = Join-Path $resolvedProjectRoot "runtime\api-24h\api"
 $privateConfig = Join-Path $resolvedProjectRoot "runtime\api-24h\api.env.ps1"
 $installTaskScript = Join-Path $resolvedProjectRoot "scripts\server\instalar-api-oficial-24h-task.ps1"
@@ -42,6 +43,10 @@ Set-Content -LiteralPath $logPath -Value "" -Encoding UTF8
 
 if (-not (Test-Path -LiteralPath $apiProject -PathType Leaf)) {
     throw "Projeto oficial da API nao encontrado em $apiProject."
+}
+
+if (-not (Test-Path -LiteralPath $apiAssets -PathType Leaf)) {
+    throw "Dependencias restauradas da API nao encontradas em $apiAssets. Execute dotnet restore no projeto oficial antes da publicacao."
 }
 
 if (-not (Test-Path -LiteralPath $privateConfig -PathType Leaf)) {
@@ -165,8 +170,8 @@ Ensure-IntegrationEncryptionKey
 
 Stop-OfficialRuntime
 
-Write-Step "Publicando API oficial em $publishDir."
-& dotnet publish $apiProject -c Release -o $publishDir --self-contained false 2>&1 |
+Write-Step "Publicando API oficial em $publishDir sem repetir restore ja validado."
+& dotnet publish $apiProject -c Release -o $publishDir --self-contained false --no-restore 2>&1 |
     ForEach-Object {
         $line = [string]$_
         Write-Output $line

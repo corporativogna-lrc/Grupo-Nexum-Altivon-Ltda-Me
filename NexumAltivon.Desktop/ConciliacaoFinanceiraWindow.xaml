@@ -1,0 +1,205 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5
+ -->
+<Window x:Class="NexumAltivon.Desktop.ConciliacaoFinanceiraWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GenesisGest.Net - Conciliação bancária"
+        Width="1320"
+        Height="800"
+        MinWidth="1120"
+        MinHeight="700"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource ShellBackground}"
+        FontFamily="Segoe UI"
+        Loaded="Window_Loaded">
+    <Window.Resources>
+        <Style x:Key="Section" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackground}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="16" />
+        </Style>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+            <Setter Property="Margin" Value="0,0,0,5" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Style="{StaticResource Section}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="FICO / TESOURARIA" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold" />
+                    <TextBlock Text="Conciliação bancária" Foreground="{StaticResource TextPrimary}" FontSize="25" FontWeight="Bold" Margin="0,4,0,0" />
+                    <StackPanel Orientation="Horizontal" Margin="0,7,0,0">
+                        <TextBlock Text="{Binding CodigoContexto}" Foreground="{StaticResource TextPrimary}" FontWeight="SemiBold" />
+                        <TextBlock Text="  |  " Foreground="{StaticResource TextMuted}" />
+                        <TextBlock Text="{Binding TenantLabel}" Foreground="{StaticResource TextSecondary}" />
+                        <TextBlock Text="  |  " Foreground="{StaticResource TextMuted}" />
+                        <TextBlock Text="{Binding EstadoContexto}" Foreground="{StaticResource AccentGreen}" />
+                    </StackPanel>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="Recarregar" Click="Recarregar_Click" Margin="0,0,8,0" IsEnabled="{Binding PodeOperar}" />
+                    <Button Content="Aplicar filtros" Click="AplicarFiltros_Click" Margin="0,0,8,0" IsEnabled="{Binding PodeOperar}" />
+                    <Button Content="Salvar conciliação" Click="Salvar_Click" Background="{StaticResource AccentGold}"
+                            Foreground="#080704" IsEnabled="{Binding PodeConciliar}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <TabControl Grid.Row="2">
+            <TabItem Header="Lançamentos e conciliação">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Border Style="{StaticResource Section}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="180" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Pagamento inicial" Style="{StaticResource Label}" />
+                                <DatePicker SelectedDate="{Binding FiltroInicio}" Width="150" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Pagamento final" Style="{StaticResource Label}" />
+                                <DatePicker SelectedDate="{Binding FiltroFim}" Width="150" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="4">
+                                <TextBlock Text="Status" Style="{StaticResource Label}" />
+                                <ComboBox ItemsSource="{Binding FiltroStatusOptions}" SelectedItem="{Binding FiltroStatus}" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="5" Text="{Binding QuantidadeLabel}" Foreground="{StaticResource TextSecondary}"
+                                       HorizontalAlignment="Right" VerticalAlignment="Bottom" />
+                        </Grid>
+                    </Border>
+
+                    <Grid Grid.Row="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1.35*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="0.65*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Style="{StaticResource Section}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="Lançamentos do banco oficial" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                                <DataGrid Grid.Row="1" ItemsSource="{Binding Lancamentos}" SelectedItem="{Binding SelectedLancamento}"
+                                          AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" Margin="0,12,0,0">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="ID" Binding="{Binding LancamentoFinanceiroId}" Width="55" />
+                                        <DataGridTextColumn Header="Descrição" Binding="{Binding Descricao}" Width="*" />
+                                        <DataGridTextColumn Header="Pagamento" Binding="{Binding DataPagamento, StringFormat=dd/MM/yyyy}" Width="95" />
+                                        <DataGridTextColumn Header="Valor" Binding="{Binding Valor, StringFormat=N2}" Width="90" />
+                                        <DataGridTextColumn Header="Conta" Binding="{Binding ContaBancaria}" Width="125" />
+                                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="105" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Column="2" Style="{StaticResource Section}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="Conferência do lançamento" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                                <StackPanel Grid.Row="1" Margin="0,14,0,0">
+                                    <TextBlock Text="{Binding LancamentoSelecionadoLabel}" Foreground="{StaticResource TextPrimary}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding LancamentoSelecionadoDetalhe}" Foreground="{StaticResource TextSecondary}" Margin="0,5,0,0" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <StackPanel Grid.Row="2" Margin="0,14,0,0">
+                                    <TextBlock Text="Resultado" Style="{StaticResource Label}" />
+                                    <ComboBox ItemsSource="{Binding StatusOptions}" SelectedItem="{Binding StatusConciliacao}" />
+                                </StackPanel>
+                                <StackPanel Grid.Row="3" Margin="0,12,0,0">
+                                    <TextBlock Text="Referência bancária" Style="{StaticResource Label}" />
+                                    <TextBox Text="{Binding ReferenciaBancaria, UpdateSourceTrigger=PropertyChanged}" MaxLength="120" />
+                                </StackPanel>
+                                <StackPanel Grid.Row="4" Margin="0,12,0,0">
+                                    <TextBlock Text="Observações da conferência" Style="{StaticResource Label}" />
+                                    <TextBox Text="{Binding Observacoes, UpdateSourceTrigger=PropertyChanged}" MaxLength="2000"
+                                             AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="100" />
+                                    <TextBlock Text="{Binding Validacao}" Foreground="{StaticResource AccentAmber}" TextWrapping="Wrap" Margin="0,10,0,0" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Auditoria">
+                <Border Style="{StaticResource Section}" Margin="10">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="Trilha de escrita em ctb_conciliacoes" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                        <DataGrid Grid.Row="1" ItemsSource="{Binding Auditoria}" AutoGenerateColumns="False" IsReadOnly="True" Margin="0,12,0,0">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Data" Binding="{Binding CreatedAt, StringFormat=dd/MM/yyyy HH:mm:ss}" Width="145" />
+                                <DataGridTextColumn Header="Registro" Binding="{Binding RegistroId}" Width="80" />
+                                <DataGridTextColumn Header="Ação" Binding="{Binding Acao}" Width="90" />
+                                <DataGridTextColumn Header="Usuário" Binding="{Binding UsuarioId}" Width="80" />
+                                <DataGridTextColumn Header="Endpoint" Binding="{Binding Endpoint}" Width="*" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Grid>
+                </Border>
+            </TabItem>
+        </TabControl>
+
+        <Border Grid.Row="4" Style="{StaticResource Section}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding Status}" Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <TextBlock Text="Conciliados: " Foreground="{StaticResource TextSecondary}" />
+                    <TextBlock Text="{Binding ConciliadosLabel}" Foreground="{StaticResource AccentGreen}" FontWeight="Bold" />
+                    <TextBlock Text="   Divergentes: " Foreground="{StaticResource TextSecondary}" />
+                    <TextBlock Text="{Binding DivergentesLabel}" Foreground="{StaticResource AccentAmber}" FontWeight="Bold" />
+                    <TextBlock Text="   Pendentes: " Foreground="{StaticResource TextSecondary}" />
+                    <TextBlock Text="{Binding PendentesLabel}" Foreground="{StaticResource AccentGold}" FontWeight="Bold" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
