@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7183
+ * Versão: 1.1.5.7184
  */
 
 using System.Globalization;
@@ -5728,12 +5728,16 @@ app.MapPost("/api/compras/solicitacoes", [Authorize(Policy = "Gerente")] async (
     var finalidade = TrimOrNull(request.Finalidade) ?? "Reposicao/operacao";
     var prioridade = TrimOrNull(request.Prioridade) ?? "Normal";
     var observacoes = TrimOrNull(request.Observacoes);
+    var tenantId = db.CurrentTenantId.ToString();
+    var userId = db.CurrentUserId?.ToString();
 
     await db.Database.ExecuteSqlInterpolatedAsync($"""
         INSERT INTO compras_solicitacoes
-            (produto_id, produto_nome, quantidade_solicitada, finalidade, origem, status, prioridade, observacoes, created_at, updated_at)
+            (produto_id, produto_nome, quantidade_solicitada, finalidade, origem, status, prioridade, observacoes,
+             tenant_id, row_version, created_by_user_id, updated_by_user_id, created_at, updated_at)
         VALUES
-            ({produto?.Id}, {produtoNome}, {request.Quantidade}, {finalidade}, {origem}, {"Aberta"}, {prioridade}, {observacoes}, {now}, {now});
+            ({produto?.Id}, {produtoNome}, {request.Quantidade}, {finalidade}, {origem}, {"Aberta"}, {prioridade}, {observacoes},
+             {tenantId}, UNHEX(REPLACE(UUID(), '-', '')), {userId}, {userId}, {now}, {now});
         """, ct);
 
     var solicitacaoId = await ExecuteScalarAsync<int>(db, "SELECT LAST_INSERT_ID();", ct);
@@ -5785,21 +5789,29 @@ app.MapPost("/api/compras/cotacoes", [Authorize(Policy = "Gerente")] async (Comp
     var prioridade = TrimOrNull(request.Prioridade) ?? "Normal";
     var observacoesCotacao = TrimOrNull(request.Observacoes);
     var prazoEntrega = request.PrazoEntregaDias ?? fornecedor.PrazoEntregaDias;
+    var tenantId = db.CurrentTenantId.ToString();
+    var userId = db.CurrentUserId?.ToString();
 
     await db.Database.ExecuteSqlInterpolatedAsync($"""
         INSERT INTO compras_solicitacoes
-            (produto_id, produto_nome, quantidade_solicitada, finalidade, origem, status, prioridade, observacoes, created_at, updated_at)
+            (produto_id, produto_nome, quantidade_solicitada, finalidade, origem, status, prioridade, observacoes,
+             tenant_id, row_version, created_by_user_id, updated_by_user_id, created_at, updated_at)
         VALUES
-            ({produtoIdCotacao}, {produtoNome}, {request.Quantidade}, {finalidade}, {origem}, {"Cotado"}, {prioridade}, {observacoesCotacao}, {now}, {now});
+            ({produtoIdCotacao}, {produtoNome}, {request.Quantidade}, {finalidade}, {origem}, {"Cotado"}, {prioridade}, {observacoesCotacao},
+             {tenantId}, UNHEX(REPLACE(UUID(), '-', '')), {userId}, {userId}, {now}, {now});
         """, ct);
 
     var solicitacaoId = await ExecuteScalarAsync<int>(db, "SELECT LAST_INSERT_ID();", ct);
 
     await db.Database.ExecuteSqlInterpolatedAsync($"""
         INSERT INTO compras_cotacoes
-            (solicitacao_id, fornecedor_id, produto_id, produto_nome, quantidade, custo_unitario, valor_total, prazo_entrega_dias, origem, status, observacoes, created_at, updated_at)
+            (solicitacao_id, fornecedor_id, produto_id, produto_nome, quantidade, custo_unitario, valor_total,
+             prazo_entrega_dias, origem, status, observacoes, tenant_id, row_version, created_by_user_id,
+             updated_by_user_id, created_at, updated_at)
         VALUES
-            ({solicitacaoId}, {request.FornecedorId}, {produtoIdCotacao}, {produtoNome}, {request.Quantidade}, {request.CustoUnitario}, {total}, {prazoEntrega}, {origem}, {"Selecionada"}, {observacoesCotacao}, {now}, {now});
+            ({solicitacaoId}, {request.FornecedorId}, {produtoIdCotacao}, {produtoNome}, {request.Quantidade},
+             {request.CustoUnitario}, {total}, {prazoEntrega}, {origem}, {"Selecionada"}, {observacoesCotacao},
+             {tenantId}, UNHEX(REPLACE(UUID(), '-', '')), {userId}, {userId}, {now}, {now});
         """, ct);
 
     var painel = await BuildComprasPainelAsync(db, ct);
@@ -5845,20 +5857,40 @@ app.MapPost("/api/compras/pedidos", [Authorize(Policy = "Gerente")] async (Compr
         return Results.BadRequest(ApiResponse<string>.Erro("Um ou mais produtos informados nao existem."));
     }
 
+    if (request.SolicitacaoId.HasValue)
+    {
+        var solicitacaoExists = await ExecuteScalarAsync<int>(
+            db,
+            "SELECT COUNT(*) FROM compras_solicitacoes WHERE id = @id AND tenant_id = @tenantId AND is_deleted = 0",
+            ct,
+            ("@id", request.SolicitacaoId.Value),
+            ("@tenantId", db.CurrentTenantId.ToString()));
+        if (solicitacaoExists == 0)
+        {
+            return Results.NotFound(ApiResponse<string>.Erro("Solicitacao de compra nao encontrada para o tenant autenticado."));
+        }
+    }
+
     var now = DateTime.UtcNow;
-    var numeroPedido = $"COMP-{now:yyyyMMddHHmmss}";
+    var numeroPedido = $"COMP-{now:yyyyMMddHHmmss}-{Guid.NewGuid():N}"[..28];
     var origem = NormalizeCompraOrigem(request.Origem);
     var finalidade = TrimOrNull(request.Finalidade) ?? "Reposicao/operacao";
     var vencimento = request.DataVencimento ?? now.Date.AddDays(7);
     var total = request.Itens.Sum(item => item.Quantidade * item.CustoUnitario);
+    var tenantId = db.CurrentTenantId.ToString();
+    var userId = db.CurrentUserId?.ToString();
 
     await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
     await db.Database.ExecuteSqlInterpolatedAsync($"""
         INSERT INTO compras_pedidos
-            (numero, fornecedor_id, solicitacao_id, origem, finalidade, status, status_fiscal, valor_total, data_prevista_entrega, observacoes, created_at, updated_at)
+            (numero, fornecedor_id, solicitacao_id, origem, finalidade, status, status_fiscal, valor_total,
+             data_prevista_entrega, observacoes, tenant_id, row_version, created_by_user_id,
+             updated_by_user_id, created_at, updated_at)
         VALUES
-            ({numeroPedido}, {request.FornecedorId}, {request.SolicitacaoId}, {origem}, {finalidade}, {"Aberto"}, {"Pendente"}, {total}, {request.DataPrevistaEntrega}, {TrimOrNull(request.Observacoes)}, {now}, {now});
+            ({numeroPedido}, {request.FornecedorId}, {request.SolicitacaoId}, {origem}, {finalidade}, {"Aberto"},
+             {"Pendente"}, {total}, {request.DataPrevistaEntrega}, {TrimOrNull(request.Observacoes)}, {tenantId},
+             UNHEX(REPLACE(UUID(), '-', '')), {userId}, {userId}, {now}, {now});
         """, ct);
 
     var compraPedidoId = await ExecuteScalarAsync<int>(db, "SELECT LAST_INSERT_ID();", ct);
@@ -5878,9 +5910,13 @@ app.MapPost("/api/compras/pedidos", [Authorize(Policy = "Gerente")] async (Compr
         var itemTotal = item.Quantidade * item.CustoUnitario;
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO compras_pedido_itens
-                (compra_pedido_id, produto_id, produto_nome, sku, quantidade, quantidade_recebida, custo_unitario, valor_total, origem, finalidade, created_at, updated_at)
+                (compra_pedido_id, produto_id, produto_nome, sku, quantidade, quantidade_recebida,
+                 custo_unitario, valor_total, origem, finalidade, tenant_id, row_version,
+                 created_by_user_id, updated_by_user_id, created_at, updated_at)
             VALUES
-                ({compraPedidoId}, {itemProdutoId}, {produtoNome}, {itemSku}, {item.Quantidade}, 0, {item.CustoUnitario}, {itemTotal}, {origem}, {finalidade}, {now}, {now});
+                ({compraPedidoId}, {itemProdutoId}, {produtoNome}, {itemSku}, {item.Quantidade}, 0,
+                 {item.CustoUnitario}, {itemTotal}, {origem}, {finalidade}, {tenantId},
+                 UNHEX(REPLACE(UUID(), '-', '')), {userId}, {userId}, {now}, {now});
             """, ct);
     }
 
@@ -5910,9 +5946,12 @@ app.MapPost("/api/compras/pedidos", [Authorize(Policy = "Gerente")] async (Compr
 
 app.MapPost("/api/compras/pedidos/{id:int}/entradas", [Authorize(Policy = "Gerente")] async (int id, CompraEntradaRequest request, NexumDbContext db, CancellationToken ct) =>
 {
+    var tenantId = db.CurrentTenantId.ToString();
+    var userId = db.CurrentUserId?.ToString();
     var pedido = await db.Database.SqlQueryRaw<CompraPedidoLookupRow>(
-        "SELECT id AS Id, numero AS Numero, status AS Status, origem AS Origem, fornecedor_id AS FornecedorId FROM compras_pedidos WHERE id = {0} LIMIT 1",
-        id)
+        "SELECT id AS Id, numero AS Numero, status AS Status, origem AS Origem, fornecedor_id AS FornecedorId FROM compras_pedidos WHERE id = {0} AND tenant_id = {1} AND is_deleted = 0 LIMIT 1",
+        id,
+        tenantId)
         .FirstOrDefaultAsync(ct);
 
     if (pedido is null)
@@ -5921,8 +5960,9 @@ app.MapPost("/api/compras/pedidos/{id:int}/entradas", [Authorize(Policy = "Geren
     }
 
     var itens = await db.Database.SqlQueryRaw<CompraPedidoItemLookupRow>(
-        "SELECT id AS Id, produto_id AS ProdutoId, produto_nome AS ProdutoNome, quantidade AS Quantidade, quantidade_recebida AS QuantidadeRecebida, custo_unitario AS CustoUnitario FROM compras_pedido_itens WHERE compra_pedido_id = {0}",
-        id)
+        "SELECT id AS Id, produto_id AS ProdutoId, produto_nome AS ProdutoNome, quantidade AS Quantidade, quantidade_recebida AS QuantidadeRecebida, custo_unitario AS CustoUnitario FROM compras_pedido_itens WHERE compra_pedido_id = {0} AND tenant_id = {1} AND is_deleted = 0",
+        id,
+        tenantId)
         .ToListAsync(ct);
 
     if (itens.Count == 0)
@@ -5940,9 +5980,15 @@ app.MapPost("/api/compras/pedidos/{id:int}/entradas", [Authorize(Policy = "Geren
 
     await db.Database.ExecuteSqlInterpolatedAsync($"""
         INSERT INTO compras_entradas
-            (compra_pedido_id, fornecedor_id, numero_documento, chave_nfe_entrada, tipo_entrada, status_fiscal, valor_total, recebido_por, observacoes, created_at, updated_at)
+            (compra_pedido_id, fornecedor_id, numero_documento, chave_nfe_entrada, tipo_entrada,
+             status_fiscal, valor_total, recebido_por, observacoes, tenant_id, row_version,
+             created_by_user_id, updated_by_user_id, created_at, updated_at)
         VALUES
-            ({id}, {pedido.FornecedorId}, {documento}, {chaveNfe}, {NormalizeCompraOrigem(request.TipoEntrada ?? pedido.Origem)}, {(!string.IsNullOrWhiteSpace(chaveNfe) ? "NFeInformada" : "FiscalPendente")}, 0, {TrimOrNull(request.RecebidoPor) ?? "Operacao"}, {TrimOrNull(request.Observacoes)}, {now}, {now});
+            ({id}, {pedido.FornecedorId}, {documento}, {chaveNfe},
+             {NormalizeCompraOrigem(request.TipoEntrada ?? pedido.Origem)},
+             {(!string.IsNullOrWhiteSpace(chaveNfe) ? "NFeInformada" : "FiscalPendente")}, 0,
+             {TrimOrNull(request.RecebidoPor) ?? "Operacao"}, {TrimOrNull(request.Observacoes)},
+             {tenantId}, UNHEX(REPLACE(UUID(), '-', '')), {userId}, {userId}, {now}, {now});
         """, ct);
 
     var entradaId = await ExecuteScalarAsync<int>(db, "SELECT LAST_INSERT_ID();", ct);
@@ -5975,15 +6021,22 @@ app.MapPost("/api/compras/pedidos/{id:int}/entradas", [Authorize(Policy = "Geren
 
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO compras_entrada_itens
-                (compra_entrada_id, compra_pedido_item_id, produto_id, produto_nome, quantidade_recebida, custo_unitario, valor_total, created_at, updated_at)
+                (compra_entrada_id, compra_pedido_item_id, produto_id, produto_nome, quantidade_recebida,
+                 custo_unitario, valor_total, tenant_id, row_version, created_by_user_id,
+                 updated_by_user_id, created_at, updated_at)
             VALUES
-                ({entradaId}, {item.Id}, {item.ProdutoId}, {item.ProdutoNome}, {recebidaAgora}, {item.CustoUnitario}, {valorItem}, {now}, {now});
+                ({entradaId}, {item.Id}, {item.ProdutoId}, {item.ProdutoNome}, {recebidaAgora},
+                 {item.CustoUnitario}, {valorItem}, {tenantId}, UNHEX(REPLACE(UUID(), '-', '')),
+                 {userId}, {userId}, {now}, {now});
             """, ct);
 
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             UPDATE compras_pedido_itens
-            SET quantidade_recebida = {novaQuantidadeRecebida}, updated_at = {now}
-            WHERE id = {item.Id};
+            SET quantidade_recebida = {novaQuantidadeRecebida},
+                updated_by_user_id = {userId},
+                row_version = UNHEX(REPLACE(UUID(), '-', '')),
+                updated_at = {now}
+            WHERE id = {item.Id} AND tenant_id = {tenantId} AND is_deleted = 0;
             """, ct);
 
         if (item.ProdutoId.HasValue)
@@ -6000,9 +6053,13 @@ app.MapPost("/api/compras/pedidos/{id:int}/entradas", [Authorize(Policy = "Geren
 
                 await db.Database.ExecuteSqlInterpolatedAsync($"""
                     INSERT INTO estoque_movimentos
-                        (produto_id, compra_entrada_id, tipo, quantidade, saldo_resultante, custo_unitario, origem, documento, observacoes, created_at)
+                        (produto_id, compra_entrada_id, tipo, quantidade, saldo_resultante, custo_unitario,
+                         origem, documento, observacoes, tenant_id, row_version, created_by_user_id,
+                         updated_by_user_id, created_at, updated_at)
                     VALUES
-                        ({produto.Id}, {entradaId}, {"EntradaCompra"}, {recebidaAgora}, {produto.EstoqueAtual}, {item.CustoUnitario}, {pedido.Origem}, {documento ?? chaveNfe}, {TrimOrNull(request.Observacoes)}, {now});
+                        ({produto.Id}, {entradaId}, {"EntradaCompra"}, {recebidaAgora}, {produto.EstoqueAtual},
+                         {item.CustoUnitario}, {pedido.Origem}, {documento ?? chaveNfe}, {TrimOrNull(request.Observacoes)},
+                         {tenantId}, UNHEX(REPLACE(UUID(), '-', '')), {userId}, {userId}, {now}, {now});
                     """, ct);
             }
         }
@@ -6016,16 +6073,21 @@ app.MapPost("/api/compras/pedidos/{id:int}/entradas", [Authorize(Policy = "Geren
 
     await db.Database.ExecuteSqlInterpolatedAsync($"""
         UPDATE compras_entradas
-        SET valor_total = {totalEntrada}, updated_at = {now}
-        WHERE id = {entradaId};
+        SET valor_total = {totalEntrada},
+            updated_by_user_id = {userId},
+            row_version = UNHEX(REPLACE(UUID(), '-', '')),
+            updated_at = {now}
+        WHERE id = {entradaId} AND tenant_id = {tenantId} AND is_deleted = 0;
         """, ct);
 
     await db.Database.ExecuteSqlInterpolatedAsync($"""
         UPDATE compras_pedidos
         SET status = {(todosRecebidos ? "Recebido" : "RecebidoParcial")},
             status_fiscal = {(!string.IsNullOrWhiteSpace(chaveNfe) ? "NFeEntradaInformada" : "FiscalPendente")},
+            updated_by_user_id = {userId},
+            row_version = UNHEX(REPLACE(UUID(), '-', '')),
             updated_at = {now}
-        WHERE id = {id};
+        WHERE id = {id} AND tenant_id = {tenantId} AND is_deleted = 0;
         """, ct);
 
     await db.SaveChangesAsync(ct);
@@ -6045,9 +6107,12 @@ app.MapPatch("/api/compras/solicitacoes/{id:int}/status", [Authorize(Policy = "G
         return Results.BadRequest(ApiResponse<string>.Erro("Status de solicitacao invalido."));
     }
 
+    var tenantId = db.CurrentTenantId.ToString();
+    var userId = db.CurrentUserId?.ToString();
     var atual = await db.Database.SqlQueryRaw<string>(
-        "SELECT status AS Value FROM compras_solicitacoes WHERE id = {0} LIMIT 1",
-        id)
+        "SELECT status AS Value FROM compras_solicitacoes WHERE id = {0} AND tenant_id = {1} AND is_deleted = 0 LIMIT 1",
+        id,
+        tenantId)
         .FirstOrDefaultAsync(ct);
 
     if (string.IsNullOrWhiteSpace(atual))
@@ -6061,8 +6126,11 @@ app.MapPatch("/api/compras/solicitacoes/{id:int}/status", [Authorize(Policy = "G
     {
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             UPDATE compras_solicitacoes
-            SET status = {novoStatus}, updated_at = {now}
-            WHERE id = {id};
+            SET status = {novoStatus},
+                updated_by_user_id = {userId},
+                row_version = UNHEX(REPLACE(UUID(), '-', '')),
+                updated_at = {now}
+            WHERE id = {id} AND tenant_id = {tenantId} AND is_deleted = 0;
             """, ct);
     }
     else
@@ -6071,8 +6139,10 @@ app.MapPatch("/api/compras/solicitacoes/{id:int}/status", [Authorize(Policy = "G
             UPDATE compras_solicitacoes
             SET status = {novoStatus},
                 observacoes = CONCAT_WS('\n', NULLIF(observacoes, ''), {observacao}),
+                updated_by_user_id = {userId},
+                row_version = UNHEX(REPLACE(UUID(), '-', '')),
                 updated_at = {now}
-            WHERE id = {id};
+            WHERE id = {id} AND tenant_id = {tenantId} AND is_deleted = 0;
             """, ct);
     }
 
@@ -6090,9 +6160,12 @@ app.MapPatch("/api/compras/pedidos/{id:int}/status", [Authorize(Policy = "Gerent
         return Results.BadRequest(ApiResponse<string>.Erro("Status de pedido de compra invalido."));
     }
 
+    var tenantId = db.CurrentTenantId.ToString();
+    var userId = db.CurrentUserId?.ToString();
     var atual = await db.Database.SqlQueryRaw<string>(
-        "SELECT status AS Value FROM compras_pedidos WHERE id = {0} LIMIT 1",
-        id)
+        "SELECT status AS Value FROM compras_pedidos WHERE id = {0} AND tenant_id = {1} AND is_deleted = 0 LIMIT 1",
+        id,
+        tenantId)
         .FirstOrDefaultAsync(ct);
 
     if (string.IsNullOrWhiteSpace(atual))
@@ -6111,8 +6184,11 @@ app.MapPatch("/api/compras/pedidos/{id:int}/status", [Authorize(Policy = "Gerent
     {
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             UPDATE compras_pedidos
-            SET status = {novoStatus}, updated_at = {now}
-            WHERE id = {id};
+            SET status = {novoStatus},
+                updated_by_user_id = {userId},
+                row_version = UNHEX(REPLACE(UUID(), '-', '')),
+                updated_at = {now}
+            WHERE id = {id} AND tenant_id = {tenantId} AND is_deleted = 0;
             """, ct);
     }
     else
@@ -6121,8 +6197,10 @@ app.MapPatch("/api/compras/pedidos/{id:int}/status", [Authorize(Policy = "Gerent
             UPDATE compras_pedidos
             SET status = {novoStatus},
                 observacoes = CONCAT_WS('\n', NULLIF(observacoes, ''), {observacao}),
+                updated_by_user_id = {userId},
+                row_version = UNHEX(REPLACE(UUID(), '-', '')),
                 updated_at = {now}
-            WHERE id = {id};
+            WHERE id = {id} AND tenant_id = {tenantId} AND is_deleted = 0;
             """, ct);
     }
 
@@ -13881,7 +13959,9 @@ static string? NormalizeCompraSolicitacaoStatus(string? value)
     {
         "aberta" or "aberto" => "Aberta",
         "cotado" or "cotada" or "cotacao" => "Cotado",
+        "em aprovacao" or "emaprovacao" or "em_aprovacao" => "EmAprovacao",
         "aprovado" or "aprovada" => "Aprovada",
+        "reprovado" or "reprovada" => "Reprovada",
         "atendido" or "atendida" => "Atendida",
         "cancelado" or "cancelada" => "Cancelada",
         "fechado" or "fechada" => "Fechada",
@@ -13895,7 +13975,9 @@ static string? NormalizeCompraPedidoStatus(string? value)
     return normalized switch
     {
         "aberto" or "aberta" => "Aberto",
+        "em aprovacao" or "emaprovacao" or "em_aprovacao" => "EmAprovacao",
         "aprovado" or "aprovada" => "Aprovado",
+        "reprovado" or "reprovada" => "Reprovado",
         "recebidoparcial" or "recebido_parcial" or "recebido parcial" or "parcial" => "RecebidoParcial",
         "recebido" or "recebida" => "Recebido",
         "cancelado" or "cancelada" => "Cancelado",
@@ -18098,11 +18180,17 @@ static async Task SyncGenesisPayablesFromNexumAsync(IServiceProvider services, G
             p.data_prevista_entrega AS DataPrevistaEntrega,
             p.created_at AS CreatedAt
         FROM compras_pedidos p
-        LEFT JOIN fornecedores f ON f.id = p.fornecedor_id
-        WHERE p.valor_total > 0
+        LEFT JOIN fornecedores f
+          ON f.id = p.fornecedor_id
+         AND f.tenant_id = {0}
+         AND f.is_deleted = 0
+        WHERE p.tenant_id = {0}
+          AND p.is_deleted = 0
+          AND p.valor_total > 0
         ORDER BY p.created_at DESC
         LIMIT 200
-        """)
+        """,
+        nexumDb.CurrentTenantId.ToString())
         .ToListAsync();
 
     foreach (var compra in compras)
@@ -18369,6 +18457,93 @@ static async Task EnsureComprasSchemaAsync(NexumDbContext db)
             KEY ix_estoque_movimentos_tipo (tipo)
         );
         """);
+
+    var transactionalTables = new[]
+    {
+        "compras_solicitacoes",
+        "compras_cotacoes",
+        "compras_pedidos",
+        "compras_pedido_itens",
+        "compras_entradas",
+        "compras_entrada_itens",
+        "estoque_movimentos"
+    };
+
+    foreach (var table in transactionalTables)
+    {
+        var quotedTable = QuoteMySqlIdentifier(table);
+        await db.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE " + quotedTable +
+            " ADD COLUMN IF NOT EXISTS `tenant_id` CHAR(36) NOT NULL DEFAULT '" + TenantContext.DefaultTenantId + "'," +
+            " ADD COLUMN IF NOT EXISTS `row_version` BLOB NULL," +
+            " ADD COLUMN IF NOT EXISTS `created_by_user_id` CHAR(36) NULL," +
+            " ADD COLUMN IF NOT EXISTS `updated_by_user_id` CHAR(36) NULL," +
+            " ADD COLUMN IF NOT EXISTS `is_deleted` TINYINT(1) NOT NULL DEFAULT 0," +
+            " ADD COLUMN IF NOT EXISTS `deleted_at` DATETIME NULL," +
+            " ADD COLUMN IF NOT EXISTS `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;");
+
+        await db.Database.ExecuteSqlRawAsync(
+            "UPDATE " + quotedTable +
+            " SET `tenant_id` = '" + TenantContext.DefaultTenantId + "'" +
+            " WHERE `tenant_id` IS NULL OR `tenant_id` = '';");
+        await db.Database.ExecuteSqlRawAsync(
+            "UPDATE " + quotedTable +
+            " SET `row_version` = UNHEX(REPLACE(UUID(), '-', ''))" +
+            " WHERE `row_version` IS NULL OR OCTET_LENGTH(`row_version`) = 0;");
+
+        await EnsureProcurementIndexAsync(
+            db,
+            table,
+            $"ix_{table}_tenant_deleted",
+            "CREATE INDEX " + QuoteMySqlIdentifier($"ix_{table}_tenant_deleted") +
+            " ON " + quotedTable + " (`tenant_id`, `is_deleted`);");
+    }
+
+    var globalOrderNumberIndexExists = await ExecuteScalarAsync<long>(
+        db,
+        """
+        SELECT COUNT(*)
+        FROM information_schema.statistics
+        WHERE table_schema = DATABASE()
+          AND table_name = 'compras_pedidos'
+          AND index_name = 'ux_compras_pedidos_numero'
+        """,
+        CancellationToken.None);
+    if (globalOrderNumberIndexExists > 0)
+    {
+        await db.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE `compras_pedidos` DROP INDEX `ux_compras_pedidos_numero`;");
+    }
+
+    await EnsureProcurementIndexAsync(
+        db,
+        "compras_pedidos",
+        "ux_compras_pedidos_tenant_numero",
+        "CREATE UNIQUE INDEX `ux_compras_pedidos_tenant_numero` ON `compras_pedidos` (`tenant_id`, `numero`);");
+}
+
+static async Task EnsureProcurementIndexAsync(
+    NexumDbContext db,
+    string table,
+    string index,
+    string command)
+{
+    var exists = await ExecuteScalarAsync<long>(
+        db,
+        """
+        SELECT COUNT(*)
+        FROM information_schema.statistics
+        WHERE table_schema = DATABASE()
+          AND table_name = @tableName
+          AND index_name = @indexName
+        """,
+        CancellationToken.None,
+        ("@tableName", table),
+        ("@indexName", index));
+    if (exists == 0)
+    {
+        await db.Database.ExecuteSqlRawAsync(command);
+    }
 }
 
 static async Task EnsureGenesisGestOriginalSchemaAsync(NexumDbContext db, ILogger logger)
@@ -19026,27 +19201,32 @@ static IQueryable<Produto> ProdutosPublicaveisDashboard(NexumDbContext db) =>
 static async Task<ComprasPainelDto> BuildComprasPainelAsync(NexumDbContext db, CancellationToken ct)
 {
     var inicioMes = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+    var tenantId = db.CurrentTenantId.ToString();
 
     var solicitacoesAbertas = await ExecuteScalarAsync<int>(
         db,
-        "SELECT COUNT(*) FROM compras_solicitacoes WHERE status IN ('Aberta', 'Cotado')",
-        ct);
+        "SELECT COUNT(*) FROM compras_solicitacoes WHERE tenant_id = @tenantId AND is_deleted = 0 AND status IN ('Aberta', 'Cotado', 'EmAprovacao')",
+        ct,
+        ("@tenantId", tenantId));
 
     var pedidosAbertos = await ExecuteScalarAsync<int>(
         db,
-        "SELECT COUNT(*) FROM compras_pedidos WHERE status IN ('Aberto', 'RecebidoParcial')",
-        ct);
+        "SELECT COUNT(*) FROM compras_pedidos WHERE tenant_id = @tenantId AND is_deleted = 0 AND status IN ('Aberto', 'EmAprovacao', 'Aprovado', 'RecebidoParcial')",
+        ct,
+        ("@tenantId", tenantId));
 
     var entradasMes = await ExecuteScalarAsync<int>(
         db,
-        "SELECT COUNT(*) FROM compras_entradas WHERE created_at >= @inicioMes",
+        "SELECT COUNT(*) FROM compras_entradas WHERE tenant_id = @tenantId AND is_deleted = 0 AND created_at >= @inicioMes",
         ct,
+        ("@tenantId", tenantId),
         ("@inicioMes", inicioMes));
 
     var valorComprasAbertas = await ExecuteScalarAsync<decimal>(
         db,
-        "SELECT COALESCE(SUM(valor_total), 0) FROM compras_pedidos WHERE status IN ('Aberto', 'RecebidoParcial')",
-        ct);
+        "SELECT COALESCE(SUM(valor_total), 0) FROM compras_pedidos WHERE tenant_id = @tenantId AND is_deleted = 0 AND status IN ('Aberto', 'EmAprovacao', 'Aprovado', 'RecebidoParcial')",
+        ct,
+        ("@tenantId", tenantId));
 
     var contasAPagarCompras = await db.Financeiros.AsNoTracking()
         .CountAsync(item => item.Tipo == TipoLancamento.Despesa &&
@@ -19099,9 +19279,11 @@ static async Task<ComprasPainelDto> BuildComprasPainelAsync(NexumDbContext db, C
             s.prioridade AS Prioridade,
             s.created_at AS CreatedAt
         FROM compras_solicitacoes s
+        WHERE s.tenant_id = {0} AND s.is_deleted = 0
         ORDER BY s.created_at DESC
         LIMIT 50
-        """)
+        """,
+        tenantId)
         .ToListAsync(ct);
 
     var pedidos = await db.Database.SqlQueryRaw<CompraPedidoResumoRow>(
@@ -19119,10 +19301,15 @@ static async Task<ComprasPainelDto> BuildComprasPainelAsync(NexumDbContext db, C
             p.data_prevista_entrega AS DataPrevistaEntrega,
             p.created_at AS CreatedAt
         FROM compras_pedidos p
-        LEFT JOIN fornecedores f ON f.id = p.fornecedor_id
+        LEFT JOIN fornecedores f
+          ON f.id = p.fornecedor_id
+         AND f.tenant_id = {0}
+         AND f.is_deleted = 0
+        WHERE p.tenant_id = {0} AND p.is_deleted = 0
         ORDER BY p.created_at DESC
         LIMIT 50
-        """)
+        """,
+        tenantId)
         .ToListAsync(ct);
 
     var pedidoItens = await db.Database.SqlQueryRaw<CompraPedidoItemResumoRow>(
@@ -19140,10 +19327,15 @@ static async Task<ComprasPainelDto> BuildComprasPainelAsync(NexumDbContext db, C
             i.origem AS Origem,
             i.finalidade AS Finalidade
         FROM compras_pedido_itens i
-        INNER JOIN compras_pedidos p ON p.id = i.compra_pedido_id
+        INNER JOIN compras_pedidos p
+          ON p.id = i.compra_pedido_id
+         AND p.tenant_id = {0}
+         AND p.is_deleted = 0
+        WHERE i.tenant_id = {0} AND i.is_deleted = 0
         ORDER BY p.created_at DESC, i.id ASC
         LIMIT 250
-        """)
+        """,
+        tenantId)
         .ToListAsync(ct);
 
     var itensPorPedido = pedidoItens
@@ -19177,11 +19369,19 @@ static async Task<ComprasPainelDto> BuildComprasPainelAsync(NexumDbContext db, C
             e.valor_total AS ValorTotal,
             e.created_at AS CreatedAt
         FROM compras_entradas e
-        LEFT JOIN compras_pedidos p ON p.id = e.compra_pedido_id
-        LEFT JOIN fornecedores f ON f.id = e.fornecedor_id
+        LEFT JOIN compras_pedidos p
+          ON p.id = e.compra_pedido_id
+         AND p.tenant_id = {0}
+         AND p.is_deleted = 0
+        LEFT JOIN fornecedores f
+          ON f.id = e.fornecedor_id
+         AND f.tenant_id = {0}
+         AND f.is_deleted = 0
+        WHERE e.tenant_id = {0} AND e.is_deleted = 0
         ORDER BY e.created_at DESC
         LIMIT 50
-        """)
+        """,
+        tenantId)
         .ToListAsync(ct);
 
     var alertas = new List<string>();

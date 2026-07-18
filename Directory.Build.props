@@ -3,15 +3,15 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7183
+ * Versão: 1.1.5.7184
  -->
 <Project>
   <PropertyGroup>
-    <VersionPrefix>1.1.5.7183</VersionPrefix>
-    <Version>1.1.5.7183</Version>
-    <AssemblyVersion>1.1.5.7183</AssemblyVersion>
-    <FileVersion>1.1.5.7183</FileVersion>
-    <InformationalVersion>1.1.5.7183+20260718.fiscal-desktop-api-client</InformationalVersion>
+    <VersionPrefix>1.1.5.7184</VersionPrefix>
+    <Version>1.1.5.7184</Version>
+    <AssemblyVersion>1.1.5.7184</AssemblyVersion>
+    <FileVersion>1.1.5.7184</FileVersion>
+    <InformationalVersion>1.1.5.7184+20260718.compras-tenancy</InformationalVersion>
     <Deterministic>true</Deterministic>
   </PropertyGroup>
 </Project>
