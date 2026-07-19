@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7185
+ * Versão: 1.1.5.7186
  */
 
 using System.Collections.ObjectModel;
@@ -326,9 +326,30 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SelectedModuleTitle = title;
         SelectedModuleDetail = detail;
 
+        if (title == "Fornecedores")
+        {
+            var supplierWindow = new SupplierManagementWindow(Terminal)
+            {
+                Owner = this
+            };
+            supplierWindow.ShowDialog();
+            return;
+        }
+
+        if (title == "Usuários, perfis e permissões")
+        {
+            var accessWindow = new AccessManagementWindow(Terminal)
+            {
+                Owner = this
+            };
+            accessWindow.ShowDialog();
+            return;
+        }
+
         if (IsMasterDataWorkspace(title))
         {
             var masterDataWindow = new CorporateMasterDataWindow(title);
+            masterDataWindow.Owner = this;
             masterDataWindow.ShowDialog();
             return;
         }
@@ -593,12 +614,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private static bool IsMasterDataWorkspace(string title)
     {
         return title is "Clientes"
-            or "Fornecedores"
             or "Produtos e serviços"
             or "Categorias e subcategorias"
             or "Empresas do grupo"
             or "Centros de custo"
-            or "Usuários, perfis e permissões"
             or "Colaboradores / RH / folha"
             or "Contratações"
             or "Demissões"

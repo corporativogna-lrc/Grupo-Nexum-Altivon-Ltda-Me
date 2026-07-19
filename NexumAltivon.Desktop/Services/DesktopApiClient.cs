@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7185
+ * Versão: 1.1.5.7186
  */
 
 using System.Globalization;
@@ -137,6 +137,80 @@ public sealed class DesktopApiClient
         CancellationToken cancellationToken = default) =>
         SendAuthorizedAsync<DesktopComprasPainel>(
             profile, token, HttpMethod.Patch, $"/api/compras/pedidos/{pedidoId}/status", request, cancellationToken);
+
+    public Task<DesktopApiDataResult<List<DesktopFornecedor>>> GetFornecedoresAsync(
+        TerminalProfile profile,
+        string token,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<List<DesktopFornecedor>>(
+            profile, token, HttpMethod.Get, "/api/fornecedores", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopFornecedor>> GetFornecedorAsync(
+        TerminalProfile profile,
+        string token,
+        int fornecedorId,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopFornecedor>(
+            profile, token, HttpMethod.Get, $"/api/fornecedores/{fornecedorId}", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopFornecedor>> CreateFornecedorAsync(
+        TerminalProfile profile,
+        string token,
+        DesktopFornecedorRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopFornecedor>(
+            profile, token, HttpMethod.Post, "/api/fornecedores", request, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopFornecedor>> UpdateFornecedorAsync(
+        TerminalProfile profile,
+        string token,
+        int fornecedorId,
+        DesktopFornecedorRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopFornecedor>(
+            profile, token, HttpMethod.Put, $"/api/fornecedores/{fornecedorId}", request, cancellationToken);
+
+    public Task<DesktopApiDataResult<List<DesktopFornecedorContato>>> GetFornecedorContatosAsync(
+        TerminalProfile profile,
+        string token,
+        int fornecedorId,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<List<DesktopFornecedorContato>>(
+            profile, token, HttpMethod.Get, $"/api/fornecedores/{fornecedorId}/contatos", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopFornecedorContato>> CreateFornecedorContatoAsync(
+        TerminalProfile profile,
+        string token,
+        int fornecedorId,
+        DesktopFornecedorContatoRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopFornecedorContato>(
+            profile, token, HttpMethod.Post, $"/api/fornecedores/{fornecedorId}/contatos", request, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopFornecedorContato>> UpdateFornecedorContatoAsync(
+        TerminalProfile profile,
+        string token,
+        int fornecedorId,
+        int contatoId,
+        DesktopFornecedorContatoRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopFornecedorContato>(
+            profile, token, HttpMethod.Put, $"/api/fornecedores/{fornecedorId}/contatos/{contatoId}", request, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopFornecedorContato>> DeactivateFornecedorContatoAsync(
+        TerminalProfile profile,
+        string token,
+        int fornecedorId,
+        int contatoId,
+        string rowVersion,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopFornecedorContato>(
+            profile,
+            token,
+            HttpMethod.Delete,
+            $"/api/fornecedores/{fornecedorId}/contatos/{contatoId}?rowVersion={Uri.EscapeDataString(rowVersion)}",
+            null,
+            cancellationToken);
 
     public Task<DesktopApiDataResult<List<DesktopLogisticaExpedicao>>> GetLogisticaExpedicoesAsync(
         TerminalProfile profile,

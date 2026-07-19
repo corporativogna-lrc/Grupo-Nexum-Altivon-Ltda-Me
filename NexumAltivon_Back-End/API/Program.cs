@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7185
+ * Versão: 1.1.5.7186
  */
 
 using System.Globalization;
@@ -3739,6 +3739,12 @@ app.MapPut("/api/produtos/{id:int}/precos-por-loja", [Authorize(Policy = "Gerent
 
 app.MapGet("/api/fornecedores/{id:int}/contatos", [Authorize(Policy = "Gerente")] async (int id, NexumDbContext db, CancellationToken ct) =>
 {
+    if (!await db.Fornecedores.AsNoTracking().AnyAsync(item => item.Id == id, ct))
+    {
+        return Results.NotFound(ApiResponse<List<FornecedorContatoDto>>.Erro("Fornecedor nao encontrado."));
+    }
+
+    var tenantId = db.CurrentTenantId.ToString();
     var contatos = await db.Database.SqlQueryRaw<FornecedorContatoDto>(
         """
         SELECT
@@ -3751,12 +3757,17 @@ app.MapGet("/api/fornecedores/{id:int}/contatos", [Authorize(Policy = "Gerente")
             fco_celular AS Celular,
             fco_principal AS Principal,
             fco_ativo AS Ativo,
-            fco_atualizado_em AS AtualizadoEm
+            fco_atualizado_em AS AtualizadoEm,
+            TO_BASE64(fco_row_version) AS RowVersion
         FROM md_fornecedor_contatos
-        WHERE fco_fornecedor_id = {0} AND fco_ativo = 1
+        WHERE fco_fornecedor_id = {0}
+          AND fco_tenant_id = {1}
+          AND fco_is_deleted = 0
+          AND fco_ativo = 1
         ORDER BY fco_principal DESC, fco_nome
         """,
-        id)
+        id,
+        tenantId)
         .ToListAsync(ct);
 
     return Results.Ok(ApiResponse<List<FornecedorContatoDto>>.Ok(contatos, "Contatos do fornecedor carregados.", contatos.Count));
@@ -3766,27 +3777,77 @@ app.MapGet("/api/fornecedores/{id:int}/contatos", [Authorize(Policy = "Gerente")
 app.MapPost("/api/fornecedores/{id:int}/contatos", [Authorize(Policy = "Gerente")] async (
     int id,
     FornecedorContatoRequest request,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
     NexumDbContext db,
     CancellationToken ct) =>
 {
+    if (!await db.Fornecedores.AsNoTracking().AnyAsync(item => item.Id == id, ct))
+    {
+        return Results.NotFound(ApiResponse<FornecedorContatoDto>.Erro("Fornecedor nao encontrado."));
+    }
+
     var nome = TrimOrNull(request.Nome);
     if (string.IsNullOrWhiteSpace(nome))
     {
         return Results.BadRequest(ApiResponse<FornecedorContatoDto>.Erro("Nome do contato e obrigatorio."));
     }
 
-    await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        INSERT INTO md_fornecedor_contatos
-            (fco_fornecedor_id, fco_nome, fco_cargo, fco_email, fco_telefone, fco_celular, fco_principal, fco_ativo, fco_atualizado_em)
-        VALUES
-            ({id}, {nome}, {TrimOrNull(request.Cargo)}, {NormalizeEmail(request.Email)}, {TrimOrNull(request.Telefone)},
-             {TrimOrNull(request.Celular)}, {request.Principal}, {request.Ativo}, UTC_TIMESTAMP())
-        """,
-        ct);
+    var executionStrategy = db.Database.CreateExecutionStrategy();
+    var contatoId = 0;
+    await executionStrategy.ExecuteAsync(async () =>
+    {
+        db.ChangeTracker.Clear();
+        var tenantId = db.CurrentTenantId.ToString();
+        var userId = db.CurrentUserId?.ToString();
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        if (request.Principal)
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                UPDATE md_fornecedor_contatos
+                SET fco_principal = 0,
+                    fco_row_version = UNHEX(REPLACE(UUID(), '-', '')),
+                    fco_updated_by_user_id = {userId},
+                    fco_atualizado_em = UTC_TIMESTAMP()
+                WHERE fco_fornecedor_id = {id}
+                  AND fco_tenant_id = {tenantId}
+                  AND fco_is_deleted = 0
+                """,
+                ct);
+        }
 
-    var contatoId = await db.Database.SqlQueryRaw<int>("SELECT LAST_INSERT_ID() AS Value").SingleAsync(ct);
-    return Results.Created($"/api/fornecedores/{id}/contatos/{contatoId}", ApiResponse<FornecedorContatoDto>.Ok((await LoadFornecedorContatoAsync(db, contatoId, ct))!, "Contato do fornecedor criado."));
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            INSERT INTO md_fornecedor_contatos
+                (fco_fornecedor_id, fco_nome, fco_cargo, fco_email, fco_telefone, fco_celular, fco_principal, fco_ativo,
+                 fco_tenant_id, fco_row_version, fco_created_by_user_id, fco_updated_by_user_id, fco_criado_em, fco_atualizado_em, fco_is_deleted)
+            VALUES
+                ({id}, {nome}, {TrimOrNull(request.Cargo)}, {NormalizeEmail(request.Email)}, {TrimOrNull(request.Telefone)},
+                 {TrimOrNull(request.Celular)}, {request.Principal}, {request.Ativo}, {tenantId}, UNHEX(REPLACE(UUID(), '-', '')),
+                 {userId}, {userId}, UTC_TIMESTAMP(), UTC_TIMESTAMP(), 0)
+            """,
+            ct);
+
+        contatoId = await ExecuteScalarAsync<int>(db, "SELECT LAST_INSERT_ID();", ct);
+        var created = await LoadFornecedorContatoAsync(db, contatoId, ct)
+            ?? throw new InvalidOperationException("Contato gravado sem releitura na transacao.");
+        db.LogsAuditoria.Add(CreateIamAuditLog(
+            principal,
+            httpContext,
+            "md_fornecedor_contatos",
+            contatoId,
+            AcaoAuditoria.INSERT,
+            null,
+            created));
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+    });
+
+    var persisted = await LoadFornecedorContatoAsync(db, contatoId, ct);
+    return persisted is null
+        ? Results.Problem("O contato foi gravado, mas a releitura de confirmacao falhou. Nao repita a operacao sem consultar o fornecedor.", statusCode: StatusCodes.Status500InternalServerError)
+        : Results.Created($"/api/fornecedores/{id}/contatos/{contatoId}", ApiResponse<FornecedorContatoDto>.Ok(persisted, "Contato do fornecedor criado e relido."));
 })
 .WithName("MasterDataFornecedoresContatosCriar");
 
@@ -3794,47 +3855,174 @@ app.MapPut("/api/fornecedores/{id:int}/contatos/{contatoId:int}", [Authorize(Pol
     int id,
     int contatoId,
     FornecedorContatoRequest request,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
     NexumDbContext db,
     CancellationToken ct) =>
 {
-    if (await LoadFornecedorContatoAsync(db, contatoId, ct) is null)
+    if (!await db.Fornecedores.AsNoTracking().AnyAsync(item => item.Id == id, ct))
+    {
+        return Results.NotFound(ApiResponse<FornecedorContatoDto>.Erro("Fornecedor nao encontrado."));
+    }
+
+    if (!TryDecodeRowVersion(request.RowVersion, out var expectedRowVersion))
+    {
+        return Results.BadRequest(ApiResponse<FornecedorContatoDto>.Erro("RowVersion valido e obrigatorio para atualizar o contato."));
+    }
+
+    var previous = await LoadFornecedorContatoAsync(db, contatoId, ct);
+    if (previous is null || previous.FornecedorId != id)
     {
         return Results.NotFound(ApiResponse<FornecedorContatoDto>.Erro("Contato do fornecedor nao encontrado."));
     }
 
-    await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        UPDATE md_fornecedor_contatos
-        SET fco_nome = {TrimOrNull(request.Nome)},
-            fco_cargo = {TrimOrNull(request.Cargo)},
-            fco_email = {NormalizeEmail(request.Email)},
-            fco_telefone = {TrimOrNull(request.Telefone)},
-            fco_celular = {TrimOrNull(request.Celular)},
-            fco_principal = {request.Principal},
-            fco_ativo = {request.Ativo},
-            fco_atualizado_em = UTC_TIMESTAMP()
-        WHERE fco_id = {contatoId} AND fco_fornecedor_id = {id}
-        """,
-        ct);
+    var nome = TrimOrNull(request.Nome);
+    if (string.IsNullOrWhiteSpace(nome))
+    {
+        return Results.BadRequest(ApiResponse<FornecedorContatoDto>.Erro("Nome do contato e obrigatorio."));
+    }
 
-    return Results.Ok(ApiResponse<FornecedorContatoDto>.Ok((await LoadFornecedorContatoAsync(db, contatoId, ct))!, "Contato do fornecedor atualizado."));
+    var executionStrategy = db.Database.CreateExecutionStrategy();
+    var updated = await executionStrategy.ExecuteAsync(async () =>
+    {
+        db.ChangeTracker.Clear();
+        var tenantId = db.CurrentTenantId.ToString();
+        var userId = db.CurrentUserId?.ToString();
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        if (request.Principal)
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                UPDATE md_fornecedor_contatos
+                SET fco_principal = 0,
+                    fco_row_version = UNHEX(REPLACE(UUID(), '-', '')),
+                    fco_updated_by_user_id = {userId},
+                    fco_atualizado_em = UTC_TIMESTAMP()
+                WHERE fco_fornecedor_id = {id}
+                  AND fco_id <> {contatoId}
+                  AND fco_tenant_id = {tenantId}
+                  AND fco_is_deleted = 0
+                """,
+                ct);
+        }
+
+        var affected = await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE md_fornecedor_contatos
+            SET fco_nome = {nome},
+                fco_cargo = {TrimOrNull(request.Cargo)},
+                fco_email = {NormalizeEmail(request.Email)},
+                fco_telefone = {TrimOrNull(request.Telefone)},
+                fco_celular = {TrimOrNull(request.Celular)},
+                fco_principal = {request.Principal},
+                fco_ativo = {request.Ativo},
+                fco_row_version = UNHEX(REPLACE(UUID(), '-', '')),
+                fco_updated_by_user_id = {userId},
+                fco_atualizado_em = UTC_TIMESTAMP()
+            WHERE fco_id = {contatoId}
+              AND fco_fornecedor_id = {id}
+              AND fco_tenant_id = {tenantId}
+              AND fco_is_deleted = 0
+              AND fco_row_version = {expectedRowVersion}
+            """,
+            ct);
+        if (affected != 1)
+        {
+            await transaction.RollbackAsync(ct);
+            return (Success: false, Contact: (FornecedorContatoDto?)null);
+        }
+
+        var current = await LoadFornecedorContatoAsync(db, contatoId, ct)
+            ?? throw new InvalidOperationException("Contato atualizado sem releitura na transacao.");
+        db.LogsAuditoria.Add(CreateIamAuditLog(
+            principal,
+            httpContext,
+            "md_fornecedor_contatos",
+            contatoId,
+            AcaoAuditoria.UPDATE,
+            previous,
+            current));
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return (Success: true, Contact: current);
+    });
+
+    return updated.Success && updated.Contact is not null
+        ? Results.Ok(ApiResponse<FornecedorContatoDto>.Ok(updated.Contact, "Contato do fornecedor atualizado e relido."))
+        : Results.Conflict(ApiResponse<FornecedorContatoDto>.Erro("O contato foi alterado por outra sessao. Recarregue os contatos antes de salvar."));
 })
 .WithName("MasterDataFornecedoresContatosAtualizar");
 
 app.MapDelete("/api/fornecedores/{id:int}/contatos/{contatoId:int}", [Authorize(Policy = "Gerente")] async (
     int id,
     int contatoId,
+    string? rowVersion,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
     NexumDbContext db,
     CancellationToken ct) =>
 {
+    if (!await db.Fornecedores.AsNoTracking().AnyAsync(item => item.Id == id, ct))
+    {
+        return Results.NotFound(ApiResponse<FornecedorContatoDto>.Erro("Fornecedor nao encontrado."));
+    }
+
+    if (!TryDecodeRowVersion(rowVersion, out var expectedRowVersion))
+    {
+        return Results.BadRequest(ApiResponse<FornecedorContatoDto>.Erro("RowVersion valido e obrigatorio para desativar o contato."));
+    }
+
     var contato = await LoadFornecedorContatoAsync(db, contatoId, ct);
     if (contato is null || contato.FornecedorId != id)
     {
         return Results.NotFound(ApiResponse<FornecedorContatoDto>.Erro("Contato do fornecedor nao encontrado."));
     }
 
-    await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE md_fornecedor_contatos SET fco_ativo = 0, fco_atualizado_em = UTC_TIMESTAMP() WHERE fco_id = {contatoId} AND fco_fornecedor_id = {id}", ct);
-    return Results.Ok(ApiResponse<FornecedorContatoDto>.Ok(contato with { Ativo = false }, "Contato do fornecedor desativado."));
+    var executionStrategy = db.Database.CreateExecutionStrategy();
+    var deleted = await executionStrategy.ExecuteAsync(async () =>
+    {
+        db.ChangeTracker.Clear();
+        var tenantId = db.CurrentTenantId.ToString();
+        var userId = db.CurrentUserId?.ToString();
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        var affected = await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE md_fornecedor_contatos
+            SET fco_ativo = 0,
+                fco_is_deleted = 1,
+                fco_deleted_at = UTC_TIMESTAMP(),
+                fco_row_version = UNHEX(REPLACE(UUID(), '-', '')),
+                fco_updated_by_user_id = {userId},
+                fco_atualizado_em = UTC_TIMESTAMP()
+            WHERE fco_id = {contatoId}
+              AND fco_fornecedor_id = {id}
+              AND fco_tenant_id = {tenantId}
+              AND fco_is_deleted = 0
+              AND fco_row_version = {expectedRowVersion}
+            """,
+            ct);
+        if (affected != 1)
+        {
+            await transaction.RollbackAsync(ct);
+            return false;
+        }
+
+        db.LogsAuditoria.Add(CreateIamAuditLog(
+            principal,
+            httpContext,
+            "md_fornecedor_contatos",
+            contatoId,
+            AcaoAuditoria.DELETE,
+            contato,
+            null));
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return true;
+    });
+
+    return deleted
+        ? Results.Ok(ApiResponse<FornecedorContatoDto>.Ok(contato with { Ativo = false }, "Contato do fornecedor desativado com soft-delete."))
+        : Results.Conflict(ApiResponse<FornecedorContatoDto>.Erro("O contato foi alterado por outra sessao. Recarregue os contatos antes de desativar."));
 })
 .WithName("MasterDataFornecedoresContatosExcluir");
 
@@ -5574,120 +5762,169 @@ app.MapGet("/api/fornecedores", [Authorize(Policy = "Gerente")] async (NexumDbCo
 {
     var fornecedoresDb = await db.Fornecedores
         .AsNoTracking()
-        .OrderByDescending(fornecedor => fornecedor.CreatedAt)
+        .OrderByDescending(fornecedor => fornecedor.UpdatedAt)
         .Take(500)
+        .Select(fornecedor => new
+        {
+            Fornecedor = fornecedor,
+            RowVersion = EF.Property<byte[]>(fornecedor, "RowVersion")
+        })
         .ToListAsync(ct);
-    var fornecedores = fornecedoresDb.Select(ToFornecedorDto).ToList();
+    var fornecedores = fornecedoresDb
+        .Select(item => ToFornecedorDto(item.Fornecedor, item.RowVersion))
+        .ToList();
 
-    return Results.Ok(ApiResponse<List<FornecedorDto>>.Ok(fornecedores));
+    return Results.Ok(ApiResponse<List<FornecedorDto>>.Ok(fornecedores, "Fornecedores carregados do banco oficial.", fornecedores.Count));
 })
 .WithName("Fornecedores")
 ;
 
-app.MapPost("/api/fornecedores", [Authorize(Policy = "Gerente")] async (FornecedorRequest request, NexumDbContext db, CancellationToken ct) =>
+app.MapGet("/api/fornecedores/{id:int}", [Authorize(Policy = "Gerente")] async (int id, NexumDbContext db, CancellationToken ct) =>
 {
-    if (string.IsNullOrWhiteSpace(request.Nome))
+    var fornecedor = await LoadFornecedorDtoAsync(db, id, ct);
+    return fornecedor is null
+        ? Results.NotFound(ApiResponse<FornecedorDto>.Erro("Fornecedor nao encontrado."))
+        : Results.Ok(ApiResponse<FornecedorDto>.Ok(fornecedor, "Fornecedor relido do banco oficial."));
+})
+.WithName("ObterFornecedor")
+;
+
+app.MapPost("/api/fornecedores", [Authorize(Policy = "Gerente")] async (
+    FornecedorRequest request,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var validationError = await ValidateFornecedorRequestAsync(request, null, db, ct);
+    if (validationError is not null)
     {
-        return Results.BadRequest(ApiResponse<string>.Erro("Nome do fornecedor obrigatorio."));
+        return validationError;
     }
 
-    var documento = string.IsNullOrWhiteSpace(request.Documento) ? null : request.Documento.Trim();
-    if (!string.IsNullOrWhiteSpace(documento) && !IsValidCpfCnpj(documento))
+    var executionStrategy = db.Database.CreateExecutionStrategy();
+    var fornecedorId = 0;
+    var transactionResult = await executionStrategy.ExecuteAsync<IResult?>(async () =>
     {
-        return Results.BadRequest(ApiResponse<string>.Erro("CNPJ/CPF do fornecedor inválido."));
+        db.ChangeTracker.Clear();
+        var documento = NormalizeDocument(request.Documento);
+        var email = NormalizeEmail(request.Email);
+        if (await FornecedorDuplicadoAsync(db, null, documento, email, ct))
+        {
+            return Results.Conflict(ApiResponse<FornecedorDto>.Erro("Fornecedor ja cadastrado com este documento ou e-mail."));
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        var fornecedor = CreateFornecedor(request, documento, email);
+        db.Fornecedores.Add(fornecedor);
+        await db.SaveChangesAsync(ct);
+        fornecedorId = fornecedor.Id;
+
+        var rowVersion = db.Entry(fornecedor).Property<byte[]>("RowVersion").CurrentValue ?? [];
+        var created = ToFornecedorDto(fornecedor, rowVersion);
+        db.LogsAuditoria.Add(CreateIamAuditLog(
+            principal,
+            httpContext,
+            "fornecedores",
+            fornecedor.Id,
+            AcaoAuditoria.INSERT,
+            null,
+            created));
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return null;
+    });
+    if (transactionResult is not null)
+    {
+        return transactionResult;
     }
-    var email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim().ToLowerInvariant();
-    var fornecedorExistente = await db.Fornecedores.FirstOrDefaultAsync(fornecedor =>
-        (!string.IsNullOrWhiteSpace(documento) && fornecedor.Cnpj == documento) ||
-        (!string.IsNullOrWhiteSpace(email) && fornecedor.Email != null && fornecedor.Email.ToLower() == email), ct);
 
-    if (fornecedorExistente is not null)
-    {
-        return Results.Conflict(ApiResponse<string>.Erro("Fornecedor ja cadastrado com este documento ou e-mail."));
-    }
-
-    var fornecedor = new Fornecedor
-    {
-        RazaoSocial = request.Nome.Trim(),
-        NomeFantasia = string.IsNullOrWhiteSpace(request.NomeFantasia) ? request.Nome.Trim() : request.NomeFantasia.Trim(),
-        Cnpj = documento,
-        Ie = string.IsNullOrWhiteSpace(request.Ie) ? null : request.Ie.Trim(),
-        Email = email,
-        Telefone = string.IsNullOrWhiteSpace(request.Telefone) ? null : request.Telefone.Trim(),
-        Whatsapp = string.IsNullOrWhiteSpace(request.Whatsapp) ? request.Telefone : request.Whatsapp.Trim(),
-        Endereco = string.IsNullOrWhiteSpace(request.Endereco) ? null : request.Endereco.Trim(),
-        Cidade = string.IsNullOrWhiteSpace(request.Cidade) ? null : request.Cidade.Trim(),
-        Estado = string.IsNullOrWhiteSpace(request.Estado) ? null : request.Estado.Trim(),
-        Cep = string.IsNullOrWhiteSpace(request.Cep) ? null : request.Cep.Trim(),
-        Segmento = request.Categoria,
-        LojaVinculadaId = request.LojaVinculadaId,
-        ComissaoPercentual = request.ComissaoPercentual ?? 0.00m,
-        PrazoEntregaDias = request.PrazoEntregaDias ?? 7,
-        Status = Enum.TryParse<StatusFornecedor>(request.Status, true, out var statusFornecedor) ? statusFornecedor : StatusFornecedor.Ativo,
-        Observacoes = string.IsNullOrWhiteSpace(request.Observacoes) ? null : request.Observacoes.Trim(),
-        CreatedAt = DateTime.UtcNow,
-        UpdatedAt = DateTime.UtcNow
-    };
-
-    db.Fornecedores.Add(fornecedor);
-    await db.SaveChangesAsync(ct);
-
-    return Results.Ok(ApiResponse<FornecedorDto>.Ok(ToFornecedorDto(fornecedor), "Fornecedor cadastrado."));
+    var persisted = await LoadFornecedorDtoAsync(db, fornecedorId, ct);
+    return persisted is null
+        ? Results.Problem("O fornecedor foi gravado, mas a releitura de confirmacao falhou. Nao repita a operacao sem consultar o identificador retornado.", statusCode: StatusCodes.Status500InternalServerError)
+        : Results.Created($"/api/fornecedores/{fornecedorId}", ApiResponse<FornecedorDto>.Ok(persisted, "Fornecedor cadastrado e relido do banco oficial."));
 })
 .WithName("CriarFornecedor")
 ;
 
-app.MapPut("/api/fornecedores/{id:int}", [Authorize(Policy = "Gerente")] async (int id, FornecedorRequest request, NexumDbContext db, CancellationToken ct) =>
+app.MapPut("/api/fornecedores/{id:int}", [Authorize(Policy = "Gerente")] async (
+    int id,
+    FornecedorRequest request,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
+    NexumDbContext db,
+    CancellationToken ct) =>
 {
-    var fornecedor = await db.Fornecedores.FirstOrDefaultAsync(item => item.Id == id, ct);
-    if (fornecedor is null)
+    if (!TryDecodeRowVersion(request.RowVersion, out var expectedRowVersion))
     {
-        return Results.NotFound(ApiResponse<string>.Erro("Fornecedor nao encontrado."));
+        return Results.BadRequest(ApiResponse<FornecedorDto>.Erro("RowVersion valido e obrigatorio para atualizar o fornecedor."));
     }
 
-    if (string.IsNullOrWhiteSpace(request.Nome))
+    var validationError = await ValidateFornecedorRequestAsync(request, id, db, ct);
+    if (validationError is not null)
     {
-        return Results.BadRequest(ApiResponse<string>.Erro("Nome do fornecedor obrigatorio."));
+        return validationError;
     }
 
-    var documento = string.IsNullOrWhiteSpace(request.Documento) ? null : request.Documento.Trim();
-    if (!string.IsNullOrWhiteSpace(documento) && !IsValidCpfCnpj(documento))
+    try
     {
-        return Results.BadRequest(ApiResponse<string>.Erro("CNPJ/CPF do fornecedor inválido."));
-    }
-    var email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim().ToLowerInvariant();
-    var fornecedorExistente = await db.Fornecedores.FirstOrDefaultAsync(item =>
-        item.Id != fornecedor.Id &&
-        ((!string.IsNullOrWhiteSpace(documento) && item.Cnpj == documento) ||
-         (!string.IsNullOrWhiteSpace(email) && item.Email != null && item.Email.ToLower() == email)), ct);
+        var executionStrategy = db.Database.CreateExecutionStrategy();
+        var transactionResult = await executionStrategy.ExecuteAsync<IResult?>(async () =>
+        {
+            db.ChangeTracker.Clear();
+            var fornecedor = await db.Fornecedores.FirstOrDefaultAsync(item => item.Id == id, ct);
+            if (fornecedor is null)
+            {
+                return Results.NotFound(ApiResponse<FornecedorDto>.Erro("Fornecedor nao encontrado."));
+            }
 
-    if (fornecedorExistente is not null)
+            var currentRowVersion = db.Entry(fornecedor).Property<byte[]>("RowVersion").CurrentValue ?? [];
+            if (!currentRowVersion.SequenceEqual(expectedRowVersion))
+            {
+                return Results.Conflict(ApiResponse<FornecedorDto>.Erro("O fornecedor foi alterado por outra sessao. Recarregue o cadastro antes de salvar."));
+            }
+
+            var documento = NormalizeDocument(request.Documento);
+            var email = NormalizeEmail(request.Email);
+            if (await FornecedorDuplicadoAsync(db, id, documento, email, ct))
+            {
+                return Results.Conflict(ApiResponse<FornecedorDto>.Erro("Fornecedor ja cadastrado com este documento ou e-mail."));
+            }
+
+            var previous = ToFornecedorDto(fornecedor, currentRowVersion);
+            ApplyFornecedorRequest(fornecedor, request, documento, email);
+            db.Entry(fornecedor).Property<byte[]>("RowVersion").OriginalValue = expectedRowVersion;
+
+            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            await db.SaveChangesAsync(ct);
+            var updatedRowVersion = db.Entry(fornecedor).Property<byte[]>("RowVersion").CurrentValue ?? [];
+            var updated = ToFornecedorDto(fornecedor, updatedRowVersion);
+            db.LogsAuditoria.Add(CreateIamAuditLog(
+                principal,
+                httpContext,
+                "fornecedores",
+                fornecedor.Id,
+                AcaoAuditoria.UPDATE,
+                previous,
+                updated));
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return null;
+        });
+        if (transactionResult is not null)
+        {
+            return transactionResult;
+        }
+    }
+    catch (DbUpdateConcurrencyException)
     {
-        return Results.Conflict(ApiResponse<string>.Erro("Fornecedor ja cadastrado com este documento ou e-mail."));
+        return Results.Conflict(ApiResponse<FornecedorDto>.Erro("O fornecedor foi alterado por outra sessao. Recarregue o cadastro antes de salvar."));
     }
 
-    fornecedor.RazaoSocial = request.Nome.Trim();
-    fornecedor.NomeFantasia = string.IsNullOrWhiteSpace(request.NomeFantasia) ? request.Nome.Trim() : request.NomeFantasia.Trim();
-    fornecedor.Cnpj = documento;
-    fornecedor.Ie = string.IsNullOrWhiteSpace(request.Ie) ? null : request.Ie.Trim();
-    fornecedor.Email = email;
-    fornecedor.Telefone = string.IsNullOrWhiteSpace(request.Telefone) ? null : request.Telefone.Trim();
-    fornecedor.Whatsapp = string.IsNullOrWhiteSpace(request.Whatsapp) ? fornecedor.Telefone : request.Whatsapp.Trim();
-    fornecedor.Endereco = string.IsNullOrWhiteSpace(request.Endereco) ? null : request.Endereco.Trim();
-    fornecedor.Cidade = string.IsNullOrWhiteSpace(request.Cidade) ? null : request.Cidade.Trim();
-    fornecedor.Estado = string.IsNullOrWhiteSpace(request.Estado) ? null : request.Estado.Trim();
-    fornecedor.Cep = string.IsNullOrWhiteSpace(request.Cep) ? null : request.Cep.Trim();
-    fornecedor.Segmento = request.Categoria;
-    fornecedor.LojaVinculadaId = request.LojaVinculadaId;
-    fornecedor.ComissaoPercentual = request.ComissaoPercentual ?? fornecedor.ComissaoPercentual;
-    fornecedor.PrazoEntregaDias = request.PrazoEntregaDias ?? fornecedor.PrazoEntregaDias;
-    fornecedor.Status = Enum.TryParse<StatusFornecedor>(request.Status, true, out var status) ? status : fornecedor.Status;
-    fornecedor.Observacoes = string.IsNullOrWhiteSpace(request.Observacoes) ? null : request.Observacoes.Trim();
-    fornecedor.UpdatedAt = DateTime.UtcNow;
-
-    await db.SaveChangesAsync(ct);
-
-    return Results.Ok(ApiResponse<FornecedorDto>.Ok(ToFornecedorDto(fornecedor), "Fornecedor atualizado."));
+    var persisted = await LoadFornecedorDtoAsync(db, id, ct);
+    return persisted is null
+        ? Results.Problem("O fornecedor foi atualizado, mas a releitura de confirmacao falhou. Consulte o cadastro antes de repetir a operacao.", statusCode: StatusCodes.Status500InternalServerError)
+        : Results.Ok(ApiResponse<FornecedorDto>.Ok(persisted, "Fornecedor atualizado e relido do banco oficial."));
 })
 .WithName("AtualizarFornecedor")
 ;
@@ -13613,11 +13850,15 @@ static async Task<FornecedorContatoDto?> LoadFornecedorContatoAsync(NexumDbConte
             fco_celular AS Celular,
             fco_principal AS Principal,
             fco_ativo AS Ativo,
-            fco_atualizado_em AS AtualizadoEm
+            fco_atualizado_em AS AtualizadoEm,
+            TO_BASE64(fco_row_version) AS RowVersion
         FROM md_fornecedor_contatos
         WHERE fco_id = {0}
+          AND fco_tenant_id = {1}
+          AND fco_is_deleted = 0
         """,
-        id)
+        id,
+        db.CurrentTenantId.ToString())
         .FirstOrDefaultAsync(ct);
 
 static async Task<ContabilLancamentoDto?> LoadContabilLancamentoAsync(NexumDbContext db, int id, CancellationToken ct) =>
@@ -14867,7 +15108,147 @@ static ClienteLojaDto ToClienteLojaDto(Cliente cliente) => new(
     cliente.CreatedAt,
     cliente.UpdatedAt);
 
-static FornecedorDto ToFornecedorDto(Fornecedor fornecedor) => new(
+static async Task<IResult?> ValidateFornecedorRequestAsync(
+    FornecedorRequest request,
+    int? fornecedorId,
+    NexumDbContext db,
+    CancellationToken ct)
+{
+    if (string.IsNullOrWhiteSpace(request.Nome))
+    {
+        return Results.BadRequest(ApiResponse<FornecedorDto>.Erro("Razao social do fornecedor e obrigatoria."));
+    }
+
+    var documento = NormalizeDocument(request.Documento);
+    if (!string.IsNullOrWhiteSpace(documento) && !IsValidCpfCnpj(documento))
+    {
+        return Results.BadRequest(ApiResponse<FornecedorDto>.Erro("CNPJ/CPF do fornecedor invalido."));
+    }
+
+    var email = NormalizeEmail(request.Email);
+    if (!string.IsNullOrWhiteSpace(email) && !System.Net.Mail.MailAddress.TryCreate(email, out _))
+    {
+        return Results.BadRequest(ApiResponse<FornecedorDto>.Erro("E-mail comercial do fornecedor invalido."));
+    }
+
+    var estado = TrimOrNull(request.Estado);
+    if (!string.IsNullOrWhiteSpace(estado) && estado.Length != 2)
+    {
+        return Results.BadRequest(ApiResponse<FornecedorDto>.Erro("UF do fornecedor deve conter duas letras."));
+    }
+
+    var cep = NormalizeDocument(request.Cep);
+    if (!string.IsNullOrWhiteSpace(cep) && cep.Length != 8)
+    {
+        return Results.BadRequest(ApiResponse<FornecedorDto>.Erro("CEP do fornecedor deve conter oito digitos."));
+    }
+
+    if (request.ComissaoPercentual is < 0m or > 100m)
+    {
+        return Results.BadRequest(ApiResponse<FornecedorDto>.Erro("Comissao percentual deve estar entre 0 e 100."));
+    }
+
+    if (request.PrazoEntregaDias is < 0 or > 3650)
+    {
+        return Results.BadRequest(ApiResponse<FornecedorDto>.Erro("Prazo de entrega deve estar entre 0 e 3650 dias."));
+    }
+
+    if (!string.IsNullOrWhiteSpace(request.Status)
+        && (!Enum.TryParse<StatusFornecedor>(request.Status, true, out var status) || !Enum.IsDefined(status)))
+    {
+        return Results.BadRequest(ApiResponse<FornecedorDto>.Erro("Status do fornecedor invalido."));
+    }
+
+    if (request.LojaVinculadaId.HasValue)
+    {
+        if (request.LojaVinculadaId.Value <= 0
+            || !await db.Lojas.AsNoTracking().AnyAsync(item => item.Id == request.LojaVinculadaId.Value, ct))
+        {
+            return Results.BadRequest(ApiResponse<FornecedorDto>.Erro("Loja vinculada nao existe no tenant atual."));
+        }
+    }
+
+    if (fornecedorId.HasValue
+        && !await db.Fornecedores.AsNoTracking().AnyAsync(item => item.Id == fornecedorId.Value, ct))
+    {
+        return Results.NotFound(ApiResponse<FornecedorDto>.Erro("Fornecedor nao encontrado."));
+    }
+
+    return null;
+}
+
+static Task<bool> FornecedorDuplicadoAsync(
+    NexumDbContext db,
+    int? fornecedorId,
+    string? documento,
+    string? email,
+    CancellationToken ct)
+{
+    if (string.IsNullOrWhiteSpace(documento) && string.IsNullOrWhiteSpace(email))
+    {
+        return Task.FromResult(false);
+    }
+
+    return db.Fornecedores.AsNoTracking().AnyAsync(item =>
+        (!fornecedorId.HasValue || item.Id != fornecedorId.Value)
+        && ((!string.IsNullOrWhiteSpace(documento)
+             && item.Cnpj != null
+             && item.Cnpj.Replace(".", "").Replace("/", "").Replace("-", "").Replace(" ", "") == documento)
+            || (!string.IsNullOrWhiteSpace(email)
+                && item.Email != null
+                && item.Email.ToLower() == email)),
+        ct);
+}
+
+static Fornecedor CreateFornecedor(FornecedorRequest request, string? documento, string? email)
+{
+    var fornecedor = new Fornecedor();
+    ApplyFornecedorRequest(fornecedor, request, documento, email);
+    fornecedor.CreatedAt = DateTime.UtcNow;
+    fornecedor.UpdatedAt = fornecedor.CreatedAt;
+    return fornecedor;
+}
+
+static void ApplyFornecedorRequest(Fornecedor fornecedor, FornecedorRequest request, string? documento, string? email)
+{
+    var razaoSocial = request.Nome.Trim();
+    fornecedor.RazaoSocial = razaoSocial;
+    fornecedor.NomeFantasia = TrimOrNull(request.NomeFantasia) ?? razaoSocial;
+    fornecedor.Cnpj = documento;
+    fornecedor.Ie = TrimOrNull(request.Ie);
+    fornecedor.Email = email;
+    fornecedor.Telefone = TrimOrNull(request.Telefone);
+    fornecedor.Whatsapp = TrimOrNull(request.Whatsapp) ?? fornecedor.Telefone;
+    fornecedor.Endereco = TrimOrNull(request.Endereco);
+    fornecedor.Cidade = TrimOrNull(request.Cidade);
+    fornecedor.Estado = TrimOrNull(request.Estado)?.ToUpperInvariant();
+    fornecedor.Cep = NormalizeDocument(request.Cep);
+    fornecedor.Segmento = TrimOrNull(request.Categoria);
+    fornecedor.LojaVinculadaId = request.LojaVinculadaId;
+    fornecedor.ComissaoPercentual = request.ComissaoPercentual ?? 0m;
+    fornecedor.PrazoEntregaDias = request.PrazoEntregaDias ?? 7;
+    fornecedor.Status = Enum.TryParse<StatusFornecedor>(request.Status, true, out var status)
+        ? status
+        : StatusFornecedor.Ativo;
+    fornecedor.Observacoes = TrimOrNull(request.Observacoes);
+    fornecedor.UpdatedAt = DateTime.UtcNow;
+}
+
+static async Task<FornecedorDto?> LoadFornecedorDtoAsync(NexumDbContext db, int id, CancellationToken ct)
+{
+    var persisted = await db.Fornecedores
+        .AsNoTracking()
+        .Where(item => item.Id == id)
+        .Select(item => new
+        {
+            Fornecedor = item,
+            RowVersion = EF.Property<byte[]>(item, "RowVersion")
+        })
+        .FirstOrDefaultAsync(ct);
+    return persisted is null ? null : ToFornecedorDto(persisted.Fornecedor, persisted.RowVersion);
+}
+
+static FornecedorDto ToFornecedorDto(Fornecedor fornecedor, byte[]? rowVersion) => new(
     fornecedor.Id,
     string.IsNullOrWhiteSpace(fornecedor.NomeFantasia) ? fornecedor.RazaoSocial : fornecedor.NomeFantasia,
     fornecedor.Cnpj ?? string.Empty,
@@ -14888,7 +15269,8 @@ static FornecedorDto ToFornecedorDto(Fornecedor fornecedor) => new(
     fornecedor.PrazoEntregaDias,
     fornecedor.Status.ToString(),
     fornecedor.Observacoes,
-    fornecedor.UpdatedAt);
+    fornecedor.UpdatedAt,
+    Convert.ToBase64String(rowVersion ?? []));
 
 static ClientePortalEnderecoDto ToClientePortalEnderecoDto(Endereco endereco) => new(
     endereco.Id,
@@ -18103,9 +18485,17 @@ static async Task EnsureMasterDataSchemaAsync(NexumDbContext db)
             fco_celular VARCHAR(30) NULL,
             fco_principal TINYINT(1) NOT NULL DEFAULT 0,
             fco_ativo TINYINT(1) NOT NULL DEFAULT 1,
+            fco_tenant_id CHAR(36) NOT NULL,
+            fco_row_version BINARY(16) NOT NULL,
+            fco_created_by_user_id CHAR(36) NULL,
+            fco_updated_by_user_id CHAR(36) NULL,
+            fco_criado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             fco_atualizado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            fco_is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+            fco_deleted_at DATETIME NULL,
             PRIMARY KEY (fco_id),
-            KEY ix_md_fornecedor_contatos_fornecedor (fco_fornecedor_id, fco_ativo)
+            KEY ix_md_fornecedor_contatos_fornecedor (fco_fornecedor_id, fco_ativo),
+            KEY ix_md_fornecedor_contatos_tenant_deleted (fco_tenant_id, fco_is_deleted)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         """);
 
@@ -18117,6 +18507,29 @@ static async Task EnsureMasterDataSchemaAsync(NexumDbContext db)
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE adm_pessoas_empresas ADD COLUMN IF NOT EXISTS pes_data_atualizacao TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;");
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE fin_centros_custo ADD COLUMN IF NOT EXISTS ccu_data_exclusao TIMESTAMP NULL;");
     await db.Database.ExecuteSqlRawAsync("ALTER TABLE vnd_itens ADD COLUMN IF NOT EXISTS itm_ativo TINYINT(1) NOT NULL DEFAULT 1;");
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        ALTER TABLE md_fornecedor_contatos
+            ADD COLUMN IF NOT EXISTS fco_tenant_id CHAR(36) NULL,
+            ADD COLUMN IF NOT EXISTS fco_row_version BINARY(16) NULL,
+            ADD COLUMN IF NOT EXISTS fco_created_by_user_id CHAR(36) NULL,
+            ADD COLUMN IF NOT EXISTS fco_updated_by_user_id CHAR(36) NULL,
+            ADD COLUMN IF NOT EXISTS fco_criado_em TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+            ADD COLUMN IF NOT EXISTS fco_is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS fco_deleted_at DATETIME NULL;
+        """);
+    var defaultTenantId = TenantContext.DefaultTenantId.ToString();
+    await db.Database.ExecuteSqlInterpolatedAsync(
+        $"UPDATE md_fornecedor_contatos SET fco_tenant_id = {defaultTenantId} WHERE fco_tenant_id IS NULL OR fco_tenant_id = '';");
+    await db.Database.ExecuteSqlRawAsync(
+        "UPDATE md_fornecedor_contatos SET fco_row_version = UNHEX(REPLACE(UUID(), '-', '')) WHERE fco_row_version IS NULL OR OCTET_LENGTH(fco_row_version) <> 16;");
+    await db.Database.ExecuteSqlRawAsync(
+        "ALTER TABLE md_fornecedor_contatos MODIFY COLUMN fco_tenant_id CHAR(36) NOT NULL, MODIFY COLUMN fco_row_version BINARY(16) NOT NULL, MODIFY COLUMN fco_criado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;");
+    await EnsureGrcIndexAsync(
+        db,
+        "md_fornecedor_contatos",
+        "ix_md_fornecedor_contatos_tenant_deleted",
+        "ALTER TABLE md_fornecedor_contatos ADD KEY ix_md_fornecedor_contatos_tenant_deleted (fco_tenant_id, fco_is_deleted);");
 }
 
 static async Task EnsureFicoSchemaAsync(NexumDbContext db)
@@ -20655,7 +21068,8 @@ public sealed record FornecedorContatoDto(
     string? Celular,
     bool Principal,
     bool Ativo,
-    DateTime AtualizadoEm);
+    DateTime AtualizadoEm,
+    string RowVersion);
 
 public sealed record FornecedorContatoRequest(
     string Nome,
@@ -20664,7 +21078,8 @@ public sealed record FornecedorContatoRequest(
     string? Telefone,
     string? Celular,
     bool Principal,
-    bool Ativo);
+    bool Ativo,
+    string? RowVersion = null);
 
 public sealed record ContabilLancamentoDto(
     int Id,
@@ -21274,7 +21689,8 @@ public sealed record FornecedorRequest(
     decimal? ComissaoPercentual = null,
     int? PrazoEntregaDias = null,
     string? Status = null,
-    string? Observacoes = null);
+    string? Observacoes = null,
+    string? RowVersion = null);
 
 public sealed record FornecedorDto(
     int Id,
@@ -21297,7 +21713,8 @@ public sealed record FornecedorDto(
     int PrazoEntregaDias = 7,
     string? Status = null,
     string? Observacoes = null,
-    DateTime? UpdatedAt = null);
+    DateTime? UpdatedAt = null,
+    string RowVersion = "");
 
 public sealed record CompraSolicitacaoRequest(
     int? ProdutoId,
