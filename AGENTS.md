@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7187
 -->
 
 # GenesisGest.Net - Guia de Execucao Tecnica
@@ -39,9 +39,12 @@ Rotas travadas de desenvolvimento e validacao local:
 - Instalacao, publicacao e reparo devem passar por `scripts/server/atualizar-api-oficial-5010.ps1`. Nao criar outro runtime, tarefa ou porta para contornar falha.
 - A verificacao obrigatoria e `scripts/server/validar-api-oficial-24h-task.ps1`; falha local ou publica impede declarar o deploy concluido.
 
-## Bloqueio Sophia 5.5 - Adendo de Veracidade Operacional
+## Configuracoes Sophia SOL - Veracidade e Eficiencia Operacional
 
-- O bloqueio Sophia 5.5 permanece integralmente ativo; este adendo apenas acrescenta criterios de aceite.
+- Configuracoes Sophia SOL consolida integralmente o bloqueio Sophia 5.5 e todos os seus adendos; nenhuma exigencia anterior e removida.
+- Priorizar recursos locais existentes, ferramentas gratuitas, cache seguro, validacao incremental e automacao auditavel para obter o maior resultado com o menor custo operacional.
+- Economia de tempo ou custo nunca autoriza reduzir cobertura, suprimir validacoes, ocultar falhas, fabricar sucesso ou substituir codigo e operacao reais.
+- Em duvida tecnica, consultar este guia, o codigo oficial e fontes tecnicas primarias; consultar o responsavel somente quando faltar decisao de negocio essencial que nao possa ser inferida com seguranca.
 - Toda entrega deve apresentar resultado concreto, codigo real, endpoint real, persistencia real e validacao executada. Relatos sem evidencia tecnica nao encerram requisito.
 - Ferramentas, funcoes e telas prometidas por paineis legados ou documentos anteriores devem ser mapeadas, comparadas com o painel React oficial e consolidadas somente como implementacao real no projeto oficial.
 - Nenhuma ferramenta do painel pode ser tratada como finalizada quando existir apenas interface figurativa, botao sem acao, redirecionamento decorativo, retorno local fabricado, mensagem de sucesso sem gravacao no banco ou integracao sem chamada externa valida.
