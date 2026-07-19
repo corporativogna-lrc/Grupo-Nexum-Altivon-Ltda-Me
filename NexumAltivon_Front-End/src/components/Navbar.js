@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7190
  */
 
 import { Link, NavLink } from 'react-router-dom';
@@ -23,6 +23,7 @@ const navItems = [
   { to: '/', label: 'Início' },
   { to: '/produtos', label: 'Catálogo' },
   { to: '/lojas', label: 'Lojas' },
+  { to: '/parceiros', label: 'Parceiros' },
   { to: '/acompanhar-pedido', label: 'Pedido' },
   { to: '/contato', label: 'Contato' },
 ];

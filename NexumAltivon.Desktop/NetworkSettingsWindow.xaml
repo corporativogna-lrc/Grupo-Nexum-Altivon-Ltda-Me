@@ -3,14 +3,14 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7190
  -->
 <Window x:Class="NexumAltivon.Desktop.NetworkSettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="GenesisGest.Net - Grade de rede e terminais"
         Width="980"
-        Height="820"
+        Height="900"
         MinWidth="860"
         MinHeight="700"
         WindowStartupLocation="CenterOwner"
@@ -76,6 +76,7 @@
 
         <Grid>
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -164,7 +165,54 @@
                 </Grid>
             </Border>
 
-            <DataGrid Grid.Row="2"
+            <Border Grid.Row="2" Style="{StaticResource PanelCard}" Margin="0,0,0,16">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="IDENTIDADE VISUAL PÚBLICA" Foreground="{StaticResource AccentGold}" FontWeight="Bold" />
+                        <TextBlock Text="Cores globais persistidas no portal oficial" Foreground="{StaticResource TextSecondary}" Margin="0,3,0,0" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="Recarregar" Style="{StaticResource GhostButton}" Click="RefreshPortalTheme_Click" Margin="0,0,10,0" />
+                        <Button Content="Salvar identidade" Style="{StaticResource PrimaryButton}" Click="SavePortalTheme_Click" />
+                    </StackPanel>
+                    <UniformGrid Grid.Row="1" Grid.ColumnSpan="2" Columns="6" Margin="0,14,0,0">
+                        <StackPanel Margin="0,0,8,0">
+                            <TextBlock Text="Primária" Foreground="{StaticResource TextSecondary}" />
+                            <TextBox Text="{Binding PortalPrimaryColor, UpdateSourceTrigger=PropertyChanged}" MaxLength="7" />
+                        </StackPanel>
+                        <StackPanel Margin="0,0,8,0">
+                            <TextBlock Text="Secundária" Foreground="{StaticResource TextSecondary}" />
+                            <TextBox Text="{Binding PortalSecondaryColor, UpdateSourceTrigger=PropertyChanged}" MaxLength="7" />
+                        </StackPanel>
+                        <StackPanel Margin="0,0,8,0">
+                            <TextBlock Text="Fundo" Foreground="{StaticResource TextSecondary}" />
+                            <TextBox Text="{Binding PortalBackgroundColor, UpdateSourceTrigger=PropertyChanged}" MaxLength="7" />
+                        </StackPanel>
+                        <StackPanel Margin="0,0,8,0">
+                            <TextBlock Text="Superfície" Foreground="{StaticResource TextSecondary}" />
+                            <TextBox Text="{Binding PortalSurfaceColor, UpdateSourceTrigger=PropertyChanged}" MaxLength="7" />
+                        </StackPanel>
+                        <StackPanel Margin="0,0,8,0">
+                            <TextBlock Text="Texto" Foreground="{StaticResource TextSecondary}" />
+                            <TextBox Text="{Binding PortalTextColor, UpdateSourceTrigger=PropertyChanged}" MaxLength="7" />
+                        </StackPanel>
+                        <StackPanel>
+                            <TextBlock Text="Texto discreto" Foreground="{StaticResource TextSecondary}" />
+                            <TextBox Text="{Binding PortalMutedTextColor, UpdateSourceTrigger=PropertyChanged}" MaxLength="7" />
+                        </StackPanel>
+                    </UniformGrid>
+                </Grid>
+            </Border>
+
+            <DataGrid Grid.Row="3"
                       ItemsSource="{Binding Endpoints}"
                       AutoGenerateColumns="False"
                       CanUserAddRows="False"
@@ -179,7 +227,7 @@
                 </DataGrid.Columns>
             </DataGrid>
 
-            <Border Grid.Row="3" Style="{StaticResource PanelCard}" Margin="0,16,0,0">
+            <Border Grid.Row="4" Style="{StaticResource PanelCard}" Margin="0,16,0,0">
                 <TextBlock Text="{Binding ResultMessage}" Foreground="{StaticResource AccentGold}" TextWrapping="Wrap" FontWeight="SemiBold" />
             </Border>
         </Grid>

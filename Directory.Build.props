@@ -3,15 +3,15 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7187
+ * Versão: 1.1.5.7190
  -->
 <Project>
   <PropertyGroup>
-    <VersionPrefix>1.1.5.7187</VersionPrefix>
-    <Version>1.1.5.7187</Version>
-    <AssemblyVersion>1.1.5.7187</AssemblyVersion>
-    <FileVersion>1.1.5.7187</FileVersion>
-    <InformationalVersion>1.1.5.7187+20260719.clientes-wpf</InformationalVersion>
+    <VersionPrefix>1.1.5.7190</VersionPrefix>
+    <Version>1.1.5.7190</Version>
+    <AssemblyVersion>1.1.5.7190</AssemblyVersion>
+    <FileVersion>1.1.5.7190</FileVersion>
+    <InformationalVersion>1.1.5.7190+20260719.catalogo-parceiros</InformationalVersion>
     <Deterministic>true</Deterministic>
   </PropertyGroup>
 </Project>

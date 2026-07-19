@@ -10,17 +10,20 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NexumAltivon.API.Data;
 
 #nullable disable
 
-namespace NexumAltivon.API.Data.Migrations.Nexum
+namespace NexumAltivon.API.API.Data.Migrations.Nexum
 {
     [DbContext(typeof(NexumDbContext))]
-    partial class NexumDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260719065037_RepairPublicSiteMediaReferences")]
+    partial class RepairPublicSiteMediaReferences
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

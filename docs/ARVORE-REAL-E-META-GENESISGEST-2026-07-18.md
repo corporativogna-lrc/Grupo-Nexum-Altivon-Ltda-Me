@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7181
+ * Versão: 1.1.5.7190
 -->
 
 # Arvore Real e Arvore Meta do GenesisGest.Net
@@ -137,12 +137,12 @@ GenesisGest.Net concluido
 | CAP-05 | Fiscal explicavel | Parcial | Exibir roteamento, motivo, numeracao, XML, chave, protocolo e eventos oficiais |
 | CAP-06 | FICO corporativo | Parcial avancado | Contas a pagar/receber, baixas, PDFs de pagar/receber e conciliacao bancaria usam janelas, contratos, persistencia, tenant, concorrencia e auditoria proprios; PDFs foram homologados na API local/publica e o acionamento WPF compilado; concluir homologacao interativa WPF, tesouraria, fechamento, razao e DRE |
 | CAP-07 | Logistica e fulfillment | Parcial | Provar cotacao, expedicao, rastreamento externo, entrega e ocorrencias |
-| CAP-08 | CRM e atendimento Yara | Parcial | Provar pipeline, oportunidade, atividade, ticket e atendimento com chave real, sem seletor de persona |
+| CAP-08 | CRM e atendimento Yara | Parcial bloqueado por credencial | Provar jornada comercial com chave de projeto OpenAI real, streaming, ferramentas autorizadas de catalogo/estoque/preco/carrinho/checkout, transferencia humana, limite de custo e protecao de dados sigilosos; sem seletor de persona e sem resposta fabricada |
 | CAP-09 | HCM | Parcial | Provar admissao, ponto, folha, beneficios, avaliacao, desligamento e eSocial |
 | CAP-10 | MES e OPS | Parcial | Entregar telas React/WPF e provar OS, apontamento, manutencao e ativos |
 | CAP-11 | Paridade Desktop | Parcial avancado | Contas a pagar/receber e conciliacao bancaria confirmam releitura; substituir as cinco janelas genericas e reconciliar 100% da matriz tabela-endpoint-formulario-permissao |
 | CAP-12 | Marketplaces e dropshipping | Bloqueado externamente | Homologar cada seller e provedor com credencial e identificador oficial |
-| CAP-13 | Portal visual dinamico | Parcial | Simplificar banners/slides com selecao, upload, ordem, ativacao e substituicao sem URL manual; administrar imagens de lojas/produtos, validar responsividade e remover conteudo estatico operacional |
+| CAP-13 | Portal visual dinamico | Parcial avancado | API/MySQL, React e WPF ja administram banners, cores, seis lojas, parceiros, contatos autorizados e produtos vinculados; concluir publicacao do bundle e homologacao Chrome desktop/mobile |
 | CAP-14 | Operacao observavel | Parcial | Comprovar logs, traces, metricas, jobs, Redis, backup e restore |
 | CAP-15 | Banco canonico | Pendente programado | Cumprir inventario, linhagem, equivalencias, migracao, reconciliacao e reversao |
 

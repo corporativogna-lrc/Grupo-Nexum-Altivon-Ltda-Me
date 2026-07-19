@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7190
  */
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
@@ -15,6 +15,7 @@ import AccessAuditPanel from '../components/AccessAuditPanel';
 import MarketingAdminPanel from '../components/MarketingAdminPanel';
 import DropshippingAdminPanel from '../components/DropshippingAdminPanel';
 import SiteMediaLibrary from '../components/SiteMediaLibrary';
+import SitePublicProfilesEditor from '../components/SitePublicProfilesEditor';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
   Activity,
@@ -385,16 +386,23 @@ const emptySiteConfigForm = {
   site_whatsapp_secundario: '5514996731879',
   site_yara_email: 'corporativo.gna@gmail.com',
   site_sophia_email: 'corporativo.gna@gmail.com',
+  site_cor_primaria: '#C9A227',
+  site_cor_secundaria: '#0A0A0A',
+  site_cor_fundo: '#F5F7FB',
+  site_cor_superficie: '#FFFFFF',
+  site_cor_texto: '#0F172A',
+  site_cor_texto_suave: '#64748B',
   home_intro_titulo: 'Uma Nova Era Começa',
   home_intro_texto_1: 'A Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro.',
   home_intro_texto_2: 'Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso.',
   home_intro_badge: 'www.nexumaltivon.com.br',
   home_footer_texto: 'Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas.',
+  home_hero_interval_seconds: '7',
+  site_partner_rotation_seconds: '8',
   home_quality_items: '["Curadoria rigorosa de fornecedores","Atendimento humano e especializado","Política de devolução simplificada","Preços justos e acessíveis"]',
-  home_partner_cards: '[{"title":"Parceiros de Vendas","text":"Lojas físicas ou online podem ampliar seus horizontes de venda com nossa infraestrutura comercial e operação integrada.","cta":"Quero Vender","href":"https://wa.me/5514996731879?text=Olá! Tenho interesse em ser parceiro de vendas do Grupo Nexum Altivon.","icon":"Store"}]',
-  home_hero_slides: '[{"id":"ecommerce","badge":"Grupo Nexum Altivon","title":"O Futuro do","highlight":"E-Commerce","description":"Seis lojas, uma operação conectada e uma proposta premium para transformar a experiência de compra online.","image":"https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1920&q=88"}]',
+  home_hero_slides: '[{"id":"ecommerce","badge":"Grupo Nexum Altivon","title":"O Futuro do","highlight":"E-Commerce","description":"Seis lojas, uma operação conectada e uma proposta premium para transformar a experiência de compra online.","image":"/imagens/homepage/banner-ecommerce.svg","imageAlt":"Operação integrada do Grupo Nexum Altivon","active":true,"order":0}]',
 };
-const siteConfigJsonFields = new Set(['home_quality_items', 'home_partner_cards', 'home_hero_slides']);
+const siteConfigJsonFields = new Set(['home_quality_items', 'home_hero_slides']);
 const siteConfigFieldMeta = [
   { key: 'site_nome', label: 'Nome do site', type: 'text', group: 'Geral', description: 'Nome público principal da operação.' },
   { key: 'site_url', label: 'URL pública', type: 'text', group: 'Geral', description: 'Endereço principal exibido nos links institucionais.' },
@@ -406,14 +414,21 @@ const siteConfigFieldMeta = [
   { key: 'site_whatsapp_secundario', label: 'WhatsApp secundário', type: 'text', group: 'Geral', description: 'Número usado em parceria/fornecedores.' },
   { key: 'site_yara_email', label: 'E-mail da Yara', type: 'text', group: 'Atendimento', description: 'Canal atual da Yara para atendimento comercial.' },
   { key: 'site_sophia_email', label: 'E-mail da Sophia', type: 'text', group: 'Atendimento', description: 'Canal da Sophia para apoio administrativo interno.' },
+  { key: 'site_cor_primaria', label: 'Cor principal', type: 'color', group: 'Aparencia', description: 'Ações, links e destaques do portal.' },
+  { key: 'site_cor_secundaria', label: 'Cor secundária', type: 'color', group: 'Aparencia', description: 'Cabeçalho, navegação e áreas de contraste.' },
+  { key: 'site_cor_fundo', label: 'Cor de fundo', type: 'color', group: 'Aparencia', description: 'Fundo geral das páginas públicas.' },
+  { key: 'site_cor_superficie', label: 'Cor de superfície', type: 'color', group: 'Aparencia', description: 'Cards, painéis e blocos de conteúdo.' },
+  { key: 'site_cor_texto', label: 'Cor do texto', type: 'color', group: 'Aparencia', description: 'Textos principais das páginas públicas.' },
+  { key: 'site_cor_texto_suave', label: 'Cor do texto secundário', type: 'color', group: 'Aparencia', description: 'Descrições e informações auxiliares.' },
   { key: 'home_intro_titulo', label: 'Título institucional', type: 'text', group: 'SiteHome', description: 'Título principal do bloco institucional.' },
   { key: 'home_intro_texto_1', label: 'Texto institucional 1', type: 'textarea', group: 'SiteHome', description: 'Primeiro texto institucional da home.' },
   { key: 'home_intro_texto_2', label: 'Texto institucional 2', type: 'textarea', group: 'SiteHome', description: 'Segundo texto institucional da home.' },
   { key: 'home_intro_badge', label: 'Selo institucional', type: 'text', group: 'SiteHome', description: 'Texto do selo abaixo do bloco institucional.' },
   { key: 'home_footer_texto', label: 'Rodapé público', type: 'textarea', group: 'SiteHome', description: 'Mensagem institucional no rodapé da home.' },
+  { key: 'home_hero_interval_seconds', label: 'Troca automática dos banners', type: 'number', min: 3, max: 30, group: 'SiteHome', description: 'Intervalo entre 3 e 30 segundos para avançar os slides ativos.' },
+  { key: 'site_partner_rotation_seconds', label: 'Rodízio de parceiros', type: 'number', min: 5, max: 60, group: 'SiteHome', description: 'Intervalo entre 5 e 60 segundos para alternar grupos de até quatro parceiros.' },
   { key: 'home_quality_items', label: 'Itens de qualidade (JSON)', type: 'textarea', group: 'SiteHome', description: 'Array JSON de frases do bloco de qualidade.' },
-  { key: 'home_partner_cards', label: 'Cards de parceria (JSON)', type: 'textarea', group: 'SiteHome', description: 'Array JSON com title, text, cta, href e icon.' },
-  { key: 'home_hero_slides', label: 'Slides do banner (JSON)', type: 'textarea', group: 'SiteHome', description: 'Array JSON com id, badge, title, highlight, description e image.' },
+  { key: 'home_hero_slides', label: 'Slides do banner', type: 'managed', group: 'SiteHome', description: 'Slides administrados pelo editor visual e persistidos como dados estruturados.' },
 ];
 const siteConfigFieldByKey = Object.fromEntries(siteConfigFieldMeta.map((field) => [field.key, field]));
 const siteConfigSections = [
@@ -424,16 +439,22 @@ const siteConfigSections = [
     fields: ['site_nome', 'site_url', 'site_logo', 'site_email_contato', 'site_telefone', 'site_telefone_secundario', 'site_whatsapp', 'site_whatsapp_secundario', 'site_yara_email', 'site_sophia_email'],
   },
   {
+    id: 'aparencia',
+    title: 'Cores do portal',
+    description: 'Paleta global aplicada ao frontend público e compartilhada com o controle administrativo do Desktop.',
+    fields: ['site_cor_primaria', 'site_cor_secundaria', 'site_cor_fundo', 'site_cor_superficie', 'site_cor_texto', 'site_cor_texto_suave'],
+  },
+  {
     id: 'home',
     title: 'Textos institucionais da home',
     description: 'Textos do banner institucional, do bloco de apresentação e do rodapé público.',
-    fields: ['home_intro_titulo', 'home_intro_badge', 'home_intro_texto_1', 'home_intro_texto_2', 'home_footer_texto'],
+    fields: ['home_intro_titulo', 'home_intro_badge', 'home_intro_texto_1', 'home_intro_texto_2', 'home_footer_texto', 'home_hero_interval_seconds', 'site_partner_rotation_seconds'],
   },
   {
-    id: 'home-json',
-    title: 'Banners e blocos visuais',
-    description: 'Conteúdo em JSON que alimenta a home sem precisar mexer no código.',
-    fields: ['home_quality_items', 'home_partner_cards', 'home_hero_slides'],
+    id: 'home-complementos',
+    title: 'Blocos complementares',
+    description: 'Conteúdo estruturado dos diferenciais exibidos abaixo do banner.',
+    fields: ['home_quality_items'],
   },
 ];
 const pedidoStatusOptions = ['Pendente', 'Processando', 'Enviado', 'Entregue', 'Cancelado'];
@@ -1035,10 +1056,12 @@ export default function Dashboard() {
     setFormStatus('Lead cadastrado no CRM.');
   };
 
-  const submitSiteConfiguracoes = async (event) => {
-    event.preventDefault();
-    if (siteConfigSaving) return;
+  const persistSiteConfiguracoes = async (overrides = {}) => {
+    if (siteConfigSaving) {
+      throw new Error('Já existe uma gravação de configuração pública em andamento.');
+    }
 
+    const sourceForm = { ...siteConfigForm, ...overrides };
     setSiteConfigStatus({ type: '', message: '' });
     setSiteConfigSaving(true);
 
@@ -1047,11 +1070,11 @@ export default function Dashboard() {
     try {
       payload = siteConfigFieldMeta.map((field) => {
         const existing = siteConfigItems.find((item) => item.chave === field.key);
-        const value = normalizeSiteConfigValue(field.key, siteConfigForm[field.key] ?? '');
+        const value = normalizeSiteConfigValue(field.key, sourceForm[field.key] ?? '');
         return {
           chave: field.key,
           valor: value,
-          tipo: siteConfigJsonFields.has(field.key) ? 'JSON' : existing?.tipo || 'Texto',
+          tipo: siteConfigJsonFields.has(field.key) ? 'JSON' : (field.type === 'number' ? 'Numero' : field.type === 'color' ? 'Cor' : existing?.tipo || 'Texto'),
           descricao: existing?.descricao || field.description,
           grupo: existing?.grupo || field.group,
           editavel: existing?.editavel ?? true,
@@ -1060,7 +1083,7 @@ export default function Dashboard() {
     } catch (error) {
       setSiteConfigStatus({ type: 'error', message: 'Os campos em JSON precisam estar válidos antes de salvar.' });
       setSiteConfigSaving(false);
-      return;
+      throw error;
     }
 
     try {
@@ -1087,13 +1110,24 @@ export default function Dashboard() {
         type: 'success',
         message: `${payload.length} configurações da home, banners e contatos foram gravadas e relidas do banco.`,
       });
+      return persistedItems;
     } catch (error) {
       setSiteConfigStatus({
         type: 'error',
         message: error.response?.data?.detail || error.response?.data?.mensagem || error.message || 'Não foi possível salvar as configurações do site.',
       });
+      throw error;
     } finally {
       setSiteConfigSaving(false);
+    }
+  };
+
+  const submitSiteConfiguracoes = async (event) => {
+    event.preventDefault();
+    try {
+      await persistSiteConfiguracoes();
+    } catch {
+      // O estado visível da própria tela já contém o erro operacional retornado pela API.
     }
   };
 
@@ -2478,7 +2512,9 @@ export default function Dashboard() {
                                       />
                                     ) : (
                                       <input
-                                        type="text"
+                                        type={field?.type === 'number' ? 'number' : field?.type === 'color' ? 'color' : 'text'}
+                                        min={field?.type === 'number' ? field?.min : undefined}
+                                        max={field?.type === 'number' ? field?.max : undefined}
                                         value={value}
                                         onChange={(event) => setSiteConfigForm((current) => ({ ...current, [key]: event.target.value }))}
                                         className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
@@ -2521,7 +2557,10 @@ export default function Dashboard() {
                         heroSlidesJson={siteConfigForm.home_hero_slides}
                         onLogoChange={(url) => setSiteConfigForm((current) => ({ ...current, site_logo: url }))}
                         onHeroSlidesChange={(value) => setSiteConfigForm((current) => ({ ...current, home_hero_slides: value }))}
+                        onSaveHeroSlides={(value) => persistSiteConfiguracoes({ home_hero_slides: value })}
+                        savingHeroSlides={siteConfigSaving}
                       />
+                      <SitePublicProfilesEditor />
                       <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
                         <div className="border-b border-slate-100 px-6 py-5">
                           <p className="text-xs font-black uppercase tracking-[0.18em] text-[#C9A227]">Prévia da home</p>
@@ -2546,7 +2585,7 @@ export default function Dashboard() {
                             <p className="mt-2 text-sm font-semibold text-slate-700">{siteConfigForm.home_intro_titulo || 'Uma Nova Era Começa'}</p>
                             <p className="mt-1 text-sm text-slate-500">{siteConfigForm.home_intro_badge || 'www.nexumaltivon.com.br'}</p>
                           </div>
-                          <div className="grid gap-3 sm:grid-cols-3">
+                          <div className="grid gap-3 sm:grid-cols-2">
                             <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
                               <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Slides</p>
                               <p className="mt-2 text-3xl font-black text-slate-950">{getJsonArrayCount(siteConfigForm.home_hero_slides)}</p>
@@ -2554,10 +2593,6 @@ export default function Dashboard() {
                             <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
                               <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Qualidade</p>
                               <p className="mt-2 text-3xl font-black text-slate-950">{getJsonArrayCount(siteConfigForm.home_quality_items)}</p>
-                            </div>
-                            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Parceiros</p>
-                              <p className="mt-2 text-3xl font-black text-slate-950">{getJsonArrayCount(siteConfigForm.home_partner_cards)}</p>
                             </div>
                           </div>
                         </div>

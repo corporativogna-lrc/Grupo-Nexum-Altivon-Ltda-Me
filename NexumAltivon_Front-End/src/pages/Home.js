@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7190
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -22,8 +22,10 @@ import {
   LoaderCircle,
   Mail,
   MessageCircleMore,
+  Pause,
   Phone,
   Plane,
+  Play,
   ShieldCheck,
   Shirt,
   Smartphone,
@@ -36,75 +38,23 @@ import ProductCard from '../components/ProductCard';
 import { clienteAPI, produtoAPI, resolvePublicAssetUrl, siteAPI, unwrapApiData } from '../services/api';
 import { buildWhatsAppLink, supportMessages } from '../utils/supportLinks';
 import { isValidCpfCnpj } from '../utils/validation';
+import { buildProfileThemeStyle } from '../utils/siteTheme';
 
-const fallbackLogo = '/imagens/homepage/Logo-2.png';
 const resolveLogo = (logo) => {
   const value = String(logo || '').trim();
-  return resolvePublicAssetUrl(value && !value.includes('logo-grupo-nexum-altivon.svg') ? value : fallbackLogo);
+  return resolvePublicAssetUrl(value);
 };
 
 const resolveMediaCollection = (items) => (
   Array.isArray(items)
-    ? items.map((item) => ({ ...item, image: resolvePublicAssetUrl(item?.image) }))
+    ? items.map((item) => ({
+        ...item,
+        image: resolvePublicAssetUrl(item?.image),
+        imagem: resolvePublicAssetUrl(item?.imagem),
+        logo: resolvePublicAssetUrl(item?.logo),
+      }))
     : items
 );
-
-const heroSlides = [
-  {
-    id: 'ecommerce',
-    badge: 'Grupo Nexum Altivon',
-    title: 'O Futuro do',
-    highlight: 'E-Commerce',
-    description:
-      'Seis lojas, uma operação conectada e uma proposta premium para transformar a experiência de compra online.',
-    image: '/imagens/homepage/banner-ecommerce.svg',
-  },
-  {
-    id: 'marcas',
-    badge: '6 marcas em expansão',
-    title: 'Uma operação,',
-    highlight: 'múltiplos mercados',
-    description:
-      'Turismo, relógios, moda, tecnologia, construção e festas com a mesma curadoria comercial do Grupo Nexum Altivon.',
-    image: '/imagens/homepage/banner-marcas.svg',
-  },
-  {
-    id: 'tecnologia',
-    badge: 'Experiência tecnológica',
-    title: 'Compra segura com',
-    highlight: 'atendimento humano',
-    description:
-      'Fluxos preparados para catálogo, clientes, pedidos, integrações e relacionamento com visão de crescimento contínuo.',
-    image: '/imagens/homepage/banner-atendimento.svg',
-  },
-  {
-    id: 'audio',
-    badge: 'Qualidade premium',
-    title: 'Produtos escolhidos',
-    highlight: 'a dedo para você',
-    description:
-      'Curadoria, confiança e posicionamento visual forte para acelerar as vendas com identidade própria.',
-    image: '/imagens/homepage/banner-ecommerce.svg',
-  },
-  {
-    id: 'luxo',
-    badge: 'Grupo Nexum Altivon',
-    title: 'Presença digital com',
-    highlight: 'força de marca',
-    description:
-      'Uma vitrine mais elegante, mais viva e preparada para receber clientes, parceiros e operações reais.',
-    image: '/imagens/homepage/banner-marcas.svg',
-  },
-  {
-    id: 'mobile',
-    badge: 'Operação em evolução',
-    title: 'Pronto para',
-    highlight: 'escalar o negócio',
-    description:
-      'Estrutura pensada para integrar e-commerce, dropshipping, logística, gateways e relacionamento com o cliente.',
-    image: '/imagens/homepage/banner-atendimento.svg',
-  },
-];
 
 const emptyCadastro = {
   nome: '',
@@ -115,80 +65,11 @@ const emptyCadastro = {
   newsletter: true,
 };
 
-const lojas = [
-  {
-    nome: 'Gran Tur',
-    segmento: 'Viagens & Turismo',
-    descricao: 'Mochilas, malas, acessórios de viagem e tudo o que você precisa para explorar o mundo com estilo e conforto.',
-    imagem: '/imagens/homepage/loja-gran-tur.svg',
-    icon: Plane,
-  },
-  {
-    nome: 'Chronos',
-    segmento: 'Relógios & Acessórios',
-    descricao: 'Relógios que marcam mais que horas — marcam estilo. Do clássico ao moderno, peças para quem valoriza precisão e elegância.',
-    imagem: '/imagens/homepage/loja-chronos.svg',
-    icon: Watch,
-  },
-  {
-    nome: 'Moda Mim',
-    segmento: 'Moda & Vestuário',
-    descricao: 'Tendências que vestem a sua personalidade. Roupas, calçados e acessórios para quem não abre mão de estar no topo.',
-    imagem: '/imagens/homepage/loja-moda-mim.svg',
-    icon: Shirt,
-  },
-  {
-    nome: 'Geração Top+',
-    segmento: 'Tecnologia & Gadgets',
-    descricao: 'Tecnologia de ponta ao alcance de todos. Smartphones, gadgets, eletrônicos e inovações que conectam você ao futuro.',
-    imagem: '/imagens/homepage/loja-geracao-top.svg',
-    icon: Smartphone,
-  },
-  {
-    nome: 'Estruturaline',
-    segmento: 'Construção & Estruturas',
-    descricao: 'Ferramentas, materiais de construção e equipamentos profissionais. Solidez para quem constrói com seriedade.',
-    imagem: '/imagens/homepage/loja-estruturaline.svg',
-    icon: Hammer,
-  },
-  {
-    nome: 'Gran Festas',
-    segmento: 'Festas & Eventos',
-    descricao: 'Decorações, utensílios e tudo para tornar sua festa inesquecível, dos pequenos encontros aos grandes eventos.',
-    imagem: '/imagens/homepage/loja-gran-festas.svg',
-    icon: Gift,
-  },
-];
-
 const qualidade = [
   'Curadoria rigorosa de fornecedores',
   'Atendimento humano e especializado',
   'Política de devolução simplificada',
   'Preços justos e acessíveis',
-];
-
-const parceiros = [
-  {
-    title: 'Parceiros de Vendas',
-    text: 'Lojas físicas ou online podem ampliar seus horizontes de venda com nossa infraestrutura comercial e operação integrada.',
-    cta: 'Quero Vender',
-    href: 'https://wa.me/5514996731879?text=Olá! Tenho interesse em ser parceiro de vendas do Grupo Nexum Altivon.',
-    icon: Store,
-  },
-  {
-    title: 'Fornecedores & Distribuidores',
-    text: 'Distribuidores e fabricantes encontram um canal de venda em crescimento, com visão de volume, relacionamento e longo prazo.',
-    cta: 'Quero Fornecer',
-    href: 'https://wa.me/5514996731879?text=Olá! Sou fornecedor/distribuidor e tenho interesse em parceria com o Grupo Nexum Altivon.',
-    icon: Truck,
-  },
-  {
-    title: 'Dropshipping',
-    text: 'Integre seu catálogo às nossas lojas ou utilize nossa infraestrutura para conectar produtos, logística e novos canais.',
-    cta: 'Quero Fazer Dropship',
-    href: 'https://wa.me/5514996731879?text=Olá! Tenho interesse em parceria de dropshipping com o Grupo Nexum Altivon.',
-    icon: Building2,
-  },
 ];
 
 const partnerIconMap = {
@@ -248,10 +129,12 @@ const mapPublicSiteConfig = (config) => {
     primaryWhatsapp: pickConfigValue(config, ['primaryWhatsapp', 'PrimaryWhatsapp', 'site_whatsapp', 'siteWhatsapp'], '5514996731879'),
     secondaryWhatsapp: pickConfigValue(config, ['secondaryWhatsapp', 'SecondaryWhatsapp', 'site_whatsapp_secundario', 'siteWhatsappSecundario'], '5514996731879'),
     yaraEmail: pickConfigValue(config, ['yaraEmail', 'YaraEmail', 'site_yara_email', 'siteYaraEmail'], 'corporativo.gna@gmail.com'),
-    siteLogo: resolveLogo(pickConfigValue(config, ['siteLogo', 'SiteLogo', 'site_logo', 'siteLogoUrl'], fallbackLogo)),
+    siteLogo: resolveLogo(pickConfigValue(config, ['siteLogo', 'SiteLogo', 'site_logo', 'siteLogoUrl'], '')),
     institutionalUrl: pickConfigValue(config, ['institutionalUrl', 'InstitutionalUrl', 'site_institucional_url', 'siteInstitucionalUrl'], '/institucional'),
     privacyUrl: pickConfigValue(config, ['privacyUrl', 'PrivacyUrl', 'site_politica_privacidade_url', 'sitePoliticaPrivacidadeUrl'], '/politica-privacidade'),
     refundUrl: pickConfigValue(config, ['refundUrl', 'RefundUrl', 'site_politica_reembolso_url', 'sitePoliticaReembolsoUrl'], '/politica-reembolso'),
+    heroIntervalSeconds: Number(pickConfigValue(config, ['heroIntervalSeconds', 'HeroIntervalSeconds'], 7)),
+    partnerRotationSeconds: Number(pickConfigValue(config, ['partnerRotationSeconds', 'PartnerRotationSeconds'], 8)),
     heroSlides: resolveMediaCollection(pickConfigValue(config, ['heroSlides', 'HeroSlides'], [])),
     storeCards: resolveMediaCollection(pickConfigValue(config, ['storeCards', 'StoreCards', 'home_lojas_cards', 'homeLojasCards'], [])),
     introTitle: pickConfigValue(config, ['introTitle', 'IntroTitle', 'home_intro_titulo', 'homeIntroTitulo'], 'Uma Nova Era Começa'),
@@ -259,7 +142,7 @@ const mapPublicSiteConfig = (config) => {
     introText2: pickConfigValue(config, ['introText2', 'IntroText2', 'home_intro_texto_2', 'homeIntroTexto2'], 'Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso.'),
     introBadge: pickConfigValue(config, ['introBadge', 'IntroBadge', 'home_intro_badge', 'homeIntroBadge'], 'nexumaltivon.com.br'),
     qualityItems: pickConfigValue(config, ['qualityItems', 'QualityItems', 'home_quality_items', 'homeQualityItems'], []),
-    partnerCards: pickConfigValue(config, ['partnerCards', 'PartnerCards', 'home_partner_cards', 'homePartnerCards'], []),
+    partnerCards: resolveMediaCollection(pickConfigValue(config, ['partnerCards', 'PartnerCards'], [])),
     footerText: pickConfigValue(config, ['footerText', 'FooterText', 'home_footer_texto', 'homeFooterTexto'], 'Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas.'),
   };
 };
@@ -267,8 +150,11 @@ export default function Home() {
   const navigate = useNavigate();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [siteConfig, setSiteConfig] = useState(null);
+  const [siteConfigLoading, setSiteConfigLoading] = useState(true);
   const [siteConfigError, setSiteConfigError] = useState('');
   const [siteMediaError, setSiteMediaError] = useState('');
+  const [isCarouselPaused, setIsCarouselPaused] = useState(false);
+  const [partnerPage, setPartnerPage] = useState(0);
   const [failedSlideImages, setFailedSlideImages] = useState(() => new Set());
   const [featuredProducts, setFeaturedProducts] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
@@ -277,11 +163,13 @@ export default function Home() {
   const [cadastroStatus, setCadastroStatus] = useState({ tone: '', message: '' });
   const [loadingCadastro, setLoadingCadastro] = useState(false);
 
-  const displaySlides = Array.isArray(siteConfig?.heroSlides) && siteConfig.heroSlides.length > 0 ? siteConfig.heroSlides : heroSlides;
-  const activeSlide = displaySlides[currentSlide] || displaySlides[0] || heroSlides[0];
-  const displayStores = Array.isArray(siteConfig?.storeCards) && siteConfig.storeCards.length > 0 ? siteConfig.storeCards : lojas;
+  const displaySlides = Array.isArray(siteConfig?.heroSlides) ? siteConfig.heroSlides : [];
+  const activeSlide = displaySlides[currentSlide] || displaySlides[0] || null;
+  const displayStores = Array.isArray(siteConfig?.storeCards) ? siteConfig.storeCards : [];
   const qualityItems = Array.isArray(siteConfig?.qualityItems) && siteConfig.qualityItems.length > 0 ? siteConfig.qualityItems : qualidade;
-  const partnerCards = Array.isArray(siteConfig?.partnerCards) && siteConfig.partnerCards.length > 0 ? siteConfig.partnerCards : parceiros;
+  const partnerCards = Array.isArray(siteConfig?.partnerCards) ? siteConfig.partnerCards : [];
+  const partnerPageCount = Math.max(1, Math.ceil(partnerCards.length / 4));
+  const visiblePartnerCards = partnerCards.slice(partnerPage * 4, partnerPage * 4 + 4);
   const introTitle = siteConfig?.introTitle || 'Uma Nova Era Começa';
   const introText1 =
     siteConfig?.introText1 || 'O Grupo Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro.';
@@ -292,7 +180,7 @@ export default function Home() {
   const secondaryPhone = siteConfig?.secondaryPhone || '+55 (14) 99673-1879';
   const publicContactEmail = siteConfig?.contactEmail || 'corporativo.gna@gmail.com';
   const yaraInstantHref = buildWhatsAppLink(siteConfig?.primaryWhatsapp, supportMessages.yaraSales);
-  const siteLogo = siteConfig?.siteLogo || fallbackLogo;
+  const siteLogo = siteConfig?.siteLogo || '';
   const institutionalUrl = siteConfig?.institutionalUrl || '/institucional';
   const privacyUrl = siteConfig?.privacyUrl || '/politica-privacidade';
   const refundUrl = siteConfig?.refundUrl || '/politica-reembolso';
@@ -304,15 +192,23 @@ export default function Home() {
       .getPublicConfig()
       .then((response) => {
         const config = unwrapApiData(response.data);
-        if (active && config) {
-          setSiteConfig(mapPublicSiteConfig(config));
+        const mappedConfig = config ? mapPublicSiteConfig(config) : null;
+        if (!mappedConfig || !Array.isArray(mappedConfig.heroSlides) || mappedConfig.heroSlides.length === 0) {
+          throw new Error('A API não retornou banners ativos para a home.');
+        }
+        if (active) {
+          setSiteConfig(mappedConfig);
           setSiteConfigError('');
         }
       })
       .catch((error) => {
         if (active) {
+          setSiteConfig(null);
           setSiteConfigError(error?.message || 'A configuração pública não respondeu.');
         }
+      })
+      .finally(() => {
+        if (active) setSiteConfigLoading(false);
       });
 
     return () => {
@@ -364,6 +260,28 @@ export default function Home() {
       setCurrentSlide(0);
     }
   }, [currentSlide, displaySlides.length]);
+
+  useEffect(() => {
+    if (isCarouselPaused || displaySlides.length < 2) return undefined;
+
+    const seconds = Math.min(30, Math.max(3, Number(siteConfig?.heroIntervalSeconds) || 7));
+    const timer = window.setInterval(() => {
+      setCurrentSlide((slide) => (slide + 1) % displaySlides.length);
+    }, seconds * 1000);
+
+    return () => window.clearInterval(timer);
+  }, [displaySlides.length, isCarouselPaused, siteConfig?.heroIntervalSeconds]);
+
+  useEffect(() => {
+    if (partnerPage >= partnerPageCount) setPartnerPage(0);
+  }, [partnerPage, partnerPageCount]);
+
+  useEffect(() => {
+    if (partnerPageCount < 2) return undefined;
+    const seconds = Math.min(60, Math.max(5, Number(siteConfig?.partnerRotationSeconds) || 8));
+    const timer = window.setInterval(() => setPartnerPage((current) => (current + 1) % partnerPageCount), seconds * 1000);
+    return () => window.clearInterval(timer);
+  }, [partnerPageCount, siteConfig?.partnerRotationSeconds]);
 
   const cadastroDuplicadoLocal = useMemo(() => {
     if (!cadastroStatus.message || cadastroStatus.tone !== 'info') return false;
@@ -426,11 +344,15 @@ export default function Home() {
           });
           return;
         }
-      } catch {
+      } catch (verificationError) {
         setCadastroStatus({
-          tone: 'warning',
-          message: 'Verificação de cadastro indisponível no momento. Vamos seguir com o registro para não travar seu acesso.',
+          tone: 'error',
+          message:
+            verificationError?.response?.data?.mensagem ||
+            verificationError?.response?.data?.detail ||
+            'Não foi possível confirmar se o cadastro já existe. Nenhum dado foi gravado; tente novamente quando a API estiver disponível.',
         });
+        return;
       }
 
       const cadastroResponse = await clienteAPI.create(payload);
@@ -496,30 +418,35 @@ export default function Home() {
 
         <div className="relative mx-auto flex min-h-[84vh] max-w-7xl items-center px-4 py-20 sm:px-6 lg:px-8">
           <div className="max-w-3xl">
-            {(siteConfigError || siteMediaError) && (
+            {(siteConfigLoading || siteConfigError || siteMediaError) && (
               <div className="mb-5 border border-amber-400/60 bg-black/80 px-4 py-3 text-sm font-bold text-amber-100" role="alert">
-                {siteConfigError ? `Configuração pública indisponível: ${siteConfigError}` : siteMediaError}
+                {siteConfigLoading ? 'Carregando a configuração pública do portal...' : (siteConfigError ? `Configuração pública indisponível: ${siteConfigError}` : siteMediaError)}
               </div>
             )}
-            <p className="mb-5 inline-flex items-center rounded-full border border-[#C9A227]/40 bg-black/40 px-4 py-2 text-xs font-bold uppercase tracking-[0.25em] text-[#E8D5A3]">
-              {activeSlide.badge}
-            </p>
-            <h1 className="font-serif text-5xl font-bold leading-[1.02] text-white sm:text-6xl lg:text-7xl" data-testid="hero-title">
-              {activeSlide.title}
-              <span className="block text-[#C9A227]">{activeSlide.highlight}</span>
-            </h1>
+            {activeSlide && (
+              <>
+                <p className="mb-5 inline-flex items-center rounded-full border border-[#C9A227]/40 bg-black/40 px-4 py-2 text-xs font-bold uppercase tracking-[0.25em] text-[#E8D5A3]">
+                  {activeSlide.badge}
+                </p>
+                <h1 className="font-serif text-5xl font-bold leading-[1.02] text-white sm:text-6xl lg:text-7xl" data-testid="hero-title">
+                  {activeSlide.title}
+                  <span className="block text-[#C9A227]">{activeSlide.highlight}</span>
+                </h1>
+              </>
+            )}
             <div className="mt-6 flex items-start gap-4">
-            <img
-              src={siteLogo}
-              alt="Logotipo Grupo Nexum Altivon"
-              className="hidden h-16 w-16 rounded-2xl border border-[#C9A227]/30 bg-black/60 object-contain p-2 sm:block"
-              onError={(event) => {
-                setSiteMediaError('A logomarca configurada não respondeu; o arquivo institucional local foi carregado.');
-                event.currentTarget.onerror = null;
-                event.currentTarget.src = fallbackLogo;
-              }}
-            />
-              <p className="max-w-2xl text-lg leading-8 text-zinc-200 sm:text-xl">{activeSlide.description}</p>
+              {siteLogo && (
+                <img
+                  src={siteLogo}
+                  alt="Logotipo Grupo Nexum Altivon"
+                  className="hidden h-16 w-16 rounded-2xl border border-[#C9A227]/30 bg-black/60 object-contain p-2 sm:block"
+                  onError={(event) => {
+                    setSiteMediaError('A logomarca configurada não respondeu.');
+                    event.currentTarget.hidden = true;
+                  }}
+                />
+              )}
+              {activeSlide && <p className="max-w-2xl text-lg leading-8 text-zinc-200 sm:text-xl">{activeSlide.description}</p>}
             </div>
 
             <form onSubmit={handleCatalogSearch} className="mt-8 flex max-w-2xl gap-3 rounded-2xl border border-white/10 bg-black/40 p-3 backdrop-blur">
@@ -557,21 +484,32 @@ export default function Home() {
               </a>
             </div>
 
-            <div className="mt-8 flex flex-wrap items-center gap-3">
-              {displaySlides.map((slide, index) => (
+            {displaySlides.length > 1 && (
+              <div className="mt-8 flex flex-wrap items-center gap-3">
+                {displaySlides.map((slide, index) => (
+                  <button
+                    key={slide.id}
+                    type="button"
+                    aria-label={`Exibir banner ${index + 1}`}
+                    onClick={() => setCurrentSlide(index)}
+                    className={`h-3 rounded-full transition-all ${index === currentSlide ? 'w-10 bg-[#C9A227]' : 'w-3 bg-white/40 hover:bg-white/70'}`}
+                  />
+                ))}
                 <button
-                  key={slide.id}
                   type="button"
-                  aria-label={`Exibir banner ${index + 1}`}
-                  onClick={() => setCurrentSlide(index)}
-                  className={`h-3 rounded-full transition-all ${index === currentSlide ? 'w-10 bg-[#C9A227]' : 'w-3 bg-white/40 hover:bg-white/70'}`}
-                />
-              ))}
-            </div>
+                  onClick={() => setIsCarouselPaused((current) => !current)}
+                  title={isCarouselPaused ? 'Retomar troca automática' : 'Pausar troca automática'}
+                  aria-label={isCarouselPaused ? 'Retomar troca automática dos banners' : 'Pausar troca automática dos banners'}
+                  className="ml-2 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-black/40 text-white transition hover:border-[#C9A227] hover:text-[#C9A227]"
+                >
+                  {isCarouselPaused ? <Play size={15} /> : <Pause size={15} />}
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="pointer-events-none absolute inset-y-0 left-0 right-0 mx-auto hidden max-w-7xl items-center justify-between px-4 sm:flex sm:px-6 lg:px-8">
+        {displaySlides.length > 1 && <div className="pointer-events-none absolute inset-y-0 left-0 right-0 mx-auto hidden max-w-7xl items-center justify-between px-4 sm:flex sm:px-6 lg:px-8">
           <button
             type="button"
             onClick={() => changeSlide('prev')}
@@ -588,7 +526,7 @@ export default function Home() {
           >
             <ChevronRight size={22} />
           </button>
-        </div>
+        </div>}
       </section>
 
       <section className="relative overflow-hidden bg-gradient-to-br from-[#0A0A0A] to-[#1A1A1A] px-4 py-20 text-center">
@@ -820,32 +758,33 @@ export default function Home() {
           </p>
         </div>
 
+        {displayStores.length === 0 && (
+          <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-5 text-sm font-bold text-amber-100">Nenhuma loja está publicada no momento.</div>
+        )}
         <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-3">
           {displayStores.map((loja) => {
             const Icon = typeof loja.icon === 'string' ? storeIconMap[loja.icon] || Store : loja.icon || Store;
             return (
               <article
-                key={loja.nome}
-                className="group overflow-hidden rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] transition duration-300 hover:-translate-y-2 hover:border-[#C9A227] hover:shadow-2xl hover:shadow-[#C9A227]/10"
+                key={loja.id || loja.slug}
+                style={buildProfileThemeStyle(loja)}
+                className="site-profile-theme group overflow-hidden rounded-lg border border-[#2A2A2A] transition duration-300 hover:-translate-y-2 hover:shadow-2xl"
               >
-                <div className="relative h-56 overflow-hidden bg-[#111111]">
-                  <div
-                    className="absolute inset-0 bg-cover bg-center transition duration-500 group-hover:scale-110"
-                    style={{ backgroundImage: `url(${loja.imagem})` }}
-                    aria-hidden="true"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#1A1A1A] to-transparent" />
-                  <div className="absolute left-5 top-5 flex h-12 w-12 items-center justify-center rounded-full bg-black/70 text-[#C9A227]">
-                    <Icon size={24} />
+                <Link to={`/lojas/${loja.slug}`} className="block">
+                  <div className="profile-surface relative h-56 overflow-hidden">
+                    {loja.imagem && <img src={loja.imagem} alt={loja.nome} className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-110" onError={() => setSiteMediaError(`A imagem configurada para ${loja.nome} não respondeu.`)} />}
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#1A1A1A] to-transparent" />
+                    <div className="profile-primary absolute left-5 top-5 flex h-12 w-12 items-center justify-center rounded-full bg-black/70">
+                      <Icon size={24} />
+                    </div>
                   </div>
-                </div>
-                <div className="p-6">
-                  <h3 className="font-serif text-2xl font-bold text-[#C9A227]">{loja.nome}</h3>
-                  <p className="mt-3 min-h-24 text-sm leading-6 text-zinc-400">{loja.descricao}</p>
-                  <span className="mt-5 inline-flex rounded-full bg-[#0A0A0A] px-4 py-2 text-xs font-bold uppercase tracking-wide text-[#E8D5A3]">
-                    {loja.segmento}
-                  </span>
-                </div>
+                  <div className="p-6">
+                    <h3 className="profile-primary font-serif text-2xl font-bold">{loja.nome}</h3>
+                    <p className="mt-3 text-sm font-semibold text-zinc-200">{loja.atividade}</p>
+                    <p className="mt-3 min-h-24 text-sm leading-6 text-zinc-400">{loja.descricao}</p>
+                    <span className="mt-5 inline-flex rounded-full bg-[#0A0A0A] px-4 py-2 text-xs font-bold uppercase tracking-wide text-[#E8D5A3]">{loja.segmento}</span>
+                  </div>
+                </Link>
               </article>
             );
           })}
@@ -896,25 +835,28 @@ export default function Home() {
           <p className="mx-auto mt-5 max-w-3xl text-zinc-400">
             O Grupo Nexum Altivon está construindo uma rede forte de parcerias para venda, fornecimento e dropshipping.
           </p>
-          <div className="mt-12 grid gap-6 lg:grid-cols-3">
-            {partnerCards.map((item) => {
+          {partnerCards.length === 0 && (
+            <div className="mt-10 rounded-lg border border-amber-400/30 bg-amber-500/10 p-5 text-sm font-bold text-amber-100">Nenhum parceiro está publicado no momento.</div>
+          )}
+          <div className="mt-12 grid gap-6 md:grid-cols-2">
+            {visiblePartnerCards.map((item) => {
               const Icon = typeof item.icon === 'string' ? partnerIconMap[item.icon] || Building2 : item.icon;
               return (
-                <article key={item.title} className="rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] p-8 text-left transition hover:border-[#C9A227]">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#C9A227] text-black">
+                <article key={item.id || item.slug} style={buildProfileThemeStyle(item)} className="site-profile-theme overflow-hidden rounded-lg border border-[#2A2A2A] text-left transition">
+                  <Link to={`/parceiros/${item.slug}`} className="block">
+                    <div className="profile-surface relative aspect-[16/9] overflow-hidden">
+                      {item.image ? <img src={item.image} alt={item.title} className="h-full w-full object-cover" onError={() => setSiteMediaError(`A imagem configurada para ${item.title} não respondeu.`)} /> : <div className="flex h-full items-center justify-center"><Icon className="profile-primary" size={54} /></div>}
+                    </div>
+                  </Link>
+                  <div className="p-8">
+                  <div className="profile-primary-bg flex h-14 w-14 items-center justify-center rounded-full text-black">
                     <Icon size={26} />
                   </div>
                   <h3 className="mt-6 text-xl font-black text-white">{item.title}</h3>
+                  <p className="mt-3 text-sm font-semibold text-zinc-200">{item.activity}</p>
                   <p className="mt-4 min-h-28 text-sm leading-7 text-zinc-400">{item.text}</p>
-                  <a
-                    href={item.href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#C9A227] px-5 py-3 text-sm font-black text-black transition hover:bg-[#E8D5A3]"
-                  >
-                    {item.cta}
-                    <ArrowRight size={16} />
-                  </a>
+                  <Link to={`/parceiros/${item.slug}`} className="profile-primary-bg mt-6 inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-black text-black transition">Ver perfil <ArrowRight size={16} /></Link>
+                  </div>
                 </article>
               );
             })}
@@ -926,16 +868,17 @@ export default function Home() {
         <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-4 sm:px-6 md:flex-row md:items-center lg:px-8">
           <div>
             <div className="flex items-center gap-3">
-              <img
-                src={siteLogo}
-                alt="Logotipo Grupo Nexum Altivon"
-                className="h-12 w-12 rounded-xl border border-[#C9A227]/30 bg-black object-contain p-1.5"
-                onError={(event) => {
-                  setSiteMediaError('A logomarca configurada não respondeu; o arquivo institucional local foi carregado.');
-                  event.currentTarget.onerror = null;
-                  event.currentTarget.src = fallbackLogo;
-                }}
-              />
+              {siteLogo && (
+                <img
+                  src={siteLogo}
+                  alt="Logotipo Grupo Nexum Altivon"
+                  className="h-12 w-12 rounded-xl border border-[#C9A227]/30 bg-black object-contain p-1.5"
+                  onError={(event) => {
+                    setSiteMediaError('A logomarca configurada não respondeu.');
+                    event.currentTarget.hidden = true;
+                  }}
+                />
+              )}
               <p className="text-xs font-black uppercase tracking-[0.25em] text-[#E8D5A3]">Grupo Nexum Altivon</p>
             </div>
             <p className="mt-3 text-sm leading-7 text-zinc-400">{siteConfig?.footerText || 'Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas.'}</p>
@@ -948,6 +891,13 @@ export default function Home() {
               <a href={refundUrl} className="transition hover:text-[#C9A227]">Política de reembolso</a>
             </div>
           </div>
+          {partnerPageCount > 1 && (
+            <div className="mt-8 flex items-center justify-center gap-4">
+              <button type="button" onClick={() => setPartnerPage((current) => (current - 1 + partnerPageCount) % partnerPageCount)} className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20" title="Parceiros anteriores"><ChevronLeft size={18} /></button>
+              <span className="text-sm font-black">{partnerPage + 1} de {partnerPageCount}</span>
+              <button type="button" onClick={() => setPartnerPage((current) => (current + 1) % partnerPageCount)} className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20" title="Próximos parceiros"><ChevronRight size={18} /></button>
+            </div>
+          )}
           <div className="flex flex-wrap gap-3">
             <a
               href="#home"

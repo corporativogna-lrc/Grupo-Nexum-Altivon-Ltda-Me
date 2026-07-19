@@ -1,3 +1,11 @@
+/*
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5.7190
+ */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -127,6 +135,72 @@ code {
     --nexum-text: #f5f5f5;
     --nexum-muted: #a0a0a0;
     font-family: "Montserrat", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.site-public-theme {
+    min-height: 100vh;
+    background: var(--site-background);
+    color: var(--site-text);
+}
+
+.site-public-theme main {
+    background-color: var(--site-background) !important;
+    color: var(--site-text) !important;
+}
+
+.site-public-theme nav,
+.site-public-theme footer {
+    background-color: var(--site-secondary) !important;
+}
+
+.site-public-theme .bg-white,
+.site-public-theme .bg-slate-50,
+.site-public-theme .bg-\[\#111111\] {
+    background-color: var(--site-surface) !important;
+}
+
+.site-public-theme .text-\[\#C9A227\],
+.site-public-theme .text-orange-500,
+.site-public-theme .text-amber-500 {
+    color: var(--site-primary) !important;
+}
+
+.site-public-theme .bg-\[\#C9A227\],
+.site-public-theme .bg-orange-500,
+.site-public-theme .bg-amber-500 {
+    background-color: var(--site-primary) !important;
+}
+
+.site-public-theme .text-slate-950,
+.site-public-theme .text-slate-900,
+.site-public-theme .text-white {
+    color: var(--site-text) !important;
+}
+
+.site-public-theme .text-slate-700,
+.site-public-theme .text-slate-600,
+.site-public-theme .text-slate-500,
+.site-public-theme .text-zinc-300,
+.site-public-theme .text-zinc-400,
+.site-public-theme .text-zinc-500 {
+    color: var(--site-muted) !important;
+}
+
+.site-profile-theme {
+    background-color: var(--profile-background) !important;
+    color: var(--profile-text) !important;
+}
+
+.site-profile-theme .profile-surface {
+    background-color: var(--profile-secondary) !important;
+}
+
+.site-profile-theme .profile-primary {
+    color: var(--profile-primary) !important;
+}
+
+.site-profile-theme .profile-primary-bg {
+    background-color: var(--profile-primary) !important;
 }
 
 .nexum-admin-shell {

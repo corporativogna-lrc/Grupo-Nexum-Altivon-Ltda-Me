@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7182
+ * Versão: 1.1.5.7190
  */
 import axios from 'axios';
 import { HTTP_UNAUTHORIZED, STORAGE_KEYS } from '../constants';
@@ -340,6 +340,16 @@ export const siteAPI = {
   uploadMidia: (data) => api.post('/site/midias', data),
   atualizarMidia: (id, data) => api.put(`/site/midias/${id}`, data),
   excluirMidia: (id, rowVersion) => api.delete(`/site/midias/${id}`, { params: { rowVersion } }),
+  listarLojasPublicas: () => api.get('/site/lojas'),
+  obterLojaPublica: (slug) => api.get(`/site/lojas/${encodeURIComponent(slug)}`),
+  listarParceirosPublicos: (tipo) => api.get('/site/parceiros', { params: tipo ? { tipo } : undefined }),
+  obterParceiroPublico: (slug) => api.get(`/site/parceiros/${encodeURIComponent(slug)}`),
+  listarPerfisPublicos: () => api.get('/site/perfis-publicos'),
+  listarOrigensPerfisPublicos: () => api.get('/site/perfis-publicos/origens'),
+  listarProdutosDisponiveisPerfisPublicos: () => api.get('/site/perfis-publicos/produtos-disponiveis'),
+  criarPerfilPublico: (data) => api.post('/site/perfis-publicos', data),
+  atualizarPerfilPublico: (id, data) => api.put(`/site/perfis-publicos/${id}`, data),
+  excluirPerfilPublico: (id, rowVersion) => api.delete(`/site/perfis-publicos/${id}`, { params: { rowVersion } }),
 };
 
 export const produtoAPI = {

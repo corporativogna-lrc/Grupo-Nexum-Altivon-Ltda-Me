@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7187
+ * Versão: 1.1.5.7190
  */
 
 using System.Globalization;
@@ -530,6 +530,31 @@ public sealed class DesktopApiClient
             token,
             HttpMethod.Put,
             "/api/admin/integracoes/openai",
+            payload,
+            cancellationToken);
+
+    public Task<DesktopApiDataResult<List<DesktopSiteConfiguracao>>> GetSiteConfigurationsAsync(
+        TerminalProfile profile,
+        string token,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<List<DesktopSiteConfiguracao>>(
+            profile,
+            token,
+            HttpMethod.Get,
+            "/api/site/configuracoes",
+            null,
+            cancellationToken);
+
+    public Task<DesktopApiDataResult<List<DesktopSiteConfiguracao>>> SaveSiteConfigurationsAsync(
+        TerminalProfile profile,
+        string token,
+        DesktopSiteConfiguracaoUpdateRequest payload,
+        CancellationToken cancellationToken = default)
+        => SendAuthorizedAsync<List<DesktopSiteConfiguracao>>(
+            profile,
+            token,
+            HttpMethod.Put,
+            "/api/site/configuracoes",
             payload,
             cancellationToken);
 
@@ -1640,3 +1665,23 @@ public sealed record DesktopOpenAiAssistenteStatus(
     string Modelo,
     string Origem,
     DateTime? AtualizadoEm);
+
+public sealed record DesktopSiteConfiguracao(
+    int Id,
+    string Chave,
+    string? Valor,
+    string Tipo,
+    string? Descricao,
+    string? Grupo,
+    bool Editavel,
+    DateTime UpdatedAt);
+
+public sealed record DesktopSiteConfiguracaoUpdate(
+    string Chave,
+    string? Valor,
+    string? Tipo,
+    string? Descricao,
+    string? Grupo,
+    bool? Editavel);
+
+public sealed record DesktopSiteConfiguracaoUpdateRequest(List<DesktopSiteConfiguracaoUpdate> Itens);

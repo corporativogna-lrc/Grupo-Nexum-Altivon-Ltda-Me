@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7183
+ * Versão: 1.1.5.7190
  */
 
 using NexumAltivon.API.Models;
@@ -53,6 +53,8 @@ public class NexumDbContext : DbContext
     public DbSet<DropshippingConfig> DropshippingConfigs { get; set; } = null!;
     public DbSet<EmpresaGrupo> EmpresasGrupo { get; set; } = null!;
     public DbSet<SiteMidia> SiteMidias { get; set; } = null!;
+    public DbSet<SitePerfilPublico> SitePerfisPublicos { get; set; } = null!;
+    public DbSet<SitePerfilPublicoProduto> SitePerfisPublicosProdutos { get; set; } = null!;
     public DbSet<LogisticaRastreamentoConsulta> LogisticaRastreamentoConsultas { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -128,6 +130,56 @@ public class NexumDbContext : DbContext
         modelBuilder.Entity<SiteMidia>()
             .HasIndex(midia => new { midia.TenantId, midia.CaminhoRelativo })
             .IsUnique();
+
+        modelBuilder.Entity<SitePerfilPublico>()
+            .Property(perfil => perfil.TipoPerfil)
+            .HasConversion<string>()
+            .HasMaxLength(30);
+
+        modelBuilder.Entity<SitePerfilPublico>()
+            .Property(perfil => perfil.OrigemTipo)
+            .HasConversion<string>()
+            .HasMaxLength(30);
+
+        modelBuilder.Entity<SitePerfilPublico>()
+            .Property(perfil => perfil.RowVersion)
+            .IsConcurrencyToken()
+            .ValueGeneratedNever();
+
+        modelBuilder.Entity<SitePerfilPublico>()
+            .HasIndex(perfil => new { perfil.TenantId, perfil.Slug })
+            .IsUnique();
+
+        modelBuilder.Entity<SitePerfilPublico>()
+            .HasIndex(perfil => new { perfil.TenantId, perfil.TipoPerfil, perfil.Publicado, perfil.OrdemExibicao });
+
+        modelBuilder.Entity<SitePerfilPublico>()
+            .HasIndex(perfil => new { perfil.TenantId, perfil.OrigemTipo, perfil.OrigemId })
+            .IsUnique();
+
+        modelBuilder.Entity<SitePerfilPublicoProduto>()
+            .Property(vinculo => vinculo.RowVersion)
+            .IsConcurrencyToken()
+            .ValueGeneratedNever();
+
+        modelBuilder.Entity<SitePerfilPublicoProduto>()
+            .HasIndex(vinculo => new { vinculo.TenantId, vinculo.PerfilPublicoId, vinculo.ProdutoId })
+            .IsUnique();
+
+        modelBuilder.Entity<SitePerfilPublicoProduto>()
+            .HasIndex(vinculo => new { vinculo.TenantId, vinculo.PerfilPublicoId, vinculo.Publicado, vinculo.OrdemExibicao });
+
+        modelBuilder.Entity<SitePerfilPublicoProduto>()
+            .HasOne(vinculo => vinculo.PerfilPublico)
+            .WithMany(perfil => perfil.ProdutosPublicados)
+            .HasForeignKey(vinculo => vinculo.PerfilPublicoId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<SitePerfilPublicoProduto>()
+            .HasOne(vinculo => vinculo.Produto)
+            .WithMany()
+            .HasForeignKey(vinculo => vinculo.ProdutoId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<EmpresaGrupo>()
             .HasIndex(empresa => empresa.Cnpj)

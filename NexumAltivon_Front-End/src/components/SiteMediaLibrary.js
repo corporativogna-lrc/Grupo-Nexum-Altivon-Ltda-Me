@@ -3,15 +3,16 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7190
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Image, ImagePlus, LoaderCircle, MonitorUp, RefreshCw, Save, Trash2 } from 'lucide-react';
-import { siteAPI } from '../services/api';
+import { ArrowDown, ArrowUp, Eye, EyeOff, Image, ImagePlus, LoaderCircle, MonitorUp, Plus, RefreshCw, Save, Trash2 } from 'lucide-react';
+import { resolvePublicAssetUrl, siteAPI } from '../services/api';
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const ACCEPTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const mediaTypes = ['Logo', 'Banner', 'Loja', 'Institucional'];
+const MAX_HERO_SLIDES = 10;
 
 const initialUploadForm = {
   nome: '',
@@ -45,16 +46,36 @@ const parseHeroSlides = (value) => {
   try {
     const parsed = JSON.parse(value || '[]');
     if (!Array.isArray(parsed) || parsed.length === 0) {
-      return { slides: [], error: 'Cadastre ao menos um slide no JSON antes de vincular um banner.' };
+      return { slides: [], error: 'Cadastre ao menos um slide antes de vincular um banner.' };
     }
 
-    return { slides: parsed, error: '' };
+    return {
+      slides: parsed.map((slide, index) => ({
+        id: String(slide?.id || '').trim(),
+        badge: String(slide?.badge || ''),
+        title: String(slide?.title || ''),
+        highlight: String(slide?.highlight || ''),
+        description: String(slide?.description || ''),
+        image: String(slide?.image || ''),
+        imageAlt: String(slide?.imageAlt || slide?.highlight || ''),
+        active: slide?.active !== false,
+        order: index,
+      })),
+      error: '',
+    };
   } catch {
-    return { slides: [], error: 'O JSON dos slides é inválido. Corrija-o antes de vincular um banner.' };
+    return { slides: [], error: 'Os dados persistidos dos slides são inválidos e precisam ser corrigidos.' };
   }
 };
 
-function SiteMediaLibrary({ logoUrl, heroSlidesJson, onLogoChange, onHeroSlidesChange }) {
+function SiteMediaLibrary({
+  logoUrl,
+  heroSlidesJson,
+  onLogoChange,
+  onHeroSlidesChange,
+  onSaveHeroSlides,
+  savingHeroSlides,
+}) {
   const [midias, setMidias] = useState([]);
   const [uploadForm, setUploadForm] = useState(initialUploadForm);
   const [selectedSlideIndex, setSelectedSlideIndex] = useState(0);
@@ -197,7 +218,8 @@ function SiteMediaLibrary({ logoUrl, heroSlidesJson, onLogoChange, onHeroSlidesC
   };
 
   const assignLogo = (midia) => {
-    onLogoChange(midia.url);
+    const reference = midia.caminhoRelativo || midia.url;
+    onLogoChange(reference);
     setError('');
     setStatus(`Logo selecionado: ${midia.nome}. Salve a configuração pública para efetivar a alteração.`);
   };
@@ -209,13 +231,136 @@ function SiteMediaLibrary({ logoUrl, heroSlidesJson, onLogoChange, onHeroSlidesC
     }
     const nextSlides = heroSlidesState.slides.map((slide, index) => (
       index === selectedSlideIndex
-        ? { ...slide, image: midia.url, imageAlt: midia.textoAlternativo }
+        ? { ...slide, image: midia.caminhoRelativo || midia.url, imageAlt: midia.textoAlternativo }
         : slide
     ));
     onHeroSlidesChange(JSON.stringify(nextSlides));
     setError('');
     setStatus(`Banner selecionado para o slide ${selectedSlideIndex + 1}. Salve a configuração pública para efetivar a alteração.`);
   };
+
+  const emitSlides = (slides, nextSelectedIndex = selectedSlideIndex) => {
+    const normalized = slides.map((slide, index) => ({ ...slide, order: index }));
+    onHeroSlidesChange(JSON.stringify(normalized));
+    setSelectedSlideIndex(Math.max(0, Math.min(nextSelectedIndex, normalized.length - 1)));
+    setStatus('Alterações do banner aguardando gravação no banco.');
+    setError('');
+  };
+
+  const updateSelectedSlide = (field, value) => {
+    emitSlides(heroSlidesState.slides.map((slide, index) => (
+      index === selectedSlideIndex ? { ...slide, [field]: value } : slide
+    )));
+  };
+
+  const addSlide = () => {
+    if (heroSlidesState.slides.length >= MAX_HERO_SLIDES) {
+      setError(`A home aceita no máximo ${MAX_HERO_SLIDES} slides.`);
+      return;
+    }
+
+    const id = `slide-${crypto.randomUUID()}`;
+    const nextSlides = [
+      ...heroSlidesState.slides,
+      {
+        id,
+        badge: '',
+        title: '',
+        highlight: '',
+        description: '',
+        image: '',
+        imageAlt: '',
+        active: false,
+        order: heroSlidesState.slides.length,
+      },
+    ];
+    emitSlides(nextSlides, nextSlides.length - 1);
+  };
+
+  const removeSelectedSlide = () => {
+    if (heroSlidesState.slides.length <= 1) {
+      setError('A home deve manter ao menos um slide.');
+      return;
+    }
+
+    const nextSlides = heroSlidesState.slides.filter((_, index) => index !== selectedSlideIndex);
+    emitSlides(nextSlides, Math.min(selectedSlideIndex, nextSlides.length - 1));
+  };
+
+  const moveSelectedSlide = (direction) => {
+    const targetIndex = selectedSlideIndex + direction;
+    if (targetIndex < 0 || targetIndex >= heroSlidesState.slides.length) return;
+
+    const nextSlides = [...heroSlidesState.slides];
+    [nextSlides[selectedSlideIndex], nextSlides[targetIndex]] = [nextSlides[targetIndex], nextSlides[selectedSlideIndex]];
+    emitSlides(nextSlides, targetIndex);
+  };
+
+  const toggleSelectedSlide = () => {
+    const current = heroSlidesState.slides[selectedSlideIndex];
+    if (!current) return;
+    const activeCount = heroSlidesState.slides.filter((slide) => slide.active).length;
+    if (current.active && activeCount <= 1) {
+      setError('Ao menos um slide deve permanecer ativo.');
+      return;
+    }
+
+    updateSelectedSlide('active', !current.active);
+  };
+
+  const validateSlides = () => {
+    if (heroSlidesState.error) return heroSlidesState.error;
+    if (heroSlidesState.slides.length > MAX_HERO_SLIDES) return `A home aceita no máximo ${MAX_HERO_SLIDES} slides.`;
+
+    const ids = new Set();
+    for (let index = 0; index < heroSlidesState.slides.length; index += 1) {
+      const slide = heroSlidesState.slides[index];
+      const id = slide.id.trim().toLowerCase();
+      if (!/^[a-z0-9][a-z0-9-]{2,63}$/.test(id)) return `O identificador do slide ${index + 1} é inválido.`;
+      if (ids.has(id)) return `O identificador ${id} está duplicado.`;
+      ids.add(id);
+      if (slide.badge.trim().length < 2 || slide.badge.trim().length > 80) return `Revise o selo do slide ${index + 1}.`;
+      if (slide.title.trim().length < 2 || slide.title.trim().length > 120) return `Revise o título do slide ${index + 1}.`;
+      if (slide.highlight.trim().length < 2 || slide.highlight.trim().length > 120) return `Revise o destaque do slide ${index + 1}.`;
+      if (slide.description.trim().length < 10 || slide.description.trim().length > 500) return `Revise a descrição do slide ${index + 1}.`;
+      if (!/^\/(uploads|imagens|assets)\//i.test(slide.image.trim())) return `Selecione uma imagem oficial para o slide ${index + 1}.`;
+      if (slide.imageAlt.trim().length > 240) return `O texto alternativo do slide ${index + 1} excede 240 caracteres.`;
+    }
+
+    if (!heroSlidesState.slides.some((slide) => slide.active)) return 'Ao menos um slide deve permanecer ativo.';
+    return '';
+  };
+
+  const saveHeroSlides = async () => {
+    setStatus('');
+    setError('');
+    const validationError = validateSlides();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    const payload = JSON.stringify(heroSlidesState.slides.map((slide, index) => ({
+      ...slide,
+      id: slide.id.trim().toLowerCase(),
+      badge: slide.badge.trim(),
+      title: slide.title.trim(),
+      highlight: slide.highlight.trim(),
+      description: slide.description.trim(),
+      image: slide.image.trim(),
+      imageAlt: slide.imageAlt.trim() || slide.highlight.trim(),
+      order: index,
+    })));
+
+    try {
+      await onSaveHeroSlides(payload);
+      setStatus(`${heroSlidesState.slides.length} slides gravados e relidos do banco.`);
+    } catch (saveError) {
+      setError(getErrorMessage(saveError, 'Não foi possível gravar os slides no banco.'));
+    }
+  };
+
+  const selectedSlide = heroSlidesState.slides[selectedSlideIndex] || null;
 
   return (
     <section className="border border-slate-200 bg-white shadow-sm">
@@ -290,19 +435,101 @@ function SiteMediaLibrary({ logoUrl, heroSlidesJson, onLogoChange, onHeroSlidesC
         {error && <p className="border border-red-300 bg-red-50 px-4 py-3 text-sm font-bold text-red-800">{error}</p>}
         {heroSlidesState.error ? (
           <p className="border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">{heroSlidesState.error}</p>
-        ) : (
-          <label className="block text-sm font-bold text-slate-700">
-            Slide que receberá o banner
-            <select
-              value={selectedSlideIndex}
-              onChange={(event) => setSelectedSlideIndex(Number(event.target.value))}
-              className="mt-1 h-10 w-full border border-slate-300 bg-white px-3 outline-none focus:border-[#C9A227]"
-            >
-              {heroSlidesState.slides.map((slide, index) => (
-                <option key={slide.id || index} value={index}>{index + 1}. {slide.title || slide.id || 'Slide'}</option>
-              ))}
-            </select>
-          </label>
+        ) : selectedSlide && (
+          <section className="border border-slate-200 bg-slate-50">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">
+              <div>
+                <p className="text-xs font-black uppercase text-slate-500">Banners da home</p>
+                <p className="mt-1 text-sm font-bold text-slate-800">{heroSlidesState.slides.length} de {MAX_HERO_SLIDES} slides cadastrados</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => moveSelectedSlide(-1)} disabled={selectedSlideIndex === 0} title="Mover slide para cima" className="inline-flex h-9 w-9 items-center justify-center border border-slate-300 bg-white text-slate-700 disabled:opacity-35">
+                  <ArrowUp size={16} />
+                </button>
+                <button type="button" onClick={() => moveSelectedSlide(1)} disabled={selectedSlideIndex === heroSlidesState.slides.length - 1} title="Mover slide para baixo" className="inline-flex h-9 w-9 items-center justify-center border border-slate-300 bg-white text-slate-700 disabled:opacity-35">
+                  <ArrowDown size={16} />
+                </button>
+                <button type="button" onClick={toggleSelectedSlide} title={selectedSlide.active ? 'Desativar slide' : 'Ativar slide'} className={`inline-flex h-9 w-9 items-center justify-center border ${selectedSlide.active ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-slate-300 bg-white text-slate-500'}`}>
+                  {selectedSlide.active ? <Eye size={16} /> : <EyeOff size={16} />}
+                </button>
+                <button type="button" onClick={addSlide} disabled={heroSlidesState.slides.length >= MAX_HERO_SLIDES} title="Adicionar slide" className="inline-flex h-9 w-9 items-center justify-center border border-slate-950 bg-slate-950 text-white disabled:opacity-35">
+                  <Plus size={16} />
+                </button>
+                <button type="button" onClick={removeSelectedSlide} disabled={heroSlidesState.slides.length <= 1} title="Remover slide" className="inline-flex h-9 w-9 items-center justify-center border border-red-300 bg-white text-red-700 disabled:opacity-35">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+
+            <div className="grid gap-4 p-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+              <div className="space-y-2">
+                {heroSlidesState.slides.map((slide, index) => (
+                  <button
+                    key={slide.id || index}
+                    type="button"
+                    onClick={() => setSelectedSlideIndex(index)}
+                    className={`flex w-full items-center gap-3 border px-3 py-3 text-left ${index === selectedSlideIndex ? 'border-[#C9A227] bg-amber-50' : 'border-slate-200 bg-white'}`}
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center bg-slate-950 text-xs font-black text-white">{index + 1}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-black text-slate-900">{slide.title || 'Título não informado'}</span>
+                      <span className="mt-0.5 block truncate text-xs font-semibold text-slate-500">{slide.active ? 'Ativo' : 'Inativo'} · {slide.id}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="text-sm font-bold text-slate-700">
+                  Identificador
+                  <input value={selectedSlide.id} onChange={(event) => updateSelectedSlide('id', event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} maxLength={64} className="mt-1 h-10 w-full border border-slate-300 bg-white px-3 outline-none focus:border-[#C9A227]" />
+                </label>
+                <label className="text-sm font-bold text-slate-700">
+                  Selo
+                  <input value={selectedSlide.badge} onChange={(event) => updateSelectedSlide('badge', event.target.value)} maxLength={80} className="mt-1 h-10 w-full border border-slate-300 bg-white px-3 outline-none focus:border-[#C9A227]" />
+                </label>
+                <label className="text-sm font-bold text-slate-700">
+                  Título
+                  <input value={selectedSlide.title} onChange={(event) => updateSelectedSlide('title', event.target.value)} maxLength={120} className="mt-1 h-10 w-full border border-slate-300 bg-white px-3 outline-none focus:border-[#C9A227]" />
+                </label>
+                <label className="text-sm font-bold text-slate-700">
+                  Destaque
+                  <input value={selectedSlide.highlight} onChange={(event) => updateSelectedSlide('highlight', event.target.value)} maxLength={120} className="mt-1 h-10 w-full border border-slate-300 bg-white px-3 outline-none focus:border-[#C9A227]" />
+                </label>
+                <label className="text-sm font-bold text-slate-700 md:col-span-2">
+                  Descrição
+                  <textarea value={selectedSlide.description} onChange={(event) => updateSelectedSlide('description', event.target.value)} maxLength={500} className="mt-1 min-h-24 w-full border border-slate-300 bg-white px-3 py-2 outline-none focus:border-[#C9A227]" />
+                </label>
+                <label className="text-sm font-bold text-slate-700 md:col-span-2">
+                  Texto alternativo da imagem
+                  <input value={selectedSlide.imageAlt} onChange={(event) => updateSelectedSlide('imageAlt', event.target.value)} maxLength={240} className="mt-1 h-10 w-full border border-slate-300 bg-white px-3 outline-none focus:border-[#C9A227]" />
+                </label>
+                <div className="md:col-span-2">
+                  <p className="text-sm font-bold text-slate-700">Imagem vinculada</p>
+                  <div className="mt-1 grid min-h-40 overflow-hidden border border-slate-300 bg-slate-950 sm:grid-cols-[220px_minmax(0,1fr)]">
+                    {selectedSlide.image ? (
+                      <img src={resolvePublicAssetUrl(selectedSlide.image)} alt={selectedSlide.imageAlt || selectedSlide.highlight} className="h-40 w-full object-cover" />
+                    ) : (
+                      <div className="flex h-40 items-center justify-center text-sm font-bold text-amber-200">Selecione uma mídia abaixo</div>
+                    )}
+                    <div className="min-w-0 p-4 text-sm text-slate-200">
+                      <p className="font-black text-white">{selectedSlide.title || 'Slide sem título'}</p>
+                      <p className="mt-2 break-all text-xs text-slate-400">{selectedSlide.image || 'Nenhuma imagem vinculada'}</p>
+                      <p className="mt-3 text-xs">Use “Usar no banner” em uma mídia persistida para substituir esta imagem.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-3">
+              <p className="text-xs font-semibold text-slate-500">A ordem, o estado e os textos só entram no portal depois da confirmação pelo banco.</p>
+              <button type="button" onClick={saveHeroSlides} disabled={savingHeroSlides} className="inline-flex h-10 items-center justify-center gap-2 bg-slate-950 px-4 text-sm font-black text-white disabled:opacity-50">
+                {savingHeroSlides ? <LoaderCircle size={16} className="animate-spin" /> : <Save size={16} />}
+                {savingHeroSlides ? 'Gravando e relendo...' : 'Gravar banners'}
+              </button>
+            </div>
+          </section>
         )}
 
         {loading && (
@@ -364,7 +591,7 @@ function SiteMediaLibrary({ logoUrl, heroSlidesJson, onLogoChange, onHeroSlidesC
                       <button type="button" onClick={() => startEditing(midia)} className="h-8 border border-slate-300 px-2 text-xs font-black text-slate-700">Editar</button>
                     </div>
                     <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                      <button type="button" onClick={() => assignLogo(midia)} className={`inline-flex h-9 items-center justify-center gap-2 border px-2 text-xs font-black ${logoUrl === midia.url ? 'border-[#C9A227] bg-amber-50 text-amber-900' : 'border-slate-300 text-slate-700'}`}>
+                      <button type="button" onClick={() => assignLogo(midia)} className={`inline-flex h-9 items-center justify-center gap-2 border px-2 text-xs font-black ${logoUrl === (midia.caminhoRelativo || midia.url) ? 'border-[#C9A227] bg-amber-50 text-amber-900' : 'border-slate-300 text-slate-700'}`}>
                         <Image size={15} /> Usar como logo
                       </button>
                       <button type="button" onClick={() => assignBanner(midia)} disabled={Boolean(heroSlidesState.error)} className="inline-flex h-9 items-center justify-center gap-2 border border-slate-300 px-2 text-xs font-black text-slate-700 disabled:opacity-40">

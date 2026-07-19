@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7187
+ * Versão: 1.1.5.7190
  */
 
 using System.Globalization;
@@ -4153,11 +4153,375 @@ app.MapGet("/api/site/configuracoes/publico", async (NexumDbContext db, Cancella
         .GroupBy(item => item.Chave, StringComparer.OrdinalIgnoreCase)
         .ToDictionary(group => group.Key, group => group.Last().Valor, StringComparer.OrdinalIgnoreCase);
 
-    var publicConfig = BuildPublicSiteConfig(configMap);
+    if (!TryParseHeroSlidesConfiguration(
+            GetConfigValue(configMap, "home_hero_slides", string.Empty),
+            out var heroSlides,
+            out var heroSlidesError))
+    {
+        return Results.Problem(
+            title: "Configuração pública de banners inválida",
+            detail: heroSlidesError,
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+
+    var publicProfiles = await db.SitePerfisPublicos
+        .AsNoTracking()
+        .Where(perfil => perfil.Publicado)
+        .OrderBy(perfil => perfil.OrdemExibicao)
+        .ThenBy(perfil => perfil.Nome)
+        .ToListAsync(ct);
+
+    var storeCards = publicProfiles
+        .Where(perfil => perfil.TipoPerfil == TipoPerfilPublico.Loja)
+        .Select(ToStoreCardSiteDto)
+        .ToList();
+    var partnerCards = publicProfiles
+        .Where(perfil => perfil.TipoPerfil != TipoPerfilPublico.Loja)
+        .Select(ToPartnerCardSiteDto)
+        .ToList();
+
+    var publicConfig = BuildPublicSiteConfig(configMap, heroSlides, storeCards, partnerCards);
     return Results.Ok(ApiResponse<SiteConfiguracaoPublicaDto>.Ok(publicConfig));
 })
 .AllowAnonymous()
 .WithName("SiteConfiguracoesPublicas")
+;
+
+app.MapGet("/api/site/lojas", async (NexumDbContext db, CancellationToken ct) =>
+{
+    var profiles = await db.SitePerfisPublicos
+        .AsNoTracking()
+        .Where(perfil => perfil.Publicado && perfil.TipoPerfil == TipoPerfilPublico.Loja)
+        .OrderBy(perfil => perfil.OrdemExibicao)
+        .ThenBy(perfil => perfil.Nome)
+        .ToListAsync(ct);
+    var items = profiles.Select(ToStoreCardSiteDto).ToList();
+    return Results.Ok(ApiResponse<List<StoreCardSiteDto>>.Ok(items, "Lojas públicas carregadas da base oficial.", items.Count));
+})
+.AllowAnonymous()
+.WithName("SiteLojasPublicas")
+;
+
+app.MapGet("/api/site/lojas/{slug}", async (string slug, NexumDbContext db, CancellationToken ct) =>
+{
+    var normalizedSlug = NormalizePublicProfileSlug(slug);
+    if (string.IsNullOrWhiteSpace(normalizedSlug))
+    {
+        return Results.BadRequest(ApiResponse<StoreCardSiteDto>.Erro("Identificador da loja inválido."));
+    }
+
+    var profile = await db.SitePerfisPublicos
+        .AsNoTracking()
+        .FirstOrDefaultAsync(perfil => perfil.Publicado
+            && perfil.TipoPerfil == TipoPerfilPublico.Loja
+            && perfil.Slug == normalizedSlug, ct);
+    return profile is null
+        ? Results.NotFound(ApiResponse<StoreCardSiteDto>.Erro("Loja pública não encontrada."))
+        : Results.Ok(ApiResponse<StoreCardSiteDto>.Ok(ToStoreCardSiteDto(profile), "Loja pública carregada da base oficial."));
+})
+.AllowAnonymous()
+.WithName("SiteLojaPublicaPorSlug")
+;
+
+app.MapGet("/api/site/parceiros", async (string? tipo, NexumDbContext db, CancellationToken ct) =>
+{
+    TipoPerfilPublico? parsedType = null;
+    if (!string.IsNullOrWhiteSpace(tipo))
+    {
+        if (!Enum.TryParse<TipoPerfilPublico>(tipo.Trim(), true, out var typeValue)
+            || typeValue == TipoPerfilPublico.Loja)
+        {
+            return Results.BadRequest(ApiResponse<List<PartnerCardSiteDto>>.Erro(
+                "Tipo inválido. Use Fornecedor, ParceiroVenda, ParceiroCompra ou Marketplace."));
+        }
+
+        parsedType = typeValue;
+    }
+
+    var query = db.SitePerfisPublicos
+        .AsNoTracking()
+        .Where(perfil => perfil.Publicado && perfil.TipoPerfil != TipoPerfilPublico.Loja);
+    if (parsedType.HasValue)
+    {
+        query = query.Where(perfil => perfil.TipoPerfil == parsedType.Value);
+    }
+
+    var profiles = await query
+        .OrderBy(perfil => perfil.OrdemExibicao)
+        .ThenBy(perfil => perfil.Nome)
+        .ToListAsync(ct);
+    var items = profiles.Select(ToPartnerCardSiteDto).ToList();
+    return Results.Ok(ApiResponse<List<PartnerCardSiteDto>>.Ok(items, "Parceiros públicos carregados da base oficial.", items.Count));
+})
+.AllowAnonymous()
+.WithName("SiteParceirosPublicos")
+;
+
+app.MapGet("/api/site/parceiros/{slug}", async (string slug, NexumDbContext db, CancellationToken ct) =>
+{
+    var normalizedSlug = NormalizePublicProfileSlug(slug);
+    if (string.IsNullOrWhiteSpace(normalizedSlug))
+    {
+        return Results.BadRequest(ApiResponse<PartnerDetailSiteDto>.Erro("Identificador do parceiro inválido."));
+    }
+
+    var profile = await db.SitePerfisPublicos
+        .AsNoTracking()
+        .FirstOrDefaultAsync(perfil => perfil.Publicado
+            && perfil.TipoPerfil != TipoPerfilPublico.Loja
+            && perfil.Slug == normalizedSlug, ct);
+    if (profile is null)
+    {
+        return Results.NotFound(ApiResponse<PartnerDetailSiteDto>.Erro("Parceiro público não encontrado."));
+    }
+
+    var produtos = await db.SitePerfisPublicosProdutos
+        .AsNoTracking()
+        .Where(vinculo => vinculo.PerfilPublicoId == profile.Id && vinculo.Publicado)
+        .Include(vinculo => vinculo.Produto)
+        .ThenInclude(produto => produto.Categoria)
+        .OrderBy(vinculo => vinculo.OrdemExibicao)
+        .ThenBy(vinculo => vinculo.Produto.Nome)
+        .Select(vinculo => vinculo.Produto)
+        .ToListAsync(ct);
+    var produtosPublicaveis = produtos
+        .Where(IsProdutoPublicavel)
+        .Select(MapearProdutoLojaDto)
+        .ToList();
+    return Results.Ok(ApiResponse<PartnerDetailSiteDto>.Ok(
+        ToPartnerDetailSiteDto(profile, produtosPublicaveis),
+        "Parceiro e produtos autorizados carregados da base oficial."));
+})
+.AllowAnonymous()
+.WithName("SiteParceiroPublicoPorSlug")
+;
+
+app.MapGet("/api/site/perfis-publicos", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var profiles = await db.SitePerfisPublicos
+        .AsNoTracking()
+        .OrderBy(perfil => perfil.TipoPerfil)
+        .ThenBy(perfil => perfil.OrdemExibicao)
+        .ThenBy(perfil => perfil.Nome)
+        .ToListAsync(ct);
+    var profileIds = profiles.Select(item => item.Id).ToList();
+    var productLinks = await db.SitePerfisPublicosProdutos
+        .AsNoTracking()
+        .Where(item => profileIds.Contains(item.PerfilPublicoId))
+        .OrderBy(item => item.OrdemExibicao)
+        .ToListAsync(ct);
+    var productIdsByProfile = productLinks
+        .GroupBy(item => item.PerfilPublicoId)
+        .ToDictionary(group => group.Key, group => group.Select(item => item.ProdutoId).ToList());
+    var items = profiles
+        .Select(profile => ToSitePerfilPublicoAdminDto(
+            profile,
+            productIdsByProfile.GetValueOrDefault(profile.Id) ?? []))
+        .ToList();
+    return Results.Ok(ApiResponse<List<SitePerfilPublicoAdminDto>>.Ok(items, "Perfis públicos carregados da base oficial.", items.Count));
+})
+.WithName("ListarSitePerfisPublicos")
+;
+
+app.MapGet("/api/site/perfis-publicos/origens", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var lojas = await db.Lojas.AsNoTracking()
+        .OrderBy(item => item.Nome)
+        .Select(item => new SitePerfilOrigemDto(OrigemPerfilPublico.Loja.ToString(), item.Id, item.Nome, item.Slug, item.Ativa ? "Ativo" : "Inativo"))
+        .ToListAsync(ct);
+    var fornecedores = await db.Fornecedores.AsNoTracking()
+        .OrderBy(item => item.NomeFantasia ?? item.RazaoSocial)
+        .Select(item => new SitePerfilOrigemDto(
+            OrigemPerfilPublico.Fornecedor.ToString(),
+            item.Id,
+            item.NomeFantasia ?? item.RazaoSocial,
+            $"fornecedor-{item.Id}",
+            item.Status.ToString()))
+        .ToListAsync(ct);
+    var marketplaces = await db.Marketplaces.AsNoTracking()
+        .OrderBy(item => item.Nome)
+        .Select(item => new SitePerfilOrigemDto(
+            OrigemPerfilPublico.Marketplace.ToString(),
+            item.Id,
+            item.Nome,
+            item.Slug,
+            item.Ativo ? "Ativo" : "Inativo"))
+        .ToListAsync(ct);
+    var items = lojas.Concat(fornecedores).Concat(marketplaces).ToList();
+    return Results.Ok(ApiResponse<List<SitePerfilOrigemDto>>.Ok(items, "Origens comerciais carregadas da base oficial.", items.Count));
+})
+.WithName("ListarOrigensSitePerfisPublicos")
+;
+
+app.MapGet("/api/site/perfis-publicos/produtos-disponiveis", [Authorize(Policy = "Gerente")] async (
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var products = await FiltrarProdutosPublicaveis(db.Produtos.AsNoTracking())
+        .OrderBy(item => item.Nome)
+        .Select(item => new SitePerfilProdutoDisponivelDto(
+            item.Id,
+            item.Sku,
+            item.Nome,
+            item.Slug,
+            item.PrecoPromocional.HasValue && item.PrecoPromocional > 0 && item.PrecoPromocional < item.Preco
+                ? item.PrecoPromocional.Value
+                : item.Preco,
+            item.ImagemPrincipal!,
+            item.LojaId,
+            item.FornecedorId,
+            item.TipoProduto.ToString()))
+        .ToListAsync(ct);
+    return Results.Ok(ApiResponse<List<SitePerfilProdutoDisponivelDto>>.Ok(
+        products,
+        "Produtos elegíveis para divulgação carregados da base oficial.",
+        products.Count));
+})
+.WithName("ListarProdutosDisponiveisSitePerfisPublicos")
+;
+
+app.MapPost("/api/site/perfis-publicos", [Authorize(Policy = "Gerente")] async (
+    SitePerfilPublicoRequest request,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var validation = await ValidateSitePerfilPublicoRequestAsync(request, null, db, ct);
+    if (validation is not null)
+    {
+        return validation;
+    }
+
+    var profile = new SitePerfilPublico();
+    ApplySitePerfilPublicoRequest(profile, request);
+    db.SitePerfisPublicos.Add(profile);
+    await SyncSitePerfilPublicoProdutosAsync(profile.Id, request.ProdutoIds, db, ct);
+    await db.SaveChangesAsync(ct);
+
+    var created = ToSitePerfilPublicoAdminDto(profile, NormalizeSiteProfileProductIds(request.ProdutoIds));
+    db.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "site_perfis_publicos", 0, AcaoAuditoria.INSERT, null, created));
+    await db.SaveChangesAsync(ct);
+
+    var persisted = await db.SitePerfisPublicos.AsNoTracking().FirstOrDefaultAsync(item => item.Id == profile.Id, ct);
+    var persistedProductIds = await LoadSitePerfilPublicoProductIdsAsync(profile.Id, db, ct);
+    return persisted is null
+        ? Results.Problem("O perfil público foi gravado, mas a releitura de confirmação falhou.", statusCode: StatusCodes.Status500InternalServerError)
+        : Results.Created($"/api/site/perfis-publicos/{profile.Id}", ApiResponse<SitePerfilPublicoAdminDto>.Ok(
+            ToSitePerfilPublicoAdminDto(persisted, persistedProductIds),
+            "Perfil público criado e relido do banco oficial."));
+})
+.WithName("CriarSitePerfilPublico")
+;
+
+app.MapPut("/api/site/perfis-publicos/{id:guid}", [Authorize(Policy = "Gerente")] async (
+    Guid id,
+    SitePerfilPublicoRequest request,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    if (!TryDecodeRowVersion(request.RowVersion, out var expectedRowVersion))
+    {
+        return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro("RowVersion válido é obrigatório para atualizar o perfil público."));
+    }
+
+    var validation = await ValidateSitePerfilPublicoRequestAsync(request, id, db, ct);
+    if (validation is not null)
+    {
+        return validation;
+    }
+
+    try
+    {
+        var profile = await db.SitePerfisPublicos.FirstOrDefaultAsync(item => item.Id == id, ct);
+        if (profile is null)
+        {
+            return Results.NotFound(ApiResponse<SitePerfilPublicoAdminDto>.Erro("Perfil público não encontrado."));
+        }
+
+        if (!profile.RowVersion.SequenceEqual(expectedRowVersion))
+        {
+            return Results.Conflict(ApiResponse<SitePerfilPublicoAdminDto>.Erro("O perfil público foi alterado por outra sessão. Recarregue antes de salvar."));
+        }
+
+        var previousProductIds = await LoadSitePerfilPublicoProductIdsAsync(profile.Id, db, ct);
+        var previous = ToSitePerfilPublicoAdminDto(profile, previousProductIds);
+        ApplySitePerfilPublicoRequest(profile, request);
+        db.Entry(profile).Property(item => item.RowVersion).OriginalValue = expectedRowVersion;
+        await SyncSitePerfilPublicoProdutosAsync(profile.Id, request.ProdutoIds, db, ct);
+        await db.SaveChangesAsync(ct);
+
+        var updated = ToSitePerfilPublicoAdminDto(profile, NormalizeSiteProfileProductIds(request.ProdutoIds));
+        db.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "site_perfis_publicos", 0, AcaoAuditoria.UPDATE, previous, updated));
+        await db.SaveChangesAsync(ct);
+    }
+    catch (DbUpdateConcurrencyException)
+    {
+        return Results.Conflict(ApiResponse<SitePerfilPublicoAdminDto>.Erro("O perfil público foi alterado por outra sessão. Recarregue antes de salvar."));
+    }
+
+    var persisted = await db.SitePerfisPublicos.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id, ct);
+    var persistedProductIds = await LoadSitePerfilPublicoProductIdsAsync(id, db, ct);
+    return persisted is null
+        ? Results.Problem("O perfil público foi atualizado, mas a releitura de confirmação falhou.", statusCode: StatusCodes.Status500InternalServerError)
+        : Results.Ok(ApiResponse<SitePerfilPublicoAdminDto>.Ok(
+            ToSitePerfilPublicoAdminDto(persisted, persistedProductIds),
+            "Perfil público atualizado e relido do banco oficial."));
+})
+.WithName("AtualizarSitePerfilPublico")
+;
+
+app.MapDelete("/api/site/perfis-publicos/{id:guid}", [Authorize(Policy = "Gerente")] async (
+    Guid id,
+    string rowVersion,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    if (!TryDecodeRowVersion(rowVersion, out var expectedRowVersion))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("RowVersion válido é obrigatório para remover o perfil público."));
+    }
+
+    try
+    {
+        var profile = await db.SitePerfisPublicos.FirstOrDefaultAsync(item => item.Id == id, ct);
+        if (profile is null)
+        {
+            return Results.NotFound(ApiResponse<string>.Erro("Perfil público não encontrado."));
+        }
+
+        if (!profile.RowVersion.SequenceEqual(expectedRowVersion))
+        {
+            return Results.Conflict(ApiResponse<string>.Erro("O perfil público foi alterado por outra sessão. Recarregue antes de remover."));
+        }
+
+        var previousProductIds = await LoadSitePerfilPublicoProductIdsAsync(profile.Id, db, ct);
+        var previous = ToSitePerfilPublicoAdminDto(profile, previousProductIds);
+        db.Entry(profile).Property(item => item.RowVersion).OriginalValue = expectedRowVersion;
+        var productLinks = await db.SitePerfisPublicosProdutos
+            .Where(item => item.PerfilPublicoId == profile.Id)
+            .ToListAsync(ct);
+        db.SitePerfisPublicosProdutos.RemoveRange(productLinks);
+        db.SitePerfisPublicos.Remove(profile);
+        await db.SaveChangesAsync(ct);
+        db.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "site_perfis_publicos", 0, AcaoAuditoria.DELETE, previous, null));
+        await db.SaveChangesAsync(ct);
+    }
+    catch (DbUpdateConcurrencyException)
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("O perfil público foi alterado por outra sessão. Recarregue antes de remover."));
+    }
+
+    var stillExists = await db.SitePerfisPublicos.AsNoTracking().AnyAsync(item => item.Id == id, ct);
+    return stillExists
+        ? Results.Problem("A exclusão lógica do perfil público não foi confirmada.", statusCode: StatusCodes.Status500InternalServerError)
+        : Results.Ok(ApiResponse<string>.Ok("Perfil público removido e exclusão confirmada no banco oficial."));
+})
+.WithName("ExcluirSitePerfilPublico")
 ;
 
 app.MapGet("/api/site/configuracoes", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
@@ -4165,6 +4529,7 @@ app.MapGet("/api/site/configuracoes", [Authorize(Policy = "Gerente")] async (Nex
     var items = await db.ConfiguracoesSistema
         .AsNoTracking()
         .Where(item => item.Chave.StartsWith("site_") || item.Chave.StartsWith("home_"))
+        .Where(item => item.Chave != "home_lojas_cards" && item.Chave != "home_partner_cards")
         .OrderBy(item => item.Grupo)
         .ThenBy(item => item.Chave)
         .Select(item => new SiteConfiguracaoItemDto(
@@ -4183,7 +4548,12 @@ app.MapGet("/api/site/configuracoes", [Authorize(Policy = "Gerente")] async (Nex
 .WithName("SiteConfiguracoesAdmin")
 ;
 
-app.MapPut("/api/site/configuracoes", [Authorize(Policy = "Gerente")] async (SiteConfiguracaoUpdateRequest request, NexumDbContext db, CancellationToken ct) =>
+app.MapPut("/api/site/configuracoes", [Authorize(Policy = "Gerente")] async (
+    SiteConfiguracaoUpdateRequest request,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
+    NexumDbContext db,
+    CancellationToken ct) =>
 {
     if (request.Itens is null || request.Itens.Count == 0)
     {
@@ -4208,13 +4578,41 @@ app.MapPut("/api/site/configuracoes", [Authorize(Policy = "Gerente")] async (Sit
         .Select(item => item.Chave.Trim())
         .ToList();
 
+    if (requestedKeys.Any(key => string.Equals(key, "home_lojas_cards", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(key, "home_partner_cards", StringComparison.OrdinalIgnoreCase)))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro(
+            "Lojas e parceiros devem ser alterados pelo cadastro estruturado de perfis públicos."));
+    }
+
     if (requestedKeys.Distinct(StringComparer.OrdinalIgnoreCase).Count() != requestedKeys.Count)
     {
         return Results.BadRequest(ApiResponse<string>.Erro("A solicitação contém chaves de configuração duplicadas."));
     }
 
+    var normalizedJsonValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     foreach (var item in request.Itens)
     {
+        if (string.Equals(item.Chave.Trim(), "home_hero_interval_seconds", StringComparison.OrdinalIgnoreCase)
+            && (!int.TryParse(item.Valor, NumberStyles.Integer, CultureInfo.InvariantCulture, out var intervalSeconds)
+                || intervalSeconds is < 3 or > 30))
+        {
+            return Results.BadRequest(ApiResponse<string>.Erro("O intervalo automático dos banners deve estar entre 3 e 30 segundos."));
+        }
+
+        if (string.Equals(item.Chave.Trim(), "site_partner_rotation_seconds", StringComparison.OrdinalIgnoreCase)
+            && (!int.TryParse(item.Valor, NumberStyles.Integer, CultureInfo.InvariantCulture, out var partnerRotationSeconds)
+                || partnerRotationSeconds is < 5 or > 60))
+        {
+            return Results.BadRequest(ApiResponse<string>.Erro("O intervalo do rodízio de parceiros deve estar entre 5 e 60 segundos."));
+        }
+
+        if (IsSiteColorConfigurationKey(item.Chave.Trim()) && !IsValidHexColor(item.Valor))
+        {
+            return Results.BadRequest(ApiResponse<string>.Erro(
+                $"A cor da configuração '{item.Chave}' deve usar o formato hexadecimal #RRGGBB."));
+        }
+
         var isJson = string.Equals(item.Tipo?.Trim(), TipoConfiguracao.JSON.ToString(), StringComparison.OrdinalIgnoreCase)
             || LooksLikeJson(item.Valor);
 
@@ -4235,9 +4633,24 @@ app.MapPut("/api/site/configuracoes", [Authorize(Policy = "Gerente")] async (Sit
         {
             return Results.BadRequest(ApiResponse<string>.Erro($"O valor JSON da chave '{item.Chave}' é inválido."));
         }
+
+        if (string.Equals(item.Chave.Trim(), "home_hero_slides", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!TryParseHeroSlidesConfiguration(item.Valor, out var normalizedSlides, out var validationError))
+            {
+                return Results.BadRequest(ApiResponse<string>.Erro(validationError));
+            }
+
+            normalizedJsonValues[item.Chave.Trim()] = JsonSerializer.Serialize(normalizedSlides, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            });
+        }
+
     }
 
     var existing = await db.ConfiguracoesSistema
+        .AsNoTracking()
         .Where(item => requestedKeys.Contains(item.Chave))
         .ToListAsync(ct);
 
@@ -4247,63 +4660,118 @@ app.MapPut("/api/site/configuracoes", [Authorize(Policy = "Gerente")] async (Sit
         return Results.BadRequest(ApiResponse<string>.Erro($"A configuração '{protectedKey.Chave}' não permite edição."));
     }
 
-    foreach (var item in request.Itens)
+    var persistedItems = new List<SiteConfiguracaoItemDto>();
+    SiteConfiguracaoUpdateItemDto? unconfirmedKey = null;
+    var executionStrategy = db.Database.CreateExecutionStrategy();
+    await executionStrategy.ExecuteAsync(async () =>
     {
-        var chave = item.Chave.Trim();
+        db.ChangeTracker.Clear();
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+        var transactionalExisting = await db.ConfiguracoesSistema
+            .Where(item => requestedKeys.Contains(item.Chave))
+            .ToListAsync(ct);
+        var previousItems = transactionalExisting
+            .Select(item => new SiteConfiguracaoItemDto(
+                item.Id,
+                item.Chave,
+                item.Valor,
+                item.Tipo.ToString(),
+                item.Descricao,
+                item.Grupo,
+                item.Editavel,
+                item.UpdatedAt))
+            .ToList();
 
-        var entity = existing.FirstOrDefault(config => string.Equals(config.Chave, chave, StringComparison.OrdinalIgnoreCase));
-        if (entity is null)
+        foreach (var item in request.Itens)
         {
-            entity = new ConfiguracaoSistema
+            var chave = item.Chave.Trim();
+            var entity = transactionalExisting.FirstOrDefault(config =>
+                string.Equals(config.Chave, chave, StringComparison.OrdinalIgnoreCase));
+            if (entity is null)
             {
-                Chave = chave,
-                CreatedAt = DateTime.UtcNow
-            };
-            db.ConfiguracoesSistema.Add(entity);
-            existing.Add(entity);
+                entity = new ConfiguracaoSistema
+                {
+                    Chave = chave,
+                    CreatedAt = DateTime.UtcNow
+                };
+                db.ConfiguracoesSistema.Add(entity);
+                transactionalExisting.Add(entity);
+            }
+
+            entity.Valor = normalizedJsonValues.TryGetValue(chave, out var normalizedJson)
+                ? normalizedJson
+                : item.Valor?.Trim();
+            entity.Descricao = item.Descricao?.Trim();
+            entity.Grupo = item.Grupo?.Trim();
+            entity.Editavel = item.Editavel ?? true;
+            entity.UpdatedAt = DateTime.UtcNow;
+
+            if (Enum.TryParse<TipoConfiguracao>(item.Tipo, true, out var tipo))
+            {
+                entity.Tipo = tipo;
+            }
+            else if (LooksLikeJson(entity.Valor))
+            {
+                entity.Tipo = TipoConfiguracao.JSON;
+            }
+            else
+            {
+                entity.Tipo = TipoConfiguracao.Texto;
+            }
         }
 
-        entity.Valor = item.Valor?.Trim();
-        entity.Descricao = item.Descricao?.Trim();
-        entity.Grupo = item.Grupo?.Trim();
-        entity.Editavel = item.Editavel ?? true;
-        entity.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        var changedItems = transactionalExisting
+            .Where(item => requestedKeys.Contains(item.Chave, StringComparer.OrdinalIgnoreCase))
+            .Select(item => new SiteConfiguracaoItemDto(
+                item.Id,
+                item.Chave,
+                item.Valor,
+                item.Tipo.ToString(),
+                item.Descricao,
+                item.Grupo,
+                item.Editavel,
+                item.UpdatedAt))
+            .ToList();
+        db.LogsAuditoria.Add(CreateIamAuditLog(
+            principal,
+            httpContext,
+            "configuracoes_sistema",
+            0,
+            AcaoAuditoria.UPDATE,
+            previousItems,
+            changedItems));
+        await db.SaveChangesAsync(ct);
 
-        if (Enum.TryParse<TipoConfiguracao>(item.Tipo, true, out var tipo))
+        persistedItems = await db.ConfiguracoesSistema
+            .AsNoTracking()
+            .OrderBy(item => item.Grupo)
+            .ThenBy(item => item.Chave)
+            .Select(item => new SiteConfiguracaoItemDto(
+                item.Id,
+                item.Chave,
+                item.Valor,
+                item.Tipo.ToString(),
+                item.Descricao,
+                item.Grupo,
+                item.Editavel,
+                item.UpdatedAt))
+            .ToListAsync(ct);
+        var persistedByKey = persistedItems.ToDictionary(item => item.Chave, StringComparer.OrdinalIgnoreCase);
+        unconfirmedKey = request.Itens.FirstOrDefault(item =>
         {
-            entity.Tipo = tipo;
-        }
-        else if (LooksLikeJson(entity.Valor))
+            var key = item.Chave.Trim();
+            var expectedValue = normalizedJsonValues.TryGetValue(key, out var normalizedJson)
+                ? normalizedJson
+                : item.Valor?.Trim();
+            return !persistedByKey.TryGetValue(key, out var persisted)
+                || !string.Equals(persisted.Valor, expectedValue, StringComparison.Ordinal);
+        });
+        if (unconfirmedKey is null)
         {
-            entity.Tipo = TipoConfiguracao.JSON;
+            await transaction.CommitAsync(ct);
         }
-        else
-        {
-            entity.Tipo = TipoConfiguracao.Texto;
-        }
-    }
-
-    await db.SaveChangesAsync(ct);
-
-    var persistedItems = await db.ConfiguracoesSistema
-        .AsNoTracking()
-        .OrderBy(item => item.Grupo)
-        .ThenBy(item => item.Chave)
-        .Select(item => new SiteConfiguracaoItemDto(
-            item.Id,
-            item.Chave,
-            item.Valor,
-            item.Tipo.ToString(),
-            item.Descricao,
-            item.Grupo,
-            item.Editavel,
-            item.UpdatedAt))
-        .ToListAsync(ct);
-
-    var persistedByKey = persistedItems.ToDictionary(item => item.Chave, StringComparer.OrdinalIgnoreCase);
-    var unconfirmedKey = request.Itens.FirstOrDefault(item =>
-        !persistedByKey.TryGetValue(item.Chave.Trim(), out var persisted)
-        || !string.Equals(persisted.Valor, item.Valor?.Trim(), StringComparison.Ordinal));
+    });
 
     if (unconfirmedKey is not null)
     {
@@ -4519,12 +4987,15 @@ app.MapDelete("/api/site/midias/{id:guid}", [Authorize(Policy = "Gerente")] asyn
         return Results.Conflict(ApiResponse<string>.Erro("A midia foi alterada por outra sessao. Recarregue a biblioteca."));
     }
 
-    var referenced = await db.ConfiguracoesSistema
+    var referencedByConfiguration = await db.ConfiguracoesSistema
         .AsNoTracking()
         .AnyAsync(config => config.Valor != null && config.Valor.Contains(entity.CaminhoRelativo), ct);
-    if (referenced)
+    var referencedByProfile = await db.SitePerfisPublicos
+        .AsNoTracking()
+        .AnyAsync(profile => profile.LogoUrl == entity.CaminhoRelativo || profile.BannerUrl == entity.CaminhoRelativo, ct);
+    if (referencedByConfiguration || referencedByProfile)
     {
-        return Results.Conflict(ApiResponse<string>.Erro("Midia vinculada a configuracao publica. Remova o vinculo e salve a configuracao antes de excluir."));
+        return Results.Conflict(ApiResponse<string>.Erro("Midia vinculada a configuracao ou perfil publico. Remova o vinculo e salve antes de excluir."));
     }
 
     if (!TryResolvePublicMediaFile(environment.WebRootPath, entity.CaminhoRelativo, out var physicalPath))
@@ -15954,6 +16425,21 @@ static IQueryable<Produto> FiltrarProdutosPublicaveis(IQueryable<Produto> query)
         produto.Largura > 0 &&
         produto.Comprimento > 0);
 
+static bool IsProdutoPublicavel(Produto produto) =>
+    produto.Ativo
+    && produto.LojaId > 0
+    && produto.CategoriaId.HasValue
+    && !string.IsNullOrWhiteSpace(produto.Nome)
+    && !string.IsNullOrWhiteSpace(produto.Sku)
+    && !string.IsNullOrWhiteSpace(produto.Slug)
+    && (!string.IsNullOrWhiteSpace(produto.DescricaoCurta) || !string.IsNullOrWhiteSpace(produto.DescricaoLonga))
+    && !string.IsNullOrWhiteSpace(produto.ImagemPrincipal)
+    && produto.Preco > 0
+    && produto.Peso > 0
+    && produto.Altura > 0
+    && produto.Largura > 0
+    && produto.Comprimento > 0;
+
 static ProdutoLojaDto MapearProdutoLojaDto(Produto produto) => new(
     produto.Slug,
     produto.Nome,
@@ -18208,7 +18694,483 @@ static bool TryReadWebpDimensions(byte[] bytes, out int width, out int height)
     return false;
 }
 
-static SiteConfiguracaoPublicaDto BuildPublicSiteConfig(IReadOnlyDictionary<string, string?> configMap)
+static async Task<IResult?> ValidateSitePerfilPublicoRequestAsync(
+    SitePerfilPublicoRequest request,
+    Guid? profileId,
+    NexumDbContext db,
+    CancellationToken ct)
+{
+    if (!Enum.TryParse<TipoPerfilPublico>(request.TipoPerfil?.Trim(), true, out var profileType)
+        || !Enum.IsDefined(profileType))
+    {
+        return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro(
+            "Tipo de perfil inválido. Use Loja, Fornecedor, ParceiroVenda, ParceiroCompra ou Marketplace."));
+    }
+
+    if (!Enum.TryParse<OrigemPerfilPublico>(request.OrigemTipo?.Trim(), true, out var sourceType)
+        || !Enum.IsDefined(sourceType))
+    {
+        return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro(
+            "Origem inválida. Use Loja, Fornecedor, Marketplace ou Parceiro."));
+    }
+
+    if ((profileType == TipoPerfilPublico.Loja && sourceType != OrigemPerfilPublico.Loja)
+        || (profileType == TipoPerfilPublico.Fornecedor && sourceType != OrigemPerfilPublico.Fornecedor)
+        || (profileType == TipoPerfilPublico.Marketplace && sourceType != OrigemPerfilPublico.Marketplace))
+    {
+        return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro(
+            "O tipo do perfil não corresponde ao cadastro de origem selecionado."));
+    }
+
+    if (sourceType == OrigemPerfilPublico.Parceiro)
+    {
+        if (profileType is not TipoPerfilPublico.ParceiroVenda and not TipoPerfilPublico.ParceiroCompra)
+        {
+            return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro(
+                "A origem Parceiro só pode ser usada em ParceiroVenda ou ParceiroCompra."));
+        }
+
+        if (request.OrigemId.HasValue)
+        {
+            return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro(
+                "Perfis de parceiros independentes não devem informar identificador de outra tabela."));
+        }
+    }
+    else if (!request.OrigemId.HasValue || request.OrigemId.Value <= 0)
+    {
+        return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro(
+            "Selecione um cadastro de origem real para publicar este perfil."));
+    }
+
+    if (sourceType == OrigemPerfilPublico.Loja
+        && !await db.Lojas.AsNoTracking().AnyAsync(item => item.Id == request.OrigemId, ct))
+    {
+        return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro("A loja de origem não existe no tenant atual."));
+    }
+
+    if (sourceType == OrigemPerfilPublico.Fornecedor
+        && !await db.Fornecedores.AsNoTracking().AnyAsync(item => item.Id == request.OrigemId, ct))
+    {
+        return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro("O fornecedor de origem não existe no tenant atual."));
+    }
+
+    if (sourceType == OrigemPerfilPublico.Marketplace
+        && !await db.Marketplaces.AsNoTracking().AnyAsync(item => item.Id == request.OrigemId, ct))
+    {
+        return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro("O marketplace de origem não existe no tenant atual."));
+    }
+
+    var name = request.Nome?.Trim() ?? string.Empty;
+    var slug = NormalizePublicProfileSlug(request.Slug);
+    var segment = request.Segmento?.Trim() ?? string.Empty;
+    var activity = request.Atividade?.Trim() ?? string.Empty;
+    var description = request.Descricao?.Trim() ?? string.Empty;
+    var logo = request.LogoUrl?.Trim();
+    var banner = request.BannerUrl?.Trim();
+    var ctaText = request.CtaTexto?.Trim();
+    var ctaUrl = request.CtaUrl?.Trim();
+    var siteUrl = request.SiteUrl?.Trim();
+    var publicEmail = request.EmailPublico?.Trim();
+    var publicPhone = request.TelefonePublico?.Trim();
+    var publicAddress = request.EnderecoPublico?.Trim();
+    var profileColors = new[]
+    {
+        request.CorPrimaria,
+        request.CorSecundaria,
+        request.CorFundo,
+        request.CorTexto
+    };
+
+    if (name.Length is < 2 or > 160)
+    {
+        return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro("Nome público deve possuir entre 2 e 160 caracteres."));
+    }
+
+    if (slug.Length is < 3 or > 80)
+    {
+        return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro("Slug deve possuir entre 3 e 80 letras, números ou hífens."));
+    }
+
+    if (segment.Length is < 2 or > 120 || activity.Length is < 5 or > 240 || description.Length is < 20 or > 2000)
+    {
+        return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro(
+            "Segmento, atividade ou descrição estão fora dos limites de publicação permitidos."));
+    }
+
+    if (string.IsNullOrWhiteSpace(logo) && string.IsNullOrWhiteSpace(banner))
+    {
+        return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro("Informe ao menos uma logomarca ou um banner oficial."));
+    }
+
+    if ((!string.IsNullOrWhiteSpace(logo) && !IsValidPublicSiteImageReference(logo))
+        || (!string.IsNullOrWhiteSpace(banner) && !IsValidPublicSiteImageReference(banner)))
+    {
+        return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro(
+            "Logomarca e banner devem apontar para /uploads, /imagens ou /assets no storage oficial."));
+    }
+
+    if (request.OrdemExibicao is < 0 or > 9999)
+    {
+        return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro("Ordem de exibição deve estar entre 0 e 9999."));
+    }
+
+    if (string.IsNullOrWhiteSpace(ctaText) != string.IsNullOrWhiteSpace(ctaUrl)
+        || (!string.IsNullOrWhiteSpace(ctaText) && ctaText.Length > 80)
+        || (!string.IsNullOrWhiteSpace(ctaUrl) && !IsValidPublicCallToActionUrl(ctaUrl)))
+    {
+        return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro(
+            "Chamada comercial deve possuir texto e URL válidos, ou ambos devem permanecer vazios."));
+    }
+
+    if ((!string.IsNullOrWhiteSpace(siteUrl)
+            && (!Uri.TryCreate(siteUrl, UriKind.Absolute, out var siteUri) || siteUri.Scheme != Uri.UriSchemeHttps))
+        || (!string.IsNullOrWhiteSpace(publicEmail)
+            && (publicEmail.Length > 254 || !System.Net.Mail.MailAddress.TryCreate(publicEmail, out _)))
+        || (!string.IsNullOrWhiteSpace(publicPhone) && !IsValidPublicPhone(publicPhone))
+        || (!string.IsNullOrWhiteSpace(publicAddress) && publicAddress.Length > 300))
+    {
+        return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro(
+            "Site, e-mail, telefone ou endereço público possuem formato inválido."));
+    }
+
+    if (profileColors.Any(color => !string.IsNullOrWhiteSpace(color) && !IsValidHexColor(color.Trim())))
+    {
+        return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro(
+            "As cores do perfil devem usar o formato hexadecimal #RRGGBB."));
+    }
+
+    var productIds = NormalizeSiteProfileProductIds(request.ProdutoIds);
+    if (productIds.Count > 200)
+    {
+        return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro(
+            "Cada perfil pode divulgar no máximo 200 produtos."));
+    }
+
+    if (productIds.Count > 0)
+    {
+        var eligibleProducts = await FiltrarProdutosPublicaveis(db.Produtos.AsNoTracking())
+            .Where(item => productIds.Contains(item.Id))
+            .Select(item => new { item.Id, item.LojaId, item.FornecedorId })
+            .ToListAsync(ct);
+        if (eligibleProducts.Count != productIds.Count)
+        {
+            return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro(
+                "Um ou mais produtos selecionados não existem ou não atendem aos requisitos de publicação."));
+        }
+
+        if (profileType == TipoPerfilPublico.Loja
+            && eligibleProducts.Any(item => item.LojaId != request.OrigemId))
+        {
+            return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro(
+                "A loja só pode divulgar produtos pertencentes ao próprio cadastro."));
+        }
+
+        if (sourceType == OrigemPerfilPublico.Fornecedor
+            && eligibleProducts.Any(item => item.FornecedorId != request.OrigemId))
+        {
+            return Results.BadRequest(ApiResponse<SitePerfilPublicoAdminDto>.Erro(
+                "O fornecedor só pode divulgar produtos vinculados ao próprio cadastro."));
+        }
+    }
+
+    if (await db.SitePerfisPublicos.AsNoTracking().AnyAsync(
+        item => (!profileId.HasValue || item.Id != profileId.Value) && item.Slug == slug,
+        ct))
+    {
+        return Results.Conflict(ApiResponse<SitePerfilPublicoAdminDto>.Erro("Já existe um perfil público com este slug."));
+    }
+
+    if (sourceType != OrigemPerfilPublico.Parceiro
+        && await db.SitePerfisPublicos.AsNoTracking().AnyAsync(
+            item => (!profileId.HasValue || item.Id != profileId.Value)
+                && item.OrigemTipo == sourceType
+                && item.OrigemId == request.OrigemId,
+            ct))
+    {
+        return Results.Conflict(ApiResponse<SitePerfilPublicoAdminDto>.Erro(
+            "O cadastro de origem selecionado já possui um perfil público."));
+    }
+
+    return null;
+}
+
+static void ApplySitePerfilPublicoRequest(SitePerfilPublico profile, SitePerfilPublicoRequest request)
+{
+    profile.TipoPerfil = Enum.Parse<TipoPerfilPublico>(request.TipoPerfil.Trim(), true);
+    profile.OrigemTipo = Enum.Parse<OrigemPerfilPublico>(request.OrigemTipo.Trim(), true);
+    profile.OrigemId = profile.OrigemTipo == OrigemPerfilPublico.Parceiro ? null : request.OrigemId;
+    profile.Nome = request.Nome.Trim();
+    profile.Slug = NormalizePublicProfileSlug(request.Slug);
+    profile.Segmento = request.Segmento.Trim();
+    profile.Atividade = request.Atividade.Trim();
+    profile.Descricao = request.Descricao.Trim();
+    profile.LogoUrl = TrimOrNull(request.LogoUrl);
+    profile.BannerUrl = TrimOrNull(request.BannerUrl);
+    profile.Icone = TrimOrNull(request.Icone);
+    profile.CtaTexto = TrimOrNull(request.CtaTexto);
+    profile.CtaUrl = TrimOrNull(request.CtaUrl);
+    profile.SiteUrl = TrimOrNull(request.SiteUrl);
+    profile.EmailPublico = TrimOrNull(request.EmailPublico);
+    profile.TelefonePublico = TrimOrNull(request.TelefonePublico);
+    profile.EnderecoPublico = TrimOrNull(request.EnderecoPublico);
+    profile.CorPrimaria = TrimOrNull(request.CorPrimaria)?.ToUpperInvariant();
+    profile.CorSecundaria = TrimOrNull(request.CorSecundaria)?.ToUpperInvariant();
+    profile.CorFundo = TrimOrNull(request.CorFundo)?.ToUpperInvariant();
+    profile.CorTexto = TrimOrNull(request.CorTexto)?.ToUpperInvariant();
+    profile.Publicado = request.Publicado;
+    profile.OrdemExibicao = request.OrdemExibicao;
+}
+
+static string NormalizePublicProfileSlug(string? value)
+{
+    var normalized = (value ?? string.Empty).Trim().Normalize(NormalizationForm.FormD);
+    var builder = new StringBuilder(normalized.Length);
+    var previousWasSeparator = false;
+    foreach (var character in normalized)
+    {
+        if (CharUnicodeInfo.GetUnicodeCategory(character) == UnicodeCategory.NonSpacingMark)
+        {
+            continue;
+        }
+
+        if (char.IsAsciiLetterOrDigit(character))
+        {
+            builder.Append(char.ToLowerInvariant(character));
+            previousWasSeparator = false;
+            continue;
+        }
+
+        if (!previousWasSeparator && builder.Length > 0)
+        {
+            builder.Append('-');
+            previousWasSeparator = true;
+        }
+    }
+
+    return builder.ToString().Trim('-');
+}
+
+static bool IsValidPublicCallToActionUrl(string value)
+{
+    if (value.StartsWith("/", StringComparison.Ordinal) && !value.StartsWith("//", StringComparison.Ordinal))
+    {
+        return true;
+    }
+
+    return Uri.TryCreate(value, UriKind.Absolute, out var uri)
+        && (uri.Scheme == Uri.UriSchemeHttps
+            || uri.Scheme == Uri.UriSchemeMailto
+            || uri.Scheme == "tel");
+}
+
+static bool IsValidPublicPhone(string value)
+{
+    if (value.Length > 30 || value.Any(character => !char.IsDigit(character) && character is not ' ' and not '+' and not '-' and not '(' and not ')'))
+    {
+        return false;
+    }
+
+    return value.Count(char.IsDigit) is >= 8 and <= 15;
+}
+
+static bool IsValidHexColor(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value) || value.Length != 7 || value[0] != '#')
+    {
+        return false;
+    }
+
+    for (var index = 1; index < value.Length; index++)
+    {
+        if (!Uri.IsHexDigit(value[index]))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool IsSiteColorConfigurationKey(string key) =>
+    key.Equals("site_cor_primaria", StringComparison.OrdinalIgnoreCase)
+    || key.Equals("site_cor_secundaria", StringComparison.OrdinalIgnoreCase)
+    || key.Equals("site_cor_fundo", StringComparison.OrdinalIgnoreCase)
+    || key.Equals("site_cor_superficie", StringComparison.OrdinalIgnoreCase)
+    || key.Equals("site_cor_texto", StringComparison.OrdinalIgnoreCase)
+    || key.Equals("site_cor_texto_suave", StringComparison.OrdinalIgnoreCase);
+
+static List<int> NormalizeSiteProfileProductIds(IEnumerable<int>? productIds) =>
+    productIds?
+        .Where(id => id > 0)
+        .Distinct()
+        .ToList()
+    ?? [];
+
+static async Task<List<int>> LoadSitePerfilPublicoProductIdsAsync(
+    Guid profileId,
+    NexumDbContext db,
+    CancellationToken ct) =>
+    await db.SitePerfisPublicosProdutos
+        .AsNoTracking()
+        .Where(item => item.PerfilPublicoId == profileId && item.Publicado)
+        .OrderBy(item => item.OrdemExibicao)
+        .Select(item => item.ProdutoId)
+        .ToListAsync(ct);
+
+static async Task SyncSitePerfilPublicoProdutosAsync(
+    Guid profileId,
+    IEnumerable<int>? productIds,
+    NexumDbContext db,
+    CancellationToken ct)
+{
+    var desiredIds = NormalizeSiteProfileProductIds(productIds);
+    var desiredOrder = desiredIds
+        .Select((productId, index) => new { productId, index })
+        .ToDictionary(item => item.productId, item => item.index);
+    var currentTenantId = db.CurrentTenantId;
+    var existing = await db.SitePerfisPublicosProdutos
+        .IgnoreQueryFilters()
+        .Where(item => item.TenantId == currentTenantId && item.PerfilPublicoId == profileId)
+        .ToListAsync(ct);
+
+    foreach (var link in existing)
+    {
+        if (!desiredOrder.TryGetValue(link.ProdutoId, out var order))
+        {
+            if (!link.IsDeleted)
+            {
+                db.SitePerfisPublicosProdutos.Remove(link);
+            }
+
+            continue;
+        }
+
+        link.IsDeleted = false;
+        link.DeletedAt = null;
+        link.Publicado = true;
+        link.OrdemExibicao = order;
+        desiredOrder.Remove(link.ProdutoId);
+    }
+
+    foreach (var item in desiredOrder)
+    {
+        db.SitePerfisPublicosProdutos.Add(new SitePerfilPublicoProduto
+        {
+            PerfilPublicoId = profileId,
+            ProdutoId = item.Key,
+            Publicado = true,
+            OrdemExibicao = item.Value
+        });
+    }
+}
+
+static SitePerfilPublicoAdminDto ToSitePerfilPublicoAdminDto(SitePerfilPublico profile, List<int>? productIds = null) => new(
+    profile.Id,
+    profile.TipoPerfil.ToString(),
+    profile.OrigemTipo.ToString(),
+    profile.OrigemId,
+    profile.Nome,
+    profile.Slug,
+    profile.Segmento,
+    profile.Atividade,
+    profile.Descricao,
+    profile.LogoUrl,
+    profile.BannerUrl,
+    profile.Icone,
+    profile.CtaTexto,
+    profile.CtaUrl,
+    profile.SiteUrl,
+    profile.EmailPublico,
+    profile.TelefonePublico,
+    profile.EnderecoPublico,
+    profile.CorPrimaria,
+    profile.CorSecundaria,
+    profile.CorFundo,
+    profile.CorTexto,
+    productIds ?? [],
+    profile.Publicado,
+    profile.OrdemExibicao,
+    Convert.ToBase64String(profile.RowVersion ?? []),
+    profile.CreatedAt,
+    profile.UpdatedAt);
+
+static StoreCardSiteDto ToStoreCardSiteDto(SitePerfilPublico profile) => new(
+    profile.Id,
+    profile.OrigemId,
+    profile.Nome,
+    profile.Slug,
+    profile.Segmento,
+    profile.Atividade,
+    profile.Descricao,
+    profile.BannerUrl ?? profile.LogoUrl,
+    profile.LogoUrl,
+    profile.Icone ?? "Store",
+    profile.CtaTexto,
+    profile.CtaUrl,
+    profile.CorPrimaria,
+    profile.CorSecundaria,
+    profile.CorFundo,
+    profile.CorTexto,
+    profile.OrdemExibicao);
+
+static PartnerCardSiteDto ToPartnerCardSiteDto(SitePerfilPublico profile) => new(
+    profile.Id,
+    profile.OrigemId,
+    profile.TipoPerfil.ToString(),
+    profile.OrigemTipo.ToString(),
+    profile.Nome,
+    profile.Slug,
+    profile.Descricao,
+    "Ver perfil",
+    $"/parceiros/{profile.Slug}",
+    profile.Icone ?? "Building2",
+    profile.BannerUrl ?? profile.LogoUrl,
+    profile.LogoUrl,
+    profile.Atividade,
+    profile.Segmento,
+    profile.CorPrimaria,
+    profile.CorSecundaria,
+    profile.CorFundo,
+    profile.CorTexto,
+    profile.OrdemExibicao);
+
+static PartnerDetailSiteDto ToPartnerDetailSiteDto(
+    SitePerfilPublico profile,
+    List<ProdutoLojaDto> products)
+{
+    var card = ToPartnerCardSiteDto(profile);
+    return new PartnerDetailSiteDto(
+        card.Id,
+        card.OrigemId,
+        card.Tipo,
+        card.OrigemTipo,
+        card.Title,
+        card.Slug,
+        card.Text,
+        card.Icon,
+        card.Image,
+        card.Logo,
+        card.Activity,
+        card.Segment,
+        card.Order,
+        profile.SiteUrl,
+        profile.EmailPublico,
+        profile.TelefonePublico,
+        profile.EnderecoPublico,
+        profile.CorPrimaria,
+        profile.CorSecundaria,
+        profile.CorFundo,
+        profile.CorTexto,
+        profile.CtaTexto,
+        profile.CtaUrl,
+        products);
+}
+
+static SiteConfiguracaoPublicaDto BuildPublicSiteConfig(
+    IReadOnlyDictionary<string, string?> configMap,
+    List<HeroSlideSiteDto> heroSlides,
+    List<StoreCardSiteDto> storeCards,
+    List<PartnerCardSiteDto> partnerCards)
 {
     var contactEmail = GetConfigValue(configMap, "site_email_contato", "corporativo.gna@gmail.com");
 
@@ -18226,8 +19188,16 @@ static SiteConfiguracaoPublicaDto BuildPublicSiteConfig(IReadOnlyDictionary<stri
         GetConfigValue(configMap, "site_institucional_url", "/institucional"),
         GetConfigValue(configMap, "site_politica_privacidade_url", "/politica-privacidade"),
         GetConfigValue(configMap, "site_politica_reembolso_url", "/politica-reembolso"),
-        ParseJsonList(GetConfigValue(configMap, "home_hero_slides", string.Empty), GetDefaultHeroSlides()),
-        ParseJsonList(GetConfigValue(configMap, "home_lojas_cards", string.Empty), GetDefaultStoreCards()),
+        GetConfigValue(configMap, "site_cor_primaria", "#C9A227"),
+        GetConfigValue(configMap, "site_cor_secundaria", "#0A0A0A"),
+        GetConfigValue(configMap, "site_cor_fundo", "#F5F7FB"),
+        GetConfigValue(configMap, "site_cor_superficie", "#FFFFFF"),
+        GetConfigValue(configMap, "site_cor_texto", "#0F172A"),
+        GetConfigValue(configMap, "site_cor_texto_suave", "#64748B"),
+        GetConfigInt(configMap, "home_hero_interval_seconds", 7, 3, 30),
+        GetConfigInt(configMap, "site_partner_rotation_seconds", 8, 5, 60),
+        heroSlides.Where(slide => slide.Active != false).OrderBy(slide => slide.Order).ToList(),
+        storeCards,
         GetConfigValue(configMap, "home_intro_titulo", "Uma Nova Era Começa"),
         GetConfigValue(configMap, "home_intro_texto_1", "O Grupo Nexum Altivon está chegando para transformar e inovar o mercado digital brasileiro."),
         GetConfigValue(configMap, "home_intro_texto_2", "Nosso compromisso é claro: entregar qualidade superior, atendimento que faz a diferença e preços acessíveis que respeitam o seu bolso."),
@@ -18238,8 +19208,145 @@ static SiteConfiguracaoPublicaDto BuildPublicSiteConfig(IReadOnlyDictionary<stri
             "Política de devolução simplificada",
             "Preços justos e acessíveis"
         ]),
-        ParseJsonList(GetConfigValue(configMap, "home_partner_cards", string.Empty), GetDefaultPartnerCards()),
+        partnerCards,
         GetConfigValue(configMap, "home_footer_texto", "Portal em evolução contínua para vendas, relacionamento, parceiros e operações integradas."));
+}
+
+static int GetConfigInt(
+    IReadOnlyDictionary<string, string?> configMap,
+    string key,
+    int defaultValue,
+    int minimum,
+    int maximum)
+{
+    if (!configMap.TryGetValue(key, out var value)
+        || !int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+    {
+        return defaultValue;
+    }
+
+    return Math.Clamp(parsed, minimum, maximum);
+}
+
+static bool TryParseHeroSlidesConfiguration(
+    string? json,
+    out List<HeroSlideSiteDto> slides,
+    out string error)
+{
+    slides = [];
+    error = string.Empty;
+
+    if (string.IsNullOrWhiteSpace(json))
+    {
+        error = "A configuração home_hero_slides é obrigatória.";
+        return false;
+    }
+
+    List<HeroSlideSiteDto>? parsed;
+    try
+    {
+        parsed = JsonSerializer.Deserialize<List<HeroSlideSiteDto>>(json, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        });
+    }
+    catch (JsonException)
+    {
+        error = "A configuração home_hero_slides contém JSON inválido.";
+        return false;
+    }
+
+    if (parsed is null || parsed.Count is < 1 or > 10)
+    {
+        error = "A home deve possuir entre 1 e 10 slides.";
+        return false;
+    }
+
+    var identifiers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var activeCount = 0;
+    for (var index = 0; index < parsed.Count; index++)
+    {
+        var slide = parsed[index];
+        var id = slide.Id?.Trim().ToLowerInvariant() ?? string.Empty;
+        var badge = slide.Badge?.Trim() ?? string.Empty;
+        var title = slide.Title?.Trim() ?? string.Empty;
+        var highlight = slide.Highlight?.Trim() ?? string.Empty;
+        var description = slide.Description?.Trim() ?? string.Empty;
+        var image = slide.Image?.Trim() ?? string.Empty;
+        var imageAlt = slide.ImageAlt?.Trim();
+
+        if (id.Length is < 3 or > 64
+            || !id.All(character => char.IsAsciiLetterOrDigit(character) || character == '-'))
+        {
+            error = $"O slide {index + 1} possui identificador inválido. Use de 3 a 64 letras, números ou hífens.";
+            return false;
+        }
+
+        if (!identifiers.Add(id))
+        {
+            error = $"O identificador de slide '{id}' está duplicado.";
+            return false;
+        }
+
+        if (badge.Length is < 2 or > 80
+            || title.Length is < 2 or > 120
+            || highlight.Length is < 2 or > 120
+            || description.Length is < 10 or > 500)
+        {
+            error = $"O slide {index + 1} possui textos fora dos limites permitidos.";
+            return false;
+        }
+
+        if (!IsValidPublicSiteImageReference(image))
+        {
+            error = $"A imagem do slide {index + 1} deve apontar para /uploads, /imagens ou /assets no storage oficial.";
+            return false;
+        }
+
+        if (!string.IsNullOrEmpty(imageAlt) && imageAlt.Length > 240)
+        {
+            error = $"O texto alternativo do slide {index + 1} deve possuir até 240 caracteres.";
+            return false;
+        }
+
+        var isActive = slide.Active ?? true;
+        if (isActive)
+        {
+            activeCount++;
+        }
+
+        slides.Add(new HeroSlideSiteDto(
+            id,
+            badge,
+            title,
+            highlight,
+            description,
+            image,
+            string.IsNullOrWhiteSpace(imageAlt) ? highlight : imageAlt,
+            isActive,
+            index));
+    }
+
+    if (activeCount == 0)
+    {
+        slides = [];
+        error = "Ao menos um slide deve permanecer ativo.";
+        return false;
+    }
+
+    return true;
+}
+
+static bool IsValidPublicSiteImageReference(string value)
+{
+    if (!value.StartsWith("/", StringComparison.Ordinal))
+    {
+        return false;
+    }
+
+    return value.StartsWith("/uploads/", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("/imagens/", StringComparison.OrdinalIgnoreCase)
+        || value.StartsWith("/assets/", StringComparison.OrdinalIgnoreCase);
 }
 
 static string GetConfigValue(IReadOnlyDictionary<string, string?> configMap, string key, string fallback) =>
@@ -18273,51 +19380,6 @@ static List<string> ParseJsonStringList(string? json, List<string> fallback)
     }
 }
 
-static List<T> ParseJsonList<T>(string? json, List<T> fallback)
-{
-    if (string.IsNullOrWhiteSpace(json))
-    {
-        return fallback;
-    }
-
-    try
-    {
-        var parsed = JsonSerializer.Deserialize<List<T>>(json, new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true
-        });
-        return parsed is { Count: > 0 } ? parsed : fallback;
-    }
-    catch
-    {
-        return fallback;
-    }
-}
-
-static List<HeroSlideSiteDto> GetDefaultHeroSlides() =>
-[
-    new("ecommerce", "Grupo Nexum Altivon", "O Futuro do", "E-Commerce", "Seis lojas, uma operação conectada e uma proposta premium para transformar a experiência de compra online.", "/imagens/homepage/banner-ecommerce.svg"),
-    new("marcas", "6 marcas em expansão", "Uma operação,", "múltiplos mercados", "Turismo, relógios, moda, tecnologia, construção e festas com a mesma curadoria comercial do Grupo Nexum Altivon.", "/imagens/homepage/banner-marcas.svg"),
-    new("tecnologia", "Experiência tecnológica", "Compra segura com", "atendimento humano", "Fluxos preparados para catálogo, clientes, pedidos, integrações e relacionamento com visão de crescimento contínuo.", "/imagens/homepage/banner-atendimento.svg")
-];
-
-static List<StoreCardSiteDto> GetDefaultStoreCards() =>
-[
-    new("Gran Tur", "gran-tur", "Viagens & Turismo", "Mochilas, malas, acessórios de viagem e produtos para explorar o mundo com estilo e conforto.", "/imagens/homepage/loja-gran-tur.svg", "Plane"),
-    new("Chronos", "chronos", "Relógios & Acessórios", "Relógios e acessórios para quem valoriza precisão, presença e elegância.", "/imagens/homepage/loja-chronos.svg", "Watch"),
-    new("Moda Mim", "moda-mim", "Moda & Vestuário", "Roupas, calçados e acessórios para uma experiência de compra prática e atual.", "/imagens/homepage/loja-moda-mim.svg", "Shirt"),
-    new("Geração Top+", "geracao-top", "Tecnologia & Gadgets", "Smartphones, eletrônicos, acessórios e tecnologia para rotina, trabalho e lazer.", "/imagens/homepage/loja-geracao-top.svg", "Smartphone"),
-    new("Estruturaline", "estruturaline", "Construção & Estruturas", "Materiais, ferramentas e soluções para quem constrói com seriedade.", "/imagens/homepage/loja-estruturaline.svg", "Hammer"),
-    new("Gran Festas", "gran-festas", "Festas & Eventos", "Decoração, utensílios e produtos para encontros, comemorações e eventos.", "/imagens/homepage/loja-gran-festas.svg", "Gift")
-];
-
-static List<PartnerCardSiteDto> GetDefaultPartnerCards() =>
-[
-    new("Parceiros de Vendas", "Lojas físicas ou online podem ampliar seus horizontes de venda com nossa infraestrutura comercial e operação integrada.", "Quero Vender", "https://wa.me/5514996731879?text=Olá! Tenho interesse em ser parceiro de vendas do Grupo Nexum Altivon.", "Store"),
-    new("Fornecedores & Distribuidores", "Distribuidores e fabricantes encontram um canal de venda em crescimento, com visão de volume, relacionamento e longo prazo.", "Quero Fornecer", "https://wa.me/5514996731879?text=Olá! Sou fornecedor/distribuidor e tenho interesse em parceria com o Grupo Nexum Altivon.", "Truck"),
-    new("Dropshipping", "Integre seu catálogo às nossas lojas ou utilize nossa infraestrutura para conectar produtos, logística e novos canais.", "Quero Fazer Dropship", "https://wa.me/5514996731879?text=Olá! Tenho interesse em parceria de dropshipping com o Grupo Nexum Altivon.", "Building2")
-];
-
 static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogger logger)
 {
     using var scope = services.CreateScope();
@@ -18332,7 +19394,9 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
 
     await EnsureMarketingSchemaAsync(db);
     await EnsureSiteMediaSchemaAsync(db);
+    await EnsureSitePublicProfilesSchemaAsync(db);
     await EnsureAuditSchemaAsync(db, logger);
+    await SeedSitePublicProfilesAsync(db);
     await EnsureUsuariosSchemaAsync(db);
     await EnsurePlatformSsoSchemaAsync(db);
     await EnsureGrcIamSchemaAsync(db);
@@ -18578,10 +19642,16 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
         VALUES
             ('site_nome', 'Grupo Nexum Altivon', 'Texto', 'Nome público principal exibido no site', 'Geral', 1),
             ('site_subtitulo', 'Participações societárias', 'Texto', 'Subtítulo discreto da marca no cabeçalho e rodapé', 'Geral', 1),
-            ('site_logo', '/imagens/homepage/Logo-2.png', 'Imagem', 'Logo público carregado pela home, cabeçalho e rodapé', 'Geral', 1),
+            ('site_logo', '/uploads/produtos/Logo-2.png', 'Imagem', 'Logo público carregado pela home, cabeçalho e rodapé', 'Geral', 1),
             ('site_institucional_url', '/institucional', 'Texto', 'Link da página institucional', 'SiteHome', 1),
             ('site_politica_privacidade_url', '/politica-privacidade', 'Texto', 'Link da política de privacidade', 'SiteHome', 1),
             ('site_politica_reembolso_url', '/politica-reembolso', 'Texto', 'Link da política de reembolso', 'SiteHome', 1),
+            ('site_cor_primaria', '#C9A227', 'Cor', 'Cor principal de ações e destaques do portal', 'Aparencia', 1),
+            ('site_cor_secundaria', '#0A0A0A', 'Cor', 'Cor secundária de cabeçalho e navegação', 'Aparencia', 1),
+            ('site_cor_fundo', '#F5F7FB', 'Cor', 'Cor de fundo das páginas públicas', 'Aparencia', 1),
+            ('site_cor_superficie', '#FFFFFF', 'Cor', 'Cor de superfícies e painéis públicos', 'Aparencia', 1),
+            ('site_cor_texto', '#0F172A', 'Cor', 'Cor principal dos textos públicos', 'Aparencia', 1),
+            ('site_cor_texto_suave', '#64748B', 'Cor', 'Cor secundária dos textos públicos', 'Aparencia', 1),
             ('site_telefone_secundario', '(14) 99673-1879', 'Texto', 'Telefone comercial secundário', 'Geral', 1),
             ('site_whatsapp_secundario', '5514996731879', 'Texto', 'WhatsApp comercial secundário', 'Geral', 1),
             ('site_yara_email', 'corporativo.gna@gmail.com', 'Texto', 'E-mail de atendimento da Yara', 'Atendimento', 1),
@@ -18593,13 +19663,21 @@ static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogge
             ('home_quality_items', '["Curadoria rigorosa de fornecedores","Atendimento humano e especializado","Política de devolução simplificada","Preços justos e acessíveis"]', 'JSON', 'Itens do bloco de qualidade da home', 'SiteHome', 1),
             ('home_lojas_cards', '[{{"nome":"Gran Tur","slug":"gran-tur","segmento":"Viagens & Turismo","descricao":"Mochilas, malas, acessórios de viagem e produtos para explorar o mundo com estilo e conforto.","imagem":"/imagens/homepage/loja-gran-tur.svg","icon":"Plane"}},{{"nome":"Chronos","slug":"chronos","segmento":"Relógios & Acessórios","descricao":"Relógios e acessórios para quem valoriza precisão, presença e elegância.","imagem":"/imagens/homepage/loja-chronos.svg","icon":"Watch"}},{{"nome":"Moda Mim","slug":"moda-mim","segmento":"Moda & Vestuário","descricao":"Roupas, calçados e acessórios para uma experiência de compra prática e atual.","imagem":"/imagens/homepage/loja-moda-mim.svg","icon":"Shirt"}},{{"nome":"Geração Top+","slug":"geracao-top","segmento":"Tecnologia & Gadgets","descricao":"Smartphones, eletrônicos, acessórios e tecnologia para rotina, trabalho e lazer.","imagem":"/imagens/homepage/loja-geracao-top.svg","icon":"Smartphone"}},{{"nome":"Estruturaline","slug":"estruturaline","segmento":"Construção & Estruturas","descricao":"Materiais, ferramentas e soluções para quem constrói com seriedade.","imagem":"/imagens/homepage/loja-estruturaline.svg","icon":"Hammer"}},{{"nome":"Gran Festas","slug":"gran-festas","segmento":"Festas & Eventos","descricao":"Decoração, utensílios e produtos para encontros, comemorações e eventos.","imagem":"/imagens/homepage/loja-gran-festas.svg","icon":"Gift"}}]', 'JSON', 'Cards e imagens das lojas na Home e página Lojas', 'SiteHome', 1),
             ('home_partner_cards', '[{{"title":"Parceiros de Vendas","text":"Lojas físicas ou online podem ampliar seus horizontes de venda com nossa infraestrutura comercial e operação integrada.","cta":"Quero Vender","href":"https://wa.me/5514996731879?text=Olá! Tenho interesse em ser parceiro de vendas do Grupo Nexum Altivon.","icon":"Store"}},{{"title":"Fornecedores & Distribuidores","text":"Distribuidores e fabricantes encontram um canal de venda em crescimento, com visão de volume, relacionamento e longo prazo.","cta":"Quero Fornecer","href":"https://wa.me/5514996731879?text=Olá! Sou fornecedor/distribuidor e tenho interesse em parceria com o Grupo Nexum Altivon.","icon":"Truck"}},{{"title":"Dropshipping","text":"Integre seu catálogo às nossas lojas ou utilize nossa infraestrutura para conectar produtos, logística e novos canais.","cta":"Quero Fazer Dropship","href":"https://wa.me/5514996731879?text=Olá! Tenho interesse em parceria de dropshipping com o Grupo Nexum Altivon.","icon":"Building2"}}]', 'JSON', 'Cards de parceria da home', 'SiteHome', 1),
-            ('home_hero_slides', '[{{"id":"ecommerce","badge":"Grupo Nexum Altivon","title":"O Futuro do","highlight":"E-Commerce","description":"Seis lojas, uma operação conectada e uma proposta premium para transformar a experiência de compra online.","image":"/imagens/homepage/banner-ecommerce.svg"}},{{"id":"marcas","badge":"6 marcas em expansão","title":"Uma operação,","highlight":"múltiplos mercados","description":"Turismo, relógios, moda, tecnologia, construção e festas com a mesma curadoria comercial do Grupo Nexum Altivon.","image":"/imagens/homepage/banner-marcas.svg"}},{{"id":"tecnologia","badge":"Experiência tecnológica","title":"Compra segura com","highlight":"atendimento humano","description":"Fluxos preparados para catálogo, clientes, pedidos, integrações e relacionamento com visão de crescimento contínuo.","image":"/imagens/homepage/banner-atendimento.svg"}}]', 'JSON', 'Slides principais da home', 'SiteHome', 1)
+            ('home_hero_interval_seconds', '7', 'Numero', 'Intervalo automático dos slides da home em segundos', 'SiteHome', 1),
+            ('site_partner_rotation_seconds', '8', 'Numero', 'Intervalo do rodízio de parceiros em segundos', 'SiteHome', 1),
+            ('home_hero_slides', '[{{"id":"ecommerce","badge":"Grupo Nexum Altivon","title":"O Futuro do","highlight":"E-Commerce","description":"Seis lojas, uma operação conectada e uma proposta premium para transformar a experiência de compra online.","image":"/uploads/Imagens/Gemini_Generated_Image_aowvz5aowvz5aowv.jfif","imageAlt":"Tecnologia comercializada pelo Grupo Nexum Altivon","active":true,"order":0}},{{"id":"marcas","badge":"6 marcas em expansão","title":"Uma operação,","highlight":"múltiplos mercados","description":"Turismo, relógios, moda, tecnologia, construção e festas com a mesma curadoria comercial do Grupo Nexum Altivon.","image":"/uploads/Imagens/Gemini_Generated_Image_miqkz6miqkz6miqk.jfif","imageAlt":"Experiências oferecidas pelas marcas do Grupo Nexum Altivon","active":true,"order":1}},{{"id":"tecnologia","badge":"Experiência tecnológica","title":"Compra segura com","highlight":"atendimento humano","description":"Fluxos preparados para catálogo, clientes, pedidos, integrações e relacionamento com visão de crescimento contínuo.","image":"/uploads/Imagens/Gemini_Generated_Image_19y5zi19y5zi19y5.jfif","imageAlt":"Jornada integrada do Grupo Nexum Altivon","active":true,"order":2}}]', 'JSON', 'Slides principais da home', 'SiteHome', 1)
         ON DUPLICATE KEY UPDATE
+            valor = CASE
+                WHEN chave = 'home_hero_slides'
+                    AND (valor IS NULL OR TRIM(valor) IN ('', '[]') OR JSON_VALID(valor) = 0)
+                THEN VALUES(valor)
+                ELSE valor
+            END,
             descricao = VALUES(descricao),
             grupo = VALUES(grupo),
             editavel = VALUES(editavel),
             updated_at = CURRENT_TIMESTAMP;
-        """.Replace("{", "{{").Replace("}", "}}"));
+        """);
 
     await EnsureComprasSchemaAsync(db);
     await EnsureValidationTokensAsync(db);
@@ -18689,6 +19767,167 @@ static async Task EnsureSiteMediaSchemaAsync(NexumDbContext db)
             KEY ix_site_midias_tenant_created (tenant_id, created_at),
             KEY ix_site_midias_tenant_deleted (tenant_id, is_deleted)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        """);
+}
+
+static async Task EnsureSitePublicProfilesSchemaAsync(NexumDbContext db)
+{
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        CREATE TABLE IF NOT EXISTS site_perfis_publicos (
+            id CHAR(36) NOT NULL,
+            tenant_id CHAR(36) NOT NULL,
+            row_version BLOB NOT NULL,
+            created_at DATETIME(6) NOT NULL,
+            created_by_user_id CHAR(36) NULL,
+            updated_at DATETIME(6) NULL,
+            updated_by_user_id CHAR(36) NULL,
+            is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+            deleted_at DATETIME(6) NULL,
+            tipo_perfil VARCHAR(30) NOT NULL,
+            origem_tipo VARCHAR(30) NOT NULL,
+            origem_id INT NULL,
+            nome VARCHAR(160) NOT NULL,
+            slug VARCHAR(80) NOT NULL,
+            segmento VARCHAR(120) NOT NULL,
+            atividade VARCHAR(240) NOT NULL,
+            descricao VARCHAR(2000) NOT NULL,
+            logo_url VARCHAR(500) NULL,
+            banner_url VARCHAR(500) NULL,
+            icone VARCHAR(80) NULL,
+            cta_texto VARCHAR(80) NULL,
+            cta_url VARCHAR(500) NULL,
+            site_url VARCHAR(500) NULL,
+            email_publico VARCHAR(254) NULL,
+            telefone_publico VARCHAR(30) NULL,
+            endereco_publico VARCHAR(300) NULL,
+            cor_primaria VARCHAR(7) NULL,
+            cor_secundaria VARCHAR(7) NULL,
+            cor_fundo VARCHAR(7) NULL,
+            cor_texto VARCHAR(7) NULL,
+            publicado TINYINT(1) NOT NULL DEFAULT 0,
+            ordem_exibicao INT NOT NULL DEFAULT 0,
+            PRIMARY KEY (id),
+            UNIQUE KEY ux_site_perfis_tenant_slug (tenant_id, slug),
+            UNIQUE KEY ux_site_perfis_tenant_origem (tenant_id, origem_tipo, origem_id),
+            KEY ix_site_perfis_tenant_tipo_publicado_ordem (tenant_id, tipo_perfil, publicado, ordem_exibicao),
+            KEY ix_site_perfis_tenant_deleted (tenant_id, is_deleted)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        ALTER TABLE site_perfis_publicos
+            ADD COLUMN IF NOT EXISTS site_url VARCHAR(500) NULL AFTER cta_url,
+            ADD COLUMN IF NOT EXISTS email_publico VARCHAR(254) NULL AFTER site_url,
+            ADD COLUMN IF NOT EXISTS telefone_publico VARCHAR(30) NULL AFTER email_publico,
+            ADD COLUMN IF NOT EXISTS endereco_publico VARCHAR(300) NULL AFTER telefone_publico,
+            ADD COLUMN IF NOT EXISTS cor_primaria VARCHAR(7) NULL AFTER endereco_publico,
+            ADD COLUMN IF NOT EXISTS cor_secundaria VARCHAR(7) NULL AFTER cor_primaria,
+            ADD COLUMN IF NOT EXISTS cor_fundo VARCHAR(7) NULL AFTER cor_secundaria,
+            ADD COLUMN IF NOT EXISTS cor_texto VARCHAR(7) NULL AFTER cor_fundo;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        CREATE TABLE IF NOT EXISTS site_perfis_publicos_produtos (
+            id CHAR(36) NOT NULL,
+            tenant_id CHAR(36) NOT NULL,
+            row_version BLOB NOT NULL,
+            created_at DATETIME(6) NOT NULL,
+            created_by_user_id CHAR(36) NULL,
+            updated_at DATETIME(6) NULL,
+            updated_by_user_id CHAR(36) NULL,
+            is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+            deleted_at DATETIME(6) NULL,
+            perfil_publico_id CHAR(36) NOT NULL,
+            produto_id INT NOT NULL,
+            publicado TINYINT(1) NOT NULL DEFAULT 1,
+            ordem_exibicao INT NOT NULL DEFAULT 0,
+            PRIMARY KEY (id),
+            UNIQUE KEY ux_site_perfis_produtos_tenant_perfil_produto (tenant_id, perfil_publico_id, produto_id),
+            KEY ix_site_perfis_produtos_tenant_perfil_publicado_ordem (tenant_id, perfil_publico_id, publicado, ordem_exibicao),
+            KEY ix_site_perfis_produtos_tenant_deleted (tenant_id, is_deleted),
+            CONSTRAINT fk_site_perfis_produtos_perfil FOREIGN KEY (perfil_publico_id) REFERENCES site_perfis_publicos (id) ON DELETE RESTRICT,
+            CONSTRAINT fk_site_perfis_produtos_produto FOREIGN KEY (produto_id) REFERENCES produtos (id) ON DELETE RESTRICT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        """);
+}
+
+static async Task SeedSitePublicProfilesAsync(NexumDbContext db)
+{
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        INSERT INTO site_perfis_publicos (
+            id,
+            tenant_id,
+            row_version,
+            created_at,
+            tipo_perfil,
+            origem_tipo,
+            origem_id,
+            nome,
+            slug,
+            segmento,
+            atividade,
+            descricao,
+            logo_url,
+            banner_url,
+            icone,
+            cta_texto,
+            cta_url,
+            publicado,
+            ordem_exibicao)
+        SELECT
+            UUID(),
+            l.tenant_id,
+            UNHEX(REPLACE(UUID(), '-', '')),
+            UTC_TIMESTAMP(6),
+            'Loja',
+            'Loja',
+            l.id,
+            l.nome,
+            l.slug,
+            l.segmento,
+            CONCAT('Atuação comercial em ', l.segmento),
+            COALESCE(NULLIF(TRIM(l.descricao), ''), CONCAT(l.nome, ' integra a operação comercial do Grupo Nexum Altivon.')),
+            NULLIF(TRIM(l.logo), ''),
+            CASE l.slug
+                WHEN 'chronos' THEN '/uploads/Imagens/Gemini_Generated_Image_shv10ashv10ashv1.png'
+                WHEN 'grann-tur' THEN '/uploads/Imagens/Gemini_Generated_Image_cnu682cnu682cnu6.jfif'
+                WHEN 'gran-tur' THEN '/uploads/Imagens/Gemini_Generated_Image_cnu682cnu682cnu6.jfif'
+                WHEN 'moda-mim' THEN '/uploads/Imagens/Gemini_Generated_Image_lbd948lbd948lbd9.jfif'
+                WHEN 'geracao-top' THEN '/uploads/Imagens/Gemini_Generated_Image_aowvz5aowvz5aowv.jfif'
+                WHEN 'estruturaline' THEN '/uploads/Imagens/Gemini_Generated_Image_s9ijb8s9ijb8s9ij.jfif'
+                WHEN 'gran-fest' THEN '/uploads/Imagens/Gemini_Generated_Image_miqkz6miqkz6miqk.jfif'
+                WHEN 'gran-festas' THEN '/uploads/Imagens/Gemini_Generated_Image_miqkz6miqkz6miqk.jfif'
+                ELSE NULLIF(TRIM(l.banner), '')
+            END,
+            CASE l.slug
+                WHEN 'chronos' THEN 'Watch'
+                WHEN 'grann-tur' THEN 'Plane'
+                WHEN 'gran-tur' THEN 'Plane'
+                WHEN 'moda-mim' THEN 'Shirt'
+                WHEN 'geracao-top' THEN 'Smartphone'
+                WHEN 'estruturaline' THEN 'Hammer'
+                WHEN 'gran-fest' THEN 'Gift'
+                WHEN 'gran-festas' THEN 'Gift'
+                ELSE 'Store'
+            END,
+            'Conhecer loja',
+            CONCAT('/lojas/', l.slug),
+            l.ativa,
+            l.ordem_exibicao
+        FROM lojas l
+        WHERE l.is_deleted = 0
+          AND NOT EXISTS (
+              SELECT 1
+              FROM site_perfis_publicos p
+              WHERE p.tenant_id = l.tenant_id
+                AND p.origem_tipo = 'Loja'
+                AND p.origem_id = l.id
+                AND p.is_deleted = 0
+          );
         """);
 }
 
@@ -22801,22 +24040,151 @@ public sealed record HeroSlideSiteDto(
     string Title,
     string Highlight,
     string Description,
-    string Image);
+    string Image,
+    string? ImageAlt = null,
+    bool? Active = null,
+    int Order = 0);
 
 public sealed record StoreCardSiteDto(
+    Guid Id,
+    int? LojaId,
     string Nome,
     string Slug,
     string Segmento,
+    string Atividade,
     string Descricao,
-    string Imagem,
-    string Icon);
+    string? Imagem,
+    string? Logo,
+    string Icon,
+    string? CtaTexto,
+    string? CtaUrl,
+    string? CorPrimaria,
+    string? CorSecundaria,
+    string? CorFundo,
+    string? CorTexto,
+    int OrdemExibicao);
 
 public sealed record PartnerCardSiteDto(
+    Guid Id,
+    int? OrigemId,
+    string Tipo,
+    string OrigemTipo,
     string Title,
+    string Slug,
     string Text,
     string Cta,
     string Href,
-    string Icon);
+    string Icon,
+    string? Image,
+    string? Logo,
+    string Activity,
+    string Segment,
+    string? CorPrimaria,
+    string? CorSecundaria,
+    string? CorFundo,
+    string? CorTexto,
+    int Order);
+
+public sealed record SitePerfilPublicoRequest(
+    string TipoPerfil,
+    string OrigemTipo,
+    int? OrigemId,
+    string Nome,
+    string Slug,
+    string Segmento,
+    string Atividade,
+    string Descricao,
+    string? LogoUrl,
+    string? BannerUrl,
+    string? Icone,
+    string? CtaTexto,
+    string? CtaUrl,
+    string? SiteUrl,
+    string? EmailPublico,
+    string? TelefonePublico,
+    string? EnderecoPublico,
+    string? CorPrimaria,
+    string? CorSecundaria,
+    string? CorFundo,
+    string? CorTexto,
+    List<int>? ProdutoIds,
+    bool Publicado,
+    int OrdemExibicao,
+    string? RowVersion = null);
+
+public sealed record SitePerfilPublicoAdminDto(
+    Guid Id,
+    string TipoPerfil,
+    string OrigemTipo,
+    int? OrigemId,
+    string Nome,
+    string Slug,
+    string Segmento,
+    string Atividade,
+    string Descricao,
+    string? LogoUrl,
+    string? BannerUrl,
+    string? Icone,
+    string? CtaTexto,
+    string? CtaUrl,
+    string? SiteUrl,
+    string? EmailPublico,
+    string? TelefonePublico,
+    string? EnderecoPublico,
+    string? CorPrimaria,
+    string? CorSecundaria,
+    string? CorFundo,
+    string? CorTexto,
+    List<int> ProdutoIds,
+    bool Publicado,
+    int OrdemExibicao,
+    string RowVersion,
+    DateTime CreatedAt,
+    DateTime? UpdatedAt);
+
+public sealed record SitePerfilOrigemDto(
+    string Tipo,
+    int Id,
+    string Nome,
+    string Slug,
+    string Status);
+
+public sealed record SitePerfilProdutoDisponivelDto(
+    int Id,
+    string Sku,
+    string Nome,
+    string Slug,
+    decimal Preco,
+    string ImagemUrl,
+    int LojaId,
+    int? FornecedorId,
+    string TipoProduto);
+
+public sealed record PartnerDetailSiteDto(
+    Guid Id,
+    int? OrigemId,
+    string Tipo,
+    string OrigemTipo,
+    string Title,
+    string Slug,
+    string Text,
+    string Icon,
+    string? Image,
+    string? Logo,
+    string Activity,
+    string Segment,
+    int Order,
+    string? SiteUrl,
+    string? EmailPublico,
+    string? TelefonePublico,
+    string? EnderecoPublico,
+    string? CorPrimaria,
+    string? CorSecundaria,
+    string? CorFundo,
+    string? CorTexto,
+    string? Cta,
+    string? Href,
+    List<ProdutoLojaDto> Produtos);
 
 public sealed record SiteConfiguracaoPublicaDto(
     string SiteNome,
@@ -22832,6 +24200,14 @@ public sealed record SiteConfiguracaoPublicaDto(
     string InstitutionalUrl,
     string PrivacyUrl,
     string RefundUrl,
+    string PrimaryColor,
+    string SecondaryColor,
+    string BackgroundColor,
+    string SurfaceColor,
+    string TextColor,
+    string MutedTextColor,
+    int HeroIntervalSeconds,
+    int PartnerRotationSeconds,
     List<HeroSlideSiteDto> HeroSlides,
     List<StoreCardSiteDto> StoreCards,
     string IntroTitle,
