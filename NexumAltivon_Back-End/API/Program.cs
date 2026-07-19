@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7184
+ * Versão: 1.1.5.7185
  */
 
 using System.Globalization;
@@ -5700,8 +5700,13 @@ app.MapGet("/api/compras/painel", [Authorize(Policy = "Gerente")] async (NexumDb
 .WithName("ComprasPainel")
 ;
 
-app.MapPost("/api/compras/solicitacoes", [Authorize(Policy = "Gerente")] async (CompraSolicitacaoRequest request, NexumDbContext db, CancellationToken ct) =>
+app.MapPost("/api/compras/solicitacoes", [Authorize(Policy = "Gerente")] async (CompraSolicitacaoRequest request, NexumDbContext db, HttpContext http, CancellationToken ct) =>
 {
+    var executionStrategy = db.Database.CreateExecutionStrategy();
+    var solicitacaoId = 0;
+    var transactionResult = await executionStrategy.ExecuteAsync<IResult?>(async () =>
+    {
+    db.ChangeTracker.Clear();
     if (request.Quantidade <= 0)
     {
         return Results.BadRequest(ApiResponse<string>.Erro("Quantidade solicitada deve ser maior que zero."));
@@ -5731,6 +5736,7 @@ app.MapPost("/api/compras/solicitacoes", [Authorize(Policy = "Gerente")] async (
     var tenantId = db.CurrentTenantId.ToString();
     var userId = db.CurrentUserId?.ToString();
 
+    await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
     await db.Database.ExecuteSqlInterpolatedAsync($"""
         INSERT INTO compras_solicitacoes
             (produto_id, produto_nome, quantidade_solicitada, finalidade, origem, status, prioridade, observacoes,
@@ -5740,15 +5746,36 @@ app.MapPost("/api/compras/solicitacoes", [Authorize(Policy = "Gerente")] async (
              {tenantId}, UNHEX(REPLACE(UUID(), '-', '')), {userId}, {userId}, {now}, {now});
         """, ct);
 
-    var solicitacaoId = await ExecuteScalarAsync<int>(db, "SELECT LAST_INSERT_ID();", ct);
+    solicitacaoId = await ExecuteScalarAsync<int>(db, "SELECT LAST_INSERT_ID();", ct);
+    db.LogsAuditoria.Add(CreatePurchaseAudit(
+        http,
+        "compras_solicitacoes",
+        solicitacaoId,
+        AcaoAuditoria.INSERT,
+        null,
+        new { produtoId = produto?.Id, produtoNome, request.Quantidade, finalidade, origem, status = "Aberta", prioridade }));
+    await db.SaveChangesAsync(ct);
+    await transaction.CommitAsync(ct);
+    return null;
+    });
+    if (transactionResult is not null)
+    {
+        return transactionResult;
+    }
+
     var painel = await BuildComprasPainelAsync(db, ct);
     return Results.Created($"/api/compras/solicitacoes/{solicitacaoId}", ApiResponse<ComprasPainelDto>.Ok(painel, "Solicitacao de compra registrada para cotacao."));
 })
 .WithName("RegistrarCompraSolicitacao")
 ;
 
-app.MapPost("/api/compras/cotacoes", [Authorize(Policy = "Gerente")] async (CompraCotacaoRequest request, NexumDbContext db, CancellationToken ct) =>
+app.MapPost("/api/compras/cotacoes", [Authorize(Policy = "Gerente")] async (CompraCotacaoRequest request, NexumDbContext db, HttpContext http, CancellationToken ct) =>
 {
+    var executionStrategy = db.Database.CreateExecutionStrategy();
+    var cotacaoId = 0;
+    var transactionResult = await executionStrategy.ExecuteAsync<IResult?>(async () =>
+    {
+    db.ChangeTracker.Clear();
     if (request.FornecedorId <= 0)
     {
         return Results.BadRequest(ApiResponse<string>.Erro("Fornecedor obrigatorio para cotacao."));
@@ -5791,17 +5818,59 @@ app.MapPost("/api/compras/cotacoes", [Authorize(Policy = "Gerente")] async (Comp
     var prazoEntrega = request.PrazoEntregaDias ?? fornecedor.PrazoEntregaDias;
     var tenantId = db.CurrentTenantId.ToString();
     var userId = db.CurrentUserId?.ToString();
+    var solicitacaoId = request.SolicitacaoId;
 
-    await db.Database.ExecuteSqlInterpolatedAsync($"""
-        INSERT INTO compras_solicitacoes
-            (produto_id, produto_nome, quantidade_solicitada, finalidade, origem, status, prioridade, observacoes,
-             tenant_id, row_version, created_by_user_id, updated_by_user_id, created_at, updated_at)
-        VALUES
-            ({produtoIdCotacao}, {produtoNome}, {request.Quantidade}, {finalidade}, {origem}, {"Cotado"}, {prioridade}, {observacoesCotacao},
-             {tenantId}, UNHEX(REPLACE(UUID(), '-', '')), {userId}, {userId}, {now}, {now});
-        """, ct);
+    await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
-    var solicitacaoId = await ExecuteScalarAsync<int>(db, "SELECT LAST_INSERT_ID();", ct);
+    if (solicitacaoId.HasValue)
+    {
+        var existingRequestStatus = await ExecuteScalarAsync<string>(
+            db,
+            "SELECT status FROM compras_solicitacoes WHERE id = @id AND tenant_id = @tenantId AND is_deleted = 0 LIMIT 1 FOR UPDATE",
+            ct,
+            ("@id", solicitacaoId.Value),
+            ("@tenantId", tenantId));
+        if (string.IsNullOrWhiteSpace(existingRequestStatus))
+        {
+            await transaction.RollbackAsync(ct);
+            return Results.NotFound(ApiResponse<string>.Erro("Solicitacao de compra nao encontrada para o tenant autenticado."));
+        }
+
+        if (!IsAllowedCompraSolicitacaoTransition(existingRequestStatus, "Cotado"))
+        {
+            await transaction.RollbackAsync(ct);
+            return Results.Conflict(ApiResponse<string>.Erro($"Solicitacao em status {existingRequestStatus} nao pode receber nova cotacao."));
+        }
+
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE compras_solicitacoes
+            SET status = {"Cotado"},
+                produto_id = COALESCE(produto_id, {produtoIdCotacao}),
+                produto_nome = {produtoNome},
+                quantidade_solicitada = {request.Quantidade},
+                finalidade = {finalidade},
+                origem = {origem},
+                prioridade = {prioridade},
+                observacoes = {observacoesCotacao},
+                updated_by_user_id = {userId},
+                row_version = UNHEX(REPLACE(UUID(), '-', '')),
+                updated_at = {now}
+            WHERE id = {solicitacaoId.Value} AND tenant_id = {tenantId} AND is_deleted = 0;
+            """, ct);
+    }
+    else
+    {
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO compras_solicitacoes
+                (produto_id, produto_nome, quantidade_solicitada, finalidade, origem, status, prioridade, observacoes,
+                 tenant_id, row_version, created_by_user_id, updated_by_user_id, created_at, updated_at)
+            VALUES
+                ({produtoIdCotacao}, {produtoNome}, {request.Quantidade}, {finalidade}, {origem}, {"Cotado"}, {prioridade}, {observacoesCotacao},
+                 {tenantId}, UNHEX(REPLACE(UUID(), '-', '')), {userId}, {userId}, {now}, {now});
+            """, ct);
+
+        solicitacaoId = await ExecuteScalarAsync<int>(db, "SELECT LAST_INSERT_ID();", ct);
+    }
 
     await db.Database.ExecuteSqlInterpolatedAsync($"""
         INSERT INTO compras_cotacoes
@@ -5809,19 +5878,60 @@ app.MapPost("/api/compras/cotacoes", [Authorize(Policy = "Gerente")] async (Comp
              prazo_entrega_dias, origem, status, observacoes, tenant_id, row_version, created_by_user_id,
              updated_by_user_id, created_at, updated_at)
         VALUES
-            ({solicitacaoId}, {request.FornecedorId}, {produtoIdCotacao}, {produtoNome}, {request.Quantidade},
+            ({solicitacaoId.Value}, {request.FornecedorId}, {produtoIdCotacao}, {produtoNome}, {request.Quantidade},
              {request.CustoUnitario}, {total}, {prazoEntrega}, {origem}, {"Selecionada"}, {observacoesCotacao},
              {tenantId}, UNHEX(REPLACE(UUID(), '-', '')), {userId}, {userId}, {now}, {now});
         """, ct);
 
+    cotacaoId = await ExecuteScalarAsync<int>(db, "SELECT LAST_INSERT_ID();", ct);
+    db.LogsAuditoria.Add(CreatePurchaseAudit(
+        http,
+        "compras_cotacoes",
+        cotacaoId,
+        AcaoAuditoria.INSERT,
+        null,
+        new { solicitacaoId, request.FornecedorId, produtoIdCotacao, produtoNome, request.Quantidade, request.CustoUnitario, total, prazoEntrega, status = "Selecionada" }));
+    db.LogsAuditoria.Add(CreatePurchaseAudit(
+        http,
+        "compras_solicitacoes",
+        solicitacaoId.Value,
+        AcaoAuditoria.UPDATE,
+        null,
+        new { status = "Cotado", cotacaoId }));
+    await db.SaveChangesAsync(ct);
+    await transaction.CommitAsync(ct);
+    return null;
+    });
+    if (transactionResult is not null)
+    {
+        return transactionResult;
+    }
+
     var painel = await BuildComprasPainelAsync(db, ct);
-    return Results.Created($"/api/compras/cotacoes/{solicitacaoId}", ApiResponse<ComprasPainelDto>.Ok(painel, "Cotacao registrada e disponivel para pedido de compra."));
+    return Results.Created($"/api/compras/cotacoes/{cotacaoId}", ApiResponse<ComprasPainelDto>.Ok(painel, "Cotacao registrada e disponivel para pedido de compra."));
 })
 .WithName("RegistrarCompraCotacao")
 ;
 
-app.MapPost("/api/compras/pedidos", [Authorize(Policy = "Gerente")] async (CompraPedidoRequest request, NexumDbContext db, IServiceProvider services, CancellationToken ct) =>
+app.MapPost("/api/compras/pedidos", [Authorize(Policy = "Gerente")] async (
+    CompraPedidoRequest request,
+    NexumDbContext db,
+    IServiceProvider services,
+    HttpContext http,
+    ILoggerFactory loggerFactory,
+    CancellationToken ct) =>
 {
+    var executionStrategy = db.Database.CreateExecutionStrategy();
+    var compraPedidoId = 0;
+    var numeroPedido = string.Empty;
+    var fornecedorIdIntegracao = 0;
+    var fornecedorNomeIntegracao = string.Empty;
+    var totalCompra = 0m;
+    var emissaoCompra = default(DateTime);
+    var vencimentoCompra = default(DateTime);
+    var transactionResult = await executionStrategy.ExecuteAsync<IResult?>(async () =>
+    {
+    db.ChangeTracker.Clear();
     if (request.FornecedorId <= 0)
     {
         return Results.BadRequest(ApiResponse<string>.Erro("Fornecedor obrigatorio para pedido de compra."));
@@ -5842,6 +5952,8 @@ app.MapPost("/api/compras/pedidos", [Authorize(Policy = "Gerente")] async (Compr
     {
         return Results.NotFound(ApiResponse<string>.Erro("Fornecedor nao encontrado."));
     }
+    fornecedorIdIntegracao = fornecedor.Id;
+    fornecedorNomeIntegracao = fornecedor.RazaoSocial;
 
     var produtoIds = request.Itens
         .Where(item => item.ProdutoId.HasValue)
@@ -5857,30 +5969,38 @@ app.MapPost("/api/compras/pedidos", [Authorize(Policy = "Gerente")] async (Compr
         return Results.BadRequest(ApiResponse<string>.Erro("Um ou mais produtos informados nao existem."));
     }
 
+    await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+
     if (request.SolicitacaoId.HasValue)
     {
-        var solicitacaoExists = await ExecuteScalarAsync<int>(
+        var solicitacaoStatus = await ExecuteScalarAsync<string>(
             db,
-            "SELECT COUNT(*) FROM compras_solicitacoes WHERE id = @id AND tenant_id = @tenantId AND is_deleted = 0",
+            "SELECT status FROM compras_solicitacoes WHERE id = @id AND tenant_id = @tenantId AND is_deleted = 0 LIMIT 1 FOR UPDATE",
             ct,
             ("@id", request.SolicitacaoId.Value),
             ("@tenantId", db.CurrentTenantId.ToString()));
-        if (solicitacaoExists == 0)
+        if (string.IsNullOrWhiteSpace(solicitacaoStatus))
         {
             return Results.NotFound(ApiResponse<string>.Erro("Solicitacao de compra nao encontrada para o tenant autenticado."));
         }
+
+        if (!solicitacaoStatus.Equals("Aprovada", StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.Conflict(ApiResponse<string>.Erro($"Solicitacao em status {solicitacaoStatus} deve ser aprovada antes de gerar o pedido de compra."));
+        }
     }
 
-    var now = DateTime.UtcNow;
-    var numeroPedido = $"COMP-{now:yyyyMMddHHmmss}-{Guid.NewGuid():N}"[..28];
+    emissaoCompra = DateTime.UtcNow;
+    var now = emissaoCompra;
+    numeroPedido = $"COMP-{now:yyyyMMddHHmmss}-{Guid.NewGuid():N}"[..28];
     var origem = NormalizeCompraOrigem(request.Origem);
     var finalidade = TrimOrNull(request.Finalidade) ?? "Reposicao/operacao";
-    var vencimento = request.DataVencimento ?? now.Date.AddDays(7);
-    var total = request.Itens.Sum(item => item.Quantidade * item.CustoUnitario);
+    vencimentoCompra = request.DataVencimento ?? now.Date.AddDays(7);
+    var vencimento = vencimentoCompra;
+    totalCompra = request.Itens.Sum(item => item.Quantidade * item.CustoUnitario);
+    var total = totalCompra;
     var tenantId = db.CurrentTenantId.ToString();
     var userId = db.CurrentUserId?.ToString();
-
-    await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
     await db.Database.ExecuteSqlInterpolatedAsync($"""
         INSERT INTO compras_pedidos
@@ -5893,7 +6013,7 @@ app.MapPost("/api/compras/pedidos", [Authorize(Policy = "Gerente")] async (Compr
              UNHEX(REPLACE(UUID(), '-', '')), {userId}, {userId}, {now}, {now});
         """, ct);
 
-    var compraPedidoId = await ExecuteScalarAsync<int>(db, "SELECT LAST_INSERT_ID();", ct);
+    compraPedidoId = await ExecuteScalarAsync<int>(db, "SELECT LAST_INSERT_ID();", ct);
 
     foreach (var item in request.Itens)
     {
@@ -5934,33 +6054,130 @@ app.MapPost("/api/compras/pedidos", [Authorize(Policy = "Gerente")] async (Compr
         UpdatedAt = now
     });
 
+    if (request.SolicitacaoId.HasValue)
+    {
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE compras_solicitacoes
+            SET status = {"Atendida"},
+                updated_by_user_id = {userId},
+                row_version = UNHEX(REPLACE(UUID(), '-', '')),
+                updated_at = {now}
+            WHERE id = {request.SolicitacaoId.Value} AND tenant_id = {tenantId} AND is_deleted = 0;
+            """, ct);
+    }
+
+    db.LogsAuditoria.Add(CreatePurchaseAudit(
+        http,
+        "compras_pedidos",
+        compraPedidoId,
+        AcaoAuditoria.INSERT,
+        null,
+        new { numeroPedido, request.FornecedorId, request.SolicitacaoId, origem, finalidade, status = "Aberto", total, vencimento }));
+    if (request.SolicitacaoId.HasValue)
+    {
+        db.LogsAuditoria.Add(CreatePurchaseAudit(
+            http,
+            "compras_solicitacoes",
+            request.SolicitacaoId.Value,
+            AcaoAuditoria.UPDATE,
+            new { status = "Aprovada" },
+            new { status = "Atendida", compraPedidoId }));
+    }
+
     await db.SaveChangesAsync(ct);
-    await TryCreateGenesisContaPagarCompraAsync(services, numeroPedido, fornecedor.Id, fornecedor.RazaoSocial, total, now, vencimento, request.MeioPagamento, ct);
     await transaction.CommitAsync(ct);
+    return null;
+    });
+    if (transactionResult is not null)
+    {
+        return transactionResult;
+    }
+
+    var genesisResult = await TryCreateGenesisContaPagarCompraAsync(
+        services,
+        numeroPedido,
+        fornecedorIdIntegracao,
+        fornecedorNomeIntegracao,
+        totalCompra,
+        emissaoCompra,
+        vencimentoCompra,
+        request.MeioPagamento,
+        ct);
 
     var painel = await BuildComprasPainelAsync(db, ct);
+    if (!genesisResult.Succeeded)
+    {
+        var logger = loggerFactory.CreateLogger("NexumAltivon.Compras");
+        logger.LogError(
+            "Conta a pagar Genesis nao foi confirmada para o pedido de compra {CompraPedidoId} ({NumeroPedido}). Codigo {FailureCode}.",
+            compraPedidoId,
+            numeroPedido,
+            genesisResult.FailureCode);
+
+        try
+        {
+            using var incidentTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var incidentReference = await RegisterPurchasePostCommitIncidentAsync(
+                services,
+                compraPedidoId,
+                numeroPedido,
+                genesisResult.FailureCode ?? "GENESIS-UNKNOWN",
+                http,
+                incidentTimeout.Token);
+            return Results.Accepted(
+                $"/api/compras/pedidos/{compraPedidoId}",
+                ApiResponse<ComprasPainelDto>.Ok(
+                    painel,
+                    $"Pedido de compra persistido. A integracao da conta a pagar Genesis requer conciliacao sob a referencia {incidentReference}."));
+        }
+        catch (Exception incidentException)
+        {
+            logger.LogCritical(
+                incidentException,
+                "Pedido de compra {CompraPedidoId} ({NumeroPedido}) foi commitado, mas o incidente Genesis nao foi persistido.",
+                compraPedidoId,
+                numeroPedido);
+            return Results.Problem(
+                detail: $"O pedido de compra {numeroPedido} foi registrado, mas a integracao financeira e o incidente falharam. Nao repita a operacao; informe este numero ao suporte.",
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Pedido de compra registrado com falha operacional critica");
+        }
+    }
+
     return Results.Created($"/api/compras/pedidos/{compraPedidoId}", ApiResponse<ComprasPainelDto>.Ok(painel, "Pedido de compra gerado com conta a pagar."));
 })
 .WithName("CriarCompraPedido")
 ;
 
-app.MapPost("/api/compras/pedidos/{id:int}/entradas", [Authorize(Policy = "Gerente")] async (int id, CompraEntradaRequest request, NexumDbContext db, CancellationToken ct) =>
+app.MapPost("/api/compras/pedidos/{id:int}/entradas", [Authorize(Policy = "Gerente")] async (int id, CompraEntradaRequest request, NexumDbContext db, HttpContext http, CancellationToken ct) =>
 {
+    var executionStrategy = db.Database.CreateExecutionStrategy();
+    var transactionResult = await executionStrategy.ExecuteAsync<IResult?>(async () =>
+    {
+    db.ChangeTracker.Clear();
     var tenantId = db.CurrentTenantId.ToString();
     var userId = db.CurrentUserId?.ToString();
-    var pedido = await db.Database.SqlQueryRaw<CompraPedidoLookupRow>(
-        "SELECT id AS Id, numero AS Numero, status AS Status, origem AS Origem, fornecedor_id AS FornecedorId FROM compras_pedidos WHERE id = {0} AND tenant_id = {1} AND is_deleted = 0 LIMIT 1",
+    await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+    var pedidoRows = await db.Database.SqlQueryRaw<CompraPedidoLookupRow>(
+        "SELECT id AS Id, numero AS Numero, status AS Status, origem AS Origem, fornecedor_id AS FornecedorId FROM compras_pedidos WHERE id = {0} AND tenant_id = {1} AND is_deleted = 0 LIMIT 1 FOR UPDATE",
         id,
         tenantId)
-        .FirstOrDefaultAsync(ct);
+        .ToListAsync(ct);
+    var pedidoAtual = pedidoRows.FirstOrDefault();
 
-    if (pedido is null)
+    if (pedidoAtual is null)
     {
         return Results.NotFound(ApiResponse<string>.Erro("Pedido de compra nao encontrado."));
     }
 
+    if (!pedidoAtual.Status.Equals("Aprovado", StringComparison.OrdinalIgnoreCase) &&
+        !pedidoAtual.Status.Equals("RecebidoParcial", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.Conflict(ApiResponse<string>.Erro($"Pedido em status {pedidoAtual.Status} nao permite entrada. Aprove o pedido antes do recebimento."));
+    }
+
     var itens = await db.Database.SqlQueryRaw<CompraPedidoItemLookupRow>(
-        "SELECT id AS Id, produto_id AS ProdutoId, produto_nome AS ProdutoNome, quantidade AS Quantidade, quantidade_recebida AS QuantidadeRecebida, custo_unitario AS CustoUnitario FROM compras_pedido_itens WHERE compra_pedido_id = {0} AND tenant_id = {1} AND is_deleted = 0",
+        "SELECT id AS Id, produto_id AS ProdutoId, produto_nome AS ProdutoNome, quantidade AS Quantidade, quantidade_recebida AS QuantidadeRecebida, custo_unitario AS CustoUnitario FROM compras_pedido_itens WHERE compra_pedido_id = {0} AND tenant_id = {1} AND is_deleted = 0 FOR UPDATE",
         id,
         tenantId)
         .ToListAsync(ct);
@@ -5970,13 +6187,80 @@ app.MapPost("/api/compras/pedidos/{id:int}/entradas", [Authorize(Policy = "Geren
         return Results.BadRequest(ApiResponse<string>.Erro("Pedido de compra sem itens para entrada."));
     }
 
-    var quantidades = request.Itens?.ToDictionary(item => item.ItemId, item => item.QuantidadeRecebida) ?? [];
     var now = DateTime.UtcNow;
     var documento = TrimOrNull(request.NumeroDocumento);
-    var chaveNfe = TrimOrNull(request.ChaveNfeEntrada);
-    var totalEntrada = 0m;
+    var chaveNfe = NormalizeDocument(request.ChaveNfeEntrada);
+    if (documento is null && chaveNfe is null)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Informe o numero do documento do fornecedor ou a chave da NF-e de entrada."));
+    }
 
-    await using var transaction = await db.Database.BeginTransactionAsync(ct);
+    if (chaveNfe is not null && chaveNfe.Length != 44)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Chave da NF-e de entrada deve conter 44 digitos."));
+    }
+
+    var requestedItems = request.Itens ?? [];
+    if (requestedItems.Any(item => item.ItemId <= 0 || item.QuantidadeRecebida <= 0))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Itens de entrada devem informar item e quantidade recebida maiores que zero."));
+    }
+
+    if (requestedItems.GroupBy(item => item.ItemId).Any(group => group.Count() > 1))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("O mesmo item de pedido nao pode ser informado mais de uma vez na entrada."));
+    }
+
+    var knownItemIds = itens.Select(item => item.Id).ToHashSet();
+    if (requestedItems.Any(item => !knownItemIds.Contains(item.ItemId)))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("A entrada contem item que nao pertence ao pedido autenticado."));
+    }
+
+    var hasExplicitItems = request.Itens is not null;
+    var quantidades = requestedItems.ToDictionary(item => item.ItemId, item => item.QuantidadeRecebida);
+    var itensPorId = itens.ToDictionary(item => item.Id);
+    if (hasExplicitItems && requestedItems.Any(requested =>
+            requested.QuantidadeRecebida > Math.Max(
+                0,
+                itensPorId[requested.ItemId].Quantidade - itensPorId[requested.ItemId].QuantidadeRecebida)))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Quantidade recebida nao pode superar o saldo pendente do item."));
+    }
+
+    var hasReceivableQuantity = itens.Any(item =>
+    {
+        var pendente = Math.Max(0, item.Quantidade - item.QuantidadeRecebida);
+        var requested = hasExplicitItems ? quantidades.GetValueOrDefault(item.Id) : pendente;
+        return Math.Min(Math.Max(0, requested), pendente) > 0;
+    });
+    if (!hasReceivableQuantity)
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("Pedido sem quantidade pendente para a entrada informada."));
+    }
+
+    var duplicateEntry = await ExecuteScalarAsync<int>(
+        db,
+        """
+        SELECT COUNT(*)
+        FROM compras_entradas
+        WHERE compra_pedido_id = @pedidoId
+          AND tenant_id = @tenantId
+          AND is_deleted = 0
+          AND ((@documento IS NOT NULL AND numero_documento = @documento)
+            OR (@chaveNfe IS NOT NULL AND chave_nfe_entrada = @chaveNfe))
+        """,
+        ct,
+        ("@pedidoId", id),
+        ("@tenantId", tenantId),
+        ("@documento", documento),
+        ("@chaveNfe", chaveNfe));
+    if (duplicateEntry > 0)
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("Documento de entrada ja registrado para este pedido."));
+    }
+
+    var totalEntrada = 0m;
 
     await db.Database.ExecuteSqlInterpolatedAsync($"""
         INSERT INTO compras_entradas
@@ -5984,9 +6268,9 @@ app.MapPost("/api/compras/pedidos/{id:int}/entradas", [Authorize(Policy = "Geren
              status_fiscal, valor_total, recebido_por, observacoes, tenant_id, row_version,
              created_by_user_id, updated_by_user_id, created_at, updated_at)
         VALUES
-            ({id}, {pedido.FornecedorId}, {documento}, {chaveNfe},
-             {NormalizeCompraOrigem(request.TipoEntrada ?? pedido.Origem)},
-             {(!string.IsNullOrWhiteSpace(chaveNfe) ? "NFeInformada" : "FiscalPendente")}, 0,
+            ({id}, {pedidoAtual.FornecedorId}, {documento}, {chaveNfe},
+              {NormalizeCompraOrigem(request.TipoEntrada ?? pedidoAtual.Origem)},
+              {(!string.IsNullOrWhiteSpace(chaveNfe) ? "NFeInformada" : "FiscalPendente")}, 0,
              {TrimOrNull(request.RecebidoPor) ?? "Operacao"}, {TrimOrNull(request.Observacoes)},
              {tenantId}, UNHEX(REPLACE(UUID(), '-', '')), {userId}, {userId}, {now}, {now});
         """, ct);
@@ -5997,8 +6281,8 @@ app.MapPost("/api/compras/pedidos/{id:int}/entradas", [Authorize(Policy = "Geren
     foreach (var item in itens)
     {
         var pendente = Math.Max(0, item.Quantidade - item.QuantidadeRecebida);
-        var recebidaAgora = quantidades.TryGetValue(item.Id, out var quantidadeInformada)
-            ? quantidadeInformada
+        var recebidaAgora = hasExplicitItems
+            ? quantidades.GetValueOrDefault(item.Id)
             : pendente;
         recebidaAgora = Math.Min(Math.Max(0, recebidaAgora), pendente);
 
@@ -6047,8 +6331,8 @@ app.MapPost("/api/compras/pedidos/{id:int}/entradas", [Authorize(Policy = "Geren
                 produto.EstoqueAtual += recebidaAgora;
                 produto.Custo = item.CustoUnitario;
                 produto.CodigoBarras ??= GerarCodigoBarrasProduto(produto);
-                produto.QrCode = GerarQrCodeProduto(produto, pedido, entradaId, documento ?? chaveNfe);
-                produto.IdentificacaoEstoque = GerarIdentificacaoEstoqueProduto(produto, pedido, entradaId, recebidaAgora, item.CustoUnitario, documento ?? chaveNfe);
+                produto.QrCode = GerarQrCodeProduto(produto, pedidoAtual, entradaId, documento ?? chaveNfe);
+                produto.IdentificacaoEstoque = GerarIdentificacaoEstoqueProduto(produto, pedidoAtual, entradaId, recebidaAgora, item.CustoUnitario, documento ?? chaveNfe);
                 produto.UpdatedAt = now;
 
                 await db.Database.ExecuteSqlInterpolatedAsync($"""
@@ -6058,7 +6342,7 @@ app.MapPost("/api/compras/pedidos/{id:int}/entradas", [Authorize(Policy = "Geren
                          updated_by_user_id, created_at, updated_at)
                     VALUES
                         ({produto.Id}, {entradaId}, {"EntradaCompra"}, {recebidaAgora}, {produto.EstoqueAtual},
-                         {item.CustoUnitario}, {pedido.Origem}, {documento ?? chaveNfe}, {TrimOrNull(request.Observacoes)},
+                         {item.CustoUnitario}, {pedidoAtual.Origem}, {documento ?? chaveNfe}, {TrimOrNull(request.Observacoes)},
                          {tenantId}, UNHEX(REPLACE(UUID(), '-', '')), {userId}, {userId}, {now}, {now});
                     """, ct);
             }
@@ -6090,8 +6374,28 @@ app.MapPost("/api/compras/pedidos/{id:int}/entradas", [Authorize(Policy = "Geren
         WHERE id = {id} AND tenant_id = {tenantId} AND is_deleted = 0;
         """, ct);
 
+    db.LogsAuditoria.Add(CreatePurchaseAudit(
+        http,
+        "compras_entradas",
+        entradaId,
+        AcaoAuditoria.INSERT,
+        null,
+        new { compraPedidoId = id, documento, chaveNfe, totalEntrada, statusFiscal = !string.IsNullOrWhiteSpace(chaveNfe) ? "NFeEntradaInformada" : "FiscalPendente" }));
+    db.LogsAuditoria.Add(CreatePurchaseAudit(
+        http,
+        "compras_pedidos",
+        id,
+        AcaoAuditoria.UPDATE,
+        new { pedidoAtual.Status },
+        new { status = todosRecebidos ? "Recebido" : "RecebidoParcial", entradaId }));
     await db.SaveChangesAsync(ct);
     await transaction.CommitAsync(ct);
+    return null;
+    });
+    if (transactionResult is not null)
+    {
+        return transactionResult;
+    }
 
     var painel = await BuildComprasPainelAsync(db, ct);
     return Results.Ok(ApiResponse<ComprasPainelDto>.Ok(painel, "Entrada registrada, estoque atualizado e fiscal sinalizado."));
@@ -6099,8 +6403,12 @@ app.MapPost("/api/compras/pedidos/{id:int}/entradas", [Authorize(Policy = "Geren
 .WithName("RegistrarCompraEntrada")
 ;
 
-app.MapPatch("/api/compras/solicitacoes/{id:int}/status", [Authorize(Policy = "Gerente")] async (int id, CompraStatusRequest request, NexumDbContext db, CancellationToken ct) =>
+app.MapPatch("/api/compras/solicitacoes/{id:int}/status", [Authorize(Policy = "Gerente")] async (int id, CompraStatusRequest request, NexumDbContext db, HttpContext http, CancellationToken ct) =>
 {
+    var executionStrategy = db.Database.CreateExecutionStrategy();
+    var transactionResult = await executionStrategy.ExecuteAsync<IResult?>(async () =>
+    {
+    db.ChangeTracker.Clear();
     var novoStatus = NormalizeCompraSolicitacaoStatus(request.Status ?? request.NovoStatus);
     if (novoStatus is null)
     {
@@ -6109,15 +6417,22 @@ app.MapPatch("/api/compras/solicitacoes/{id:int}/status", [Authorize(Policy = "G
 
     var tenantId = db.CurrentTenantId.ToString();
     var userId = db.CurrentUserId?.ToString();
-    var atual = await db.Database.SqlQueryRaw<string>(
-        "SELECT status AS Value FROM compras_solicitacoes WHERE id = {0} AND tenant_id = {1} AND is_deleted = 0 LIMIT 1",
-        id,
-        tenantId)
-        .FirstOrDefaultAsync(ct);
+    await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+    var atual = await ExecuteScalarAsync<string>(
+        db,
+        "SELECT status FROM compras_solicitacoes WHERE id = @id AND tenant_id = @tenantId AND is_deleted = 0 LIMIT 1 FOR UPDATE",
+        ct,
+        ("@id", id),
+        ("@tenantId", tenantId));
 
     if (string.IsNullOrWhiteSpace(atual))
     {
         return Results.NotFound(ApiResponse<string>.Erro("Solicitacao de compra nao encontrada."));
+    }
+
+    if (!IsAllowedCompraSolicitacaoTransition(atual, novoStatus))
+    {
+        return Results.Conflict(ApiResponse<string>.Erro($"Transicao de solicitacao {atual} -> {novoStatus} nao permitida."));
     }
 
     var now = DateTime.UtcNow;
@@ -6144,6 +6459,22 @@ app.MapPatch("/api/compras/solicitacoes/{id:int}/status", [Authorize(Policy = "G
                 updated_at = {now}
             WHERE id = {id} AND tenant_id = {tenantId} AND is_deleted = 0;
             """, ct);
+    }
+
+    db.LogsAuditoria.Add(CreatePurchaseAudit(
+        http,
+        "compras_solicitacoes",
+        id,
+        AcaoAuditoria.UPDATE,
+        new { status = atual },
+        new { status = novoStatus, observacao }));
+    await db.SaveChangesAsync(ct);
+    await transaction.CommitAsync(ct);
+    return null;
+    });
+    if (transactionResult is not null)
+    {
+        return transactionResult;
     }
 
     var painel = await BuildComprasPainelAsync(db, ct);
@@ -6152,8 +6483,12 @@ app.MapPatch("/api/compras/solicitacoes/{id:int}/status", [Authorize(Policy = "G
 .WithName("AtualizarCompraSolicitacaoStatus")
 ;
 
-app.MapPatch("/api/compras/pedidos/{id:int}/status", [Authorize(Policy = "Gerente")] async (int id, CompraStatusRequest request, NexumDbContext db, CancellationToken ct) =>
+app.MapPatch("/api/compras/pedidos/{id:int}/status", [Authorize(Policy = "Gerente")] async (int id, CompraStatusRequest request, NexumDbContext db, HttpContext http, CancellationToken ct) =>
 {
+    var executionStrategy = db.Database.CreateExecutionStrategy();
+    var transactionResult = await executionStrategy.ExecuteAsync<IResult?>(async () =>
+    {
+    db.ChangeTracker.Clear();
     var novoStatus = NormalizeCompraPedidoStatus(request.Status ?? request.NovoStatus);
     if (novoStatus is null)
     {
@@ -6162,20 +6497,22 @@ app.MapPatch("/api/compras/pedidos/{id:int}/status", [Authorize(Policy = "Gerent
 
     var tenantId = db.CurrentTenantId.ToString();
     var userId = db.CurrentUserId?.ToString();
-    var atual = await db.Database.SqlQueryRaw<string>(
-        "SELECT status AS Value FROM compras_pedidos WHERE id = {0} AND tenant_id = {1} AND is_deleted = 0 LIMIT 1",
-        id,
-        tenantId)
-        .FirstOrDefaultAsync(ct);
+    await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+    var atual = await ExecuteScalarAsync<string>(
+        db,
+        "SELECT status FROM compras_pedidos WHERE id = @id AND tenant_id = @tenantId AND is_deleted = 0 LIMIT 1 FOR UPDATE",
+        ct,
+        ("@id", id),
+        ("@tenantId", tenantId));
 
     if (string.IsNullOrWhiteSpace(atual))
     {
         return Results.NotFound(ApiResponse<string>.Erro("Pedido de compra nao encontrado."));
     }
 
-    if (atual.Equals("Recebido", StringComparison.OrdinalIgnoreCase) && novoStatus == "Cancelado")
+    if (!IsAllowedCompraPedidoTransition(atual, novoStatus))
     {
-        return Results.BadRequest(ApiResponse<string>.Erro("Pedido ja recebido nao pode ser cancelado."));
+        return Results.Conflict(ApiResponse<string>.Erro($"Transicao de pedido {atual} -> {novoStatus} nao permitida."));
     }
 
     var now = DateTime.UtcNow;
@@ -6202,6 +6539,22 @@ app.MapPatch("/api/compras/pedidos/{id:int}/status", [Authorize(Policy = "Gerent
                 updated_at = {now}
             WHERE id = {id} AND tenant_id = {tenantId} AND is_deleted = 0;
             """, ct);
+    }
+
+    db.LogsAuditoria.Add(CreatePurchaseAudit(
+        http,
+        "compras_pedidos",
+        id,
+        AcaoAuditoria.UPDATE,
+        new { status = atual },
+        new { status = novoStatus, observacao }));
+    await db.SaveChangesAsync(ct);
+    await transaction.CommitAsync(ct);
+    return null;
+    });
+    if (transactionResult is not null)
+    {
+        return transactionResult;
     }
 
     var painel = await BuildComprasPainelAsync(db, ct);
@@ -12040,6 +12393,95 @@ static async Task<string> RegisterCheckoutPostCommitIncidentAsync(
     return incidentReference;
 }
 
+static async Task<string> RegisterPurchasePostCommitIncidentAsync(
+    IServiceProvider services,
+    int compraPedidoId,
+    string numeroPedido,
+    string failureCode,
+    HttpContext http,
+    CancellationToken ct)
+{
+    using var scope = services.CreateScope();
+    var incidentDb = scope.ServiceProvider.GetRequiredService<NexumDbContext>();
+    var strategy = incidentDb.Database.CreateExecutionStrategy();
+    var occurredAt = DateTime.UtcNow;
+    var incidentReference = $"COMPRA-GENESIS-{compraPedidoId}-{occurredAt:yyyyMMddHHmmss}";
+
+    await strategy.ExecuteAsync(async () =>
+    {
+        await using var transaction = await incidentDb.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+        var payload = JsonSerializer.Serialize(new
+        {
+            compraPedidoId,
+            numeroPedido,
+            area = "GENESIS_CONTAS_PAGAR",
+            status = "pendente_reconciliacao",
+            codigoFalha = failureCode,
+            referencia = incidentReference,
+            ocorridoEm = occurredAt
+        });
+        var notification = new Notificacao
+        {
+            Tipo = TipoNotificacao.Sistema,
+            Titulo = "Integracao financeira de compra pendente",
+            Mensagem = $"Pedido de compra {numeroPedido}. A conta a pagar Genesis requer conciliacao. Referencia {incidentReference}.",
+            DestinatarioTipo = DestinatarioTipo.Todos,
+            DestinatarioId = null,
+            Lida = false,
+            LinkAcao = $"/admin/compras/pedidos/{compraPedidoId}",
+            CreatedAt = occurredAt
+        };
+        incidentDb.Notificacoes.Add(notification);
+        await incidentDb.SaveChangesAsync(ct);
+
+        incidentDb.LogsAuditoria.Add(new LogAuditoria
+        {
+            Tabela = "compras_pedidos",
+            RegistroId = compraPedidoId,
+            Acao = AcaoAuditoria.ERRO,
+            UsuarioTipo = TipoUsuarioAuditoria.Sistema,
+            IpAddress = Truncate(http.Connection.RemoteIpAddress?.ToString(), 45),
+            UserAgent = Truncate(http.Request.Headers.UserAgent.ToString(), 255),
+            Endpoint = Truncate(http.Request.Path.Value, 255),
+            DadosNovos = payload,
+            CreatedAt = occurredAt
+        });
+        await incidentDb.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+    });
+
+    return incidentReference;
+}
+
+static LogAuditoria CreatePurchaseAudit(
+    HttpContext http,
+    string table,
+    int recordId,
+    AcaoAuditoria action,
+    object? previousData,
+    object newData)
+{
+    var userIdValue = http.User.FindFirstValue(ClaimTypes.NameIdentifier);
+    var userId = int.TryParse(userIdValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedUserId)
+        ? parsedUserId
+        : (int?)null;
+
+    return new LogAuditoria
+    {
+        Tabela = table,
+        RegistroId = recordId,
+        Acao = action,
+        UsuarioId = userId,
+        UsuarioTipo = userId.HasValue ? TipoUsuarioAuditoria.Usuario : TipoUsuarioAuditoria.Sistema,
+        IpAddress = Truncate(http.Connection.RemoteIpAddress?.ToString(), 45),
+        UserAgent = Truncate(http.Request.Headers.UserAgent.ToString(), 255),
+        Endpoint = Truncate(http.Request.Path.Value, 255),
+        DadosAnteriores = previousData is null ? null : JsonSerializer.Serialize(previousData),
+        DadosNovos = JsonSerializer.Serialize(newData),
+        CreatedAt = DateTime.UtcNow
+    };
+}
+
 static string BuildOperationalFailureCode(Exception exception)
 {
     var root = exception.GetBaseException();
@@ -13986,7 +14428,45 @@ static string? NormalizeCompraPedidoStatus(string? value)
     };
 }
 
-static async Task TryCreateGenesisContaPagarCompraAsync(
+static bool IsAllowedCompraSolicitacaoTransition(string currentStatus, string nextStatus)
+{
+    if (currentStatus.Equals(nextStatus, StringComparison.OrdinalIgnoreCase))
+    {
+        return true;
+    }
+
+    return currentStatus switch
+    {
+        "Aberta" => nextStatus is "Cotado" or "EmAprovacao" or "Cancelada",
+        "Cotado" => nextStatus is "EmAprovacao" or "Aprovada" or "Reprovada" or "Cancelada",
+        "EmAprovacao" => nextStatus is "Aprovada" or "Reprovada" or "Cancelada",
+        "Aprovada" => nextStatus is "Atendida" or "Cancelada",
+        "Reprovada" => nextStatus is "Aberta" or "Cancelada",
+        "Atendida" => nextStatus == "Fechada",
+        _ => false
+    };
+}
+
+static bool IsAllowedCompraPedidoTransition(string currentStatus, string nextStatus)
+{
+    if (currentStatus.Equals(nextStatus, StringComparison.OrdinalIgnoreCase))
+    {
+        return true;
+    }
+
+    return currentStatus switch
+    {
+        "Aberto" => nextStatus is "EmAprovacao" or "Aprovado" or "Cancelado",
+        "EmAprovacao" => nextStatus is "Aprovado" or "Reprovado" or "Cancelado",
+        "Aprovado" => nextStatus is "RecebidoParcial" or "Recebido" or "Cancelado",
+        "Reprovado" => nextStatus is "Aberto" or "Cancelado",
+        "RecebidoParcial" => nextStatus == "Recebido",
+        "Recebido" => nextStatus == "Fechado",
+        _ => false
+    };
+}
+
+static async Task<CheckoutIntegrationResult> TryCreateGenesisContaPagarCompraAsync(
     IServiceProvider services,
     string numeroPedido,
     int fornecedorId,
@@ -14000,15 +14480,20 @@ static async Task TryCreateGenesisContaPagarCompraAsync(
     try
     {
         var genesisDb = services.GetService<GenesisDbContext>();
-        if (genesisDb is null || !await genesisDb.Database.CanConnectAsync(ct))
+        if (genesisDb is null)
         {
-            return;
+            return CheckoutIntegrationResult.Failure("GENESIS-CONTEXT-UNAVAILABLE");
+        }
+
+        if (!await genesisDb.Database.CanConnectAsync(ct))
+        {
+            return CheckoutIntegrationResult.Failure("GENESIS-DATABASE-UNAVAILABLE");
         }
 
         var existe = await genesisDb.ContasPagar.AnyAsync(item => item.NumeroDocumento == numeroPedido, ct);
         if (existe)
         {
-            return;
+            return CheckoutIntegrationResult.Success();
         }
 
         genesisDb.ContasPagar.Add(new GenesisContaPagar
@@ -14029,10 +14514,11 @@ static async Task TryCreateGenesisContaPagarCompraAsync(
         });
 
         await genesisDb.SaveChangesAsync(ct);
+        return CheckoutIntegrationResult.Success();
     }
-    catch
+    catch (Exception exception)
     {
-        // A compra no banco principal continua sendo a fonte oficial caso o Genesis esteja indisponivel.
+        return CheckoutIntegrationResult.Failure(BuildOperationalFailureCode(exception));
     }
 }
 
@@ -19286,6 +19772,34 @@ static async Task<ComprasPainelDto> BuildComprasPainelAsync(NexumDbContext db, C
         tenantId)
         .ToListAsync(ct);
 
+    var cotacoes = await db.Database.SqlQueryRaw<CompraCotacaoRow>(
+        """
+        SELECT
+            c.id AS Id,
+            c.solicitacao_id AS SolicitacaoId,
+            c.fornecedor_id AS FornecedorId,
+            COALESCE(NULLIF(f.nome_fantasia, ''), f.razao_social) AS FornecedorNome,
+            c.produto_id AS ProdutoId,
+            c.produto_nome AS ProdutoNome,
+            c.quantidade AS Quantidade,
+            c.custo_unitario AS CustoUnitario,
+            c.valor_total AS ValorTotal,
+            c.prazo_entrega_dias AS PrazoEntregaDias,
+            c.origem AS Origem,
+            c.status AS Status,
+            c.created_at AS CreatedAt
+        FROM compras_cotacoes c
+        LEFT JOIN fornecedores f
+          ON f.id = c.fornecedor_id
+         AND f.tenant_id = {0}
+         AND f.is_deleted = 0
+        WHERE c.tenant_id = {0} AND c.is_deleted = 0
+        ORDER BY c.created_at DESC
+        LIMIT 100
+        """,
+        tenantId)
+        .ToListAsync(ct);
+
     var pedidos = await db.Database.SqlQueryRaw<CompraPedidoResumoRow>(
         """
         SELECT
@@ -19417,6 +19931,20 @@ static async Task<ComprasPainelDto> BuildComprasPainelAsync(NexumDbContext db, C
             item.Origem,
             item.Status,
             item.Prioridade,
+            item.CreatedAt)).ToList(),
+        cotacoes.Select(item => new CompraCotacaoDto(
+            item.Id,
+            item.SolicitacaoId,
+            item.FornecedorId,
+            item.FornecedorNome ?? "Fornecedor nao identificado",
+            item.ProdutoId,
+            item.ProdutoNome,
+            item.Quantidade,
+            item.CustoUnitario,
+            item.ValorTotal,
+            item.PrazoEntregaDias,
+            item.Origem,
+            item.Status,
             item.CreatedAt)).ToList(),
         pedidos.Select(item => new CompraPedidoResumoDto(
             item.Id,
@@ -20782,6 +21310,7 @@ public sealed record CompraSolicitacaoRequest(
 
 public sealed record CompraCotacaoRequest(
     int FornecedorId,
+    int? SolicitacaoId,
     int? ProdutoId,
     string? ProdutoNome,
     int Quantidade,
@@ -20834,6 +21363,7 @@ public sealed record ComprasPainelDto(
     ComprasKpiDto Kpis,
     List<string> Alertas,
     List<CompraSolicitacaoDto> Solicitacoes,
+    List<CompraCotacaoDto> Cotacoes,
     List<CompraPedidoResumoDto> Pedidos,
     List<CompraEntradaResumoDto> Entradas,
     List<CompraProdutoReposicaoDto> ProdutosReposicao,
@@ -20857,6 +21387,21 @@ public sealed record CompraSolicitacaoDto(
     string Origem,
     string Status,
     string Prioridade,
+    DateTime CreatedAt);
+
+public sealed record CompraCotacaoDto(
+    int Id,
+    int SolicitacaoId,
+    int FornecedorId,
+    string FornecedorNome,
+    int? ProdutoId,
+    string ProdutoNome,
+    int Quantidade,
+    decimal CustoUnitario,
+    decimal ValorTotal,
+    int PrazoEntregaDias,
+    string Origem,
+    string Status,
     DateTime CreatedAt);
 
 public sealed record CompraPedidoResumoDto(
@@ -20926,6 +21471,23 @@ public sealed class CompraSolicitacaoRow
     public string Origem { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public string Prioridade { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+}
+
+public sealed class CompraCotacaoRow
+{
+    public int Id { get; set; }
+    public int SolicitacaoId { get; set; }
+    public int FornecedorId { get; set; }
+    public string? FornecedorNome { get; set; }
+    public int? ProdutoId { get; set; }
+    public string ProdutoNome { get; set; } = string.Empty;
+    public int Quantidade { get; set; }
+    public decimal CustoUnitario { get; set; }
+    public decimal ValorTotal { get; set; }
+    public int PrazoEntregaDias { get; set; }
+    public string Origem { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
 }
 

@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7183
+ * Versão: 1.1.5.7185
  */
 
 using System.Globalization;
@@ -79,6 +79,64 @@ public sealed class DesktopApiClient
 
         return new DesktopLoginResult(false, null, null, "API local e publica indisponiveis para autenticacao.");
     }
+
+    public Task<DesktopApiDataResult<DesktopComprasPainel>> GetComprasPainelAsync(
+        TerminalProfile profile,
+        string token,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopComprasPainel>(
+            profile, token, HttpMethod.Get, "/api/compras/painel", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopComprasPainel>> CreateCompraSolicitacaoAsync(
+        TerminalProfile profile,
+        string token,
+        DesktopCompraSolicitacaoRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopComprasPainel>(
+            profile, token, HttpMethod.Post, "/api/compras/solicitacoes", request, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopComprasPainel>> CreateCompraCotacaoAsync(
+        TerminalProfile profile,
+        string token,
+        DesktopCompraCotacaoRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopComprasPainel>(
+            profile, token, HttpMethod.Post, "/api/compras/cotacoes", request, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopComprasPainel>> CreateCompraPedidoAsync(
+        TerminalProfile profile,
+        string token,
+        DesktopCompraPedidoRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopComprasPainel>(
+            profile, token, HttpMethod.Post, "/api/compras/pedidos", request, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopComprasPainel>> CreateCompraEntradaAsync(
+        TerminalProfile profile,
+        string token,
+        int pedidoId,
+        DesktopCompraEntradaRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopComprasPainel>(
+            profile, token, HttpMethod.Post, $"/api/compras/pedidos/{pedidoId}/entradas", request, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopComprasPainel>> UpdateCompraSolicitacaoStatusAsync(
+        TerminalProfile profile,
+        string token,
+        int solicitacaoId,
+        DesktopCompraStatusRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopComprasPainel>(
+            profile, token, HttpMethod.Patch, $"/api/compras/solicitacoes/{solicitacaoId}/status", request, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopComprasPainel>> UpdateCompraPedidoStatusAsync(
+        TerminalProfile profile,
+        string token,
+        int pedidoId,
+        DesktopCompraStatusRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopComprasPainel>(
+            profile, token, HttpMethod.Patch, $"/api/compras/pedidos/{pedidoId}/status", request, cancellationToken);
 
     public Task<DesktopApiDataResult<List<DesktopLogisticaExpedicao>>> GetLogisticaExpedicoesAsync(
         TerminalProfile profile,
@@ -985,6 +1043,160 @@ public sealed record DesktopFileDownloadResult(
     string? FileName,
     string ContentType,
     string Detail);
+
+public sealed record DesktopComprasPainel(
+    DesktopComprasKpi Kpis,
+    List<string> Alertas,
+    List<DesktopCompraSolicitacao> Solicitacoes,
+    List<DesktopCompraCotacao> Cotacoes,
+    List<DesktopCompraPedido> Pedidos,
+    List<DesktopCompraEntrada> Entradas,
+    List<DesktopCompraProdutoReposicao> ProdutosReposicao,
+    List<DesktopCompraFornecedor> Fornecedores);
+
+public sealed record DesktopComprasKpi(
+    int SolicitacoesAbertas,
+    int PedidosAbertos,
+    int EntradasMes,
+    decimal ValorComprasAbertas,
+    int ContasAPagarCompras,
+    int FornecedoresAtivos,
+    int ProdutosReposicao);
+
+public sealed record DesktopCompraSolicitacao(
+    int Id,
+    int? ProdutoId,
+    string ProdutoNome,
+    int Quantidade,
+    string Finalidade,
+    string Origem,
+    string Status,
+    string Prioridade,
+    DateTime CreatedAt);
+
+public sealed record DesktopCompraCotacao(
+    int Id,
+    int SolicitacaoId,
+    int FornecedorId,
+    string FornecedorNome,
+    int? ProdutoId,
+    string ProdutoNome,
+    int Quantidade,
+    decimal CustoUnitario,
+    decimal ValorTotal,
+    int PrazoEntregaDias,
+    string Origem,
+    string Status,
+    DateTime CreatedAt);
+
+public sealed record DesktopCompraPedido(
+    int Id,
+    string Numero,
+    int FornecedorId,
+    string FornecedorNome,
+    string Origem,
+    string Finalidade,
+    string Status,
+    string StatusFiscal,
+    decimal ValorTotal,
+    DateTime? DataPrevistaEntrega,
+    DateTime CreatedAt,
+    List<DesktopCompraPedidoItem> Itens);
+
+public sealed record DesktopCompraPedidoItem(
+    int Id,
+    int? ProdutoId,
+    string ProdutoNome,
+    string? Sku,
+    int Quantidade,
+    int QuantidadeRecebida,
+    int QuantidadePendente,
+    decimal CustoUnitario,
+    decimal ValorTotal,
+    string Origem,
+    string Finalidade);
+
+public sealed record DesktopCompraEntrada(
+    int Id,
+    int CompraPedidoId,
+    string PedidoNumero,
+    string FornecedorNome,
+    string? NumeroDocumento,
+    string? ChaveNfeEntrada,
+    string TipoEntrada,
+    string StatusFiscal,
+    decimal ValorTotal,
+    DateTime CreatedAt);
+
+public sealed record DesktopCompraProdutoReposicao(
+    int ProdutoId,
+    string ProdutoNome,
+    string Sku,
+    int EstoqueAtual,
+    int EstoqueMinimo,
+    string TipoProduto,
+    int? FornecedorId,
+    decimal CustoAtual);
+
+public sealed record DesktopCompraFornecedor(
+    int Id,
+    string Nome,
+    string? Documento,
+    string? Segmento,
+    int PrazoEntregaDias,
+    int PrazoPagamentoDias);
+
+public sealed record DesktopCompraSolicitacaoRequest(
+    int? ProdutoId,
+    string? ProdutoNome,
+    int Quantidade,
+    string? Origem,
+    string? Finalidade,
+    string? Prioridade,
+    string? Observacoes);
+
+public sealed record DesktopCompraCotacaoRequest(
+    int FornecedorId,
+    int? SolicitacaoId,
+    int? ProdutoId,
+    string? ProdutoNome,
+    int Quantidade,
+    decimal CustoUnitario,
+    string? Origem,
+    string? Finalidade,
+    string? Prioridade,
+    int? PrazoEntregaDias,
+    string? Observacoes);
+
+public sealed record DesktopCompraPedidoRequest(
+    int FornecedorId,
+    int? SolicitacaoId,
+    string? Origem,
+    string? Finalidade,
+    DateTime? DataPrevistaEntrega,
+    DateTime? DataVencimento,
+    string? MeioPagamento,
+    string? Observacoes,
+    List<DesktopCompraPedidoItemRequest> Itens);
+
+public sealed record DesktopCompraPedidoItemRequest(
+    int? ProdutoId,
+    string? ProdutoNome,
+    string? Sku,
+    int Quantidade,
+    decimal CustoUnitario);
+
+public sealed record DesktopCompraEntradaRequest(
+    string? NumeroDocumento,
+    string? ChaveNfeEntrada,
+    string? TipoEntrada,
+    string? RecebidoPor,
+    string? Observacoes,
+    List<DesktopCompraEntradaItemRequest> Itens);
+
+public sealed record DesktopCompraEntradaItemRequest(int ItemId, int QuantidadeRecebida);
+
+public sealed record DesktopCompraStatusRequest(string Status, string? Observacoes);
 
 public sealed record DesktopLogisticaExpedicao(
     int PedidoId,

@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7183
+ * Versão: 1.1.5.7185
  */
 
 using System.Collections.ObjectModel;
@@ -383,9 +383,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        if (title == "Devolução a fornecedor")
+        {
+            MessageBox.Show(
+                "A devolucao a fornecedor permanece bloqueada porque ainda nao possui contrato proprio de estorno de estoque, financeiro e fiscal. Nenhum dado foi gravado.",
+                "Operacao de compras bloqueada",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
         if (IsProcurementWorkspace(title))
         {
-            var procurementWindow = new ProcurementWindow(title);
+            var procurementWindow = new ProcurementWindow(title, Terminal)
+            {
+                Owner = this
+            };
             procurementWindow.ShowDialog();
             return;
         }

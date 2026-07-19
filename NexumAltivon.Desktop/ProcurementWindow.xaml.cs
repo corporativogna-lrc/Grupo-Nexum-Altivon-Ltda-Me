@@ -3,16 +3,14 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7185
  */
 
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
-using System.Xml.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows;
-using Microsoft.Win32;
 using NexumAltivon.Desktop.Models;
 using NexumAltivon.Desktop.Services;
 
@@ -21,97 +19,72 @@ namespace NexumAltivon.Desktop;
 public partial class ProcurementWindow : Window, INotifyPropertyChanged
 {
     private readonly DesktopApiClient _api = new();
-    private readonly LocalOutboxService _outbox = new();
-    private readonly TerminalProfile _terminal = new();
+    private readonly TerminalProfile _terminal;
+    private readonly CancellationTokenSource _lifetime = new();
     private string _codigo = string.Empty;
     private string _tipo;
-    private string _empresaDestino = "NEXUM";
-    private string _origemAquisicao = "DIST";
-    private string _fornecedorParceiro = string.Empty;
-    private string _itemDescricao = string.Empty;
-    private string _categoria = string.Empty;
-    private string _unidadeComercial = "UN";
-    private string _ncm = string.Empty;
-    private string _cest = string.Empty;
-    private string _cfopSugerido = "5102";
-    private string _origemFiscalItem = "0 - Nacional";
-    private string _gtinCodigoBarras = string.Empty;
-    private string _pesoDimensoes = string.Empty;
+    private string _origemAquisicao = "EstoqueFisico";
+    private string _finalidade = "Reposicao/operacao";
+    private string _prioridade = "Normal";
+    private string _produtoNome = string.Empty;
     private string _quantidade = "1";
     private string _custoUnitario = "0,00";
-    private string _freteEstimado = "0,00";
-    private string _impostosEstimados = "0,00";
-    private string _centroCusto = "Estoque / Comercial";
-    private string _nivelAprovacao = "Gerencial";
-    private string _aprovadorResponsavel = string.Empty;
-    private string _statusAprovacao = "Rascunho";
-    private string _numeroDocumentoFornecedor = string.Empty;
-    private string _serieDocumentoFornecedor = string.Empty;
-    private DateTime? _dataEmissaoDocumento;
-    private DateTime? _dataEntradaMercadoria = DateTime.Today;
+    private string _prazoEntregaDias = "7";
     private DateTime? _previsaoEntrega = DateTime.Today.AddDays(7);
-    private string _condicaoPagamento = "À vista";
-    private string _xmlImportadoPath = string.Empty;
-    private string _xmlChaveAcesso = string.Empty;
-    private string _xmlFornecedor = string.Empty;
-    private string _xmlValorTotal = "0,00";
+    private DateTime? _dataVencimento = DateTime.Today.AddDays(7);
+    private string _meioPagamento = "A definir";
+    private string _numeroDocumento = string.Empty;
+    private string _chaveNfeEntrada = string.Empty;
+    private string _recebidoPor;
     private string _observacoes = string.Empty;
-    private string _status = "Pronto para registrar aquisição local.";
+    private string _status = "Carregue o painel para iniciar uma operacao de compras.";
+    private bool _isBusy;
+    private DesktopComprasKpi? _kpis;
+    private DesktopCompraFornecedor? _selectedFornecedor;
+    private DesktopCompraProdutoReposicao? _selectedProduto;
+    private DesktopCompraSolicitacao? _selectedSolicitacao;
+    private DesktopCompraCotacao? _selectedCotacao;
+    private DesktopCompraPedido? _selectedPedido;
+    private DesktopCompraEntrada? _selectedEntrada;
 
-    public ProcurementWindow(string operationType)
+    public ProcurementWindow(string operationType, TerminalProfile terminal)
     {
-        _tipo = operationType;
+        _tipo = IsSupportedOperation(operationType) ? operationType : "Solicitação de compra";
+        _terminal = terminal;
+        _recebidoPor = terminal.OperatorName;
         OperationTypes = new ObservableCollection<string>
         {
             "Solicitação de compra",
             "Cotação com fornecedores",
             "Pedido de compra",
-            "Entrada de mercadoria",
-            "Dropshipping e parcerias",
-            "Devolução a fornecedor"
+            "Entrada de mercadoria"
         };
-        EmpresasDestino = new ObservableCollection<string> { "NEXUM", "GTOP", "MODA", "CHRON", "GRANF", "ESTR" };
-        OrigensAquisicao = new ObservableCollection<string> { "ECOM", "DROP", "DIST", "PARC", "ESTQ" };
-        NiveisAprovacao = new ObservableCollection<string> { "Operacional", "Gerencial", "Diretoria", "Dupla diretoria" };
-        StatusAprovacaoOptions = new ObservableCollection<string>
-        {
-            "Rascunho",
-            "Em aprovação",
-            "Aprovado",
-            "Reprovado",
-            "Pedido gerado",
-            "Entrada registrada"
-        };
-        OrigensFiscais = new ObservableCollection<string>
-        {
-            "0 - Nacional",
-            "1 - Estrangeira importação direta",
-            "2 - Estrangeira adquirida no mercado interno",
-            "3 - Nacional com conteúdo importado superior a 40%",
-            "4 - Nacional conforme processos produtivos básicos",
-            "5 - Nacional com conteúdo importado inferior ou igual a 40%",
-            "6 - Estrangeira importação direta sem similar nacional",
-            "7 - Estrangeira adquirida internamente sem similar nacional",
-            "8 - Nacional com conteúdo importado superior a 70%"
-        };
+        OrigensAquisicao = new ObservableCollection<string> { "EstoqueFisico", "Encomenda", "Dropshipping", "Parceria" };
+        Prioridades = new ObservableCollection<string> { "Baixa", "Normal", "Alta", "Urgente" };
 
-        NovoDocumento();
         InitializeComponent();
         DataContext = this;
+        NovoDocumento();
     }
 
     public ObservableCollection<string> OperationTypes { get; }
-    public ObservableCollection<string> EmpresasDestino { get; }
     public ObservableCollection<string> OrigensAquisicao { get; }
-    public ObservableCollection<string> NiveisAprovacao { get; }
-    public ObservableCollection<string> StatusAprovacaoOptions { get; }
-    public ObservableCollection<string> OrigensFiscais { get; }
+    public ObservableCollection<string> Prioridades { get; }
+    public ObservableCollection<DesktopCompraFornecedor> Fornecedores { get; } = [];
+    public ObservableCollection<DesktopCompraProdutoReposicao> Produtos { get; } = [];
+    public ObservableCollection<DesktopCompraSolicitacao> Solicitacoes { get; } = [];
+    public ObservableCollection<DesktopCompraCotacao> Cotacoes { get; } = [];
+    public ObservableCollection<DesktopCompraPedido> Pedidos { get; } = [];
+    public ObservableCollection<DesktopCompraEntrada> Entradas { get; } = [];
+    public ObservableCollection<DesktopCompraEntradaItemEdicao> ItensEntrada { get; } = [];
+
     public string WindowTitle => $"GenesisGest.Net - {Tipo}";
+    public string TenantLabel => $"{_terminal.StoreCode} | {_terminal.StoreName}";
 
     public string Codigo
     {
         get => _codigo;
-        set => SetField(ref _codigo, value);
+        private set => SetField(ref _codigo, value);
     }
 
     public string Tipo
@@ -121,21 +94,8 @@ public partial class ProcurementWindow : Window, INotifyPropertyChanged
         {
             if (SetField(ref _tipo, value))
             {
-                NovoDocumento(false);
                 OnPropertyChanged(nameof(WindowTitle));
-            }
-        }
-    }
-
-    public string EmpresaDestino
-    {
-        get => _empresaDestino;
-        set
-        {
-            if (SetField(ref _empresaDestino, value))
-            {
-                NovoDocumento(false);
-                AtualizarResumo();
+                Status = $"Fluxo selecionado: {value}.";
             }
         }
     }
@@ -143,98 +103,25 @@ public partial class ProcurementWindow : Window, INotifyPropertyChanged
     public string OrigemAquisicao
     {
         get => _origemAquisicao;
-        set
-        {
-            if (SetField(ref _origemAquisicao, value))
-            {
-                NovoDocumento(false);
-                AtualizarResumo();
-            }
-        }
+        set => SetField(ref _origemAquisicao, value);
     }
 
-    public string FornecedorParceiro
+    public string Finalidade
     {
-        get => _fornecedorParceiro;
-        set => SetField(ref _fornecedorParceiro, value);
+        get => _finalidade;
+        set => SetField(ref _finalidade, value);
     }
 
-    public string ItemDescricao
+    public string Prioridade
     {
-        get => _itemDescricao;
-        set => SetField(ref _itemDescricao, value);
+        get => _prioridade;
+        set => SetField(ref _prioridade, value);
     }
 
-    public string Categoria
+    public string ProdutoNome
     {
-        get => _categoria;
-        set => SetField(ref _categoria, value);
-    }
-
-    public string UnidadeComercial
-    {
-        get => _unidadeComercial;
-        set
-        {
-            if (SetField(ref _unidadeComercial, value.ToUpperInvariant()))
-            {
-                AtualizarResumo();
-            }
-        }
-    }
-
-    public string Ncm
-    {
-        get => _ncm;
-        set
-        {
-            if (SetField(ref _ncm, value))
-            {
-                AtualizarResumo();
-            }
-        }
-    }
-
-    public string Cest
-    {
-        get => _cest;
-        set => SetField(ref _cest, value);
-    }
-
-    public string CfopSugerido
-    {
-        get => _cfopSugerido;
-        set
-        {
-            if (SetField(ref _cfopSugerido, value))
-            {
-                AtualizarResumo();
-            }
-        }
-    }
-
-    public string OrigemFiscalItem
-    {
-        get => _origemFiscalItem;
-        set
-        {
-            if (SetField(ref _origemFiscalItem, value))
-            {
-                AtualizarResumo();
-            }
-        }
-    }
-
-    public string GtinCodigoBarras
-    {
-        get => _gtinCodigoBarras;
-        set => SetField(ref _gtinCodigoBarras, value);
-    }
-
-    public string PesoDimensoes
-    {
-        get => _pesoDimensoes;
-        set => SetField(ref _pesoDimensoes, value);
+        get => _produtoNome;
+        set => SetField(ref _produtoNome, value);
     }
 
     public string Quantidade
@@ -244,7 +131,7 @@ public partial class ProcurementWindow : Window, INotifyPropertyChanged
         {
             if (SetField(ref _quantidade, value))
             {
-                AtualizarResumo();
+                OnPropertyChanged(nameof(TotalEstimadoLabel));
             }
         }
     }
@@ -256,99 +143,15 @@ public partial class ProcurementWindow : Window, INotifyPropertyChanged
         {
             if (SetField(ref _custoUnitario, value))
             {
-                AtualizarResumo();
+                OnPropertyChanged(nameof(TotalEstimadoLabel));
             }
         }
     }
 
-    public string FreteEstimado
+    public string PrazoEntregaDias
     {
-        get => _freteEstimado;
-        set
-        {
-            if (SetField(ref _freteEstimado, value))
-            {
-                AtualizarResumo();
-            }
-        }
-    }
-
-    public string ImpostosEstimados
-    {
-        get => _impostosEstimados;
-        set
-        {
-            if (SetField(ref _impostosEstimados, value))
-            {
-                AtualizarResumo();
-            }
-        }
-    }
-
-    public string CentroCusto
-    {
-        get => _centroCusto;
-        set => SetField(ref _centroCusto, value);
-    }
-
-    public string NivelAprovacao
-    {
-        get => _nivelAprovacao;
-        set
-        {
-            if (SetField(ref _nivelAprovacao, value))
-            {
-                AtualizarResumo();
-            }
-        }
-    }
-
-    public string AprovadorResponsavel
-    {
-        get => _aprovadorResponsavel;
-        set
-        {
-            if (SetField(ref _aprovadorResponsavel, value))
-            {
-                AtualizarResumo();
-            }
-        }
-    }
-
-    public string StatusAprovacao
-    {
-        get => _statusAprovacao;
-        set
-        {
-            if (SetField(ref _statusAprovacao, value))
-            {
-                AtualizarResumo();
-            }
-        }
-    }
-
-    public string NumeroDocumentoFornecedor
-    {
-        get => _numeroDocumentoFornecedor;
-        set => SetField(ref _numeroDocumentoFornecedor, value);
-    }
-
-    public string SerieDocumentoFornecedor
-    {
-        get => _serieDocumentoFornecedor;
-        set => SetField(ref _serieDocumentoFornecedor, value);
-    }
-
-    public DateTime? DataEmissaoDocumento
-    {
-        get => _dataEmissaoDocumento;
-        set => SetField(ref _dataEmissaoDocumento, value);
-    }
-
-    public DateTime? DataEntradaMercadoria
-    {
-        get => _dataEntradaMercadoria;
-        set => SetField(ref _dataEntradaMercadoria, value);
+        get => _prazoEntregaDias;
+        set => SetField(ref _prazoEntregaDias, value);
     }
 
     public DateTime? PrevisaoEntrega
@@ -357,40 +160,34 @@ public partial class ProcurementWindow : Window, INotifyPropertyChanged
         set => SetField(ref _previsaoEntrega, value);
     }
 
-    public string CondicaoPagamento
+    public DateTime? DataVencimento
     {
-        get => _condicaoPagamento;
-        set => SetField(ref _condicaoPagamento, value);
+        get => _dataVencimento;
+        set => SetField(ref _dataVencimento, value);
     }
 
-    public string XmlImportadoPath
+    public string MeioPagamento
     {
-        get => _xmlImportadoPath;
-        set => SetField(ref _xmlImportadoPath, value);
+        get => _meioPagamento;
+        set => SetField(ref _meioPagamento, value);
     }
 
-    public string XmlChaveAcesso
+    public string NumeroDocumento
     {
-        get => _xmlChaveAcesso;
-        set => SetField(ref _xmlChaveAcesso, value);
+        get => _numeroDocumento;
+        set => SetField(ref _numeroDocumento, value);
     }
 
-    public string XmlFornecedor
+    public string ChaveNfeEntrada
     {
-        get => _xmlFornecedor;
-        set => SetField(ref _xmlFornecedor, value);
+        get => _chaveNfeEntrada;
+        set => SetField(ref _chaveNfeEntrada, value);
     }
 
-    public string XmlValorTotal
+    public string RecebidoPor
     {
-        get => _xmlValorTotal;
-        set
-        {
-            if (SetField(ref _xmlValorTotal, value))
-            {
-                AtualizarResumo();
-            }
-        }
+        get => _recebidoPor;
+        set => SetField(ref _recebidoPor, value);
     }
 
     public string Observacoes
@@ -402,257 +199,209 @@ public partial class ProcurementWindow : Window, INotifyPropertyChanged
     public string Status
     {
         get => _status;
-        set => SetField(ref _status, value);
+        private set => SetField(ref _status, value);
     }
 
-    public string TotalEstimadoLabel => $"R$ {TotalEstimado:N2}";
-    public string CodigoProdutoSugerido => $"Código sugerido: {EmpresaDestino}-{OrigemAquisicao}-{DateTime.Now:yyyyMMddHHmm}";
-    public bool ProdutoFiscalmenteCompleto => !string.IsNullOrWhiteSpace(ItemDescricao)
-        && !string.IsNullOrWhiteSpace(Categoria)
-        && !string.IsNullOrWhiteSpace(UnidadeComercial)
-        && OnlyDigits(Ncm).Length == 8
-        && !string.IsNullOrWhiteSpace(CfopSugerido)
-        && !string.IsNullOrWhiteSpace(OrigemFiscalItem);
-    public string StatusCadastroProduto => ProdutoFiscalmenteCompleto
-        ? "Produto apto para compra, entrada, estoque e emissão fiscal."
-        : "Produto incompleto: preencha descrição, categoria, unidade, NCM de 8 dígitos, CFOP e origem fiscal.";
-    public bool PodeGerarPedido => !Tipo.Contains("Cotação", StringComparison.OrdinalIgnoreCase)
-        || !string.IsNullOrWhiteSpace(AprovadorResponsavel);
-    public string FluxoAprovacao => PodeGerarPedido
-        ? $"Aprovado para avançar por {(string.IsNullOrWhiteSpace(AprovadorResponsavel) ? "responsável operacional" : AprovadorResponsavel.Trim())}."
-        : "Cotação bloqueada: informe aprovador gerencial antes de gerar pedido.";
-    public string XmlResumo => string.IsNullOrWhiteSpace(XmlImportadoPath)
-        ? "Entrada manual. Para entrada por NF-e, importe o XML da nota."
-        : $"XML vinculado: {XmlFornecedor} | Chave {XmlChaveAcesso} | Total R$ {ParseDecimal(XmlValorTotal):N2}";
-    public string ControleEntrada => Tipo.Contains("Entrada", StringComparison.OrdinalIgnoreCase)
-        ? "Entrada alimenta estoque físico, fiscal, QR Code e código de barras."
-        : "Documento prepara aquisição e mantém vínculo para entrada posterior.";
-    public string EtapaOperacional => $"{StatusAprovacao} | {NivelAprovacao} | {CondicaoPagamento}";
+    public bool IsBusy
+    {
+        get => _isBusy;
+        private set => SetField(ref _isBusy, value);
+    }
 
-    private decimal TotalEstimado => ParseDecimal(Quantidade) * ParseDecimal(CustoUnitario) + ParseDecimal(FreteEstimado) + ParseDecimal(ImpostosEstimados);
+    public DesktopCompraFornecedor? SelectedFornecedor
+    {
+        get => _selectedFornecedor;
+        set
+        {
+            if (SetField(ref _selectedFornecedor, value) && value is not null)
+            {
+                PrazoEntregaDias = value.PrazoEntregaDias.ToString(CultureInfo.InvariantCulture);
+                PrevisaoEntrega = DateTime.Today.AddDays(Math.Max(0, value.PrazoEntregaDias));
+            }
+        }
+    }
+
+    public DesktopCompraProdutoReposicao? SelectedProduto
+    {
+        get => _selectedProduto;
+        set
+        {
+            if (SetField(ref _selectedProduto, value) && value is not null)
+            {
+                ProdutoNome = value.ProdutoNome;
+                CustoUnitario = value.CustoAtual.ToString("N2", CultureInfo.GetCultureInfo("pt-BR"));
+                if (value.FornecedorId.HasValue)
+                {
+                    SelectedFornecedor = Fornecedores.FirstOrDefault(item => item.Id == value.FornecedorId.Value);
+                }
+            }
+        }
+    }
+
+    public DesktopCompraSolicitacao? SelectedSolicitacao
+    {
+        get => _selectedSolicitacao;
+        set
+        {
+            if (SetField(ref _selectedSolicitacao, value) && value is not null)
+            {
+                Codigo = $"SOL-{value.Id:D6}";
+                ProdutoNome = value.ProdutoNome;
+                Quantidade = value.Quantidade.ToString(CultureInfo.InvariantCulture);
+                OrigemAquisicao = value.Origem;
+                Finalidade = value.Finalidade;
+                Prioridade = value.Prioridade;
+                SelectedProduto = value.ProdutoId.HasValue
+                    ? Produtos.FirstOrDefault(item => item.ProdutoId == value.ProdutoId.Value)
+                    : null;
+                Status = $"Solicitacao {value.Id} carregada com status {value.Status}.";
+            }
+        }
+    }
+
+    public DesktopCompraCotacao? SelectedCotacao
+    {
+        get => _selectedCotacao;
+        set
+        {
+            if (SetField(ref _selectedCotacao, value) && value is not null)
+            {
+                Codigo = $"COT-{value.Id:D6}";
+                SelectedSolicitacao = Solicitacoes.FirstOrDefault(item => item.Id == value.SolicitacaoId);
+                SelectedFornecedor = Fornecedores.FirstOrDefault(item => item.Id == value.FornecedorId);
+                ProdutoNome = value.ProdutoNome;
+                Quantidade = value.Quantidade.ToString(CultureInfo.InvariantCulture);
+                CustoUnitario = value.CustoUnitario.ToString("N2", CultureInfo.GetCultureInfo("pt-BR"));
+                PrazoEntregaDias = value.PrazoEntregaDias.ToString(CultureInfo.InvariantCulture);
+                Codigo = $"COT-{value.Id:D6}";
+                Status = $"Cotacao {value.Id} carregada e confirmada no servidor.";
+            }
+        }
+    }
+
+    public DesktopCompraPedido? SelectedPedido
+    {
+        get => _selectedPedido;
+        set
+        {
+            if (SetField(ref _selectedPedido, value))
+            {
+                ItensEntrada.Clear();
+                if (value is null)
+                {
+                    return;
+                }
+
+                Codigo = value.Numero;
+                OrigemAquisicao = value.Origem;
+                Finalidade = value.Finalidade;
+                PrevisaoEntrega = value.DataPrevistaEntrega;
+                var firstItem = value.Itens.FirstOrDefault();
+                if (firstItem is not null)
+                {
+                    SelectedProduto = firstItem.ProdutoId.HasValue
+                        ? Produtos.FirstOrDefault(item => item.ProdutoId == firstItem.ProdutoId.Value)
+                        : null;
+                    ProdutoNome = firstItem.ProdutoNome;
+                    Quantidade = firstItem.Quantidade.ToString(CultureInfo.InvariantCulture);
+                    CustoUnitario = firstItem.CustoUnitario.ToString("N2", CultureInfo.GetCultureInfo("pt-BR"));
+                }
+
+                SelectedFornecedor = Fornecedores.FirstOrDefault(item => item.Id == value.FornecedorId);
+
+                foreach (var item in value.Itens.Where(item => item.QuantidadePendente > 0))
+                {
+                    ItensEntrada.Add(new DesktopCompraEntradaItemEdicao(
+                        item.Id,
+                        item.ProdutoNome,
+                        item.Quantidade,
+                        item.QuantidadeRecebida,
+                        item.QuantidadePendente));
+                }
+
+                Status = $"Pedido {value.Numero} carregado com {ItensEntrada.Count} item(ns) pendente(s).";
+            }
+        }
+    }
+
+    public DesktopCompraEntrada? SelectedEntrada
+    {
+        get => _selectedEntrada;
+        set
+        {
+            if (SetField(ref _selectedEntrada, value) && value is not null)
+            {
+                Codigo = $"ENT-{value.Id:D6}";
+                SelectedPedido = Pedidos.FirstOrDefault(item => item.Id == value.CompraPedidoId);
+                NumeroDocumento = value.NumeroDocumento ?? string.Empty;
+                ChaveNfeEntrada = value.ChaveNfeEntrada ?? string.Empty;
+                Codigo = $"ENT-{value.Id:D6}";
+                Status = $"Entrada {value.Id} relida do servidor com status fiscal {value.StatusFiscal}.";
+            }
+        }
+    }
+
+    public string TotalEstimadoLabel => $"R$ {ParseInt(Quantidade) * ParseDecimal(CustoUnitario):N2}";
+    public string KpiSolicitacoes => (_kpis?.SolicitacoesAbertas ?? 0).ToString(CultureInfo.InvariantCulture);
+    public string KpiPedidos => (_kpis?.PedidosAbertos ?? 0).ToString(CultureInfo.InvariantCulture);
+    public string KpiEntradas => (_kpis?.EntradasMes ?? 0).ToString(CultureInfo.InvariantCulture);
+    public string KpiValor => $"R$ {_kpis?.ValorComprasAbertas ?? 0m:N2}";
+    public string AlertasTexto { get; private set; } = "Nenhum alerta carregado.";
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    private async void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        await CarregarPainelAsync();
+    }
+
+    private async void Recarregar_Click(object sender, RoutedEventArgs e)
+    {
+        await CarregarPainelAsync();
+    }
+
     private async void Salvar_Click(object sender, RoutedEventArgs e)
     {
-        await SalvarOperacaoAsync(StatusAprovacao);
+        await ExecutarGravacaoAsync();
     }
 
     private async void EnviarAprovacao_Click(object sender, RoutedEventArgs e)
     {
-        if (!ValidarBase("enviar para aprovação"))
-        {
-            return;
-        }
-
-        StatusAprovacao = "Em aprovação";
-        await SalvarOperacaoAsync(StatusAprovacao);
+        await AtualizarStatusSelecionadoAsync("EmAprovacao");
     }
 
     private async void Aprovar_Click(object sender, RoutedEventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(AprovadorResponsavel))
-        {
-            Status = "Informe o aprovador responsável antes de aprovar.";
-            return;
-        }
-
-        if (!ValidarBase("aprovar"))
-        {
-            return;
-        }
-
-        StatusAprovacao = "Aprovado";
-        await SalvarOperacaoAsync(StatusAprovacao);
+        await AtualizarStatusSelecionadoAsync("Aprovado");
     }
 
     private async void Reprovar_Click(object sender, RoutedEventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(AprovadorResponsavel))
-        {
-            Status = "Informe o aprovador responsável antes de reprovar.";
-            return;
-        }
-
-        StatusAprovacao = "Reprovado";
-        await SalvarOperacaoAsync(StatusAprovacao);
+        await AtualizarStatusSelecionadoAsync("Reprovado");
     }
 
     private async void GerarPedido_Click(object sender, RoutedEventArgs e)
     {
-        if (StatusAprovacao != "Aprovado")
+        if (SelectedSolicitacao is null || !SelectedSolicitacao.Status.Equals("Aprovada", StringComparison.OrdinalIgnoreCase))
         {
-            Status = "Pedido bloqueado: a cotação/solicitação precisa estar aprovada.";
-            return;
-        }
-
-        if (!ValidarBase("gerar pedido"))
-        {
+            Status = "Selecione uma solicitacao aprovada antes de gerar o pedido de compra.";
             return;
         }
 
         Tipo = "Pedido de compra";
-        StatusAprovacao = "Pedido gerado";
-        await SalvarOperacaoAsync(StatusAprovacao);
+        await ExecutarGravacaoAsync();
     }
 
     private async void RegistrarEntrada_Click(object sender, RoutedEventArgs e)
     {
-        if (!ValidarEntrada())
+        if (SelectedPedido is null)
         {
+            Status = "Selecione um pedido com quantidade pendente antes de registrar a entrada.";
             return;
         }
 
         Tipo = "Entrada de mercadoria";
-        StatusAprovacao = "Entrada registrada";
-        await SalvarOperacaoAsync(StatusAprovacao);
-    }
-
-    private async Task SalvarOperacaoAsync(string statusOperacional)
-    {
-        var draft = new ProcurementDraft
-        {
-            Codigo = Codigo,
-            Tipo = Tipo,
-            StatusAprovacao = StatusAprovacao,
-            EmpresaDestino = EmpresaDestino,
-            OrigemAquisicao = OrigemAquisicao,
-            FornecedorParceiro = FornecedorParceiro.Trim(),
-            ItemDescricao = ItemDescricao.Trim(),
-            Categoria = Categoria.Trim(),
-            UnidadeComercial = UnidadeComercial.Trim(),
-            Ncm = OnlyDigits(Ncm),
-            Cest = OnlyDigits(Cest),
-            CfopSugerido = CfopSugerido.Trim(),
-            OrigemFiscalItem = OrigemFiscalItem.Trim(),
-            GtinCodigoBarras = GtinCodigoBarras.Trim(),
-            PesoDimensoes = PesoDimensoes.Trim(),
-            ProdutoFiscalmenteCompleto = ProdutoFiscalmenteCompleto,
-            NumeroDocumentoFornecedor = NumeroDocumentoFornecedor.Trim(),
-            SerieDocumentoFornecedor = SerieDocumentoFornecedor.Trim(),
-            DataEmissaoDocumento = DataEmissaoDocumento,
-            DataEntradaMercadoria = DataEntradaMercadoria,
-            PrevisaoEntrega = PrevisaoEntrega,
-            CondicaoPagamento = CondicaoPagamento.Trim(),
-            Quantidade = ParseDecimal(Quantidade),
-            CustoUnitario = ParseDecimal(CustoUnitario),
-            FreteEstimado = ParseDecimal(FreteEstimado),
-            ImpostosEstimados = ParseDecimal(ImpostosEstimados),
-            TotalEstimado = TotalEstimado,
-            CentroCusto = CentroCusto.Trim(),
-            NivelAprovacao = NivelAprovacao.Trim(),
-            AprovadorResponsavel = AprovadorResponsavel.Trim(),
-            PodeGerarPedido = PodeGerarPedido,
-            XmlImportadoPath = XmlImportadoPath.Trim(),
-            XmlChaveAcesso = XmlChaveAcesso.Trim(),
-            XmlFornecedor = XmlFornecedor.Trim(),
-            XmlValorTotal = ParseDecimal(XmlValorTotal),
-            Observacoes = Observacoes.Trim(),
-            Status = statusOperacional
-        };
-
-        var submit = await _api.SubmitOperationAsync(_terminal, "compras-estoque", Codigo, draft);
-        if (submit.Success)
-        {
-            Status = $"Aquisição gravada no servidor: {submit.ServerReference ?? submit.Detail}";
-            return;
-        }
-
-        var path = await _outbox.SaveOperationAsync("compras-estoque", Codigo, draft);
-        Status = $"API indisponível. Aquisição salva em contingência local: {path}. Motivo: {submit.Detail}";
-    }
-
-    private bool ValidarBase(string acao)
-    {
-        if (string.IsNullOrWhiteSpace(FornecedorParceiro)
-            || string.IsNullOrWhiteSpace(ItemDescricao)
-            || string.IsNullOrWhiteSpace(Categoria)
-            || ParseDecimal(Quantidade) <= 0
-            || ParseDecimal(CustoUnitario) <= 0)
-        {
-            Status = $"Não é possível {acao}: informe fornecedor, item, categoria, quantidade e custo unitário.";
-            return false;
-        }
-
-        if (!ProdutoFiscalmenteCompleto)
-        {
-            Status = $"Não é possível {acao}: complete o cadastro fiscal do produto.";
-            return false;
-        }
-
-        return true;
-    }
-
-    private bool ValidarEntrada()
-    {
-        if (!ValidarBase("registrar entrada"))
-        {
-            return false;
-        }
-
-        if (string.IsNullOrWhiteSpace(NumeroDocumentoFornecedor) && string.IsNullOrWhiteSpace(XmlChaveAcesso))
-        {
-            Status = "Entrada bloqueada: informe número do documento do fornecedor ou importe o XML da NF-e.";
-            return false;
-        }
-
-        if (DataEntradaMercadoria is null)
-        {
-            Status = "Entrada bloqueada: informe a data de entrada da mercadoria.";
-            return false;
-        }
-
-        return true;
-    }
-
-    private void ImportarXml_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFileDialog
-        {
-            Title = "Selecionar XML de NF-e para entrada de mercadoria",
-            Filter = "XML de NF-e (*.xml)|*.xml|Todos os arquivos (*.*)|*.*",
-            Multiselect = false
-        };
-
-        if (dialog.ShowDialog(this) != true)
-        {
-            return;
-        }
-
-        try
-        {
-            var doc = XDocument.Load(dialog.FileName);
-            XNamespace ns = doc.Root?.GetDefaultNamespace() ?? XNamespace.None;
-            var infNfe = doc.Descendants(ns + "infNFe").FirstOrDefault();
-            var emit = doc.Descendants(ns + "emit").FirstOrDefault();
-            var total = doc.Descendants(ns + "ICMSTot").FirstOrDefault();
-            var det = doc.Descendants(ns + "det").FirstOrDefault();
-
-            XmlImportadoPath = dialog.FileName;
-            XmlChaveAcesso = infNfe?.Attribute("Id")?.Value.Replace("NFe", string.Empty, StringComparison.OrdinalIgnoreCase) ?? string.Empty;
-            XmlFornecedor = emit?.Element(ns + "xNome")?.Value ?? emit?.Element(ns + "CNPJ")?.Value ?? string.Empty;
-            XmlValorTotal = total?.Element(ns + "vNF")?.Value ?? "0,00";
-
-            if (det is not null)
-            {
-                ItemDescricao = det.Descendants(ns + "xProd").FirstOrDefault()?.Value ?? ItemDescricao;
-                Ncm = det.Descendants(ns + "NCM").FirstOrDefault()?.Value ?? Ncm;
-                Cest = det.Descendants(ns + "CEST").FirstOrDefault()?.Value ?? Cest;
-                CfopSugerido = det.Descendants(ns + "CFOP").FirstOrDefault()?.Value ?? CfopSugerido;
-                UnidadeComercial = det.Descendants(ns + "uCom").FirstOrDefault()?.Value ?? UnidadeComercial;
-                GtinCodigoBarras = det.Descendants(ns + "cEAN").FirstOrDefault()?.Value ?? GtinCodigoBarras;
-                Quantidade = det.Descendants(ns + "qCom").FirstOrDefault()?.Value ?? Quantidade;
-                CustoUnitario = det.Descendants(ns + "vUnCom").FirstOrDefault()?.Value ?? CustoUnitario;
-            }
-
-            Tipo = "Entrada de mercadoria";
-            Status = "XML importado e vinculado à entrada local.";
-            AtualizarResumo();
-        }
-        catch (Exception ex)
-        {
-            Status = $"Não foi possível importar o XML: {ex.Message}";
-        }
+        await ExecutarGravacaoAsync();
     }
 
     private void Novo_Click(object sender, RoutedEventArgs e)
@@ -665,62 +414,495 @@ public partial class ProcurementWindow : Window, INotifyPropertyChanged
         Close();
     }
 
-    private void NovoDocumento(bool clearFields = true)
+    protected override void OnClosed(EventArgs e)
     {
-        Codigo = $"{EmpresaDestino}-{OrigemAquisicao}-{NormalizeCode(Tipo)}-{DateTime.Now:yyyyMMdd-HHmmss}";
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+        base.OnClosed(e);
+    }
 
-        if (clearFields)
+    private async Task CarregarPainelAsync()
+    {
+        if (!EnsureSession() || IsBusy)
         {
-            FornecedorParceiro = string.Empty;
-            ItemDescricao = string.Empty;
-            Categoria = string.Empty;
-            UnidadeComercial = "UN";
-            Ncm = string.Empty;
-            Cest = string.Empty;
-            CfopSugerido = "5102";
-            OrigemFiscalItem = "0 - Nacional";
-            GtinCodigoBarras = string.Empty;
-            PesoDimensoes = string.Empty;
-            Quantidade = "1";
-            CustoUnitario = "0,00";
-            FreteEstimado = "0,00";
-            ImpostosEstimados = "0,00";
-            AprovadorResponsavel = string.Empty;
-            XmlImportadoPath = string.Empty;
-            XmlChaveAcesso = string.Empty;
-            XmlFornecedor = string.Empty;
-            XmlValorTotal = "0,00";
-            StatusAprovacao = "Rascunho";
-            NumeroDocumentoFornecedor = string.Empty;
-            SerieDocumentoFornecedor = string.Empty;
-            DataEmissaoDocumento = null;
-            DataEntradaMercadoria = DateTime.Today;
-            PrevisaoEntrega = DateTime.Today.AddDays(7);
-            CondicaoPagamento = "À vista";
-            Observacoes = string.Empty;
+            return;
         }
 
-        Status = "Novo documento aquisitivo pronto para preenchimento.";
-        AtualizarResumo();
+        IsBusy = true;
+        Status = "Carregando dados reais de compras...";
+        try
+        {
+            var result = await _api.GetComprasPainelAsync(
+                _terminal,
+                _terminal.DesktopAccessToken,
+                _lifetime.Token);
+            if (!result.Success || result.Data is null)
+            {
+                Status = $"Falha ao carregar compras: {result.Detail}";
+                return;
+            }
+
+            ApplyPainel(result.Data);
+            Status = $"Painel relido da API: {Solicitacoes.Count} solicitacoes, {Cotacoes.Count} cotacoes, {Pedidos.Count} pedidos e {Entradas.Count} entradas.";
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            Status = $"Falha inesperada ao carregar compras: {exception.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
-    private void AtualizarResumo()
+    private async Task ExecutarGravacaoAsync()
     {
-        OnPropertyChanged(nameof(TotalEstimadoLabel));
-        OnPropertyChanged(nameof(CodigoProdutoSugerido));
-        OnPropertyChanged(nameof(ControleEntrada));
-        OnPropertyChanged(nameof(PodeGerarPedido));
-        OnPropertyChanged(nameof(FluxoAprovacao));
-        OnPropertyChanged(nameof(XmlResumo));
-        OnPropertyChanged(nameof(ProdutoFiscalmenteCompleto));
-        OnPropertyChanged(nameof(StatusCadastroProduto));
-        OnPropertyChanged(nameof(EtapaOperacional));
+        if (!EnsureSession() || IsBusy)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            switch (Tipo)
+            {
+                case "Solicitação de compra":
+                    await RegistrarSolicitacaoAsync();
+                    break;
+                case "Cotação com fornecedores":
+                    await RegistrarCotacaoAsync();
+                    break;
+                case "Pedido de compra":
+                    await RegistrarPedidoAsync();
+                    break;
+                case "Entrada de mercadoria":
+                    await RegistrarEntradaAsync();
+                    break;
+                default:
+                    Status = $"Operacao {Tipo} bloqueada: nao existe contrato de dominio persistente para esta janela.";
+                    break;
+            }
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            Status = $"Falha inesperada na operacao de compras: {exception.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
-    private static string OnlyDigits(string value)
+    private async Task RegistrarSolicitacaoAsync()
     {
-        return new string((value ?? string.Empty).Where(char.IsDigit).ToArray());
+        if (!TryReadBaseValues(false, out var quantidade, out _))
+        {
+            return;
+        }
+
+        var previousIds = Solicitacoes.Select(item => item.Id).ToHashSet();
+        Status = "Registrando solicitacao no banco oficial...";
+        var result = await _api.CreateCompraSolicitacaoAsync(
+            _terminal,
+            _terminal.DesktopAccessToken,
+            new DesktopCompraSolicitacaoRequest(
+                SelectedProduto?.ProdutoId,
+                ProdutoNome.Trim(),
+                quantidade,
+                OrigemAquisicao,
+                Finalidade.Trim(),
+                Prioridade,
+                NormalizeOptional(Observacoes)),
+            _lifetime.Token);
+        var reread = await RereadAfterWriteAsync(result);
+        var created = reread?.Solicitacoes.FirstOrDefault(item => !previousIds.Contains(item.Id));
+        if (created is null)
+        {
+            Status = BuildUnconfirmedWriteMessage(result, "solicitacao");
+            return;
+        }
+
+        ApplyPainel(reread!);
+        SelectedSolicitacao = Solicitacoes.First(item => item.Id == created.Id);
+        Status = $"Solicitacao {created.Id} persistida e confirmada por releitura da API.";
     }
+
+    private async Task RegistrarCotacaoAsync()
+    {
+        if (!TryReadBaseValues(true, out var quantidade, out var custo) || SelectedFornecedor is null)
+        {
+            if (SelectedFornecedor is null)
+            {
+                Status = "Selecione um fornecedor ativo para registrar a cotacao.";
+            }
+            return;
+        }
+
+        if (!int.TryParse(PrazoEntregaDias, NumberStyles.Integer, CultureInfo.InvariantCulture, out var prazo) || prazo < 0)
+        {
+            Status = "Prazo de entrega nao pode ser negativo.";
+            return;
+        }
+
+        var previousIds = Cotacoes.Select(item => item.Id).ToHashSet();
+        Status = "Registrando cotacao vinculada ao fornecedor...";
+        var result = await _api.CreateCompraCotacaoAsync(
+            _terminal,
+            _terminal.DesktopAccessToken,
+            new DesktopCompraCotacaoRequest(
+                SelectedFornecedor.Id,
+                SelectedSolicitacao?.Id,
+                SelectedProduto?.ProdutoId,
+                ProdutoNome.Trim(),
+                quantidade,
+                custo,
+                OrigemAquisicao,
+                Finalidade.Trim(),
+                Prioridade,
+                prazo,
+                NormalizeOptional(Observacoes)),
+            _lifetime.Token);
+        var reread = await RereadAfterWriteAsync(result);
+        var created = reread?.Cotacoes.FirstOrDefault(item => !previousIds.Contains(item.Id));
+        if (created is null)
+        {
+            Status = BuildUnconfirmedWriteMessage(result, "cotacao");
+            return;
+        }
+
+        ApplyPainel(reread!);
+        SelectedCotacao = Cotacoes.First(item => item.Id == created.Id);
+        Status = $"Cotacao {created.Id} persistida e confirmada por releitura da API.";
+    }
+
+    private async Task RegistrarPedidoAsync()
+    {
+        if (!TryReadBaseValues(true, out var quantidade, out var custo) || SelectedFornecedor is null)
+        {
+            if (SelectedFornecedor is null)
+            {
+                Status = "Selecione um fornecedor ativo para gerar o pedido de compra.";
+            }
+            return;
+        }
+
+        var previousIds = Pedidos.Select(item => item.Id).ToHashSet();
+        Status = "Gerando pedido, despesa e conta a pagar...";
+        var result = await _api.CreateCompraPedidoAsync(
+            _terminal,
+            _terminal.DesktopAccessToken,
+            new DesktopCompraPedidoRequest(
+                SelectedFornecedor.Id,
+                SelectedSolicitacao?.Id,
+                OrigemAquisicao,
+                Finalidade.Trim(),
+                PrevisaoEntrega,
+                DataVencimento,
+                NormalizeOptional(MeioPagamento),
+                NormalizeOptional(Observacoes),
+                [new DesktopCompraPedidoItemRequest(
+                    SelectedProduto?.ProdutoId,
+                    ProdutoNome.Trim(),
+                    SelectedProduto?.Sku,
+                    quantidade,
+                    custo)]),
+            _lifetime.Token);
+        var reread = await RereadAfterWriteAsync(result);
+        var created = reread?.Pedidos.FirstOrDefault(item => !previousIds.Contains(item.Id));
+        if (created is null)
+        {
+            Status = BuildUnconfirmedWriteMessage(result, "pedido de compra");
+            return;
+        }
+
+        ApplyPainel(reread!);
+        SelectedPedido = Pedidos.First(item => item.Id == created.Id);
+        Status = $"Pedido {created.Numero} persistido e confirmado por releitura da API. {result.Detail}";
+    }
+
+    private async Task RegistrarEntradaAsync()
+    {
+        if (SelectedPedido is null)
+        {
+            Status = "Selecione o pedido que recebera a entrada.";
+            return;
+        }
+
+        var documento = NormalizeOptional(NumeroDocumento);
+        var chave = OnlyDigits(ChaveNfeEntrada);
+        if (documento is null && string.IsNullOrWhiteSpace(chave))
+        {
+            Status = "Informe o numero do documento ou a chave da NF-e de entrada.";
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(chave) && chave.Length != 44)
+        {
+            Status = "A chave da NF-e de entrada deve conter 44 digitos.";
+            return;
+        }
+
+        var invalidItem = ItensEntrada.FirstOrDefault(item => item.QuantidadeReceber < 0 || item.QuantidadeReceber > item.QuantidadePendente);
+        if (invalidItem is not null)
+        {
+            Status = $"Quantidade invalida para {invalidItem.ProdutoNome}; maximo pendente: {invalidItem.QuantidadePendente}.";
+            return;
+        }
+
+        var items = ItensEntrada
+            .Where(item => item.QuantidadeReceber > 0)
+            .Select(item => new DesktopCompraEntradaItemRequest(item.ItemId, item.QuantidadeReceber))
+            .ToList();
+        if (items.Count == 0)
+        {
+            Status = "Informe ao menos uma quantidade efetivamente recebida.";
+            return;
+        }
+
+        var previousIds = Entradas.Select(item => item.Id).ToHashSet();
+        Status = "Registrando entrada e atualizando estoque...";
+        var result = await _api.CreateCompraEntradaAsync(
+            _terminal,
+            _terminal.DesktopAccessToken,
+            SelectedPedido.Id,
+            new DesktopCompraEntradaRequest(
+                documento,
+                string.IsNullOrWhiteSpace(chave) ? null : chave,
+                OrigemAquisicao,
+                NormalizeOptional(RecebidoPor),
+                NormalizeOptional(Observacoes),
+                items),
+            _lifetime.Token);
+        var reread = await RereadAfterWriteAsync(result);
+        var created = reread?.Entradas.FirstOrDefault(item => !previousIds.Contains(item.Id));
+        if (created is null)
+        {
+            Status = BuildUnconfirmedWriteMessage(result, "entrada de mercadoria");
+            return;
+        }
+
+        ApplyPainel(reread!);
+        SelectedEntrada = Entradas.First(item => item.Id == created.Id);
+        Status = $"Entrada {created.Id} persistida; saldo e pedido confirmados por releitura da API.";
+    }
+
+    private async Task AtualizarStatusSelecionadoAsync(string requestedStatus)
+    {
+        if (!EnsureSession() || IsBusy)
+        {
+            return;
+        }
+
+        var useOrder = Tipo is "Pedido de compra" or "Entrada de mercadoria";
+        if (useOrder && SelectedPedido is null)
+        {
+            Status = "Selecione um pedido antes de alterar o status.";
+            return;
+        }
+        if (!useOrder && SelectedSolicitacao is null)
+        {
+            Status = "Selecione uma solicitacao antes de alterar o status.";
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var result = useOrder
+                ? await _api.UpdateCompraPedidoStatusAsync(
+                    _terminal,
+                    _terminal.DesktopAccessToken,
+                    SelectedPedido!.Id,
+                    new DesktopCompraStatusRequest(requestedStatus, NormalizeOptional(Observacoes)),
+                    _lifetime.Token)
+                : await _api.UpdateCompraSolicitacaoStatusAsync(
+                    _terminal,
+                    _terminal.DesktopAccessToken,
+                    SelectedSolicitacao!.Id,
+                    new DesktopCompraStatusRequest(requestedStatus, NormalizeOptional(Observacoes)),
+                    _lifetime.Token);
+
+            var reread = await RereadAfterWriteAsync(result);
+            if (reread is null)
+            {
+                Status = BuildUnconfirmedWriteMessage(result, "alteracao de status");
+                return;
+            }
+
+            var expected = NormalizeExpectedStatus(requestedStatus, useOrder);
+            var confirmed = useOrder
+                ? reread.Pedidos.Any(item => item.Id == SelectedPedido!.Id && item.Status.Equals(expected, StringComparison.OrdinalIgnoreCase))
+                : reread.Solicitacoes.Any(item => item.Id == SelectedSolicitacao!.Id && item.Status.Equals(expected, StringComparison.OrdinalIgnoreCase));
+            if (!confirmed)
+            {
+                Status = $"A API respondeu, mas a releitura nao confirmou o status {expected}.";
+                return;
+            }
+
+            var selectedOrderId = SelectedPedido?.Id;
+            var selectedRequestId = SelectedSolicitacao?.Id;
+            ApplyPainel(reread);
+            if (useOrder && selectedOrderId.HasValue)
+            {
+                SelectedPedido = Pedidos.First(item => item.Id == selectedOrderId.Value);
+            }
+            else if (selectedRequestId.HasValue)
+            {
+                SelectedSolicitacao = Solicitacoes.First(item => item.Id == selectedRequestId.Value);
+            }
+            Status = $"Status {expected} persistido e confirmado por releitura da API.";
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            Status = $"Falha inesperada ao alterar status: {exception.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task<DesktopComprasPainel?> RereadAfterWriteAsync(DesktopApiDataResult<DesktopComprasPainel> writeResult)
+    {
+        if (!writeResult.Success || writeResult.Data is null)
+        {
+            Status = $"A API recusou a operacao: {writeResult.Detail}";
+            return null;
+        }
+
+        var reread = await _api.GetComprasPainelAsync(
+            _terminal,
+            _terminal.DesktopAccessToken,
+            _lifetime.Token);
+        if (!reread.Success || reread.Data is null)
+        {
+            Status = $"A gravacao respondeu, mas a releitura independente falhou: {reread.Detail}";
+            return null;
+        }
+
+        return reread.Data;
+    }
+
+    private void ApplyPainel(DesktopComprasPainel painel)
+    {
+        Replace(Fornecedores, painel.Fornecedores);
+        Replace(Produtos, painel.ProdutosReposicao);
+        Replace(Solicitacoes, painel.Solicitacoes);
+        Replace(Cotacoes, painel.Cotacoes);
+        Replace(Pedidos, painel.Pedidos);
+        Replace(Entradas, painel.Entradas);
+        _kpis = painel.Kpis;
+        AlertasTexto = painel.Alertas.Count == 0 ? "Nenhum alerta operacional." : string.Join(" | ", painel.Alertas);
+        OnPropertyChanged(nameof(KpiSolicitacoes));
+        OnPropertyChanged(nameof(KpiPedidos));
+        OnPropertyChanged(nameof(KpiEntradas));
+        OnPropertyChanged(nameof(KpiValor));
+        OnPropertyChanged(nameof(AlertasTexto));
+    }
+
+    private bool TryReadBaseValues(bool requireCost, out int quantidade, out decimal custo)
+    {
+        quantidade = ParseInt(Quantidade);
+        custo = ParseDecimal(CustoUnitario);
+        if (string.IsNullOrWhiteSpace(ProdutoNome))
+        {
+            Status = "Selecione um produto ou informe a descricao do item.";
+            return false;
+        }
+        if (quantidade <= 0)
+        {
+            Status = "Quantidade deve ser um numero inteiro maior que zero.";
+            return false;
+        }
+        if (requireCost && custo <= 0)
+        {
+            Status = "Custo unitario deve ser maior que zero.";
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(Finalidade))
+        {
+            Status = "Informe a finalidade operacional da compra.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool EnsureSession()
+    {
+        if (!string.IsNullOrWhiteSpace(_terminal.DesktopAccessToken))
+        {
+            return true;
+        }
+
+        Status = "Sessao administrativa ausente. Autentique o Desktop em Sistema > Rede e endpoints.";
+        return false;
+    }
+
+    private void NovoDocumento()
+    {
+        Codigo = $"NOVO-{DateTime.Now:yyyyMMddHHmmss}";
+        SelectedSolicitacao = null;
+        SelectedCotacao = null;
+        SelectedPedido = null;
+        SelectedEntrada = null;
+        SelectedProduto = null;
+        SelectedFornecedor = null;
+        ProdutoNome = string.Empty;
+        Quantidade = "1";
+        CustoUnitario = "0,00";
+        PrazoEntregaDias = "7";
+        PrevisaoEntrega = DateTime.Today.AddDays(7);
+        DataVencimento = DateTime.Today.AddDays(7);
+        MeioPagamento = "A definir";
+        NumeroDocumento = string.Empty;
+        ChaveNfeEntrada = string.Empty;
+        RecebidoPor = _terminal.OperatorName;
+        Observacoes = string.Empty;
+        ItensEntrada.Clear();
+        Status = $"Novo documento preparado para {Tipo}. Nenhum dado foi gravado.";
+    }
+
+    private static string NormalizeExpectedStatus(string requestedStatus, bool order)
+        => requestedStatus switch
+        {
+            "EmAprovacao" => "EmAprovacao",
+            "Aprovado" => order ? "Aprovado" : "Aprovada",
+            "Reprovado" => order ? "Reprovado" : "Reprovada",
+            _ => requestedStatus
+        };
+
+    private static string BuildUnconfirmedWriteMessage(
+        DesktopApiDataResult<DesktopComprasPainel> result,
+        string operation)
+        => result.Success
+            ? $"A API respondeu, mas a releitura nao identificou a nova {operation}; nenhuma confirmacao de sucesso foi emitida."
+            : $"Falha ao registrar {operation}: {result.Detail}";
+
+    private static bool IsSupportedOperation(string value)
+        => value is "Solicitação de compra" or "Cotação com fornecedores" or "Pedido de compra" or "Entrada de mercadoria";
+
+    private static void Replace<T>(ObservableCollection<T> target, IEnumerable<T> source)
+    {
+        target.Clear();
+        foreach (var item in source)
+        {
+            target.Add(item);
+        }
+    }
+
+    private static int ParseInt(string value)
+        => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
 
     private static decimal ParseDecimal(string value)
     {
@@ -734,11 +916,11 @@ public partial class ProcurementWindow : Window, INotifyPropertyChanged
             : 0m;
     }
 
-    private static string NormalizeCode(string value)
-    {
-        var chars = value.ToUpperInvariant().Where(char.IsLetterOrDigit).Take(10).ToArray();
-        return chars.Length == 0 ? "DOC" : new string(chars);
-    }
+    private static string OnlyDigits(string value)
+        => new((value ?? string.Empty).Where(char.IsDigit).ToArray());
+
+    private static string? NormalizeOptional(string value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
@@ -756,4 +938,29 @@ public partial class ProcurementWindow : Window, INotifyPropertyChanged
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
+}
+
+public sealed class DesktopCompraEntradaItemEdicao
+{
+    public DesktopCompraEntradaItemEdicao(
+        int itemId,
+        string produtoNome,
+        int quantidadePedido,
+        int quantidadeRecebida,
+        int quantidadePendente)
+    {
+        ItemId = itemId;
+        ProdutoNome = produtoNome;
+        QuantidadePedido = quantidadePedido;
+        QuantidadeRecebida = quantidadeRecebida;
+        QuantidadePendente = quantidadePendente;
+        QuantidadeReceber = quantidadePendente;
+    }
+
+    public int ItemId { get; }
+    public string ProdutoNome { get; }
+    public int QuantidadePedido { get; }
+    public int QuantidadeRecebida { get; }
+    public int QuantidadePendente { get; }
+    public int QuantidadeReceber { get; set; }
 }
