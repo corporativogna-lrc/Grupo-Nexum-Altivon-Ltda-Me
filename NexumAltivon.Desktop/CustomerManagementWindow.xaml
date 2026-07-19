@@ -1,0 +1,351 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5.7187
+ -->
+<Window x:Class="NexumAltivon.Desktop.CustomerManagementWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GenesisGest.Net - Clientes"
+        Width="1280"
+        Height="760"
+        MinWidth="1080"
+        MinHeight="680"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        Background="{StaticResource ShellBackground}"
+        FontFamily="Segoe UI">
+    <Window.Resources>
+        <Style x:Key="SectionBorder" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackground}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="14" />
+        </Style>
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+        <Style x:Key="ActionButton" TargetType="Button">
+            <Setter Property="MinWidth" Value="104" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Margin" Value="8,0,0,0" />
+            <Setter Property="Padding" Value="12,0" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="92" />
+            <RowDefinition Height="10" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="10" />
+            <RowDefinition Height="42" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource SectionBorder}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="MASTER DATA / CLIENTES" Foreground="{StaticResource AccentGold}" FontSize="12" FontWeight="SemiBold" />
+                    <TextBlock Text="Cadastro e endereços de clientes" Foreground="{StaticResource TextPrimary}" FontSize="24" FontWeight="Bold" Margin="0,3,0,0" />
+                    <TextBlock Text="Operação administrativa por empresa com controle de concorrência e trilha de auditoria."
+                               Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,3,0,0" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="Atualizar" Style="{StaticResource ActionButton}" IsEnabled="{Binding CanOperate}" Click="Atualizar_Click" />
+                    <Button Content="Novo cliente" Style="{StaticResource ActionButton}" IsEnabled="{Binding CanOperate}" Click="NovoCliente_Click" />
+                    <Button Content="Salvar cliente" Style="{StaticResource ActionButton}" IsEnabled="{Binding CanOperate}"
+                            Background="{StaticResource AccentGold}" Foreground="#080704" BorderThickness="0" FontWeight="Bold" Click="SalvarCliente_Click" />
+                    <Button Content="Fechar" Style="{StaticResource ActionButton}" Click="Fechar_Click" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <TabControl Grid.Row="2" SelectedIndex="{Binding SelectedTabIndex}">
+            <TabItem Header="Cadastro">
+                <Grid Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="0.9*" />
+                        <ColumnDefinition Width="10" />
+                        <ColumnDefinition Width="1.4*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Style="{StaticResource SectionBorder}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="8" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Clientes persistidos" Foreground="{StaticResource TextPrimary}" FontSize="16" FontWeight="Bold" />
+                                <TextBlock Grid.Column="1" Text="{Binding ClienteCountLabel}" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold" />
+                            </Grid>
+                            <DataGrid Grid.Row="2"
+                                      ItemsSource="{Binding Clientes}"
+                                      SelectedItem="{Binding SelectedCliente, Mode=TwoWay}"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True"
+                                      SelectionMode="Single"
+                                      SelectionUnit="FullRow"
+                                      HeadersVisibility="Column"
+                                      CanUserAddRows="False">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="52" />
+                                    <DataGridTextColumn Header="Cliente" Binding="{Binding Nome}" Width="*" />
+                                    <DataGridTextColumn Header="Documento" Binding="{Binding Cpf}" Width="118" />
+                                    <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="86" />
+                                    <DataGridCheckBoxColumn Header="VIP" Binding="{Binding Vip}" Width="48" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Column="2" Style="{StaticResource SectionBorder}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="10" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="10" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="10" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="Cabeçalho cadastral" Foreground="{StaticResource TextPrimary}" FontSize="16" FontWeight="Bold" />
+                                    <TextBlock Text="{Binding CadastroReference}" Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,3,0,0" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Background="{StaticResource PanelSurface}" CornerRadius="6" Padding="10,6">
+                                    <TextBlock Text="{Binding RowVersionLabel}" Foreground="{StaticResource AccentGold}" FontSize="11" />
+                                </Border>
+                            </Grid>
+
+                            <UniformGrid Grid.Row="2" Columns="4">
+                                <StackPanel Margin="0,0,10,8">
+                                    <TextBlock Text="Nome / razão social *" Style="{StaticResource FieldLabel}" />
+                                    <TextBox Text="{Binding ClienteNome, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,10,8">
+                                    <TextBlock Text="Tipo *" Style="{StaticResource FieldLabel}" />
+                                    <ComboBox ItemsSource="{Binding TipoClienteOptions}" SelectedItem="{Binding ClienteTipo}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,10,8">
+                                    <TextBlock Text="Status *" Style="{StaticResource FieldLabel}" />
+                                    <ComboBox ItemsSource="{Binding StatusClienteOptions}" SelectedItem="{Binding ClienteStatus}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,0,8">
+                                    <TextBlock Text="CPF / CNPJ *" Style="{StaticResource FieldLabel}" />
+                                    <TextBox Text="{Binding ClienteDocumento, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,10,8">
+                                    <TextBlock Text="E-mail *" Style="{StaticResource FieldLabel}" />
+                                    <TextBox Text="{Binding ClienteEmail, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,10,8">
+                                    <TextBlock Text="RG / IE" Style="{StaticResource FieldLabel}" />
+                                    <TextBox Text="{Binding ClienteRgIe, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,10,8">
+                                    <TextBlock Text="Nascimento / constituição" Style="{StaticResource FieldLabel}" />
+                                    <DatePicker SelectedDate="{Binding ClienteDataNascimento}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,0,8">
+                                    <TextBlock Text="Pontos de fidelidade" Style="{StaticResource FieldLabel}" />
+                                    <TextBox Text="{Binding ClientePontosText, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                            </UniformGrid>
+
+                            <UniformGrid Grid.Row="4" Columns="4">
+                                <StackPanel Margin="0,0,10,0">
+                                    <TextBlock Text="Telefone" Style="{StaticResource FieldLabel}" />
+                                    <TextBox Text="{Binding ClienteTelefone, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,10,0">
+                                    <TextBlock Text="WhatsApp" Style="{StaticResource FieldLabel}" />
+                                    <TextBox Text="{Binding ClienteWhatsapp, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,10,0">
+                                    <TextBlock Text="Avatar (URL)" Style="{StaticResource FieldLabel}" />
+                                    <TextBox Text="{Binding ClienteAvatar, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel VerticalAlignment="Bottom">
+                                    <CheckBox Content="Recebe comunicações" IsChecked="{Binding ClienteNewsletter}" Foreground="{StaticResource TextPrimary}" Margin="0,0,0,6" />
+                                    <CheckBox Content="Cliente VIP" IsChecked="{Binding ClienteVip}" Foreground="{StaticResource TextPrimary}" />
+                                </StackPanel>
+                            </UniformGrid>
+
+                            <Border Grid.Row="6" Background="{StaticResource PanelSurface}" CornerRadius="6" Padding="12" VerticalAlignment="Top">
+                                <StackPanel>
+                                    <TextBlock Text="Validação cadastral" Foreground="{StaticResource TextSecondary}" FontSize="11" />
+                                    <TextBlock Text="{Binding CadastroValidation}" Foreground="{StaticResource TextPrimary}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Endereços" IsEnabled="{Binding HasPersistedCliente}">
+                <Grid Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1.1*" />
+                        <ColumnDefinition Width="10" />
+                        <ColumnDefinition Width="0.9*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource SectionBorder}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="8" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="{Binding EnderecoHeader}" Foreground="{StaticResource TextPrimary}" FontSize="16" FontWeight="Bold" />
+                            <DataGrid Grid.Row="2"
+                                      ItemsSource="{Binding Enderecos}"
+                                      SelectedItem="{Binding SelectedEndereco, Mode=TwoWay}"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True"
+                                      SelectionMode="Single"
+                                      SelectionUnit="FullRow"
+                                      CanUserAddRows="False">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Apelido" Binding="{Binding Apelido}" Width="110" />
+                                    <DataGridTextColumn Header="Tipo" Binding="{Binding Tipo}" Width="94" />
+                                    <DataGridTextColumn Header="Logradouro" Binding="{Binding Logradouro}" Width="*" />
+                                    <DataGridTextColumn Header="Cidade" Binding="{Binding Cidade}" Width="140" />
+                                    <DataGridTextColumn Header="UF" Binding="{Binding Estado}" Width="44" />
+                                    <DataGridCheckBoxColumn Header="Principal" Binding="{Binding Padrao}" Width="74" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </Border>
+                    <Border Grid.Column="2" Style="{StaticResource SectionBorder}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="10" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="10" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Endereço do cliente" Foreground="{StaticResource TextPrimary}" FontSize="16" FontWeight="Bold" />
+                                <TextBlock Grid.Column="1" Text="{Binding EnderecoVersionLabel}" Foreground="{StaticResource AccentGold}" FontSize="11" />
+                            </Grid>
+                            <UniformGrid Grid.Row="2" Columns="2">
+                                <StackPanel Margin="0,0,10,8">
+                                    <TextBlock Text="Apelido" Style="{StaticResource FieldLabel}" />
+                                    <TextBox Text="{Binding EnderecoApelido, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,0,8">
+                                    <TextBlock Text="Tipo *" Style="{StaticResource FieldLabel}" />
+                                    <ComboBox ItemsSource="{Binding TipoEnderecoOptions}" SelectedItem="{Binding EnderecoTipo}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,10,8">
+                                    <TextBlock Text="CEP *" Style="{StaticResource FieldLabel}" />
+                                    <TextBox Text="{Binding EnderecoCep, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,0,8">
+                                    <TextBlock Text="Logradouro *" Style="{StaticResource FieldLabel}" />
+                                    <TextBox Text="{Binding EnderecoLogradouro, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,10,8">
+                                    <TextBlock Text="Número *" Style="{StaticResource FieldLabel}" />
+                                    <TextBox Text="{Binding EnderecoNumero, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,0,8">
+                                    <TextBlock Text="Complemento" Style="{StaticResource FieldLabel}" />
+                                    <TextBox Text="{Binding EnderecoComplemento, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                            </UniformGrid>
+                            <UniformGrid Grid.Row="4" Columns="2">
+                                <StackPanel Margin="0,0,10,8">
+                                    <TextBlock Text="Bairro *" Style="{StaticResource FieldLabel}" />
+                                    <TextBox Text="{Binding EnderecoBairro, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,0,8">
+                                    <TextBlock Text="Cidade *" Style="{StaticResource FieldLabel}" />
+                                    <TextBox Text="{Binding EnderecoCidade, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,10,0">
+                                    <TextBlock Text="UF *" Style="{StaticResource FieldLabel}" />
+                                    <TextBox Text="{Binding EnderecoEstado, UpdateSourceTrigger=PropertyChanged}" MaxLength="2" />
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Text="País" Style="{StaticResource FieldLabel}" />
+                                    <TextBox Text="{Binding EnderecoPais, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                            </UniformGrid>
+                            <CheckBox Grid.Row="5" Content="Endereço principal" IsChecked="{Binding EnderecoPadrao}"
+                                      Foreground="{StaticResource TextPrimary}" VerticalAlignment="Top" Margin="0,14,0,0" />
+                            <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Button Content="Novo endereço" Style="{StaticResource ActionButton}" IsEnabled="{Binding CanOperate}" Click="NovoEndereco_Click" />
+                                <Button Content="Arquivar" Style="{StaticResource ActionButton}" IsEnabled="{Binding CanOperate}" Click="ArquivarEndereco_Click" />
+                                <Button Content="Salvar endereço" Style="{StaticResource ActionButton}" IsEnabled="{Binding CanOperate}"
+                                        Background="{StaticResource AccentGold}" Foreground="#080704" BorderThickness="0" FontWeight="Bold" Click="SalvarEndereco_Click" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Trilha de auditoria" IsEnabled="{Binding HasPersistedCliente}">
+                <Border Margin="0,10,0,0" Style="{StaticResource SectionBorder}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="8" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="Gravações confirmadas na auditoria" Foreground="{StaticResource TextPrimary}" FontSize="16" FontWeight="Bold" />
+                        <DataGrid Grid.Row="2" ItemsSource="{Binding Auditoria}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Data" Binding="{Binding CreatedAt, StringFormat={}{0:dd/MM/yyyy HH:mm:ss}}" Width="160" />
+                                <DataGridTextColumn Header="Tabela" Binding="{Binding Tabela}" Width="150" />
+                                <DataGridTextColumn Header="Registro" Binding="{Binding RegistroId}" Width="90" />
+                                <DataGridTextColumn Header="Ação" Binding="{Binding Acao}" Width="110" />
+                                <DataGridTextColumn Header="Usuário" Binding="{Binding UsuarioId}" Width="90" />
+                                <DataGridTextColumn Header="Endpoint" Binding="{Binding Endpoint}" Width="*" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Grid>
+                </Border>
+            </TabItem>
+        </TabControl>
+
+        <Border Grid.Row="4" Background="{StaticResource PanelSurface}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="6" Padding="12,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding Status}" Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="1" Text="{Binding TenantLabel}" Foreground="{StaticResource AccentGold}" VerticalAlignment="Center" FontWeight="SemiBold" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

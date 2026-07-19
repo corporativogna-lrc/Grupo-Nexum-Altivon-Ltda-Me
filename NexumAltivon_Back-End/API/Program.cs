@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7186
+ * Versão: 1.1.5.7187
  */
 
 using System.Globalization;
@@ -5224,12 +5224,88 @@ app.MapGet("/api/clientes", [Authorize(Policy = "Gerente")] async (NexumDbContex
         .AsNoTracking()
         .OrderByDescending(cliente => cliente.CreatedAt)
         .Take(500)
+        .Select(cliente => new
+        {
+            Cliente = cliente,
+            RowVersion = EF.Property<byte[]>(cliente, "RowVersion")
+        })
         .ToListAsync(ct);
-    var clientes = clientesDb.Select(ToClienteLojaDto).ToList();
+    var clientes = clientesDb.Select(item => ToClienteLojaDto(item.Cliente, item.RowVersion)).ToList();
 
-    return Results.Ok(ApiResponse<List<ClienteLojaDto>>.Ok(clientes));
+    return Results.Ok(ApiResponse<List<ClienteLojaDto>>.Ok(clientes, "Clientes carregados do banco oficial.", clientes.Count));
 })
 .WithName("Clientes")
+;
+
+app.MapGet("/api/clientes/{id:int}", [Authorize(Policy = "Gerente")] async (
+    int id,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var cliente = await LoadClienteDtoAsync(db, id, ct);
+    return cliente is null
+        ? Results.NotFound(ApiResponse<ClienteLojaDto>.Erro("Cliente nao encontrado para o tenant autenticado."))
+        : Results.Ok(ApiResponse<ClienteLojaDto>.Ok(cliente, "Cliente relido do banco oficial."));
+})
+.WithName("ObterCliente")
+;
+
+app.MapPost("/api/clientes/admin", [Authorize(Policy = "Gerente")] async (
+    ClienteRequest request,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var validationError = await ValidateClienteAdminRequestAsync(request, null, db, ct);
+    if (validationError is not null)
+    {
+        return validationError;
+    }
+
+    var clienteId = 0;
+    var strategy = db.Database.CreateExecutionStrategy();
+    var transactionResult = await strategy.ExecuteAsync<IResult?>(async () =>
+    {
+        db.ChangeTracker.Clear();
+        var email = NormalizeEmail(request.Email)!;
+        var documento = NormalizeDocument(request.Cpf ?? request.CpfCnpj);
+        if (await ClienteDuplicadoAsync(db, null, email, documento, ct))
+        {
+            return Results.Conflict(ApiResponse<ClienteLojaDto>.Erro("Cliente ja cadastrado com este e-mail ou CPF/CNPJ."));
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        var cliente = CreateClienteAdmin(request, email, documento);
+        db.Clientes.Add(cliente);
+        await db.SaveChangesAsync(ct);
+        clienteId = cliente.Id;
+
+        var rowVersion = db.Entry(cliente).Property<byte[]>("RowVersion").CurrentValue ?? [];
+        var created = ToClienteLojaDto(cliente, rowVersion);
+        db.LogsAuditoria.Add(CreateIamAuditLog(
+            principal,
+            httpContext,
+            "clientes",
+            cliente.Id,
+            AcaoAuditoria.INSERT,
+            null,
+            created));
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return null;
+    });
+    if (transactionResult is not null)
+    {
+        return transactionResult;
+    }
+
+    var persisted = await LoadClienteDtoAsync(db, clienteId, ct);
+    return persisted is null
+        ? Results.Problem("O cliente foi gravado, mas a releitura de confirmacao falhou. Nao repita a operacao sem consultar o identificador retornado.", statusCode: StatusCodes.Status500InternalServerError)
+        : Results.Created($"/api/clientes/{clienteId}", ApiResponse<ClienteLojaDto>.Ok(persisted, "Cliente cadastrado e relido do banco oficial."));
+})
+.WithName("CriarClienteAdministracao")
 ;
 
 app.MapGet("/api/clientes/verificar", async (string? email, string? cpf, NexumDbContext db, CancellationToken ct) =>
@@ -5407,61 +5483,366 @@ app.MapPost("/api/clientes/reenviar-confirmacao", async (ReenviarConfirmacaoClie
 .WithName("ReenviarConfirmacaoCliente")
 ;
 
-app.MapPut("/api/clientes/{id:int}", [Authorize(Policy = "Gerente")] async (int id, ClienteRequest request, NexumDbContext db, CancellationToken ct) =>
+app.MapPut("/api/clientes/{id:int}", [Authorize(Policy = "Gerente")] async (
+    int id,
+    ClienteRequest request,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
+    NexumDbContext db,
+    CancellationToken ct) =>
 {
-    var cliente = await db.Clientes.FirstOrDefaultAsync(item => item.Id == id, ct);
-    if (cliente is null)
+    if (!TryDecodeRowVersion(request.RowVersion, out var expectedRowVersion))
     {
-        return Results.NotFound(ApiResponse<string>.Erro("Cliente nao encontrado."));
+        return Results.BadRequest(ApiResponse<ClienteLojaDto>.Erro("RowVersion valido e obrigatorio para atualizar o cliente."));
     }
 
-    if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Nome))
+    var validationError = await ValidateClienteAdminRequestAsync(request, id, db, ct);
+    if (validationError is not null)
     {
-        return Results.BadRequest(ApiResponse<string>.Erro("Nome e email sao obrigatorios."));
+        return validationError;
     }
 
-    var email = NormalizeEmail(request.Email)!;
-    var cpfCnpj = NormalizeDocument(request.Cpf ?? request.CpfCnpj);
-    if (!string.IsNullOrWhiteSpace(cpfCnpj) && !IsValidCpfCnpj(cpfCnpj))
+    try
     {
-        return Results.BadRequest(ApiResponse<string>.Erro("CPF/CNPJ inválido."));
+        var strategy = db.Database.CreateExecutionStrategy();
+        var transactionResult = await strategy.ExecuteAsync<IResult?>(async () =>
+        {
+            db.ChangeTracker.Clear();
+            var cliente = await db.Clientes.FirstOrDefaultAsync(item => item.Id == id, ct);
+            if (cliente is null)
+            {
+                return Results.NotFound(ApiResponse<ClienteLojaDto>.Erro("Cliente nao encontrado para o tenant autenticado."));
+            }
+
+            var currentRowVersion = db.Entry(cliente).Property<byte[]>("RowVersion").CurrentValue ?? [];
+            if (!currentRowVersion.SequenceEqual(expectedRowVersion))
+            {
+                return Results.Conflict(ApiResponse<ClienteLojaDto>.Erro("O cliente foi alterado por outra sessao. Recarregue o cadastro antes de salvar."));
+            }
+
+            var email = NormalizeEmail(request.Email)!;
+            var documento = NormalizeDocument(request.Cpf ?? request.CpfCnpj);
+            if (await ClienteDuplicadoAsync(db, id, email, documento, ct))
+            {
+                return Results.Conflict(ApiResponse<ClienteLojaDto>.Erro("Cliente ja cadastrado com este e-mail ou CPF/CNPJ."));
+            }
+
+            var previous = ToClienteLojaDto(cliente, currentRowVersion);
+            ApplyClienteAdminRequest(cliente, request, email, documento);
+            db.Entry(cliente).Property<byte[]>("RowVersion").OriginalValue = expectedRowVersion;
+
+            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            await db.SaveChangesAsync(ct);
+            var updatedRowVersion = db.Entry(cliente).Property<byte[]>("RowVersion").CurrentValue ?? [];
+            var updated = ToClienteLojaDto(cliente, updatedRowVersion);
+            db.LogsAuditoria.Add(CreateIamAuditLog(
+                principal,
+                httpContext,
+                "clientes",
+                cliente.Id,
+                AcaoAuditoria.UPDATE,
+                previous,
+                updated));
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return null;
+        });
+        if (transactionResult is not null)
+        {
+            return transactionResult;
+        }
+    }
+    catch (DbUpdateConcurrencyException)
+    {
+        return Results.Conflict(ApiResponse<ClienteLojaDto>.Erro("O cliente foi alterado por outra sessao. Recarregue o cadastro antes de salvar."));
     }
 
-    var duplicado = await db.Clientes.FirstOrDefaultAsync(item =>
-        item.Id != cliente.Id &&
-        (item.Email == email ||
-         (!string.IsNullOrWhiteSpace(cpfCnpj) &&
-          ((item.CpfCnpj ?? string.Empty)
-              .Replace(".", string.Empty)
-              .Replace("-", string.Empty)
-              .Replace("/", string.Empty)
-              .Replace(" ", string.Empty)) == cpfCnpj)), ct);
-
-    if (duplicado is not null)
-    {
-        return Results.Conflict(ApiResponse<string>.Erro("Cliente ja cadastrado com este email ou CPF/CNPJ."));
-    }
-
-    cliente.Nome = request.Nome.Trim();
-    cliente.Email = email;
-    cliente.CpfCnpj = cpfCnpj;
-    cliente.RgIe = string.IsNullOrWhiteSpace(request.RgIe) ? null : request.RgIe.Trim();
-    cliente.DataNascimento = request.DataNascimento;
-    cliente.Telefone = string.IsNullOrWhiteSpace(request.Telefone) ? null : request.Telefone.Trim();
-    cliente.Whatsapp = string.IsNullOrWhiteSpace(request.Whatsapp) ? cliente.Telefone : request.Whatsapp.Trim();
-    cliente.Avatar = string.IsNullOrWhiteSpace(request.Avatar) ? null : request.Avatar.Trim();
-    cliente.Newsletter = request.Newsletter ?? cliente.Newsletter;
-    cliente.Vip = request.Vip ?? cliente.Vip;
-    cliente.PontosFidelidade = request.PontosFidelidade ?? cliente.PontosFidelidade;
-    cliente.Tipo = Enum.TryParse<TipoCliente>(request.Tipo, true, out var tipo) ? tipo : cliente.Tipo;
-    cliente.Status = Enum.TryParse<StatusCliente>(request.Status, true, out var status) ? status : cliente.Status;
-    cliente.UpdatedAt = DateTime.UtcNow;
-
-    await db.SaveChangesAsync(ct);
-
-    return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(ToClienteLojaDto(cliente), "Cliente atualizado."));
+    var persisted = await LoadClienteDtoAsync(db, id, ct);
+    return persisted is null
+        ? Results.Problem("O cliente foi atualizado, mas a releitura de confirmacao falhou. Nao repita a operacao sem consultar o identificador.", statusCode: StatusCodes.Status500InternalServerError)
+        : Results.Ok(ApiResponse<ClienteLojaDto>.Ok(persisted, "Cliente atualizado e relido do banco oficial."));
 })
 .WithName("AtualizarCliente")
+;
+
+app.MapGet("/api/clientes/{id:int}/enderecos", [Authorize(Policy = "Gerente")] async (
+    int id,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    if (!await db.Clientes.AsNoTracking().AnyAsync(cliente => cliente.Id == id, ct))
+    {
+        return Results.NotFound(ApiResponse<List<ClientePortalEnderecoDto>>.Erro("Cliente nao encontrado para o tenant autenticado."));
+    }
+
+    var rows = await db.Enderecos
+        .AsNoTracking()
+        .Where(endereco => endereco.ClienteId == id)
+        .OrderByDescending(endereco => endereco.Padrao)
+        .ThenBy(endereco => endereco.Apelido)
+        .ThenBy(endereco => endereco.Id)
+        .Select(endereco => new
+        {
+            Endereco = endereco,
+            RowVersion = EF.Property<byte[]>(endereco, "RowVersion")
+        })
+        .ToListAsync(ct);
+    var enderecos = rows.Select(row => ToClientePortalEnderecoDto(row.Endereco, row.RowVersion)).ToList();
+    return Results.Ok(ApiResponse<List<ClientePortalEnderecoDto>>.Ok(
+        enderecos,
+        "Enderecos do cliente carregados do banco oficial.",
+        enderecos.Count));
+})
+.WithName("ListarEnderecosClienteAdministracao")
+;
+
+app.MapPost("/api/clientes/{id:int}/enderecos", [Authorize(Policy = "Gerente")] async (
+    int id,
+    ClientePortalEnderecoRequest request,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var validationError = ValidateClienteEnderecoAdminRequest(request);
+    if (validationError is not null)
+    {
+        return Results.BadRequest(ApiResponse<ClientePortalEnderecoDto>.Erro(validationError));
+    }
+
+    var enderecoId = 0;
+    var strategy = db.Database.CreateExecutionStrategy();
+    var transactionResult = await strategy.ExecuteAsync<IResult?>(async () =>
+    {
+        db.ChangeTracker.Clear();
+        if (!await db.Clientes.AnyAsync(cliente => cliente.Id == id, ct))
+        {
+            return Results.NotFound(ApiResponse<ClientePortalEnderecoDto>.Erro("Cliente nao encontrado para o tenant autenticado."));
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        var outrosPrincipais = request.Padrao
+            ? await db.Enderecos.Where(endereco => endereco.ClienteId == id && endereco.Padrao).ToListAsync(ct)
+            : [];
+        var anteriores = outrosPrincipais.ToDictionary(
+            endereco => endereco.Id,
+            endereco => ToClientePortalEnderecoDto(
+                endereco,
+                db.Entry(endereco).Property<byte[]>("RowVersion").CurrentValue ?? []));
+        foreach (var endereco in outrosPrincipais)
+        {
+            endereco.Padrao = false;
+            endereco.UpdatedAt = DateTime.UtcNow;
+        }
+
+        var novo = new Endereco
+        {
+            ClienteId = id,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        ApplyClienteEnderecoAdminRequest(novo, request);
+        db.Enderecos.Add(novo);
+        await db.SaveChangesAsync(ct);
+        enderecoId = novo.Id;
+
+        var created = ToClientePortalEnderecoDto(
+            novo,
+            db.Entry(novo).Property<byte[]>("RowVersion").CurrentValue ?? []);
+        db.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "enderecos", novo.Id, AcaoAuditoria.INSERT, null, created));
+        foreach (var endereco in outrosPrincipais)
+        {
+            var updated = ToClientePortalEnderecoDto(
+                endereco,
+                db.Entry(endereco).Property<byte[]>("RowVersion").CurrentValue ?? []);
+            db.LogsAuditoria.Add(CreateIamAuditLog(
+                principal,
+                httpContext,
+                "enderecos",
+                endereco.Id,
+                AcaoAuditoria.UPDATE,
+                anteriores[endereco.Id],
+                updated));
+        }
+
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return null;
+    });
+    if (transactionResult is not null)
+    {
+        return transactionResult;
+    }
+
+    var persisted = await LoadClienteEnderecoDtoAsync(db, id, enderecoId, ct);
+    return persisted is null
+        ? Results.Problem("O endereco foi gravado, mas a releitura de confirmacao falhou. Nao repita a operacao sem consultar o identificador.", statusCode: StatusCodes.Status500InternalServerError)
+        : Results.Created($"/api/clientes/{id}/enderecos/{enderecoId}", ApiResponse<ClientePortalEnderecoDto>.Ok(persisted, "Endereco cadastrado e relido do banco oficial."));
+})
+.WithName("CriarEnderecoClienteAdministracao")
+;
+
+app.MapPut("/api/clientes/{id:int}/enderecos/{enderecoId:int}", [Authorize(Policy = "Gerente")] async (
+    int id,
+    int enderecoId,
+    ClientePortalEnderecoRequest request,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    if (!TryDecodeRowVersion(request.RowVersion, out var expectedRowVersion))
+    {
+        return Results.BadRequest(ApiResponse<ClientePortalEnderecoDto>.Erro("RowVersion valido e obrigatorio para atualizar o endereco."));
+    }
+
+    var validationError = ValidateClienteEnderecoAdminRequest(request);
+    if (validationError is not null)
+    {
+        return Results.BadRequest(ApiResponse<ClientePortalEnderecoDto>.Erro(validationError));
+    }
+
+    try
+    {
+        var strategy = db.Database.CreateExecutionStrategy();
+        var transactionResult = await strategy.ExecuteAsync<IResult?>(async () =>
+        {
+            db.ChangeTracker.Clear();
+            var endereco = await db.Enderecos.FirstOrDefaultAsync(
+                item => item.Id == enderecoId && item.ClienteId == id,
+                ct);
+            if (endereco is null)
+            {
+                return Results.NotFound(ApiResponse<ClientePortalEnderecoDto>.Erro("Endereco nao encontrado para o cliente e tenant autenticados."));
+            }
+
+            var currentRowVersion = db.Entry(endereco).Property<byte[]>("RowVersion").CurrentValue ?? [];
+            if (!currentRowVersion.SequenceEqual(expectedRowVersion))
+            {
+                return Results.Conflict(ApiResponse<ClientePortalEnderecoDto>.Erro("O endereco foi alterado por outra sessao. Recarregue antes de salvar."));
+            }
+
+            var previous = ToClientePortalEnderecoDto(endereco, currentRowVersion);
+            var outrosPrincipais = request.Padrao
+                ? await db.Enderecos.Where(item => item.ClienteId == id && item.Id != enderecoId && item.Padrao).ToListAsync(ct)
+                : [];
+            var anteriores = outrosPrincipais.ToDictionary(
+                item => item.Id,
+                item => ToClientePortalEnderecoDto(
+                    item,
+                    db.Entry(item).Property<byte[]>("RowVersion").CurrentValue ?? []));
+            foreach (var outro in outrosPrincipais)
+            {
+                outro.Padrao = false;
+                outro.UpdatedAt = DateTime.UtcNow;
+            }
+
+            ApplyClienteEnderecoAdminRequest(endereco, request);
+            db.Entry(endereco).Property<byte[]>("RowVersion").OriginalValue = expectedRowVersion;
+
+            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            await db.SaveChangesAsync(ct);
+            var updated = ToClientePortalEnderecoDto(
+                endereco,
+                db.Entry(endereco).Property<byte[]>("RowVersion").CurrentValue ?? []);
+            db.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "enderecos", endereco.Id, AcaoAuditoria.UPDATE, previous, updated));
+            foreach (var outro in outrosPrincipais)
+            {
+                var otherUpdated = ToClientePortalEnderecoDto(
+                    outro,
+                    db.Entry(outro).Property<byte[]>("RowVersion").CurrentValue ?? []);
+                db.LogsAuditoria.Add(CreateIamAuditLog(
+                    principal,
+                    httpContext,
+                    "enderecos",
+                    outro.Id,
+                    AcaoAuditoria.UPDATE,
+                    anteriores[outro.Id],
+                    otherUpdated));
+            }
+
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return null;
+        });
+        if (transactionResult is not null)
+        {
+            return transactionResult;
+        }
+    }
+    catch (DbUpdateConcurrencyException)
+    {
+        return Results.Conflict(ApiResponse<ClientePortalEnderecoDto>.Erro("O endereco foi alterado por outra sessao. Recarregue antes de salvar."));
+    }
+
+    var persisted = await LoadClienteEnderecoDtoAsync(db, id, enderecoId, ct);
+    return persisted is null
+        ? Results.Problem("O endereco foi atualizado, mas a releitura de confirmacao falhou. Nao repita a operacao sem consultar o identificador.", statusCode: StatusCodes.Status500InternalServerError)
+        : Results.Ok(ApiResponse<ClientePortalEnderecoDto>.Ok(persisted, "Endereco atualizado e relido do banco oficial."));
+})
+.WithName("AtualizarEnderecoClienteAdministracao")
+;
+
+app.MapDelete("/api/clientes/{id:int}/enderecos/{enderecoId:int}", [Authorize(Policy = "Gerente")] async (
+    int id,
+    int enderecoId,
+    string? rowVersion,
+    ClaimsPrincipal principal,
+    HttpContext httpContext,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    if (!TryDecodeRowVersion(rowVersion, out var expectedRowVersion))
+    {
+        return Results.BadRequest(ApiResponse<ClientePortalEnderecoDto>.Erro("RowVersion valido e obrigatorio para arquivar o endereco."));
+    }
+
+    try
+    {
+        var strategy = db.Database.CreateExecutionStrategy();
+        var transactionResult = await strategy.ExecuteAsync<IResult?>(async () =>
+        {
+            db.ChangeTracker.Clear();
+            var endereco = await db.Enderecos.FirstOrDefaultAsync(
+                item => item.Id == enderecoId && item.ClienteId == id,
+                ct);
+            if (endereco is null)
+            {
+                return Results.NotFound(ApiResponse<ClientePortalEnderecoDto>.Erro("Endereco nao encontrado para o cliente e tenant autenticados."));
+            }
+
+            var currentRowVersion = db.Entry(endereco).Property<byte[]>("RowVersion").CurrentValue ?? [];
+            if (!currentRowVersion.SequenceEqual(expectedRowVersion))
+            {
+                return Results.Conflict(ApiResponse<ClientePortalEnderecoDto>.Erro("O endereco foi alterado por outra sessao. Recarregue antes de arquivar."));
+            }
+
+            var previous = ToClientePortalEnderecoDto(endereco, currentRowVersion);
+            db.Entry(endereco).Property<byte[]>("RowVersion").OriginalValue = expectedRowVersion;
+            db.Enderecos.Remove(endereco);
+
+            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            await db.SaveChangesAsync(ct);
+            db.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "enderecos", endereco.Id, AcaoAuditoria.DELETE, previous, null));
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return null;
+        });
+        if (transactionResult is not null)
+        {
+            return transactionResult;
+        }
+    }
+    catch (DbUpdateConcurrencyException)
+    {
+        return Results.Conflict(ApiResponse<ClientePortalEnderecoDto>.Erro("O endereco foi alterado por outra sessao. Recarregue antes de arquivar."));
+    }
+
+    return await LoadClienteEnderecoDtoAsync(db, id, enderecoId, ct) is null
+        ? Results.NoContent()
+        : Results.Problem("O endereco foi arquivado, mas permaneceu visivel na releitura. Consulte o registro antes de repetir a operacao.", statusCode: StatusCodes.Status500InternalServerError);
+})
+.WithName("ArquivarEnderecoClienteAdministracao")
 ;
 
 app.MapGet("/api/clientes/confirmar", async (string token, NexumDbContext db, CancellationToken ct) =>
@@ -5561,7 +5942,8 @@ app.MapGet("/api/clientes/portal/me", [Authorize] async (ClaimsPrincipal princip
             item.Cidade,
             item.Estado,
             item.Pais,
-            item.Padrao))
+            item.Padrao,
+            null))
         .ToListAsync(ct);
 
     var totalCompras = pedidos.Sum(item => item.Total);
@@ -15088,7 +15470,132 @@ static string? ValidateEnderecoRequest(ClientePortalEnderecoRequest request)
 static TipoEndereco ParseTipoEndereco(string? value) =>
     Enum.TryParse<TipoEndereco>(value, true, out var tipo) ? tipo : TipoEndereco.Entrega;
 
-static ClienteLojaDto ToClienteLojaDto(Cliente cliente) => new(
+static async Task<IResult?> ValidateClienteAdminRequestAsync(
+    ClienteRequest request,
+    int? clienteId,
+    NexumDbContext db,
+    CancellationToken ct)
+{
+    var nome = request.Nome?.Trim();
+    if (string.IsNullOrWhiteSpace(nome) || nome.Length is < 3 or > 150)
+    {
+        return Results.BadRequest(ApiResponse<ClienteLojaDto>.Erro("Nome do cliente deve ter entre 3 e 150 caracteres."));
+    }
+
+    var email = NormalizeEmail(request.Email);
+    if (string.IsNullOrWhiteSpace(email) || email.Length > 150 || !System.Net.Mail.MailAddress.TryCreate(email, out _))
+    {
+        return Results.BadRequest(ApiResponse<ClienteLojaDto>.Erro("E-mail do cliente invalido."));
+    }
+
+    if (!Enum.TryParse<TipoCliente>(request.Tipo, true, out var tipo))
+    {
+        return Results.BadRequest(ApiResponse<ClienteLojaDto>.Erro("Tipo do cliente deve ser PF ou PJ."));
+    }
+
+    var documento = NormalizeDocument(request.Cpf ?? request.CpfCnpj);
+    if (string.IsNullOrWhiteSpace(documento) || !IsValidCpfCnpj(documento))
+    {
+        return Results.BadRequest(ApiResponse<ClienteLojaDto>.Erro("CPF/CNPJ valido e obrigatorio no cadastro administrativo."));
+    }
+
+    if ((tipo == TipoCliente.PF && documento.Length != 11) || (tipo == TipoCliente.PJ && documento.Length != 14))
+    {
+        return Results.BadRequest(ApiResponse<ClienteLojaDto>.Erro("O documento informado nao corresponde ao tipo PF/PJ selecionado."));
+    }
+
+    if (!Enum.TryParse<StatusCliente>(request.Status, true, out _))
+    {
+        return Results.BadRequest(ApiResponse<ClienteLojaDto>.Erro("Status deve ser Ativo, Inativo, Bloqueado ou Pendente."));
+    }
+
+    if (request.DataNascimento.HasValue &&
+        (request.DataNascimento.Value.Date > DateTime.UtcNow.Date || request.DataNascimento.Value.Date < new DateTime(1900, 1, 1)))
+    {
+        return Results.BadRequest(ApiResponse<ClienteLojaDto>.Erro("Data de nascimento ou constituicao invalida."));
+    }
+
+    if (TrimOrNull(request.RgIe)?.Length > 20 ||
+        TrimOrNull(request.Telefone)?.Length > 20 ||
+        TrimOrNull(request.Whatsapp)?.Length > 20 ||
+        TrimOrNull(request.Avatar)?.Length > 255)
+    {
+        return Results.BadRequest(ApiResponse<ClienteLojaDto>.Erro("RG/IE, telefone, WhatsApp ou avatar excede o limite permitido."));
+    }
+
+    if (request.PontosFidelidade is < 0 or > 100000000)
+    {
+        return Results.BadRequest(ApiResponse<ClienteLojaDto>.Erro("Pontos de fidelidade devem estar entre 0 e 100.000.000."));
+    }
+
+    if (await ClienteDuplicadoAsync(db, clienteId, email, documento, ct))
+    {
+        return Results.Conflict(ApiResponse<ClienteLojaDto>.Erro("Cliente ja cadastrado com este e-mail ou CPF/CNPJ."));
+    }
+
+    return null;
+}
+
+static Task<bool> ClienteDuplicadoAsync(
+    NexumDbContext db,
+    int? clienteId,
+    string email,
+    string? documento,
+    CancellationToken ct) =>
+    db.Clientes.AsNoTracking().AnyAsync(item =>
+        (!clienteId.HasValue || item.Id != clienteId.Value) &&
+        (item.Email == email ||
+         (!string.IsNullOrWhiteSpace(documento) &&
+          ((item.CpfCnpj ?? string.Empty)
+              .Replace(".", string.Empty)
+              .Replace("-", string.Empty)
+              .Replace("/", string.Empty)
+              .Replace(" ", string.Empty)) == documento)), ct);
+
+static Cliente CreateClienteAdmin(ClienteRequest request, string email, string? documento)
+{
+    var cliente = new Cliente
+    {
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
+    };
+    ApplyClienteAdminRequest(cliente, request, email, documento);
+    return cliente;
+}
+
+static void ApplyClienteAdminRequest(Cliente cliente, ClienteRequest request, string email, string? documento)
+{
+    cliente.Nome = request.Nome.Trim();
+    cliente.Email = email;
+    cliente.CpfCnpj = documento;
+    cliente.RgIe = TrimOrNull(request.RgIe);
+    cliente.DataNascimento = request.DataNascimento?.Date;
+    cliente.Telefone = TrimOrNull(request.Telefone);
+    cliente.Whatsapp = TrimOrNull(request.Whatsapp) ?? cliente.Telefone;
+    cliente.Avatar = TrimOrNull(request.Avatar);
+    cliente.Newsletter = request.Newsletter ?? cliente.Newsletter;
+    cliente.Vip = request.Vip ?? cliente.Vip;
+    cliente.PontosFidelidade = request.PontosFidelidade ?? cliente.PontosFidelidade;
+    cliente.Tipo = Enum.Parse<TipoCliente>(request.Tipo!, true);
+    cliente.Status = Enum.Parse<StatusCliente>(request.Status!, true);
+    cliente.UpdatedAt = DateTime.UtcNow;
+}
+
+static async Task<ClienteLojaDto?> LoadClienteDtoAsync(NexumDbContext db, int id, CancellationToken ct)
+{
+    var row = await db.Clientes
+        .AsNoTracking()
+        .Where(cliente => cliente.Id == id)
+        .Select(cliente => new
+        {
+            Cliente = cliente,
+            RowVersion = EF.Property<byte[]>(cliente, "RowVersion")
+        })
+        .SingleOrDefaultAsync(ct);
+    return row is null ? null : ToClienteLojaDto(row.Cliente, row.RowVersion);
+}
+
+static ClienteLojaDto ToClienteLojaDto(Cliente cliente, byte[]? rowVersion = null) => new(
     cliente.Id,
     cliente.Nome,
     cliente.Email,
@@ -15106,7 +15613,8 @@ static ClienteLojaDto ToClienteLojaDto(Cliente cliente) => new(
     cliente.UltimoAcesso,
     cliente.ConfirmadoEm,
     cliente.CreatedAt,
-    cliente.UpdatedAt);
+    cliente.UpdatedAt,
+    rowVersion is null ? null : Convert.ToBase64String(rowVersion));
 
 static async Task<IResult?> ValidateFornecedorRequestAsync(
     FornecedorRequest request,
@@ -15272,7 +15780,7 @@ static FornecedorDto ToFornecedorDto(Fornecedor fornecedor, byte[]? rowVersion) 
     fornecedor.UpdatedAt,
     Convert.ToBase64String(rowVersion ?? []));
 
-static ClientePortalEnderecoDto ToClientePortalEnderecoDto(Endereco endereco) => new(
+static ClientePortalEnderecoDto ToClientePortalEnderecoDto(Endereco endereco, byte[]? rowVersion = null) => new(
     endereco.Id,
     endereco.Apelido,
     endereco.Tipo.ToString(),
@@ -15284,7 +15792,69 @@ static ClientePortalEnderecoDto ToClientePortalEnderecoDto(Endereco endereco) =>
     endereco.Cidade,
     endereco.Estado,
     endereco.Pais,
-    endereco.Padrao);
+    endereco.Padrao,
+    rowVersion is null ? null : Convert.ToBase64String(rowVersion));
+
+static string? ValidateClienteEnderecoAdminRequest(ClientePortalEnderecoRequest request)
+{
+    var baseValidation = ValidateEnderecoRequest(request);
+    if (baseValidation is not null)
+    {
+        return baseValidation;
+    }
+
+    if (!Enum.TryParse<TipoEndereco>(request.Tipo, true, out _))
+    {
+        return "Tipo do endereco deve ser Entrega, Cobranca ou Ambos.";
+    }
+
+    if (TrimOrNull(request.Apelido)?.Length > 50 ||
+        TrimOrNull(request.Logradouro)?.Length > 200 ||
+        TrimOrNull(request.Numero)?.Length > 20 ||
+        TrimOrNull(request.Complemento)?.Length > 100 ||
+        TrimOrNull(request.Bairro)?.Length > 100 ||
+        TrimOrNull(request.Cidade)?.Length > 100 ||
+        TrimOrNull(request.Pais)?.Length > 50)
+    {
+        return "Um ou mais campos do endereco excedem o limite permitido.";
+    }
+
+    return null;
+}
+
+static void ApplyClienteEnderecoAdminRequest(Endereco endereco, ClientePortalEnderecoRequest request)
+{
+    endereco.Apelido = TrimOrNull(request.Apelido) ?? "Principal";
+    endereco.Tipo = Enum.Parse<TipoEndereco>(request.Tipo!, true);
+    endereco.Cep = NormalizeDocument(request.Cep)!;
+    endereco.Logradouro = request.Logradouro!.Trim();
+    endereco.Numero = request.Numero!.Trim();
+    endereco.Complemento = TrimOrNull(request.Complemento);
+    endereco.Bairro = request.Bairro!.Trim();
+    endereco.Cidade = request.Cidade!.Trim();
+    endereco.Estado = request.Estado!.Trim().ToUpperInvariant();
+    endereco.Pais = TrimOrNull(request.Pais) ?? "Brasil";
+    endereco.Padrao = request.Padrao;
+    endereco.UpdatedAt = DateTime.UtcNow;
+}
+
+static async Task<ClientePortalEnderecoDto?> LoadClienteEnderecoDtoAsync(
+    NexumDbContext db,
+    int clienteId,
+    int enderecoId,
+    CancellationToken ct)
+{
+    var row = await db.Enderecos
+        .AsNoTracking()
+        .Where(endereco => endereco.Id == enderecoId && endereco.ClienteId == clienteId)
+        .Select(endereco => new
+        {
+            Endereco = endereco,
+            RowVersion = EF.Property<byte[]>(endereco, "RowVersion")
+        })
+        .SingleOrDefaultAsync(ct);
+    return row is null ? null : ToClientePortalEnderecoDto(row.Endereco, row.RowVersion);
+}
 
 static async Task<string> BuildYaraOperationalContextAsync(
     NexumDbContext db,
@@ -21580,7 +22150,8 @@ public sealed record ClienteRequest(
     bool? Vip = null,
     int? PontosFidelidade = null,
     string? Status = null,
-    string? Tipo = null);
+    string? Tipo = null,
+    string? RowVersion = null);
 
 public sealed record ReenviarConfirmacaoClienteRequest(string Email);
 
@@ -21602,7 +22173,8 @@ public sealed record ClienteLojaDto(
     DateTime? UltimoAcesso = null,
     DateTime? ConfirmadoEm = null,
     DateTime? CreatedAt = null,
-    DateTime? UpdatedAt = null);
+    DateTime? UpdatedAt = null,
+    string? RowVersion = null);
 
 public sealed record CadastroClienteStatusDto(bool Existe, ClienteLojaDto? Cliente);
 
@@ -21657,7 +22229,8 @@ public sealed record ClientePortalEnderecoDto(
     string? Cidade,
     string? Estado,
     string Pais,
-    bool Padrao);
+    bool Padrao,
+    string? RowVersion = null);
 
 public sealed record ClientePortalEnderecoRequest(
     string? Apelido,
@@ -21670,7 +22243,8 @@ public sealed record ClientePortalEnderecoRequest(
     string? Cidade,
     string? Estado,
     string? Pais,
-    bool Padrao);
+    bool Padrao,
+    string? RowVersion = null);
 
 public sealed record FornecedorRequest(
     string Nome,

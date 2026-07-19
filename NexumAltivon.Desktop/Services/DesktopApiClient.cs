@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7186
+ * Versão: 1.1.5.7187
  */
 
 using System.Globalization;
@@ -209,6 +209,80 @@ public sealed class DesktopApiClient
             token,
             HttpMethod.Delete,
             $"/api/fornecedores/{fornecedorId}/contatos/{contatoId}?rowVersion={Uri.EscapeDataString(rowVersion)}",
+            null,
+            cancellationToken);
+
+    public Task<DesktopApiDataResult<List<DesktopCliente>>> GetClientesAsync(
+        TerminalProfile profile,
+        string token,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<List<DesktopCliente>>(
+            profile, token, HttpMethod.Get, "/api/clientes", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopCliente>> GetClienteAsync(
+        TerminalProfile profile,
+        string token,
+        int clienteId,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopCliente>(
+            profile, token, HttpMethod.Get, $"/api/clientes/{clienteId}", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopCliente>> CreateClienteAsync(
+        TerminalProfile profile,
+        string token,
+        DesktopClienteRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopCliente>(
+            profile, token, HttpMethod.Post, "/api/clientes/admin", request, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopCliente>> UpdateClienteAsync(
+        TerminalProfile profile,
+        string token,
+        int clienteId,
+        DesktopClienteRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopCliente>(
+            profile, token, HttpMethod.Put, $"/api/clientes/{clienteId}", request, cancellationToken);
+
+    public Task<DesktopApiDataResult<List<DesktopClienteEndereco>>> GetClienteEnderecosAsync(
+        TerminalProfile profile,
+        string token,
+        int clienteId,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<List<DesktopClienteEndereco>>(
+            profile, token, HttpMethod.Get, $"/api/clientes/{clienteId}/enderecos", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopClienteEndereco>> CreateClienteEnderecoAsync(
+        TerminalProfile profile,
+        string token,
+        int clienteId,
+        DesktopClienteEnderecoRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopClienteEndereco>(
+            profile, token, HttpMethod.Post, $"/api/clientes/{clienteId}/enderecos", request, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopClienteEndereco>> UpdateClienteEnderecoAsync(
+        TerminalProfile profile,
+        string token,
+        int clienteId,
+        int enderecoId,
+        DesktopClienteEnderecoRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopClienteEndereco>(
+            profile, token, HttpMethod.Put, $"/api/clientes/{clienteId}/enderecos/{enderecoId}", request, cancellationToken);
+
+    public Task<DesktopApiDataResult<bool>> ArchiveClienteEnderecoAsync(
+        TerminalProfile profile,
+        string token,
+        int clienteId,
+        int enderecoId,
+        string rowVersion,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<bool>(
+            profile,
+            token,
+            HttpMethod.Delete,
+            $"/api/clientes/{clienteId}/enderecos/{enderecoId}?rowVersion={Uri.EscapeDataString(rowVersion)}",
             null,
             cancellationToken);
 
