@@ -24,11 +24,17 @@ const normalizeApiUrl = (value) => {
 };
 
 const getDefaultApiUrl = () => {
-  return PUBLIC_API_URL;
-};
+  if (typeof window === 'undefined') return 'http://127.0.0.1:5010';
 
-export const API_BASE_URL = normalizeApiUrl(process.env.REACT_APP_BACKEND_URL) || getDefaultApiUrl();
-const API_URL = `${API_BASE_URL}/api`;
+  const { hostname } = window.location;
+  const isLocalhost =
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname === '';
+
+  return isLocalhost ? 'http://127.0.0.1:5010' : PUBLIC_API_URL;
+};
 
 export const resolvePublicAssetUrl = (value) => {
   const assetUrl = String(value || '').trim();
