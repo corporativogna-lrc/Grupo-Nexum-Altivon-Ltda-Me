@@ -28,7 +28,7 @@ permissions:
 env:
   DOTNET_VERSION: '8.0.x'
   NODE_VERSION: '22'
-  PROJECT_PATH: 'NexumAltivon_Back-End/NexumAltivon.API.csproj'
+  PROJECT_PATH: 'NexumAltivon_Back-End/NexumAltivon.API.Tests.csproj'
   TEST_PROJECT_PATH: 'NexumAltivon_Back-End/NexumAltivon.API.Tests.csproj'
   FRONTEND_PATH: 'NexumAltivon_Front-End'
   REGISTRY: ghcr.io
