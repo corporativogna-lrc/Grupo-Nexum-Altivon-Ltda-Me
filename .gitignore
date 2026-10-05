@@ -94,3 +94,7 @@ Thumbs.db
 *.pem
 *.key
 *.crt
+
+# Instaladores Windows
+*.msi
+*.exe
