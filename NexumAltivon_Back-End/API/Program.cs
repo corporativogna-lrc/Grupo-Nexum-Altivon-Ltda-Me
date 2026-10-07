@@ -1,55 +1,24 @@
-/*
- * Propriedade intelectual: Luís Rodrigo da Costa
- * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
- * Sistema de gestão: GenesisGest.Net
- * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7225 Data: 16/08/2026
- */
-
+using System.Globalization;
+using System.IdentityModel.Tokens.Jwt;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Security.Claims;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.OpenApi;
-using MySqlConnector;
-using System.IdentityModel.Tokens.Jwt;
+using Microsoft.OpenApi.Models;
 using NexumAltivon.API.Data;
 using NexumAltivon.API.ERP.FiscalRouting;
-using NexumAltivon.API.ERP.SharedData;
-using NexumAltivon.API.Infrastructure.Logistics;
-using NexumAltivon.API.Infrastructure.Reports;
-using NexumAltivon.API.Infrastructure.Storage;
-using NexumAltivon.API.Infrastructure.Tenancy;
 using NexumAltivon.API.Models;
 using NexumAltivon.API.Services;
-using System.Data;
-using System.Globalization;
-using System.Net;
-using System.Net.Http.Headers;
-using System.Net.Sockets;
-using System.Reflection;
-using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 
-var bootstrapPublicWebRoot = Environment.GetEnvironmentVariable("Storage__PublicWebRoot")
-    ?? Environment.GetEnvironmentVariable("NEXUM_PUBLIC_WEBROOT");
-var builderOptions = new WebApplicationOptions
-{
-    Args = args,
-    WebRootPath = string.IsNullOrWhiteSpace(bootstrapPublicWebRoot)
-        ? null
-        : Path.GetFullPath(bootstrapPublicWebRoot.Trim())
-};
-var builder = WebApplication.CreateBuilder(builderOptions);
-builder.WebHost.UseUrls("http://localhost:5010");
-var releaseVersion = GetReleaseVersion();
-Console.WriteLine("[NexumStartup] Builder criado.");
+var builder = WebApplication.CreateBuilder(args);
 
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
@@ -62,107 +31,42 @@ builder.Configuration
     .AddJsonFile($"API/appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
     .AddEnvironmentVariables();
 
-var configuredPublicWebRoot = builder.Configuration["Storage:PublicWebRoot"]
-    ?? Environment.GetEnvironmentVariable("NEXUM_PUBLIC_WEBROOT");
-if (!string.IsNullOrWhiteSpace(configuredPublicWebRoot))
-{
-    var publicWebRoot = Path.GetFullPath(configuredPublicWebRoot.Trim());
-    var publicUploadsRoot = Path.Combine(publicWebRoot, "uploads");
-    if (!Directory.Exists(publicUploadsRoot))
-    {
-        throw new InvalidOperationException($"Storage:PublicWebRoot deve apontar para um diretorio existente com a pasta uploads. Caminho recebido: {publicWebRoot}");
-    }
-
-    var activeWebRoot = Path.GetFullPath(builder.Environment.WebRootPath);
-    if (!string.Equals(activeWebRoot.TrimEnd(Path.DirectorySeparatorChar), publicWebRoot.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
-    {
-        throw new InvalidOperationException("Storage:PublicWebRoot deve ser fornecido no bootstrap por Storage__PublicWebRoot ou NEXUM_PUBLIC_WEBROOT.");
-    }
-}
-
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 var apiSettings = builder.Configuration.GetSection("ApiSettings");
-var secretKey = ResolveJwtSecret(builder.Configuration);
-if (Encoding.UTF8.GetByteCount(secretKey) < 32)
-{
-    throw new InvalidOperationException("JwtSettings:SecretKey deve vir de variavel de ambiente/cofre e ter ao menos 32 bytes. Configure JwtSettings__SecretKey ou JWT_SECRET_KEY no runtime.");
-}
+var secretKey = jwtSettings["SecretKey"] ?? jwtSettings["Secret"] ?? throw new InvalidOperationException("JwtSettings:SecretKey nao configurada.");
 var issuer = jwtSettings["Issuer"] ?? "NexumAltivon.API";
 var audience = jwtSettings["Audience"] ?? "NexumAltivon.Admin";
-var refreshTokenExpirationDays = jwtSettings.GetValue("RefreshTokenExpirationDays", 7);
-if (refreshTokenExpirationDays is < 1 or > 90)
-{
-    throw new InvalidOperationException("JwtSettings:RefreshTokenExpirationDays deve estar entre 1 e 90 dias.");
-}
 var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
 
-var connectionString = ResolveConfiguredConnectionString(builder.Configuration, "DefaultConnection", "NexumDb");
-var genesisConnectionString = ResolveConfiguredConnectionString(builder.Configuration, "GenesisConnection");
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? builder.Configuration.GetConnectionString("NexumDb");
 
-if (connectionString is not null)
+if (!string.IsNullOrWhiteSpace(connectionString))
 {
     var serverVersion = new MySqlServerVersion(new Version(8, 0, 0));
     builder.Services.AddDbContext<NexumDbContext>(options =>
-        options.UseMySql(
-            connectionString,
-            serverVersion,
-            mySqlOptions =>
-            {
-                mySqlOptions.EnableRetryOnFailure(5, TimeSpan.FromSeconds(2), null);
-                mySqlOptions.CommandTimeout(30);
-            }));
-}
-else
-{
-    builder.Services.AddScoped<NexumDbContext>(_ =>
-        throw new InvalidOperationException("ConnectionStrings:DefaultConnection ou ConnectionStrings:NexumDb nao configurada com valor real. Configure a conexao do banco nexum_altivon por variavel de ambiente/cofre."));
-}
-
-if (genesisConnectionString is not null)
-{
-    var genesisServerVersion = new MySqlServerVersion(new Version(8, 0, 0));
-    builder.Services.AddDbContext<GenesisDbContext>(options =>
-        options.UseMySql(
-            genesisConnectionString,
-            genesisServerVersion,
-            mySqlOptions =>
-            {
-                mySqlOptions.EnableRetryOnFailure(5, TimeSpan.FromSeconds(2), null);
-                mySqlOptions.CommandTimeout(30);
-            }));
-}
-else
-{
-    builder.Services.AddScoped<GenesisDbContext>(_ =>
-        throw new InvalidOperationException("ConnectionStrings:GenesisConnection nao configurada com valor real. Configure a conexao do banco genesis_bd por variavel de ambiente/cofre."));
+        options.UseMySql(connectionString, serverVersion));
 }
 
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("NexumCorsPolicy", policy =>
     {
-        if (builder.Environment.IsDevelopment() || builder.Environment.IsStaging())
-        {
-            policy
-                .AllowAnyOrigin()
-                .AllowAnyMethod()
-                .AllowAnyHeader();
-            return;
-        }
+        var origins = apiSettings.GetSection("CorsOrigins").Get<string[]>()
+            ?? new[]
+            {
+                "http://localhost:5000",
+                "http://localhost:5001",
+                "http://localhost:3000",
+                "https://www.nexumaltivon.com",
+                "https://admin.nexumaltivon.com"
+            };
 
-        var origins = GetCorsOrigins(builder.Configuration);
-
-        policy
-            .WithOrigins(origins)
+        policy.WithOrigins(origins)
             .AllowAnyMethod()
             .AllowAnyHeader()
             .WithExposedHeaders("Token-Expired", "X-Total-Count", "X-Page-Count");
     });
-});
-
-builder.Services.ConfigureHttpJsonOptions(options =>
-{
-    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
 });
 
 builder.Services
@@ -186,7 +90,6 @@ builder.Services
 
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy("SuperAdmin", policy => policy.RequireRole("SuperAdmin"));
     options.AddPolicy("Gerente", policy => policy.RequireRole("SuperAdmin", "Admin", "Gerente"));
     options.AddPolicy("Admin", policy => policy.RequireRole("SuperAdmin", "Admin"));
     options.AddPolicy("Financeiro", policy => policy.RequireRole("SuperAdmin", "Admin", "Gerente", "Financeiro"));
@@ -200,16 +103,37 @@ builder.Services.AddSwaggerGen(options =>
     options.SwaggerDoc("v1", new OpenApiInfo
     {
         Title = "Nexum Altivon API",
-        Version = $"v{releaseVersion}",
+        Version = "v1.1.5",
         Description = "API funcional inicial para site e painel administrativo Nexum Altivon."
+    });
+
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Description = "Informe: Bearer {token}",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey,
+        Scheme = "Bearer"
+    });
+
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
     });
 });
 
 builder.Services.AddHealthChecks();
-builder.Services.AddScoped<ITenantContext, TenantContext>();
 builder.Services.AddSingleton<IFiscalRoutingEngine, FiscalRoutingEngine>();
-builder.Services.AddSingleton<FinancePdfReportService>();
-builder.Services.AddScoped<LogisticaTrackingService>();
 builder.Services.AddHttpClient("mercado-pago", client =>
 {
     client.BaseAddress = new Uri("https://api.mercadopago.com/");
@@ -218,104 +142,33 @@ builder.Services.AddHttpClient("mercado-pago", client =>
 builder.Services.AddHttpClient("melhor-envio", client =>
 {
     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-    client.DefaultRequestHeaders.UserAgent.ParseAdd($"NexumAltivon/{releaseVersion}");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("NexumAltivon/1.1.5");
 });
 builder.Services.AddHttpClient("mercado-livre", client =>
 {
     client.BaseAddress = new Uri("https://api.mercadolibre.com/");
     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 });
-builder.Services.AddHttpClient("marketplace-sync", client =>
-{
-    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-    client.DefaultRequestHeaders.UserAgent.ParseAdd($"GenesisGest.Net/{releaseVersion}");
-});
-builder.Services.AddHttpClient("fiscal-sefaz", client =>
-{
-    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-    client.DefaultRequestHeaders.UserAgent.ParseAdd($"GenesisGest.Net/{releaseVersion}");
-});
 builder.Services.AddHttpClient("Notificacoes", client =>
 {
     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 });
-builder.Services.AddHttpClient("OpenAI", client =>
-{
-    var baseUrl = builder.Configuration["OpenAI:BaseUrl"]
-        ?? Environment.GetEnvironmentVariable("OPENAI_API_BASE_URL")
-        ?? "https://api.openai.com/v1/";
-    client.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
-    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-    client.Timeout = TimeSpan.FromSeconds(30);
-});
 builder.Services.AddScoped<INotificacaoService, NotificacaoService>();
-builder.Services.AddScoped<IAssistenteIaService, AssistenteIaService>();
-builder.Services.AddScoped<IOpenAiCredentialStore, DatabaseOpenAiCredentialStore>();
-builder.Services.AddScoped<IAnexoStorageService, AnexoStorageService>();
 
-var defaultDataProtectionKeysPath = builder.Environment.IsProduction()
-    ? Directory.GetParent(builder.Environment.ContentRootPath)?.FullName
-    : Path.GetTempPath();
-var configuredDataProtectionKeysPath = TrimOrNull(builder.Configuration["DataProtection:KeysPath"]);
-var dataProtectionKeysPath = configuredDataProtectionKeysPath is null
-    ? defaultDataProtectionKeysPath
-    : Path.GetFullPath(configuredDataProtectionKeysPath, builder.Environment.ContentRootPath);
-if (string.IsNullOrWhiteSpace(dataProtectionKeysPath) || !Directory.Exists(dataProtectionKeysPath))
-{
-    throw new InvalidOperationException($"Diretorio persistente de Data Protection inexistente: {dataProtectionKeysPath ?? "nao_resolvido"}. Configure DataProtection__KeysPath com um diretorio existente.");
-}
-
-var dataProtectionBuilder = builder.Services
+builder.Services
     .AddDataProtection()
-    .SetApplicationName("GenesisGest.Net.v1.1.5")
-    .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath));
-if (OperatingSystem.IsWindows())
-{
-    dataProtectionBuilder.ProtectKeysWithDpapi(protectToLocalMachine: true);
-}
+    .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(Path.GetTempPath(), "nexum-altivon-api-keys")));
 
-Console.WriteLine("[NexumStartup] Montando aplicacao.");
 var app = builder.Build();
-Console.WriteLine("[NexumStartup] Aplicacao montada.");
 
-if (app.Configuration.GetValue("OperationalSchema:Enabled", true))
-{
-    await EnsureOperationalSchemaAsync(app.Services, app.Logger);
-}
-else
-{
-    app.Logger.LogInformation("Operational schema check disabled by configuration.");
-}
+await EnsureOperationalSchemaAsync(app.Services, app.Logger);
 
 app.UseCors("NexumCorsPolicy");
-app.UseStaticFiles(new StaticFileOptions
-{
-    OnPrepareResponse = context =>
-    {
-        if (context.Context.Request.Path.StartsWithSegments("/uploads"))
-        {
-            var fileName = Path.GetFileName(context.Context.Request.Path.Value) ?? string.Empty;
-            if (fileName.StartsWith("site-", StringComparison.OrdinalIgnoreCase))
-            {
-                context.Context.Response.Headers.CacheControl = "no-store,no-cache,must-revalidate,max-age=0";
-                context.Context.Response.Headers["CDN-Cache-Control"] = "no-store";
-                context.Context.Response.Headers.Pragma = "no-cache";
-                context.Context.Response.Headers.Expires = "0";
-            }
-            else
-            {
-                context.Context.Response.Headers.CacheControl = "public,max-age=31536000,immutable";
-            }
-
-            context.Context.Response.Headers["X-Content-Type-Options"] = "nosniff";
-        }
-    }
-});
-
-app.UseSwagger();
+app.UseStaticFiles();
 
 if (app.Environment.IsDevelopment() || app.Environment.IsStaging())
 {
+    app.UseSwagger();
     app.UseSwaggerUI(options =>
     {
         options.SwaggerEndpoint("/swagger/v1/swagger.json", "Nexum Altivon API v1");
@@ -324,1203 +177,30 @@ if (app.Environment.IsDevelopment() || app.Environment.IsStaging())
 }
 
 app.UseAuthentication();
-app.UseMiddleware<TenantResolverMiddleware>();
 app.UseAuthorization();
 
-app.MapGet("/api/health", () => Results.Text("Healthy", "text/plain")).AllowAnonymous();
-app.MapGet("/api/health/db", (CancellationToken ct) =>
-    CheckMySqlHealthAsync(connectionString, "sem_banco_configurado", "nexum_altivon", ct)).AllowAnonymous();
-
-app.MapGet("/api/health/db/genesis", (CancellationToken ct) =>
-    CheckMySqlHealthAsync(genesisConnectionString, "sem_genesis_configurado", "genesis_bd", ct)).AllowAnonymous();
-
-app.MapGet("/api/health/redis", async (IConfiguration configuration, CancellationToken ct) =>
+app.MapGet("/health", () => Results.Text("Healthy", "text/plain"));
+app.MapGet("/health/db", async (IServiceProvider services, CancellationToken ct) =>
 {
-    var redisConnection = TrimOrNull(
-        configuration["Redis:ConnectionString"]
-        ?? configuration["Hangfire:Storage:Redis"]
-        ?? Environment.GetEnvironmentVariable("REDIS_CONNECTION_STRING"));
-
-    if (redisConnection is null)
+    if (string.IsNullOrWhiteSpace(connectionString))
     {
-        return Results.Ok(new { status = "sem_redis_configurado" });
-    }
-
-    if (!TryResolveRedisEndpoint(redisConnection, out var host, out var port, out var error))
-    {
-        return Results.BadRequest(new { status = "redis_configuracao_invalida", erro = error });
+        return Results.Ok(new { status = "sem_banco_configurado" });
     }
 
     try
     {
-        using var redisSocket = new TcpClient();
-        await redisSocket.ConnectAsync(host, port, ct);
-
-        return Results.Ok(new
-        {
-            status = "Healthy",
-            host,
-            port
-        });
-    }
-    catch (OperationCanceledException)
-    {
-        throw;
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexumDbContext>();
+        var canConnect = await db.Database.CanConnectAsync(ct);
+        return canConnect
+            ? Results.Ok(new { status = "Healthy" })
+            : Results.Problem("Banco configurado, mas sem conexÃ£o.");
     }
     catch (Exception ex)
     {
-        return Results.Problem($"Redis configurado, mas sem conexao em {host}:{port}. {ex.Message}");
-    }
-})
-.AllowAnonymous()
-.WithName("HealthRedis");
-
-app.MapPost("/api/assistentes/yara/mensagem", async (
-    AssistenteMensagemRequest request,
-    IAssistenteIaService assistenteIa,
-    NexumDbContext db,
-    CancellationToken ct) =>
-{
-    try
-    {
-        var contextoOperacional = await BuildYaraOperationalContextAsync(db, request.Mensagem, ct);
-        var resposta = await assistenteIa.ResponderYaraAsync(request with { ContextoOperacional = contextoOperacional }, ct);
-        return Results.Ok(ApiResponse<AssistenteIaResposta>.Ok(resposta, "Mensagem processada pela Yara."));
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(ApiResponse<string>.Erro(ex.Message));
-    }
-    catch (InvalidOperationException ex)
-    {
-        return Results.Problem(
-            title: "Assistente de IA indisponivel",
-            detail: ex.Message,
-            statusCode: StatusCodes.Status503ServiceUnavailable);
-    }
-})
-.AllowAnonymous()
-.WithName("AssistenteYaraMensagem");
-
-app.MapPost("/api/assistentes/mensagem", () => Results.Problem(
-    title: "Rota de assistentes substituida",
-    detail: "O atendimento publico utiliza exclusivamente /api/assistentes/yara/mensagem. Sophia permanece restrita ao backend administrativo.",
-    statusCode: StatusCodes.Status410Gone))
-.AllowAnonymous()
-.WithName("AssistentesMensagemDescontinuada");
-
-app.MapPost("/api/assistentes/sophia/mensagem", async (
-    AssistenteMensagemRequest request,
-    IAssistenteIaService assistenteIa,
-    CancellationToken ct) =>
-{
-    try
-    {
-        var resposta = await assistenteIa.ResponderSophiaAsync(request, ct);
-        return Results.Ok(ApiResponse<AssistenteIaResposta>.Ok(resposta, "Mensagem processada pela Sophia."));
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(ApiResponse<string>.Erro(ex.Message));
-    }
-    catch (InvalidOperationException ex)
-    {
-        return Results.Problem(
-            title: "Assistente de IA indisponivel",
-            detail: ex.Message,
-            statusCode: StatusCodes.Status503ServiceUnavailable);
-    }
-})
-.RequireAuthorization("Admin")
-.WithName("AssistenteSophiaMensagem");
-
-app.MapGet("/api/admin/integracoes/openai", async (
-    IAssistenteIaService assistenteIa,
-    CancellationToken ct) =>
-{
-    try
-    {
-        var status = await assistenteIa.ObterStatusAsync(ct);
-        return Results.Ok(ApiResponse<OpenAiAssistentesStatus>.Ok(status, "Configuracao OpenAI consultada no banco oficial."));
-    }
-    catch (InvalidOperationException ex)
-    {
-        return Results.Problem(
-            title: "Falha ao consultar configuracao OpenAI",
-            detail: ex.Message,
-            statusCode: StatusCodes.Status500InternalServerError);
-    }
-})
-.RequireAuthorization("SuperAdmin")
-.WithName("OpenAiAssistentesStatus");
-
-app.MapPut("/api/admin/integracoes/openai", async (
-    OpenAiAssistentesConfiguracaoRequest request,
-    IAssistenteIaService assistenteIa,
-    HttpContext httpContext,
-    CancellationToken ct) =>
-{
-    try
-    {
-        var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "usuario-administrativo";
-        var status = await assistenteIa.ConfigurarAsync(request, userId, ct);
-        return Results.Ok(ApiResponse<OpenAiAssistentesStatus>.Ok(status, "Chaves OpenAI validadas, criptografadas e confirmadas no banco oficial."));
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(ApiResponse<string>.Erro(ex.Message));
-    }
-    catch (InvalidOperationException ex)
-    {
-        return Results.Problem(
-            title: "Configuracao OpenAI recusada",
-            detail: ex.Message,
-            statusCode: StatusCodes.Status424FailedDependency);
-    }
-})
-.RequireAuthorization("SuperAdmin")
-.WithName("OpenAiAssistentesConfigurar");
-
-app.MapGet("/api/anexos/status", (IAnexoStorageService storage) =>
-{
-    return Results.Ok(ApiResponse<AnexoStorageStatusDto>.Ok(storage.ObterStatus(), "Storage de anexos verificado."));
-})
-.AllowAnonymous()
-.WithName("AnexosStatus");
-
-app.MapPost("/api/anexos/assinar-upload", [Authorize(Policy = "Gerente")] (
-    AnexoSignedUrlRequest request,
-    IAnexoStorageService storage,
-    HttpContext httpContext) =>
-{
-    try
-    {
-        var signedUrl = storage.CriarUrlAssinada(request, httpContext, "PUT");
-        return Results.Ok(ApiResponse<AnexoSignedUrlDto>.Ok(signedUrl, "Url de upload assinada."));
-    }
-    catch (InvalidOperationException ex)
-    {
-        return Results.BadRequest(ApiResponse<AnexoSignedUrlDto>.Erro(ex.Message));
-    }
-})
-.WithName("AnexosAssinarUpload");
-
-app.MapPost("/api/anexos/assinar-download", [Authorize(Policy = "Gerente")] (
-    AnexoSignedUrlRequest request,
-    IAnexoStorageService storage,
-    HttpContext httpContext) =>
-{
-    try
-    {
-        var signedUrl = storage.CriarUrlAssinada(request, httpContext, "GET");
-        return Results.Ok(ApiResponse<AnexoSignedUrlDto>.Ok(signedUrl, "Url de download assinada."));
-    }
-    catch (InvalidOperationException ex)
-    {
-        return Results.BadRequest(ApiResponse<AnexoSignedUrlDto>.Erro(ex.Message));
-    }
-})
-.WithName("AnexosAssinarDownload");
-
-app.MapPut("/api/anexos/upload/{**storageKey}", async (
-    string storageKey,
-    HttpRequest request,
-    IAnexoStorageService storage,
-    CancellationToken ct) =>
-{
-    if (!storage.ValidarUrlLocal("PUT", storageKey, request.Query, out _))
-    {
-        return Results.Unauthorized();
-    }
-
-    try
-    {
-        var uploaded = await storage.SalvarUploadLocalAsync(storageKey, request, ct);
-        return Results.Ok(ApiResponse<AnexoLocalUploadDto>.Ok(uploaded, "Anexo gravado."));
-    }
-    catch (InvalidOperationException ex)
-    {
-        return Results.BadRequest(ApiResponse<AnexoLocalUploadDto>.Erro(ex.Message));
-    }
-})
-.AllowAnonymous()
-.WithName("AnexosUploadAssinado");
-
-app.MapGet("/api/anexos/download/{**storageKey}", async (
-    string storageKey,
-    HttpRequest request,
-    IAnexoStorageService storage,
-    CancellationToken ct) =>
-{
-    if (!storage.ValidarUrlLocal("GET", storageKey, request.Query, out _))
-    {
-        return Results.Unauthorized();
-    }
-
-    var download = await storage.AbrirDownloadLocalAsync(storageKey, ct);
-    if (download is null)
-    {
-        return Results.NotFound(ApiResponse<object>.Erro("Anexo nao encontrado."));
-    }
-
-    return Results.File(download.Stream, download.ContentType, download.FileName, enableRangeProcessing: true);
-})
-.AllowAnonymous()
-.WithName("AnexosDownloadAssinado");
-
-app.MapGet("/api/erp/genesis/financeiro/resumo", async (GenesisDbContext db, CancellationToken ct) =>
-{
-    var resumo = await GenesisFinanceService.GetResumoAsync(db, ct);
-    return Results.Ok(ApiResponse<GenesisFinanceSummaryDto>.Ok(resumo, "Resumo financeiro carregado do banco GenesisGest.Net."));
-})
-.RequireAuthorization("Financeiro")
-.WithName("GenesisFinanceiroResumo");
-
-app.MapGet("/api/erp/genesis/financeiro/contas-pagar", async (GenesisDbContext db, CancellationToken ct) =>
-{
-    var itens = await GenesisFinanceService.ListarContasPagarAsync(db, ct);
-    return Results.Ok(ApiResponse<List<GenesisContaPagarDto>>.Ok(itens, "Contas a pagar carregadas do banco GenesisGest.Net.", itens.Count));
-})
-.RequireAuthorization("Financeiro")
-.WithName("GenesisContasPagarListar");
-
-app.MapGet("/api/erp/genesis/financeiro/contas-receber", async (GenesisDbContext db, CancellationToken ct) =>
-{
-    var itens = await GenesisFinanceService.ListarContasReceberAsync(db, ct);
-    return Results.Ok(ApiResponse<List<GenesisContaReceberDto>>.Ok(itens, "Contas a receber carregadas do banco GenesisGest.Net.", itens.Count));
-})
-.RequireAuthorization("Financeiro")
-.WithName("GenesisContasReceberListar");
-
-app.MapGet("/api/erp/genesis/financeiro/contas-pagar/relatorio.pdf", async (
-    DateTime? inicio,
-    DateTime? fim,
-    string? status,
-    GenesisDbContext db,
-    ITenantContext tenantContext,
-    FinancePdfReportService reports,
-    CancellationToken ct) =>
-{
-    try
-    {
-        var itens = await GenesisFinanceService.ListarContasPagarAsync(db, inicio, fim, status, ct);
-        if (itens.Count == 0)
-        {
-            return Results.NotFound(ApiResponse<object>.Erro("Nenhuma conta a pagar foi encontrada para os filtros informados."));
-        }
-
-        var generatedAtUtc = DateTime.UtcNow;
-        var pdf = reports.CreatePayablesReport(itens, tenantContext.TenantId, inicio, fim, status, generatedAtUtc);
-        return Results.File(
-            pdf,
-            "application/pdf",
-            $"genesis-contas-pagar-{generatedAtUtc:yyyyMMdd-HHmmss}.pdf");
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(ApiResponse<object>.Erro(ex.Message));
-    }
-})
-.RequireAuthorization("Financeiro")
-.WithName("GenesisContasPagarRelatorioPdf");
-
-app.MapGet("/api/erp/genesis/financeiro/contas-receber/relatorio.pdf", async (
-    DateTime? inicio,
-    DateTime? fim,
-    string? status,
-    GenesisDbContext db,
-    ITenantContext tenantContext,
-    FinancePdfReportService reports,
-    CancellationToken ct) =>
-{
-    try
-    {
-        var itens = await GenesisFinanceService.ListarContasReceberAsync(db, inicio, fim, status, ct);
-        if (itens.Count == 0)
-        {
-            return Results.NotFound(ApiResponse<object>.Erro("Nenhuma conta a receber foi encontrada para os filtros informados."));
-        }
-
-        var generatedAtUtc = DateTime.UtcNow;
-        var pdf = reports.CreateReceivablesReport(itens, tenantContext.TenantId, inicio, fim, status, generatedAtUtc);
-        return Results.File(
-            pdf,
-            "application/pdf",
-            $"genesis-contas-receber-{generatedAtUtc:yyyyMMdd-HHmmss}.pdf");
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(ApiResponse<object>.Erro(ex.Message));
-    }
-})
-.RequireAuthorization("Financeiro")
-.WithName("GenesisContasReceberRelatorioPdf");
-
-app.MapPost("/api/erp/genesis/financeiro/contas-pagar", async (
-    GenesisDbContext db,
-    NexumDbContext auditDb,
-    GenesisContaPagarCreateRequest request,
-    ClaimsPrincipal principal,
-    HttpContext httpContext,
-    CancellationToken ct) =>
-{
-    try
-    {
-        var created = await GenesisFinanceService.CriarContaPagarAsync(db, request, ct);
-        auditDb.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "erp_contas_pagar", created.Id, AcaoAuditoria.INSERT, null, created));
-        await auditDb.SaveChangesAsync(ct);
-        return Results.Created(
-            $"/api/erp/genesis/financeiro/contas-pagar/{created.Id}",
-            ApiResponse<GenesisContaPagarDto>.Ok(created, "Conta a pagar persistida e relida do banco GenesisGest.Net."));
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(ApiResponse<GenesisContaPagarDto>.Erro(ex.Message));
-    }
-    catch (InvalidOperationException ex) when (ex.Message.StartsWith("Ja existe", StringComparison.Ordinal))
-    {
-        return Results.Conflict(ApiResponse<GenesisContaPagarDto>.Erro(ex.Message));
-    }
-})
-.RequireAuthorization("Financeiro")
-.WithName("GenesisContasPagarCriar");
-
-app.MapPost("/api/erp/genesis/financeiro/contas-receber", async (
-    GenesisDbContext db,
-    NexumDbContext auditDb,
-    GenesisContaReceberCreateRequest request,
-    ClaimsPrincipal principal,
-    HttpContext httpContext,
-    CancellationToken ct) =>
-{
-    try
-    {
-        var created = await GenesisFinanceService.CriarContaReceberAsync(db, request, ct);
-        auditDb.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "erp_contas_receber", created.Id, AcaoAuditoria.INSERT, null, created));
-        await auditDb.SaveChangesAsync(ct);
-        return Results.Created(
-            $"/api/erp/genesis/financeiro/contas-receber/{created.Id}",
-            ApiResponse<GenesisContaReceberDto>.Ok(created, "Conta a receber persistida e relida do banco GenesisGest.Net."));
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(ApiResponse<GenesisContaReceberDto>.Erro(ex.Message));
-    }
-    catch (InvalidOperationException ex) when (ex.Message.StartsWith("Ja existe", StringComparison.Ordinal))
-    {
-        return Results.Conflict(ApiResponse<GenesisContaReceberDto>.Erro(ex.Message));
-    }
-})
-.RequireAuthorization("Financeiro")
-.WithName("GenesisContasReceberCriar");
-
-app.MapPost("/api/erp/genesis/financeiro/contas-pagar/{id:int}/baixa", async (
-    int id,
-    GenesisDbContext db,
-    NexumDbContext auditDb,
-    GenesisBaixaPagarRequest request,
-    ClaimsPrincipal principal,
-    HttpContext httpContext,
-    CancellationToken ct) =>
-{
-    try
-    {
-        var anterior = await GenesisFinanceService.ObterContaPagarAsync(db, id, ct);
-        if (anterior is null)
-        {
-            return Results.NotFound(ApiResponse<GenesisContaPagarDto>.Erro("Conta a pagar nao encontrada."));
-        }
-
-        var updated = await GenesisFinanceService.BaixarContaPagarAsync(db, id, request, ct);
-        if (updated is null)
-        {
-            return Results.NotFound(ApiResponse<GenesisContaPagarDto>.Erro("Conta a pagar deixou de existir durante a baixa."));
-        }
-
-        auditDb.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "erp_contas_pagar", id, AcaoAuditoria.UPDATE, anterior, updated));
-        await auditDb.SaveChangesAsync(ct);
-        return Results.Ok(ApiResponse<GenesisContaPagarDto>.Ok(updated, "Baixa da conta a pagar persistida e relida do banco GenesisGest.Net."));
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(ApiResponse<GenesisContaPagarDto>.Erro(ex.Message));
-    }
-})
-.RequireAuthorization("Financeiro")
-.WithName("GenesisContasPagarBaixar");
-
-app.MapPost("/api/erp/genesis/financeiro/contas-receber/{id:int}/baixa", async (
-    int id,
-    GenesisDbContext db,
-    NexumDbContext auditDb,
-    GenesisBaixaReceberRequest request,
-    ClaimsPrincipal principal,
-    HttpContext httpContext,
-    CancellationToken ct) =>
-{
-    try
-    {
-        var anterior = await GenesisFinanceService.ObterContaReceberAsync(db, id, ct);
-        if (anterior is null)
-        {
-            return Results.NotFound(ApiResponse<GenesisContaReceberDto>.Erro("Conta a receber nao encontrada."));
-        }
-
-        var updated = await GenesisFinanceService.BaixarContaReceberAsync(db, id, request, ct);
-        if (updated is null)
-        {
-            return Results.NotFound(ApiResponse<GenesisContaReceberDto>.Erro("Conta a receber deixou de existir durante o recebimento."));
-        }
-
-        auditDb.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "erp_contas_receber", id, AcaoAuditoria.UPDATE, anterior, updated));
-        await auditDb.SaveChangesAsync(ct);
-        return Results.Ok(ApiResponse<GenesisContaReceberDto>.Ok(updated, "Baixa da conta a receber persistida e relida do banco GenesisGest.Net."));
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(ApiResponse<GenesisContaReceberDto>.Erro(ex.Message));
-    }
-})
-.RequireAuthorization("Financeiro")
-.WithName("GenesisContasReceberBaixar");
-
-app.MapGet("/api/erp/genesis/financeiro/boletos", async (GenesisDbContext db, CancellationToken ct) =>
-{
-    var boletos = await GenesisFinanceService.ListarBoletosAsync(db, ct);
-    return Results.Ok(boletos);
-})
-.RequireAuthorization("Financeiro");
-
-app.MapPost("/api/erp/genesis/financeiro/boletos", async (GenesisDbContext db, GenesisBoletoCreateRequest request, CancellationToken ct) =>
-{
-    var created = await GenesisFinanceService.CriarBoletoAsync(db, request, ct);
-    return Results.Created($"/api/erp/genesis/financeiro/boletos/{created.Id}", created);
-})
-.RequireAuthorization("Financeiro");
-
-app.MapGet("/api/erp/genesis/financeiro/referencias", async (GenesisDbContext db, string? tipo, CancellationToken ct) =>
-{
-    var referencias = await GenesisFinanceService.ListarReferenciasAsync(db, tipo, ct);
-    return Results.Ok(referencias);
-})
-.RequireAuthorization("Financeiro");
-
-app.MapPost("/api/erp/genesis/financeiro/referencias", async (GenesisDbContext db, GenesisFinanceReferenciaCreateRequest request, CancellationToken ct) =>
-{
-    try
-    {
-        var created = await GenesisFinanceService.CriarReferenciaAsync(db, request, ct);
-        return Results.Created($"/api/erp/genesis/financeiro/referencias/{created.Id}", created);
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(new { erro = ex.Message });
-    }
-})
-.RequireAuthorization("Financeiro");
-
-app.MapGet("/api/erp/genesis/pdv/vendas", async (GenesisDbContext genesisDb, int? limite, CancellationToken ct) =>
-{
-    var vendas = await GenesisPdvService.ListarVendasRecentesAsync(genesisDb, limite ?? 50, ct);
-    return Results.Ok(vendas);
-})
-.RequireAuthorization("Gerente");
-
-app.MapPost("/api/erp/genesis/pdv/vendas", async (
-    GenesisPdvVendaRequest request,
-    GenesisDbContext genesisDb,
-    NexumDbContext nexumDb,
-    CancellationToken ct) =>
-{
-    try
-    {
-        var venda = await GenesisPdvService.RegistrarVendaAsync(genesisDb, nexumDb, request, ct);
-        return Results.Created($"/api/erp/genesis/pdv/vendas/{venda.Id}", venda);
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(new { erro = ex.Message });
-    }
-})
-.RequireAuthorization("Gerente");
-
-app.MapPost("/api/desktop/genesis/pdv/vendas", async (
-    HttpRequest httpRequest,
-    IConfiguration configuration,
-    GenesisPdvVendaRequest request,
-    GenesisDbContext genesisDb,
-    NexumDbContext nexumDb,
-    CancellationToken ct) =>
-{
-    if (!ValidateDesktopTerminalAccess(httpRequest, configuration, out var terminalIdentity, out var rejection))
-    {
-        return Results.Unauthorized();
-    }
-
-    try
-    {
-        var venda = await GenesisPdvService.RegistrarVendaAsync(genesisDb, nexumDb, request, ct);
-        return Results.Created($"/api/desktop/genesis/pdv/vendas/{venda.Id}", new
-        {
-            origem = terminalIdentity,
-            gravadoNoServidor = true,
-            venda
-        });
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(new { erro = ex.Message });
+        return Results.Problem(ex.Message);
     }
 });
-
-app.MapPost("/api/desktop/genesis/operacoes/{module}", async (
-    string module,
-    HttpRequest httpRequest,
-    IConfiguration configuration,
-    GenesisDesktopOperationRequest request,
-    GenesisDbContext genesisDb,
-    CancellationToken ct) =>
-{
-    if (!ValidateDesktopTerminalAccess(httpRequest, configuration, out var terminalIdentity, out var rejection))
-    {
-        return Results.Unauthorized();
-    }
-
-    try
-    {
-        var operacao = await GenesisDesktopOperationService.RegistrarOperacaoAsync(
-            genesisDb,
-            module,
-            request,
-            terminalIdentity,
-            ct);
-
-        return Results.Created($"/api/desktop/genesis/operacoes/{module}/{operacao.Id}", operacao);
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(new { erro = ex.Message });
-    }
-});
-
-app.MapGet("/api/erp/genesis/rh/resumo", async (GenesisDbContext db, CancellationToken ct) =>
-{
-    var resumo = await GenesisRhService.GetResumoAsync(db, ct);
-    return Results.Ok(resumo);
-})
-.RequireAuthorization("RH");
-
-app.MapGet("/api/erp/genesis/rh/colaboradores", async (GenesisDbContext db, CancellationToken ct) =>
-{
-    var colaboradores = await GenesisRhService.GetColaboradoresAsync(db, ct);
-    return Results.Ok(colaboradores);
-})
-.RequireAuthorization("RH");
-
-app.MapPost("/api/erp/genesis/rh/colaboradores", async (GenesisDbContext db, GenesisRhColaboradorUpsertRequest request, CancellationToken ct) =>
-{
-    var created = await GenesisRhService.CriarColaboradorAsync(db, request, ct);
-    return Results.Created($"/api/erp/genesis/rh/colaboradores/{created.Id}", created);
-})
-.RequireAuthorization("RH");
-
-app.MapPut("/api/erp/genesis/rh/colaboradores/{id:int}", async (int id, GenesisDbContext db, GenesisRhColaboradorUpsertRequest request, CancellationToken ct) =>
-{
-    var updated = await GenesisRhService.AtualizarColaboradorAsync(db, id, request, ct);
-    return updated is null ? Results.NotFound() : Results.Ok(updated);
-})
-.RequireAuthorization("RH");
-
-app.MapPatch("/api/erp/genesis/rh/colaboradores/{id:int}/status", async (int id, GenesisDbContext db, GenesisRhStatusUpdateRequest request, CancellationToken ct) =>
-{
-    var updated = await GenesisRhService.AtualizarStatusAsync(db, id, request.Status, ct);
-    return updated is null ? Results.NotFound() : Results.Ok(updated);
-})
-.RequireAuthorization("RH");
-
-app.MapGet("/api/erp/genesis/rh/referencias", async (GenesisDbContext db, string? tipo, CancellationToken ct) =>
-{
-    var referencias = await GenesisRhService.ListarReferenciasAsync(db, tipo, ct);
-    return Results.Ok(referencias);
-})
-.RequireAuthorization("RH");
-
-app.MapPost("/api/erp/genesis/rh/referencias", async (GenesisDbContext db, GenesisRhReferenciaCreateRequest request, CancellationToken ct) =>
-{
-    try
-    {
-        var created = await GenesisRhService.CriarReferenciaAsync(db, request, ct);
-        return Results.Created($"/api/erp/genesis/rh/referencias/{created.Id}", created);
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(new { erro = ex.Message });
-    }
-})
-.RequireAuthorization("RH");
-
-app.MapGet("/api/ops/ativos", [Authorize(Policy = "Gerente")] async (
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    string? status,
-    CancellationToken ct) =>
-{
-    var statusFiltro = NormalizeBusinessKey(status);
-    var ativos = await db.Database.SqlQueryRaw<OpsAtivoDto>(
-        """
-        SELECT
-            oat_id AS Id,
-            oat_codigo AS Codigo,
-            oat_nome AS Nome,
-            oat_tipo AS Tipo,
-            oat_localizacao AS Localizacao,
-            oat_status AS Status,
-            oat_fabricante AS Fabricante,
-            oat_modelo AS Modelo,
-            oat_numero_serie AS NumeroSerie,
-            oat_proxima_manutencao AS ProximaManutencao,
-            oat_created_at AS CriadoEm,
-            oat_updated_at AS AtualizadoEm
-        FROM ops_ativos
-        WHERE tenant_id = {0}
-          AND is_deleted = 0
-          AND ({1} IS NULL OR oat_status = {1})
-        ORDER BY oat_nome
-        """,
-        tenantContext.TenantId.ToString(),
-        (object?)statusFiltro ?? DBNull.Value)
-        .ToListAsync(ct);
-
-    return Results.Ok(ApiResponse<List<OpsAtivoDto>>.Ok(ativos, "Ativos operacionais carregados."));
-})
-.WithName("OpsAtivosListar");
-
-app.MapPost("/api/ops/ativos", [Authorize(Policy = "Gerente")] async (
-    OpsAtivoRequest request,
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    CancellationToken ct) =>
-{
-    var codigo = NormalizeBusinessKey(request.Codigo);
-    var nome = TrimOrNull(request.Nome);
-    var tipo = NormalizeBusinessKey(request.Tipo) ?? "EQUIPAMENTO";
-    var statusAtivo = NormalizeBusinessKey(request.Status) ?? "ATIVO";
-    if (string.IsNullOrWhiteSpace(codigo) || string.IsNullOrWhiteSpace(nome))
-    {
-        return Results.BadRequest(ApiResponse<OpsAtivoDto>.Erro("Codigo e nome do ativo sao obrigatorios."));
-    }
-
-    await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        INSERT INTO ops_ativos
-            (tenant_id, oat_codigo, oat_nome, oat_tipo, oat_localizacao, oat_status, oat_fabricante, oat_modelo, oat_numero_serie, oat_proxima_manutencao, oat_created_at, oat_updated_at)
-        VALUES
-            ({tenantContext.TenantId.ToString()}, {codigo}, {nome}, {tipo}, {TrimOrNull(request.Localizacao)}, {statusAtivo}, {TrimOrNull(request.Fabricante)}, {TrimOrNull(request.Modelo)}, {TrimOrNull(request.NumeroSerie)}, {request.ProximaManutencao}, UTC_TIMESTAMP(), UTC_TIMESTAMP())
-        """,
-        ct);
-
-    var id = await ExecuteScalarAsync<int>(db, "SELECT LAST_INSERT_ID();", ct);
-    var response = new OpsAtivoDto(id, codigo, nome, tipo, TrimOrNull(request.Localizacao), statusAtivo, TrimOrNull(request.Fabricante), TrimOrNull(request.Modelo), TrimOrNull(request.NumeroSerie), request.ProximaManutencao, DateTime.UtcNow, DateTime.UtcNow);
-    return Results.Created($"/api/ops/ativos/{id}", ApiResponse<OpsAtivoDto>.Ok(response, "Ativo operacional criado."));
-})
-.WithName("OpsAtivosCriar");
-
-app.MapPut("/api/ops/ativos/{id:int}", [Authorize(Policy = "Gerente")] async (
-    int id,
-    OpsAtivoRequest request,
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    CancellationToken ct) =>
-{
-    var codigo = NormalizeBusinessKey(request.Codigo);
-    var nome = TrimOrNull(request.Nome);
-    var tipo = NormalizeBusinessKey(request.Tipo) ?? "EQUIPAMENTO";
-    var statusAtivo = NormalizeBusinessKey(request.Status) ?? "ATIVO";
-    if (string.IsNullOrWhiteSpace(codigo) || string.IsNullOrWhiteSpace(nome))
-    {
-        return Results.BadRequest(ApiResponse<OpsAtivoDto>.Erro("Codigo e nome do ativo sao obrigatorios."));
-    }
-
-    var affected = await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        UPDATE ops_ativos
-        SET oat_codigo = {codigo},
-            oat_nome = {nome},
-            oat_tipo = {tipo},
-            oat_localizacao = {TrimOrNull(request.Localizacao)},
-            oat_status = {statusAtivo},
-            oat_fabricante = {TrimOrNull(request.Fabricante)},
-            oat_modelo = {TrimOrNull(request.Modelo)},
-            oat_numero_serie = {TrimOrNull(request.NumeroSerie)},
-            oat_proxima_manutencao = {request.ProximaManutencao},
-            oat_updated_at = UTC_TIMESTAMP()
-        WHERE oat_id = {id} AND tenant_id = {tenantContext.TenantId.ToString()} AND is_deleted = 0
-        """,
-        ct);
-
-    if (affected == 0)
-    {
-        return Results.NotFound(ApiResponse<OpsAtivoDto>.Erro("Ativo operacional nao encontrado."));
-    }
-
-    var response = new OpsAtivoDto(id, codigo, nome, tipo, TrimOrNull(request.Localizacao), statusAtivo, TrimOrNull(request.Fabricante), TrimOrNull(request.Modelo), TrimOrNull(request.NumeroSerie), request.ProximaManutencao, DateTime.UtcNow, DateTime.UtcNow);
-    return Results.Ok(ApiResponse<OpsAtivoDto>.Ok(response, "Ativo operacional atualizado."));
-})
-.WithName("OpsAtivosAtualizar");
-
-app.MapDelete("/api/ops/ativos/{id:int}", [Authorize(Policy = "Gerente")] async (
-    int id,
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    CancellationToken ct) =>
-{
-    var affected = await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        UPDATE ops_ativos
-        SET is_deleted = 1,
-            deleted_at = UTC_TIMESTAMP(),
-            oat_status = 'INATIVO',
-            oat_updated_at = UTC_TIMESTAMP()
-        WHERE oat_id = {id} AND tenant_id = {tenantContext.TenantId.ToString()} AND is_deleted = 0
-        """,
-        ct);
-
-    return affected == 0
-        ? Results.NotFound(ApiResponse<object>.Erro("Ativo operacional nao encontrado."))
-        : Results.NoContent();
-})
-.WithName("OpsAtivosExcluir");
-
-app.MapGet("/api/ops/ordens-servico", [Authorize(Policy = "Gerente")] async (
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    string? status,
-    CancellationToken ct) =>
-{
-    var statusFiltro = NormalizeBusinessKey(status);
-    var ordens = await db.Database.SqlQueryRaw<OpsOrdemServicoDto>(
-        """
-        SELECT
-            oso_id AS Id,
-            oso_numero AS Numero,
-            oso_ativo_id AS AtivoId,
-            oso_titulo AS Titulo,
-            oso_descricao AS Descricao,
-            oso_status AS Status,
-            oso_prioridade AS Prioridade,
-            oso_responsavel_user_id AS ResponsavelUserId,
-            oso_data_abertura AS DataAbertura,
-            oso_data_prevista AS DataPrevista,
-            oso_data_conclusao AS DataConclusao,
-            oso_tempo_estimado_minutos AS TempoEstimadoMinutos,
-            oso_tempo_real_minutos AS TempoRealMinutos,
-            oso_custo_previsto AS CustoPrevisto,
-            oso_custo_real AS CustoReal,
-            oso_observacoes AS Observacoes,
-            oso_created_at AS CriadoEm,
-            oso_updated_at AS AtualizadoEm
-        FROM ops_ordens_servico
-        WHERE tenant_id = {0}
-          AND is_deleted = 0
-          AND ({1} IS NULL OR oso_status = {1})
-        ORDER BY oso_data_abertura DESC, oso_id DESC
-        """,
-        tenantContext.TenantId.ToString(),
-        (object?)statusFiltro ?? DBNull.Value)
-        .ToListAsync(ct);
-
-    return Results.Ok(ApiResponse<List<OpsOrdemServicoDto>>.Ok(ordens, "Ordens de servico operacionais carregadas."));
-})
-.WithName("OpsOrdensServicoListar");
-
-app.MapGet("/api/ops/ordens-servico/{id:int}", [Authorize(Policy = "Gerente")] async (
-    int id,
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    CancellationToken ct) =>
-{
-    var ordem = await db.Database.SqlQueryRaw<OpsOrdemServicoDto>(
-        """
-        SELECT
-            oso_id AS Id,
-            oso_numero AS Numero,
-            oso_ativo_id AS AtivoId,
-            oso_titulo AS Titulo,
-            oso_descricao AS Descricao,
-            oso_status AS Status,
-            oso_prioridade AS Prioridade,
-            oso_responsavel_user_id AS ResponsavelUserId,
-            oso_data_abertura AS DataAbertura,
-            oso_data_prevista AS DataPrevista,
-            oso_data_conclusao AS DataConclusao,
-            oso_tempo_estimado_minutos AS TempoEstimadoMinutos,
-            oso_tempo_real_minutos AS TempoRealMinutos,
-            oso_custo_previsto AS CustoPrevisto,
-            oso_custo_real AS CustoReal,
-            oso_observacoes AS Observacoes,
-            oso_created_at AS CriadoEm,
-            oso_updated_at AS AtualizadoEm
-        FROM ops_ordens_servico
-        WHERE oso_id = {0}
-          AND tenant_id = {1}
-          AND is_deleted = 0
-        LIMIT 1
-        """,
-        id,
-        tenantContext.TenantId.ToString())
-        .SingleOrDefaultAsync(ct);
-
-    if (ordem is null)
-    {
-        return Results.NotFound(ApiResponse<object>.Erro("Ordem de servico nao encontrada."));
-    }
-
-    var itens = await db.Database.SqlQueryRaw<OpsOrdemServicoItemDto>(
-        """
-        SELECT
-            osi_id AS Id,
-            osi_tipo AS Tipo,
-            osi_codigo AS Codigo,
-            osi_descricao AS Descricao,
-            osi_quantidade AS Quantidade,
-            osi_unidade AS Unidade,
-            osi_custo_unitario AS CustoUnitario,
-            osi_total AS Total
-        FROM ops_ordem_servico_itens
-        WHERE oso_id = {0}
-          AND tenant_id = {1}
-        ORDER BY osi_id
-        """,
-        id,
-        tenantContext.TenantId.ToString())
-        .ToListAsync(ct);
-
-    var detalhe = new OpsOrdemServicoDetalheDto(ordem, itens);
-    return Results.Ok(ApiResponse<OpsOrdemServicoDetalheDto>.Ok(detalhe, "Detalhe da ordem de servico carregado."));
-})
-.WithName("OpsOrdensServicoDetalhe");
-
-app.MapPost("/api/ops/ordens-servico", [Authorize(Policy = "Gerente")] async (
-    OpsOrdemServicoRequest request,
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    ClaimsPrincipal principal,
-    CancellationToken ct) =>
-{
-    var titulo = TrimOrNull(request.Titulo);
-    if (string.IsNullOrWhiteSpace(titulo))
-    {
-        return Results.BadRequest(ApiResponse<OpsOrdemServicoDto>.Erro("Titulo da ordem de servico e obrigatorio."));
-    }
-
-    var numero = TrimOrNull(request.Numero) ?? $"OS-{DateTime.UtcNow:yyyyMMddHHmmss}-{RandomNumberGenerator.GetInt32(100, 999)}";
-    var statusOs = NormalizeBusinessKey(request.Status) ?? "ABERTA";
-    var prioridade = NormalizeBusinessKey(request.Prioridade) ?? "NORMAL";
-    var responsavel = request.ResponsavelUserId ?? GetCurrentUserId(principal);
-    var abertura = request.DataAbertura ?? DateTime.UtcNow;
-
-    await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        INSERT INTO ops_ordens_servico
-            (tenant_id, oso_numero, oso_ativo_id, oso_titulo, oso_descricao, oso_status, oso_prioridade, oso_responsavel_user_id, oso_data_abertura, oso_data_prevista, oso_data_conclusao, oso_tempo_estimado_minutos, oso_tempo_real_minutos, oso_custo_previsto, oso_custo_real, oso_observacoes, oso_created_at, oso_updated_at)
-        VALUES
-            ({tenantContext.TenantId.ToString()}, {numero}, {request.AtivoId}, {titulo}, {TrimOrNull(request.Descricao)}, {statusOs}, {prioridade}, {responsavel}, {abertura}, {request.DataPrevista}, {request.DataConclusao}, {request.TempoEstimadoMinutos}, {request.TempoRealMinutos}, {request.CustoPrevisto}, {request.CustoReal}, {TrimOrNull(request.Observacoes)}, UTC_TIMESTAMP(), UTC_TIMESTAMP())
-        """,
-        ct);
-
-    var id = await ExecuteScalarAsync<int>(db, "SELECT LAST_INSERT_ID();", ct);
-    await ReplaceOpsOrdemItensAsync(db, tenantContext.TenantId, id, request.Itens, ct);
-
-    var response = new OpsOrdemServicoDto(id, numero, request.AtivoId, titulo, TrimOrNull(request.Descricao), statusOs, prioridade, responsavel, abertura, request.DataPrevista, request.DataConclusao, request.TempoEstimadoMinutos, request.TempoRealMinutos, request.CustoPrevisto, request.CustoReal, TrimOrNull(request.Observacoes), DateTime.UtcNow, DateTime.UtcNow);
-    return Results.Created($"/api/ops/ordens-servico/{id}", ApiResponse<OpsOrdemServicoDto>.Ok(response, "Ordem de servico criada."));
-})
-.WithName("OpsOrdensServicoCriar");
-
-app.MapPut("/api/ops/ordens-servico/{id:int}", [Authorize(Policy = "Gerente")] async (
-    int id,
-    OpsOrdemServicoRequest request,
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    ClaimsPrincipal principal,
-    CancellationToken ct) =>
-{
-    var titulo = TrimOrNull(request.Titulo);
-    if (string.IsNullOrWhiteSpace(titulo))
-    {
-        return Results.BadRequest(ApiResponse<OpsOrdemServicoDto>.Erro("Titulo da ordem de servico e obrigatorio."));
-    }
-
-    var numero = TrimOrNull(request.Numero) ?? $"OS-{id:D6}";
-    var statusOs = NormalizeBusinessKey(request.Status) ?? "ABERTA";
-    var prioridade = NormalizeBusinessKey(request.Prioridade) ?? "NORMAL";
-    var responsavel = request.ResponsavelUserId ?? GetCurrentUserId(principal);
-    var abertura = request.DataAbertura ?? DateTime.UtcNow;
-
-    var affected = await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        UPDATE ops_ordens_servico
-        SET oso_numero = {numero},
-            oso_ativo_id = {request.AtivoId},
-            oso_titulo = {titulo},
-            oso_descricao = {TrimOrNull(request.Descricao)},
-            oso_status = {statusOs},
-            oso_prioridade = {prioridade},
-            oso_responsavel_user_id = {responsavel},
-            oso_data_abertura = {abertura},
-            oso_data_prevista = {request.DataPrevista},
-            oso_data_conclusao = {request.DataConclusao},
-            oso_tempo_estimado_minutos = {request.TempoEstimadoMinutos},
-            oso_tempo_real_minutos = {request.TempoRealMinutos},
-            oso_custo_previsto = {request.CustoPrevisto},
-            oso_custo_real = {request.CustoReal},
-            oso_observacoes = {TrimOrNull(request.Observacoes)},
-            oso_updated_at = UTC_TIMESTAMP()
-        WHERE oso_id = {id} AND tenant_id = {tenantContext.TenantId.ToString()} AND is_deleted = 0
-        """,
-        ct);
-
-    if (affected == 0)
-    {
-        return Results.NotFound(ApiResponse<OpsOrdemServicoDto>.Erro("Ordem de servico nao encontrada."));
-    }
-
-    await ReplaceOpsOrdemItensAsync(db, tenantContext.TenantId, id, request.Itens, ct);
-    var response = new OpsOrdemServicoDto(id, numero, request.AtivoId, titulo, TrimOrNull(request.Descricao), statusOs, prioridade, responsavel, abertura, request.DataPrevista, request.DataConclusao, request.TempoEstimadoMinutos, request.TempoRealMinutos, request.CustoPrevisto, request.CustoReal, TrimOrNull(request.Observacoes), DateTime.UtcNow, DateTime.UtcNow);
-    return Results.Ok(ApiResponse<OpsOrdemServicoDto>.Ok(response, "Ordem de servico atualizada."));
-})
-.WithName("OpsOrdensServicoAtualizar");
-
-app.MapDelete("/api/ops/ordens-servico/{id:int}", [Authorize(Policy = "Gerente")] async (
-    int id,
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    CancellationToken ct) =>
-{
-    var affected = await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        UPDATE ops_ordens_servico
-        SET is_deleted = 1,
-            deleted_at = UTC_TIMESTAMP(),
-            oso_status = 'CANCELADA',
-            oso_updated_at = UTC_TIMESTAMP()
-        WHERE oso_id = {id} AND tenant_id = {tenantContext.TenantId.ToString()} AND is_deleted = 0
-        """,
-        ct);
-
-    return affected == 0
-        ? Results.NotFound(ApiResponse<object>.Erro("Ordem de servico nao encontrada."))
-        : Results.NoContent();
-})
-.WithName("OpsOrdensServicoExcluir");
-
-app.MapGet("/api/ops/producao/apontamentos", [Authorize(Policy = "Gerente")] async (
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    DateTime? inicio,
-    DateTime? fim,
-    CancellationToken ct) =>
-{
-    var apontamentos = await db.Database.SqlQueryRaw<OpsProducaoApontamentoDto>(
-        """
-        SELECT
-            opa_id AS Id,
-            oso_id AS OrdemServicoId,
-            produto_id AS ProdutoId,
-            produto_codigo AS ProdutoCodigo,
-            produto_nome AS ProdutoNome,
-            quantidade_produzida AS QuantidadeProduzida,
-            quantidade_refugo AS QuantidadeRefugo,
-            tempo_minutos AS TempoMinutos,
-            operador_user_id AS OperadorUserId,
-            data_apontamento AS DataApontamento,
-            insumos_json AS InsumosJson,
-            observacoes AS Observacoes
-        FROM ops_producao_apontamentos
-        WHERE tenant_id = {0}
-          AND is_deleted = 0
-          AND ({1} IS NULL OR data_apontamento >= {1})
-          AND ({2} IS NULL OR data_apontamento <= {2})
-        ORDER BY data_apontamento DESC, opa_id DESC
-        """,
-        tenantContext.TenantId.ToString(),
-        (object?)inicio ?? DBNull.Value,
-        (object?)fim ?? DBNull.Value)
-        .ToListAsync(ct);
-
-    return Results.Ok(ApiResponse<List<OpsProducaoApontamentoDto>>.Ok(apontamentos, "Apontamentos de producao carregados."));
-})
-.WithName("OpsProducaoApontamentosListar");
-
-app.MapPost("/api/ops/producao/apontamentos", [Authorize(Policy = "Gerente")] async (
-    OpsProducaoApontamentoRequest request,
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    ClaimsPrincipal principal,
-    CancellationToken ct) =>
-{
-    var produtoNome = TrimOrNull(request.ProdutoNome);
-    if (string.IsNullOrWhiteSpace(produtoNome) || request.QuantidadeProduzida <= 0)
-    {
-        return Results.BadRequest(ApiResponse<OpsProducaoApontamentoDto>.Erro("Produto e quantidade produzida positiva sao obrigatorios."));
-    }
-
-    var operador = request.OperadorUserId ?? GetCurrentUserId(principal);
-    var data = request.DataApontamento ?? DateTime.UtcNow;
-    var insumosJson = JsonSerializer.Serialize(request.Insumos ?? []);
-
-    await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        INSERT INTO ops_producao_apontamentos
-            (tenant_id, oso_id, produto_id, produto_codigo, produto_nome, quantidade_produzida, quantidade_refugo, tempo_minutos, operador_user_id, data_apontamento, insumos_json, observacoes, created_at, updated_at)
-        VALUES
-            ({tenantContext.TenantId.ToString()}, {request.OrdemServicoId}, {request.ProdutoId}, {NormalizeBusinessKey(request.ProdutoCodigo)}, {produtoNome}, {request.QuantidadeProduzida}, {request.QuantidadeRefugo}, {request.TempoMinutos}, {operador}, {data}, {insumosJson}, {TrimOrNull(request.Observacoes)}, UTC_TIMESTAMP(), UTC_TIMESTAMP())
-        """,
-        ct);
-
-    var id = await ExecuteScalarAsync<int>(db, "SELECT LAST_INSERT_ID();", ct);
-    var response = new OpsProducaoApontamentoDto(id, request.OrdemServicoId, request.ProdutoId, NormalizeBusinessKey(request.ProdutoCodigo), produtoNome, request.QuantidadeProduzida, request.QuantidadeRefugo, request.TempoMinutos, operador, data, insumosJson, TrimOrNull(request.Observacoes));
-    return Results.Created($"/api/ops/producao/apontamentos/{id}", ApiResponse<OpsProducaoApontamentoDto>.Ok(response, "Apontamento de producao registrado."));
-})
-.WithName("OpsProducaoApontamentosCriar");
-
-app.MapGet("/api/ops/manutencao", [Authorize(Policy = "Gerente")] async (
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    string? status,
-    CancellationToken ct) =>
-{
-    var statusFiltro = NormalizeBusinessKey(status);
-    var manutencoes = await db.Database.SqlQueryRaw<OpsManutencaoDto>(
-        """
-        SELECT
-            omt_id AS Id,
-            oat_id AS AtivoId,
-            omt_tipo AS Tipo,
-            omt_titulo AS Titulo,
-            omt_status AS Status,
-            omt_data_programada AS DataProgramada,
-            omt_data_inicio AS DataInicio,
-            omt_data_fim AS DataFim,
-            omt_responsavel_user_id AS ResponsavelUserId,
-            omt_recorrencia AS Recorrencia,
-            omt_custo AS Custo,
-            omt_observacoes AS Observacoes,
-            omt_created_at AS CriadoEm,
-            omt_updated_at AS AtualizadoEm
-        FROM ops_manutencoes
-        WHERE tenant_id = {0}
-          AND is_deleted = 0
-          AND ({1} IS NULL OR omt_status = {1})
-        ORDER BY omt_data_programada, omt_id
-        """,
-        tenantContext.TenantId.ToString(),
-        (object?)statusFiltro ?? DBNull.Value)
-        .ToListAsync(ct);
-
-    return Results.Ok(ApiResponse<List<OpsManutencaoDto>>.Ok(manutencoes, "Manutencoes operacionais carregadas."));
-})
-.WithName("OpsManutencaoListar");
-
-app.MapPost("/api/ops/manutencao", [Authorize(Policy = "Gerente")] async (
-    OpsManutencaoRequest request,
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    ClaimsPrincipal principal,
-    CancellationToken ct) =>
-{
-    var titulo = TrimOrNull(request.Titulo);
-    if (string.IsNullOrWhiteSpace(titulo))
-    {
-        return Results.BadRequest(ApiResponse<OpsManutencaoDto>.Erro("Titulo da manutencao e obrigatorio."));
-    }
-
-    var tipo = NormalizeBusinessKey(request.Tipo) ?? "PREVENTIVA";
-    var statusManutencao = NormalizeBusinessKey(request.Status) ?? "PROGRAMADA";
-    var responsavel = request.ResponsavelUserId ?? GetCurrentUserId(principal);
-
-    await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        INSERT INTO ops_manutencoes
-            (tenant_id, oat_id, omt_tipo, omt_titulo, omt_status, omt_data_programada, omt_data_inicio, omt_data_fim, omt_responsavel_user_id, omt_recorrencia, omt_custo, omt_observacoes, omt_created_at, omt_updated_at)
-        VALUES
-            ({tenantContext.TenantId.ToString()}, {request.AtivoId}, {tipo}, {titulo}, {statusManutencao}, {request.DataProgramada}, {request.DataInicio}, {request.DataFim}, {responsavel}, {TrimOrNull(request.Recorrencia)}, {request.Custo}, {TrimOrNull(request.Observacoes)}, UTC_TIMESTAMP(), UTC_TIMESTAMP())
-        """,
-        ct);
-
-    var id = await ExecuteScalarAsync<int>(db, "SELECT LAST_INSERT_ID();", ct);
-    var response = new OpsManutencaoDto(id, request.AtivoId, tipo, titulo, statusManutencao, request.DataProgramada, request.DataInicio, request.DataFim, responsavel, TrimOrNull(request.Recorrencia), request.Custo, TrimOrNull(request.Observacoes), DateTime.UtcNow, DateTime.UtcNow);
-    return Results.Created($"/api/ops/manutencao/{id}", ApiResponse<OpsManutencaoDto>.Ok(response, "Manutencao operacional criada."));
-})
-.WithName("OpsManutencaoCriar");
-
-app.MapPut("/api/ops/manutencao/{id:int}", [Authorize(Policy = "Gerente")] async (
-    int id,
-    OpsManutencaoRequest request,
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    ClaimsPrincipal principal,
-    CancellationToken ct) =>
-{
-    var titulo = TrimOrNull(request.Titulo);
-    if (string.IsNullOrWhiteSpace(titulo))
-    {
-        return Results.BadRequest(ApiResponse<OpsManutencaoDto>.Erro("Titulo da manutencao e obrigatorio."));
-    }
-
-    var tipo = NormalizeBusinessKey(request.Tipo) ?? "PREVENTIVA";
-    var statusManutencao = NormalizeBusinessKey(request.Status) ?? "PROGRAMADA";
-    var responsavel = request.ResponsavelUserId ?? GetCurrentUserId(principal);
-    var affected = await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        UPDATE ops_manutencoes
-        SET oat_id = {request.AtivoId},
-            omt_tipo = {tipo},
-            omt_titulo = {titulo},
-            omt_status = {statusManutencao},
-            omt_data_programada = {request.DataProgramada},
-            omt_data_inicio = {request.DataInicio},
-            omt_data_fim = {request.DataFim},
-            omt_responsavel_user_id = {responsavel},
-            omt_recorrencia = {TrimOrNull(request.Recorrencia)},
-            omt_custo = {request.Custo},
-            omt_observacoes = {TrimOrNull(request.Observacoes)},
-            omt_updated_at = UTC_TIMESTAMP()
-        WHERE omt_id = {id} AND tenant_id = {tenantContext.TenantId.ToString()} AND is_deleted = 0
-        """,
-        ct);
-
-    if (affected == 0)
-    {
-        return Results.NotFound(ApiResponse<OpsManutencaoDto>.Erro("Manutencao operacional nao encontrada."));
-    }
-
-    var response = new OpsManutencaoDto(id, request.AtivoId, tipo, titulo, statusManutencao, request.DataProgramada, request.DataInicio, request.DataFim, responsavel, TrimOrNull(request.Recorrencia), request.Custo, TrimOrNull(request.Observacoes), DateTime.UtcNow, DateTime.UtcNow);
-    return Results.Ok(ApiResponse<OpsManutencaoDto>.Ok(response, "Manutencao operacional atualizada."));
-})
-.WithName("OpsManutencaoAtualizar");
-
-app.MapDelete("/api/ops/manutencao/{id:int}", [Authorize(Policy = "Gerente")] async (
-    int id,
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    CancellationToken ct) =>
-{
-    var affected = await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        UPDATE ops_manutencoes
-        SET is_deleted = 1,
-            deleted_at = UTC_TIMESTAMP(),
-            omt_status = 'CANCELADA',
-            omt_updated_at = UTC_TIMESTAMP()
-        WHERE omt_id = {id} AND tenant_id = {tenantContext.TenantId.ToString()} AND is_deleted = 0
-        """,
-        ct);
-
-    return affected == 0
-        ? Results.NotFound(ApiResponse<object>.Erro("Manutencao operacional nao encontrada."))
-        : Results.NoContent();
-})
-.WithName("OpsManutencaoExcluir");
 
 app.MapGet("/", (IHostEnvironment environment) =>
     environment.IsDevelopment() || environment.IsStaging()
@@ -1529,125 +209,70 @@ app.MapGet("/", (IHostEnvironment environment) =>
         {
             status = "online",
             service = "Nexum Altivon API",
-            version = releaseVersion
+            version = "1.1.5"
         }));
 
 app.MapPost("/api/auth/login", async (
     LoginRequest request,
+    IConfiguration configuration,
+    IHostEnvironment environment,
     NexumDbContext db,
-    IDataProtectionProvider dataProtectionProvider,
-    ILoggerFactory loggerFactory,
     CancellationToken ct) =>
 {
+    var admin = configuration.GetSection("AdminUser");
+    var configuredEmail = admin["Email"] ?? "admin@nexumaltivon.com";
+    var configuredPassword = admin["Password"];
+    var configuredName = admin["Name"] ?? "Administrador Nexum";
+    var configuredRole = admin["Role"] ?? "Gerente";
+
+    if (string.IsNullOrWhiteSpace(configuredPassword))
+    {
+        if (environment.IsProduction())
+        {
+            return Results.Problem(
+                "AdminUser:Password nao configurada para producao.",
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
+
+        configuredPassword = "Admin@123";
+    }
+
     var normalizedEmail = NormalizeEmail(request.Email);
     if (string.IsNullOrWhiteSpace(normalizedEmail))
     {
         return Results.Unauthorized();
     }
 
-    var expirationHours = builder.Configuration.GetValue("JwtSettings:ExpirationHours", 24);
-    var now = DateTime.UtcNow;
-    var refreshExpiresAt = now.AddDays(refreshTokenExpirationDays);
+    var expirationHours = configuration.GetValue("JwtSettings:ExpirationHours", 24);
+
+    if (string.Equals(normalizedEmail, configuredEmail, StringComparison.OrdinalIgnoreCase)
+        && request.Senha == configuredPassword)
+    {
+        var adminResponse = CreateLoginResponse(1, configuredName, configuredEmail, configuredRole, issuer, audience, signingKey, expirationHours);
+        return Results.Ok(ApiResponse<LoginResponse>.Ok(adminResponse, "Login administrativo realizado com sucesso."));
+    }
 
     var usuario = await db.Usuarios
+        .AsNoTracking()
         .FirstOrDefaultAsync(item => item.Email == normalizedEmail && item.Ativo, ct);
 
     if (usuario is not null && BCrypt.Net.BCrypt.Verify(request.Senha, usuario.SenhaHash))
     {
-        long? matchedTimestep = null;
-        if (usuario.MfaHabilitado)
-        {
-            if (!TryUnprotectMfaSecret(usuario.MfaSecret, dataProtectionProvider, out var mfaSecret))
-            {
-                loggerFactory.CreateLogger("AuthMfa").LogError(
-                    "Segredo MFA do usuario {UsuarioId} nao pode ser decifrado com o chaveiro persistente atual.",
-                    usuario.Id);
-                return Results.Problem(
-                    "A configuracao MFA deste usuario nao pode ser lida. O administrador deve reiniciar o cadastro MFA.",
-                    statusCode: StatusCodes.Status503ServiceUnavailable);
-            }
-
-            if (!TryValidateTotpCode(mfaSecret, request.MfaCode, DateTimeOffset.UtcNow, usuario.MfaUltimoPasso, out var validatedTimestep))
-            {
-                return Results.BadRequest(ApiResponse<LoginResponse>.Erro("MFA_REQUIRED: informe um codigo MFA valido, ainda nao utilizado, para concluir o login."));
-            }
-
-            matchedTimestep = validatedTimestep;
-        }
-
-        var refreshToken = GenerateRefreshToken();
-        var refreshTokenHash = ComputeSha256Hash(refreshToken);
-        if (matchedTimestep.HasValue)
-        {
-            var updated = await db.Usuarios
-                .Where(item => item.Id == usuario.Id
-                    && item.Ativo
-                    && (item.MfaUltimoPasso == null || item.MfaUltimoPasso < matchedTimestep.Value))
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(item => item.MfaUltimoPasso, matchedTimestep.Value)
-                    .SetProperty(item => item.UltimoLogin, now)
-                    .SetProperty(item => item.TokenRefresh, refreshTokenHash)
-                    .SetProperty(item => item.TokenRefreshExpiraEm, refreshExpiresAt)
-                    .SetProperty(item => item.UpdatedAt, now), ct);
-            if (updated != 1)
-            {
-                return Results.BadRequest(ApiResponse<LoginResponse>.Erro("MFA_REQUIRED: o codigo MFA informado ja foi utilizado."));
-            }
-        }
-        else
-        {
-            usuario.UltimoLogin = now;
-            usuario.TokenRefresh = refreshTokenHash;
-            usuario.TokenRefreshExpiraEm = refreshExpiresAt;
-            usuario.UpdatedAt = now;
-            await db.SaveChangesAsync(ct);
-        }
-
         var perfil = usuario.Perfil.ToString();
-        var usuarioResponse = CreateLoginResponse(
-            usuario.Id,
-            usuario.Nome,
-            usuario.Email,
-            perfil,
-            db.CurrentTenantId,
-            "usuario",
-            issuer,
-            audience,
-            signingKey,
-            expirationHours,
-            refreshToken);
+        var usuarioResponse = CreateLoginResponse(usuario.Id, usuario.Nome, usuario.Email, perfil, issuer, audience, signingKey, expirationHours);
         return Results.Ok(ApiResponse<LoginResponse>.Ok(usuarioResponse, "Login realizado com sucesso."));
     }
 
     var cliente = await db.Clientes
-        .FirstOrDefaultAsync(item => item.Email == normalizedEmail, ct);
+        .FirstOrDefaultAsync(item => item.Email == normalizedEmail && item.Status == StatusCliente.Ativo, ct);
 
     if (cliente is not null && !string.IsNullOrWhiteSpace(cliente.SenhaHash) && BCrypt.Net.BCrypt.Verify(request.Senha, cliente.SenhaHash))
     {
-        if (cliente.Status != StatusCliente.Ativo)
-        {
-            return Results.BadRequest(ApiResponse<LoginResponse>.Erro("Seu cadastro ainda não foi confirmado. Verifique seu e-mail antes de entrar."));
-        }
-
-        var refreshToken = GenerateRefreshToken();
-        cliente.UltimoAcesso = now;
-        cliente.TokenRefresh = ComputeSha256Hash(refreshToken);
-        cliente.TokenRefreshExpiraEm = refreshExpiresAt;
-        cliente.UpdatedAt = now;
+        cliente.UltimoAcesso = DateTime.UtcNow;
+        cliente.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
-        var clienteResponse = CreateLoginResponse(
-            cliente.Id,
-            cliente.Nome,
-            cliente.Email,
-            "Cliente",
-            db.CurrentTenantId,
-            "cliente",
-            issuer,
-            audience,
-            signingKey,
-            expirationHours,
-            refreshToken);
+        var clienteResponse = CreateLoginResponse(cliente.Id, cliente.Nome, cliente.Email, "Cliente", issuer, audience, signingKey, expirationHours);
         return Results.Ok(ApiResponse<LoginResponse>.Ok(clienteResponse, "Login do cliente realizado com sucesso."));
     }
 
@@ -1656,1350 +281,2465 @@ app.MapPost("/api/auth/login", async (
 .AllowAnonymous()
 .WithName("Login");
 
-app.MapPost("/api/auth/refresh", async (
-    RefreshTokenRequest request,
-    NexumDbContext db,
-    CancellationToken ct) =>
+app.MapGet("/api/admin/dashboard/completo", [Authorize(Policy = "Gerente")] () =>
 {
-    var token = TrimOrNull(request.ResolveToken());
-    var refreshToken = TrimOrNull(request.ResolveRefreshToken());
-    if (token is null || refreshToken is null)
+    var dashboard = DashboardCompletoDto.CreateSample();
+    return Results.Ok(ApiResponse<DashboardCompletoDto>.Ok(dashboard));
+})
+.WithName("DashboardCompleto")
+;
+
+app.MapGet("/api/admin/dashboard/kpis", [Authorize(Policy = "Gerente")] () =>
+    Results.Ok(ApiResponse<DashboardKpiDto>.Ok(DashboardCompletoDto.CreateSample().Kpis)))
+    .WithName("DashboardKpis")
+    ;
+
+app.MapGet("/api/lojas", async (NexumDbContext db, CancellationToken ct) =>
+{
+    var lojas = await db.Lojas
+        .AsNoTracking()
+        .OrderBy(loja => loja.OrdemExibicao)
+        .ThenBy(loja => loja.Nome)
+        .Select(loja => new LojaDto(
+            loja.Id,
+            loja.Nome,
+            loja.Slug,
+            loja.Segmento,
+            loja.Descricao,
+            loja.CorPrimaria,
+            loja.CorSecundaria,
+            loja.Ativa,
+            loja.OrdemExibicao))
+        .ToListAsync(ct);
+
+    if (lojas.Count == 0)
     {
-        return Results.BadRequest(ApiResponse<LoginResponse>.Erro("Token e refresh token sao obrigatorios."));
+        lojas = DashboardCompletoDto.Lojas;
     }
 
-    var expirationHours = builder.Configuration.GetValue("JwtSettings:ExpirationHours", 24);
-    var principal = ValidateExpiredJwtToken(token, issuer, audience, signingKey);
-    var email = NormalizeEmail(principal?.FindFirstValue(ClaimTypes.Email) ?? principal?.FindFirstValue(JwtRegisteredClaimNames.Email));
-    var subjectType = principal?.FindFirstValue("subject_type");
-    var subjectIdRaw = principal?.FindFirstValue(JwtRegisteredClaimNames.Sub) ?? principal?.FindFirstValue(ClaimTypes.NameIdentifier);
-    var tenantIdRaw = principal?.FindFirstValue("tenant_id");
-    if (string.IsNullOrWhiteSpace(email)
-        || !int.TryParse(subjectIdRaw, NumberStyles.None, CultureInfo.InvariantCulture, out var subjectId)
-        || subjectId <= 0
-        || !Guid.TryParse(tenantIdRaw, out var tenantId)
-        || tenantId == Guid.Empty
-        || subjectType is not ("usuario" or "cliente"))
-    {
-        return Results.Unauthorized();
-    }
-
-    var now = DateTime.UtcNow;
-    var currentRefreshHash = ComputeSha256Hash(refreshToken);
-    var nextRefreshToken = GenerateRefreshToken();
-    var nextRefreshHash = ComputeSha256Hash(nextRefreshToken);
-    var nextRefreshExpiresAt = now.AddDays(refreshTokenExpirationDays);
-    LoginResponse? response = null;
-
-    if (subjectType == "usuario")
-    {
-        var usuario = await db.Usuarios
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .FirstOrDefaultAsync(item => item.Id == subjectId
-                && item.Email == email
-                && item.Ativo
-                && EF.Property<Guid>(item, "TenantId") == tenantId
-                && !EF.Property<bool>(item, "IsDeleted"), ct);
-        if (usuario is null)
-        {
-            return Results.Unauthorized();
-        }
-
-        var updated = await db.Usuarios
-            .IgnoreQueryFilters()
-            .Where(item => item.Id == subjectId
-                && item.Email == email
-                && item.Ativo
-                && item.TokenRefresh == currentRefreshHash
-                && item.TokenRefreshExpiraEm != null
-                && item.TokenRefreshExpiraEm > now
-                && EF.Property<Guid>(item, "TenantId") == tenantId
-                && !EF.Property<bool>(item, "IsDeleted"))
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(item => item.TokenRefresh, nextRefreshHash)
-                .SetProperty(item => item.TokenRefreshExpiraEm, nextRefreshExpiresAt)
-                .SetProperty(item => item.UpdatedAt, now), ct);
-        if (updated != 1)
-        {
-            return Results.Unauthorized();
-        }
-
-        response = CreateLoginResponse(
-            usuario.Id,
-            usuario.Nome,
-            usuario.Email,
-            usuario.Perfil.ToString(),
-            tenantId,
-            subjectType,
-            issuer,
-            audience,
-            signingKey,
-            expirationHours,
-            nextRefreshToken);
-    }
-    else
-    {
-        var cliente = await db.Clientes
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .FirstOrDefaultAsync(item => item.Id == subjectId
-                && item.Email == email
-                && item.Status == StatusCliente.Ativo
-                && EF.Property<Guid>(item, "TenantId") == tenantId
-                && !EF.Property<bool>(item, "IsDeleted"), ct);
-        if (cliente is null)
-        {
-            return Results.Unauthorized();
-        }
-
-        var updated = await db.Clientes
-            .IgnoreQueryFilters()
-            .Where(item => item.Id == subjectId
-                && item.Email == email
-                && item.Status == StatusCliente.Ativo
-                && item.TokenRefresh == currentRefreshHash
-                && item.TokenRefreshExpiraEm != null
-                && item.TokenRefreshExpiraEm > now
-                && EF.Property<Guid>(item, "TenantId") == tenantId
-                && !EF.Property<bool>(item, "IsDeleted"))
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(item => item.TokenRefresh, nextRefreshHash)
-                .SetProperty(item => item.TokenRefreshExpiraEm, nextRefreshExpiresAt)
-                .SetProperty(item => item.UpdatedAt, now), ct);
-        if (updated != 1)
-        {
-            return Results.Unauthorized();
-        }
-
-        response = CreateLoginResponse(
-            cliente.Id,
-            cliente.Nome,
-            cliente.Email,
-            "Cliente",
-            tenantId,
-            subjectType,
-            issuer,
-            audience,
-            signingKey,
-            expirationHours,
-            nextRefreshToken);
-    }
-
-    return Results.Ok(ApiResponse<LoginResponse>.Ok(response, "Sessao renovada com sucesso."));
+    return Results.Ok(ApiResponse<List<LojaDto>>.Ok(lojas));
 })
 .AllowAnonymous()
-.WithName("RefreshAuthToken");
+.WithName("Lojas")
+;
 
-app.MapPost("/api/auth/logout", [Authorize] async (
-    NexumDbContext db,
-    ClaimsPrincipal principal,
-    CancellationToken ct) =>
+app.MapGet("/api/site/configuracoes/publico", async (NexumDbContext db, CancellationToken ct) =>
 {
-    var userId = GetCurrentUserId(principal);
-    var subjectType = principal.FindFirstValue("subject_type");
-    var tenantIdRaw = principal.FindFirstValue("tenant_id");
-    if (userId <= 0
-        || subjectType is not ("usuario" or "cliente")
-        || !Guid.TryParse(tenantIdRaw, out var tenantId)
-        || tenantId == Guid.Empty)
-    {
-        return Results.Unauthorized();
-    }
-
-    var now = DateTime.UtcNow;
-    var updated = subjectType == "usuario"
-        ? await db.Usuarios
-            .IgnoreQueryFilters()
-            .Where(item => item.Id == userId
-                && item.Ativo
-                && EF.Property<Guid>(item, "TenantId") == tenantId
-                && !EF.Property<bool>(item, "IsDeleted"))
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(item => item.TokenRefresh, (string?)null)
-                .SetProperty(item => item.TokenRefreshExpiraEm, (DateTime?)null)
-                .SetProperty(item => item.UpdatedAt, now), ct)
-        : await db.Clientes
-            .IgnoreQueryFilters()
-            .Where(item => item.Id == userId
-                && item.Status == StatusCliente.Ativo
-                && EF.Property<Guid>(item, "TenantId") == tenantId
-                && !EF.Property<bool>(item, "IsDeleted"))
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(item => item.TokenRefresh, (string?)null)
-                .SetProperty(item => item.TokenRefreshExpiraEm, (DateTime?)null)
-                .SetProperty(item => item.UpdatedAt, now), ct);
-    if (updated != 1)
-    {
-        return Results.Unauthorized();
-    }
-
-    return Results.Ok(ApiResponse<object>.Ok(new { encerrado = true }, "Sessao encerrada e refresh token revogado."));
-})
-.WithName("AuthLogout");
-
-app.MapPost("/api/auth/mfa/enable", [Authorize] async (
-    NexumDbContext db,
-    ClaimsPrincipal principal,
-    IConfiguration configuration,
-    IDataProtectionProvider dataProtectionProvider,
-    CancellationToken ct) =>
-{
-    var userId = GetCurrentUserId(principal);
-    if (userId <= 0 || !string.Equals(principal.FindFirstValue("subject_type"), "usuario", StringComparison.Ordinal))
-    {
-        return Results.Unauthorized();
-    }
-
-    var usuario = await db.Usuarios.FirstOrDefaultAsync(item => item.Id == userId && item.Ativo, ct);
-    if (usuario is null)
-    {
-        return Results.Unauthorized();
-    }
-
-    if (usuario.MfaHabilitado)
-    {
-        return Results.Conflict(ApiResponse<MfaStatusResponse>.Erro("MFA ja esta ativo para este usuario. A substituicao exige revogacao administrativa explicita."));
-    }
-
-    var rawSecret = GenerateTotpSecret();
-    usuario.MfaSecret = ProtectMfaSecret(rawSecret, dataProtectionProvider);
-    usuario.MfaHabilitado = false;
-    usuario.MfaConfirmadoEm = null;
-    usuario.MfaUltimoPasso = null;
-    usuario.UpdatedAt = DateTime.UtcNow;
-    await db.SaveChangesAsync(ct);
-
-    var issuerName = Uri.EscapeDataString(configuration["Mfa:Issuer"] ?? "GenesisGest.Net");
-    var account = Uri.EscapeDataString(usuario.Email);
-    var otpauth = $"otpauth://totp/{issuerName}:{account}?secret={rawSecret}&issuer={issuerName}&digits=6&period=30&algorithm=SHA1";
-
-    return Results.Ok(ApiResponse<MfaEnableResponse>.Ok(
-        new MfaEnableResponse(rawSecret, otpauth, usuario.MfaHabilitado),
-        "MFA TOTP preparado. Confirme com /api/auth/mfa/verify para ativar."));
-})
-.WithName("AuthMfaEnable");
-
-app.MapPost("/api/auth/mfa/verify", [Authorize] async (
-    MfaVerifyRequest request,
-    NexumDbContext db,
-    ClaimsPrincipal principal,
-    IDataProtectionProvider dataProtectionProvider,
-    ILoggerFactory loggerFactory,
-    CancellationToken ct) =>
-{
-    var userId = GetCurrentUserId(principal);
-    if (userId <= 0 || !string.Equals(principal.FindFirstValue("subject_type"), "usuario", StringComparison.Ordinal))
-    {
-        return Results.Unauthorized();
-    }
-
-    var usuario = await db.Usuarios.FirstOrDefaultAsync(item => item.Id == userId && item.Ativo, ct);
-    if (usuario is null || string.IsNullOrWhiteSpace(usuario.MfaSecret))
-    {
-        return Results.BadRequest(ApiResponse<MfaStatusResponse>.Erro("MFA ainda nao foi iniciado para este usuario."));
-    }
-
-    if (!TryUnprotectMfaSecret(usuario.MfaSecret, dataProtectionProvider, out var rawSecret))
-    {
-        loggerFactory.CreateLogger("AuthMfa").LogError(
-            "Segredo MFA pendente do usuario {UsuarioId} nao pode ser decifrado com o chaveiro persistente atual.",
-            usuario.Id);
-        return Results.Problem(
-            "A configuracao MFA pendente nao pode ser lida. Reinicie o cadastro MFA.",
-            statusCode: StatusCodes.Status503ServiceUnavailable);
-    }
-
-    if (!TryValidateTotpCode(rawSecret, request.Codigo, DateTimeOffset.UtcNow, usuario.MfaUltimoPasso, out var matchedTimestep))
-    {
-        return Results.BadRequest(ApiResponse<MfaStatusResponse>.Erro("Codigo MFA invalido, expirado ou ja utilizado."));
-    }
-
-    var confirmedAt = DateTime.UtcNow;
-    var updated = await db.Usuarios
-        .Where(item => item.Id == usuario.Id
-            && item.Ativo
-            && !item.MfaHabilitado
-            && (item.MfaUltimoPasso == null || item.MfaUltimoPasso < matchedTimestep))
-        .ExecuteUpdateAsync(setters => setters
-            .SetProperty(item => item.MfaHabilitado, true)
-            .SetProperty(item => item.MfaConfirmadoEm, confirmedAt)
-            .SetProperty(item => item.MfaUltimoPasso, matchedTimestep)
-            .SetProperty(item => item.TokenRefresh, (string?)null)
-            .SetProperty(item => item.TokenRefreshExpiraEm, (DateTime?)null)
-            .SetProperty(item => item.UpdatedAt, confirmedAt), ct);
-    if (updated != 1)
-    {
-        return Results.Conflict(ApiResponse<MfaStatusResponse>.Erro("A configuracao MFA foi alterada por outra operacao. Recarregue o estado do usuario."));
-    }
-
-    return Results.Ok(ApiResponse<MfaStatusResponse>.Ok(
-        new MfaStatusResponse(true, confirmedAt),
-        "MFA TOTP ativado para o usuario."));
-})
-.WithName("AuthMfaVerify");
-
-app.MapGet("/api/tenants", [Authorize(Policy = "Admin")] async (NexumDbContext db, CancellationToken ct) =>
-{
-    var tenants = await db.Database.SqlQueryRaw<TenantDto>(
-        """
-        SELECT
-            CAST(id AS CHAR) AS Id,
-            codigo AS Codigo,
-            nome AS Nome,
-            documento AS Documento,
-            ativo AS Ativo,
-            created_at AS CriadoEm,
-            updated_at AS AtualizadoEm
-        FROM sys_tenants
-        WHERE is_deleted = 0
-        ORDER BY nome
-        """)
-        .ToListAsync(ct);
-
-    return Results.Ok(ApiResponse<List<TenantDto>>.Ok(tenants, "Tenants corporativos carregados."));
-})
-.WithName("TenantsListar");
-
-app.MapGet("/api/tenants/{id:guid}", [Authorize(Policy = "Admin")] async (Guid id, NexumDbContext db, CancellationToken ct) =>
-{
-    var tenant = await db.Database.SqlQueryRaw<TenantDto>(
-        """
-        SELECT
-            CAST(id AS CHAR) AS Id,
-            codigo AS Codigo,
-            nome AS Nome,
-            documento AS Documento,
-            ativo AS Ativo,
-            created_at AS CriadoEm,
-            updated_at AS AtualizadoEm
-        FROM sys_tenants
-        WHERE id = {0} AND is_deleted = 0
-        LIMIT 1
-        """,
-        id.ToString())
-        .FirstOrDefaultAsync(ct);
-
-    return tenant is null
-        ? Results.NotFound(ApiResponse<TenantDto>.Erro("Tenant nao encontrado."))
-        : Results.Ok(ApiResponse<TenantDto>.Ok(tenant, "Tenant corporativo carregado."));
-})
-.WithName("TenantsObter");
-
-app.MapPost("/api/tenants", [Authorize(Policy = "Admin")] async (
-    TenantUpsertRequest request,
-    NexumDbContext db,
-    ClaimsPrincipal principal,
-    CancellationToken ct) =>
-{
-    var codigo = NormalizeBusinessKey(request.Codigo);
-    var nome = TrimOrNull(request.Nome);
-    if (string.IsNullOrWhiteSpace(codigo) || string.IsNullOrWhiteSpace(nome))
-    {
-        return Results.BadRequest(ApiResponse<TenantDto>.Erro("Codigo e nome do tenant sao obrigatorios."));
-    }
-
-    var id = Guid.NewGuid();
-    var idText = id.ToString();
-    var currentUserId = GetCurrentUserGuidOrNull(principal)?.ToString();
-    await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        INSERT INTO sys_tenants (id, tenant_id, codigo, nome, documento, ativo, created_by_user_id, updated_by_user_id, created_at, updated_at)
-        VALUES ({idText}, {idText}, {codigo}, {nome}, {OnlyDigitsOrNull(request.Documento)}, {request.Ativo}, {currentUserId}, {currentUserId}, UTC_TIMESTAMP(), UTC_TIMESTAMP())
-        """,
-        ct);
-
-    var response = new TenantDto(idText, codigo, nome, OnlyDigitsOrNull(request.Documento), request.Ativo, DateTime.UtcNow, DateTime.UtcNow);
-    return Results.Created($"/api/tenants/{idText}", ApiResponse<TenantDto>.Ok(response, "Tenant criado."));
-})
-.WithName("TenantsCriar");
-
-app.MapPut("/api/tenants/{id:guid}", [Authorize(Policy = "Admin")] async (
-    Guid id,
-    TenantUpsertRequest request,
-    NexumDbContext db,
-    ClaimsPrincipal principal,
-    CancellationToken ct) =>
-{
-    var codigo = NormalizeBusinessKey(request.Codigo);
-    var nome = TrimOrNull(request.Nome);
-    if (string.IsNullOrWhiteSpace(codigo) || string.IsNullOrWhiteSpace(nome))
-    {
-        return Results.BadRequest(ApiResponse<TenantDto>.Erro("Codigo e nome do tenant sao obrigatorios."));
-    }
-
-    var currentUserId = GetCurrentUserGuidOrNull(principal)?.ToString();
-    var affected = await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        UPDATE sys_tenants
-        SET codigo = {codigo},
-            nome = {nome},
-            documento = {OnlyDigitsOrNull(request.Documento)},
-            ativo = {request.Ativo},
-            updated_by_user_id = {currentUserId},
-            updated_at = UTC_TIMESTAMP()
-        WHERE id = {id.ToString()} AND is_deleted = 0
-        """,
-        ct);
-
-    if (affected == 0)
-    {
-        return Results.NotFound(ApiResponse<TenantDto>.Erro("Tenant nao encontrado."));
-    }
-
-    var response = new TenantDto(id.ToString(), codigo, nome, OnlyDigitsOrNull(request.Documento), request.Ativo, DateTime.UtcNow, DateTime.UtcNow);
-    return Results.Ok(ApiResponse<TenantDto>.Ok(response, "Tenant atualizado."));
-})
-.WithName("TenantsAtualizar");
-
-app.MapDelete("/api/tenants/{id:guid}", [Authorize(Policy = "Admin")] async (Guid id, NexumDbContext db, ClaimsPrincipal principal, CancellationToken ct) =>
-{
-    var currentUserId = GetCurrentUserGuidOrNull(principal)?.ToString();
-    var affected = await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        UPDATE sys_tenants
-        SET ativo = 0,
-            is_deleted = 1,
-            deleted_at = UTC_TIMESTAMP(),
-            updated_by_user_id = {currentUserId},
-            updated_at = UTC_TIMESTAMP()
-        WHERE id = {id.ToString()} AND is_deleted = 0
-        """,
-        ct);
-
-    return affected == 0
-        ? Results.NotFound(ApiResponse<object>.Erro("Tenant nao encontrado."))
-        : Results.NoContent();
-})
-.WithName("TenantsExcluir");
-
-app.MapGet("/api/workflows/definicoes", [Authorize(Policy = "Gerente")] async (
-    string? entidade,
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    CancellationToken ct) =>
-{
-    var filtroEntidade = NormalizeBusinessKey(entidade);
-    var definicoes = await db.Database.SqlQueryRaw<WorkflowDefinicaoDto>(
-        """
-        SELECT
-            CAST(id AS CHAR) AS Id,
-            entidade AS Entidade,
-            codigo AS Codigo,
-            nome AS Nome,
-            estados_json AS EstadosJson,
-            transicoes_json AS TransicoesJson,
-            ativo AS Ativo,
-            created_at AS CriadoEm,
-            updated_at AS AtualizadoEm
-        FROM sys_workflow_definicoes
-        WHERE tenant_id = {0}
-          AND is_deleted = 0
-          AND ({1} = '' OR entidade = {1})
-        ORDER BY entidade, nome
-        """,
-        tenantContext.TenantId.ToString(),
-        filtroEntidade)
-        .ToListAsync(ct);
-
-    return Results.Ok(ApiResponse<List<WorkflowDefinicaoDto>>.Ok(definicoes, "Definicoes de workflow carregadas."));
-})
-.WithName("WorkflowsDefinicoesListar");
-
-app.MapGet("/api/workflows/definicoes/{id:guid}", [Authorize(Policy = "Gerente")] async (
-    Guid id,
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    CancellationToken ct) =>
-{
-    var definicao = await LoadWorkflowDefinitionAsync(db, tenantContext.TenantId, id, ct);
-    return definicao is null
-        ? Results.NotFound(ApiResponse<WorkflowDefinicaoDto>.Erro("Definicao de workflow nao encontrada."))
-        : Results.Ok(ApiResponse<WorkflowDefinicaoDto>.Ok(definicao, "Definicao de workflow carregada."));
-})
-.WithName("WorkflowsDefinicoesObter");
-
-app.MapPost("/api/workflows/definicoes", [Authorize(Policy = "Gerente")] async (
-    WorkflowDefinicaoRequest request,
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    CancellationToken ct) =>
-{
-    var definicao = NormalizeWorkflowDefinition(request, out var validationError);
-    if (definicao is null)
-    {
-        return Results.BadRequest(ApiResponse<WorkflowDefinicaoDto>.Erro(validationError));
-    }
-
-    var duplicateCount = await db.Database.SqlQueryRaw<int>(
-        """
-        SELECT COUNT(*) AS Value
-        FROM sys_workflow_definicoes
-        WHERE tenant_id = {0} AND codigo = {1} AND is_deleted = 0
-        """,
-        tenantContext.TenantId.ToString(),
-        definicao.Codigo)
-        .SingleAsync(ct);
-    if (duplicateCount > 0)
-    {
-        return Results.Conflict(ApiResponse<WorkflowDefinicaoDto>.Erro("Ja existe uma definicao ativa com este codigo no tenant."));
-    }
-
-    var estadosJson = JsonSerializer.Serialize(definicao.Estados);
-    var transicoesJson = JsonSerializer.Serialize(definicao.Transicoes);
-    var deletedDefinitionIds = await db.Database.SqlQueryRaw<string>(
-        """
-        SELECT CAST(id AS CHAR) AS Value
-        FROM sys_workflow_definicoes
-        WHERE tenant_id = {0} AND codigo = {1} AND is_deleted = 1
-        LIMIT 1
-        """,
-        tenantContext.TenantId.ToString(),
-        definicao.Codigo)
-        .ToListAsync(ct);
-    var deletedDefinitionId = deletedDefinitionIds.FirstOrDefault();
-    var id = deletedDefinitionId ?? Guid.NewGuid().ToString();
-
-    if (deletedDefinitionId is not null)
-    {
-        var restored = await db.Database.ExecuteSqlInterpolatedAsync(
-            $"""
-            UPDATE sys_workflow_definicoes
-            SET entidade = {definicao.Entidade},
-                nome = {definicao.Nome},
-                estados_json = {estadosJson},
-                transicoes_json = {transicoesJson},
-                ativo = {definicao.Ativo},
-                is_deleted = 0,
-                deleted_at = NULL,
-                updated_at = UTC_TIMESTAMP()
-            WHERE id = {deletedDefinitionId} AND tenant_id = {tenantContext.TenantId.ToString()} AND is_deleted = 1
-            """,
-            ct);
-        if (restored != 1)
-        {
-            return Results.Conflict(ApiResponse<WorkflowDefinicaoDto>.Erro("A definicao foi alterada por outra operacao. Recarregue a lista."));
-        }
-    }
-    else
-    {
-        try
-        {
-            await db.Database.ExecuteSqlInterpolatedAsync(
-                $"""
-                INSERT INTO sys_workflow_definicoes
-                    (id, tenant_id, entidade, codigo, nome, estados_json, transicoes_json, ativo, created_at, updated_at)
-                VALUES
-                    ({id}, {tenantContext.TenantId.ToString()}, {definicao.Entidade}, {definicao.Codigo}, {definicao.Nome}, {estadosJson}, {transicoesJson}, {definicao.Ativo}, UTC_TIMESTAMP(), UTC_TIMESTAMP())
-                """,
-                ct);
-        }
-        catch (MySqlException ex) when (ex.Number == 1062)
-        {
-            return Results.Conflict(ApiResponse<WorkflowDefinicaoDto>.Erro("Ja existe uma definicao ativa com este codigo no tenant."));
-        }
-    }
-
-    var response = new WorkflowDefinicaoDto(id, definicao.Entidade, definicao.Codigo, definicao.Nome, estadosJson, transicoesJson, definicao.Ativo, DateTime.UtcNow, DateTime.UtcNow);
-    return Results.Created($"/api/workflows/definicoes/{id}", ApiResponse<WorkflowDefinicaoDto>.Ok(response, "Definicao de workflow criada."));
-})
-.WithName("WorkflowsDefinicoesCriar");
-
-app.MapPut("/api/workflows/definicoes/{id:guid}", [Authorize(Policy = "Gerente")] async (
-    Guid id,
-    WorkflowDefinicaoRequest request,
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    CancellationToken ct) =>
-{
-    var atual = await LoadWorkflowDefinitionAsync(db, tenantContext.TenantId, id, ct);
-    if (atual is null)
-    {
-        return Results.NotFound(ApiResponse<WorkflowDefinicaoDto>.Erro("Definicao de workflow nao encontrada."));
-    }
-
-    var definicao = NormalizeWorkflowDefinition(request, out var validationError);
-    if (definicao is null)
-    {
-        return Results.BadRequest(ApiResponse<WorkflowDefinicaoDto>.Erro(validationError));
-    }
-
-    var duplicateCount = await db.Database.SqlQueryRaw<int>(
-        """
-        SELECT COUNT(*) AS Value
-        FROM sys_workflow_definicoes
-        WHERE tenant_id = {0} AND codigo = {1} AND id <> {2} AND is_deleted = 0
-        """,
-        tenantContext.TenantId.ToString(),
-        definicao.Codigo,
-        id.ToString())
-        .SingleAsync(ct);
-    if (duplicateCount > 0)
-    {
-        return Results.Conflict(ApiResponse<WorkflowDefinicaoDto>.Erro("Ja existe uma definicao ativa com este codigo no tenant."));
-    }
-
-    var estadosEmUso = await db.Database.SqlQueryRaw<string>(
-        """
-        SELECT DISTINCT estado_atual AS Value
-        FROM sys_workflow_instancias
-        WHERE tenant_id = {0} AND definicao_id = {1} AND is_deleted = 0
-        """,
-        tenantContext.TenantId.ToString(),
-        id.ToString())
-        .ToListAsync(ct);
-    var estadosRemovidosEmUso = estadosEmUso
-        .Where(estado => !definicao.Estados.Contains(estado, StringComparer.OrdinalIgnoreCase))
-        .ToList();
-    if (estadosRemovidosEmUso.Count > 0)
-    {
-        return Results.Conflict(ApiResponse<WorkflowDefinicaoDto>.Erro(
-            $"A definicao nao pode remover estados utilizados por instancias ativas: {string.Join(", ", estadosRemovidosEmUso)}."));
-    }
-    if (!definicao.Ativo && estadosEmUso.Count > 0)
-    {
-        return Results.Conflict(ApiResponse<WorkflowDefinicaoDto>.Erro("A definicao possui instancias ativas e nao pode ser desativada."));
-    }
-
-    var estadosJson = JsonSerializer.Serialize(definicao.Estados);
-    var transicoesJson = JsonSerializer.Serialize(definicao.Transicoes);
-
-    var affected = await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        UPDATE sys_workflow_definicoes
-        SET entidade = {definicao.Entidade},
-            codigo = {definicao.Codigo},
-            nome = {definicao.Nome},
-            estados_json = {estadosJson},
-            transicoes_json = {transicoesJson},
-            ativo = {definicao.Ativo},
-            updated_at = UTC_TIMESTAMP()
-        WHERE id = {id.ToString()} AND tenant_id = {tenantContext.TenantId.ToString()} AND is_deleted = 0
-        """,
-        ct);
-
-    if (affected == 0)
-    {
-        return Results.NotFound(ApiResponse<WorkflowDefinicaoDto>.Erro("Definicao de workflow nao encontrada."));
-    }
-
-    var response = new WorkflowDefinicaoDto(id.ToString(), definicao.Entidade, definicao.Codigo, definicao.Nome, estadosJson, transicoesJson, definicao.Ativo, atual.CriadoEm, DateTime.UtcNow);
-    return Results.Ok(ApiResponse<WorkflowDefinicaoDto>.Ok(response, "Definicao de workflow atualizada."));
-})
-.WithName("WorkflowsDefinicoesAtualizar");
-
-app.MapDelete("/api/workflows/definicoes/{id:guid}", [Authorize(Policy = "Gerente")] async (
-    Guid id,
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    CancellationToken ct) =>
-{
-    var activeInstanceCount = await db.Database.SqlQueryRaw<int>(
-        """
-        SELECT COUNT(*) AS Value
-        FROM sys_workflow_instancias
-        WHERE tenant_id = {0} AND definicao_id = {1} AND is_deleted = 0
-        """,
-        tenantContext.TenantId.ToString(),
-        id.ToString())
-        .SingleAsync(ct);
-    if (activeInstanceCount > 0)
-    {
-        return Results.Conflict(ApiResponse<object>.Erro("A definicao possui instancias ativas e nao pode ser excluida."));
-    }
-
-    var affected = await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        UPDATE sys_workflow_definicoes
-        SET ativo = 0,
-            is_deleted = 1,
-            deleted_at = UTC_TIMESTAMP(),
-            updated_at = UTC_TIMESTAMP()
-        WHERE id = {id.ToString()} AND tenant_id = {tenantContext.TenantId.ToString()} AND is_deleted = 0
-        """,
-        ct);
-
-    return affected == 0
-        ? Results.NotFound(ApiResponse<object>.Erro("Definicao de workflow nao encontrada."))
-        : Results.NoContent();
-})
-.WithName("WorkflowsDefinicoesExcluir");
-
-app.MapPost("/api/workflows/instancias", [Authorize(Policy = "Gerente")] async (
-    WorkflowInstanciaRequest request,
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    ClaimsPrincipal principal,
-    CancellationToken ct) =>
-{
-    var definicaoDto = await LoadWorkflowDefinitionAsync(db, tenantContext.TenantId, request.DefinicaoId, ct);
-    if (definicaoDto is null || !definicaoDto.Ativo)
-    {
-        return Results.NotFound(ApiResponse<WorkflowInstanciaDto>.Erro("Definicao de workflow ativa nao encontrada."));
-    }
-
-    if (!TryParseWorkflowDefinition(definicaoDto, out var definicao, out var definitionError) || definicao is null)
-    {
-        return Results.Problem(
-            statusCode: StatusCodes.Status500InternalServerError,
-            title: "Definicao de workflow inconsistente",
-            detail: definitionError);
-    }
-
-    var entidade = NormalizeBusinessKey(request.Entidade);
-    var registroChave = TrimOrNull(request.RegistroChave);
-    var estadoInicial = string.IsNullOrWhiteSpace(request.EstadoInicial)
-        ? definicao.Estados[0]
-        : NormalizeBusinessKey(request.EstadoInicial);
-    if (string.IsNullOrWhiteSpace(entidade) || string.IsNullOrWhiteSpace(registroChave))
-    {
-        return Results.BadRequest(ApiResponse<WorkflowInstanciaDto>.Erro("Entidade e registro sao obrigatorios."));
-    }
-    if (!string.Equals(entidade, definicao.Entidade, StringComparison.OrdinalIgnoreCase))
-    {
-        return Results.BadRequest(ApiResponse<WorkflowInstanciaDto>.Erro("A entidade da instancia nao corresponde a entidade da definicao."));
-    }
-    if (registroChave.Length > 120)
-    {
-        return Results.BadRequest(ApiResponse<WorkflowInstanciaDto>.Erro("A chave do registro deve ter no maximo 120 caracteres."));
-    }
-    if (!definicao.Estados.Contains(estadoInicial, StringComparer.OrdinalIgnoreCase))
-    {
-        return Results.BadRequest(ApiResponse<WorkflowInstanciaDto>.Erro("O estado inicial nao pertence a definicao do workflow."));
-    }
-
-    var currentUserId = GetCurrentUserId(principal);
-    if (currentUserId <= 0)
-    {
-        return Results.Unauthorized();
-    }
-
-    var duplicateCount = await db.Database.SqlQueryRaw<int>(
-        """
-        SELECT COUNT(*) AS Value
-        FROM sys_workflow_instancias
-        WHERE tenant_id = {0}
-          AND definicao_id = {1}
-          AND entidade = {2}
-          AND registro_chave = {3}
-          AND is_deleted = 0
-        """,
-        tenantContext.TenantId.ToString(),
-        request.DefinicaoId.ToString(),
-        entidade,
-        registroChave)
-        .SingleAsync(ct);
-    if (duplicateCount > 0)
-    {
-        return Results.Conflict(ApiResponse<WorkflowInstanciaDto>.Erro("Ja existe uma instancia ativa para este registro e definicao."));
-    }
-
-    var id = Guid.NewGuid().ToString();
-    await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        INSERT INTO sys_workflow_instancias
-            (id, tenant_id, definicao_id, entidade, registro_chave, estado_atual, solicitante_user_id, observacao, created_at, updated_at)
-        VALUES
-            ({id}, {tenantContext.TenantId.ToString()}, {request.DefinicaoId.ToString()}, {entidade}, {registroChave}, {estadoInicial}, {currentUserId}, {TrimOrNull(request.Observacao)}, UTC_TIMESTAMP(), UTC_TIMESTAMP())
-        """,
-        ct);
-
-    var response = new WorkflowInstanciaDto(id, request.DefinicaoId.ToString(), entidade, registroChave, estadoInicial, currentUserId, DateTime.UtcNow, DateTime.UtcNow);
-    return Results.Created($"/api/workflows/instancias/{id}", ApiResponse<WorkflowInstanciaDto>.Ok(response, "Instancia de workflow aberta."));
-})
-.WithName("WorkflowsInstanciasCriar");
-
-app.MapGet("/api/workflows/instancias", [Authorize(Policy = "Gerente")] async (
-    string? entidade,
-    string? estado,
-    string? registroChave,
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    CancellationToken ct) =>
-{
-    var entidadeFiltro = NormalizeBusinessKey(entidade);
-    var estadoFiltro = NormalizeBusinessKey(estado);
-    var registroFiltro = TrimOrNull(registroChave);
-    var instancias = await db.Database.SqlQueryRaw<WorkflowInstanciaDto>(
-        """
-        SELECT
-            CAST(id AS CHAR) AS Id,
-            CAST(definicao_id AS CHAR) AS DefinicaoId,
-            entidade AS Entidade,
-            registro_chave AS RegistroChave,
-            estado_atual AS EstadoAtual,
-            solicitante_user_id AS SolicitanteUserId,
-            created_at AS CriadoEm,
-            updated_at AS AtualizadoEm
-        FROM sys_workflow_instancias
-        WHERE tenant_id = {0}
-          AND is_deleted = 0
-          AND ({1} = '' OR entidade = {1})
-          AND ({2} = '' OR estado_atual = {2})
-          AND ({3} IS NULL OR registro_chave = {3})
-        ORDER BY updated_at DESC, created_at DESC
-        LIMIT 500
-        """,
-        tenantContext.TenantId.ToString(),
-        entidadeFiltro,
-        estadoFiltro,
-        (object?)registroFiltro ?? DBNull.Value)
-        .ToListAsync(ct);
-
-    return Results.Ok(ApiResponse<List<WorkflowInstanciaDto>>.Ok(instancias, "Instancias de workflow carregadas.", instancias.Count));
-})
-.WithName("WorkflowsInstanciasListar");
-
-app.MapGet("/api/workflows/instancias/{id:guid}", [Authorize(Policy = "Gerente")] async (
-    Guid id,
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    CancellationToken ct) =>
-{
-    var instancia = await LoadWorkflowInstanceAsync(db, tenantContext.TenantId, id, ct);
-
-    return instancia is null
-        ? Results.NotFound(ApiResponse<WorkflowInstanciaDto>.Erro("Instancia de workflow nao encontrada."))
-        : Results.Ok(ApiResponse<WorkflowInstanciaDto>.Ok(instancia, "Instancia de workflow carregada."));
-})
-.WithName("WorkflowsInstanciasObter");
-
-app.MapGet("/api/workflows/instancias/{id:guid}/transicoes", [Authorize(Policy = "Gerente")] async (
-    Guid id,
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    CancellationToken ct) =>
-{
-    var instancia = await LoadWorkflowInstanceAsync(db, tenantContext.TenantId, id, ct);
-    if (instancia is null)
-    {
-        return Results.NotFound(ApiResponse<List<WorkflowTransicaoDto>>.Erro("Instancia de workflow nao encontrada."));
-    }
-
-    var transicoes = await db.Database.SqlQueryRaw<WorkflowTransicaoDto>(
-        """
-        SELECT
-            CAST(id AS CHAR) AS Id,
-            CAST(instancia_id AS CHAR) AS InstanciaId,
-            estado_origem AS EstadoOrigem,
-            estado_destino AS EstadoDestino,
-            acao AS Acao,
-            usuario_id AS UsuarioId,
-            created_at AS CriadoEm
-        FROM sys_workflow_transicoes
-        WHERE instancia_id = {0} AND tenant_id = {1}
-        ORDER BY created_at, id
-        """,
-        id.ToString(),
-        tenantContext.TenantId.ToString())
-        .ToListAsync(ct);
-
-    return Results.Ok(ApiResponse<List<WorkflowTransicaoDto>>.Ok(transicoes, "Historico de transicoes carregado.", transicoes.Count));
-})
-.WithName("WorkflowsInstanciasTransicoesListar");
-
-app.MapPost("/api/workflows/instancias/{id:guid}/transicoes", [Authorize(Policy = "Gerente")] async (
-    Guid id,
-    WorkflowTransicaoRequest request,
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    ClaimsPrincipal principal,
-    CancellationToken ct) =>
-{
-    var destino = NormalizeBusinessKey(request.EstadoDestino);
-    var acaoSolicitada = NormalizeBusinessKey(request.Acao);
-    if (string.IsNullOrWhiteSpace(destino))
-    {
-        return Results.BadRequest(ApiResponse<WorkflowTransicaoDto>.Erro("Estado de destino e obrigatorio."));
-    }
-
-    var executionStrategy = db.Database.CreateExecutionStrategy();
-    return await executionStrategy.ExecuteAsync(async () =>
-    {
-        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
-        var instancia = await LoadWorkflowInstanceAsync(db, tenantContext.TenantId, id, ct);
-        if (instancia is null)
-        {
-            await transaction.RollbackAsync(ct);
-            return (IResult)Results.NotFound(ApiResponse<WorkflowTransicaoDto>.Erro("Instancia de workflow nao encontrada."));
-        }
-
-        if (!Guid.TryParse(instancia.DefinicaoId, out var definicaoId))
-        {
-            await transaction.RollbackAsync(ct);
-            return Results.Problem(
-                statusCode: StatusCodes.Status500InternalServerError,
-                title: "Instancia de workflow inconsistente",
-                detail: "O identificador da definicao vinculada nao possui formato UUID valido.");
-        }
-
-        var definicaoDto = await LoadWorkflowDefinitionAsync(db, tenantContext.TenantId, definicaoId, ct);
-        if (definicaoDto is null || !definicaoDto.Ativo)
-        {
-            await transaction.RollbackAsync(ct);
-            return Results.Conflict(ApiResponse<WorkflowTransicaoDto>.Erro("A definicao vinculada a instancia nao esta ativa."));
-        }
-        if (!TryParseWorkflowDefinition(definicaoDto, out var definicao, out var definitionError) || definicao is null)
-        {
-            await transaction.RollbackAsync(ct);
-            return Results.Problem(
-                statusCode: StatusCodes.Status500InternalServerError,
-                title: "Definicao de workflow inconsistente",
-                detail: definitionError);
-        }
-
-        var candidatas = definicao.Transicoes
-            .Where(regra => string.Equals(regra.Origem, instancia.EstadoAtual, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(regra.Destino, destino, StringComparison.OrdinalIgnoreCase)
-                && (string.IsNullOrWhiteSpace(acaoSolicitada) || string.Equals(regra.Acao, acaoSolicitada, StringComparison.OrdinalIgnoreCase)))
-            .ToList();
-        if (candidatas.Count == 0)
-        {
-            await transaction.RollbackAsync(ct);
-            return Results.Conflict(ApiResponse<WorkflowTransicaoDto>.Erro(
-                $"Nao existe transicao configurada de {instancia.EstadoAtual} para {destino}."));
-        }
-        if (candidatas.Count > 1)
-        {
-            await transaction.RollbackAsync(ct);
-            return Results.BadRequest(ApiResponse<WorkflowTransicaoDto>.Erro("Informe a acao para selecionar uma transicao sem ambiguidade."));
-        }
-
-        var regraSelecionada = candidatas[0];
-        if (!IsWorkflowProfileAuthorized(principal, regraSelecionada.PerfisAutorizados))
-        {
-            await transaction.RollbackAsync(ct);
-            return Results.Forbid();
-        }
-
-        var currentUserId = GetCurrentUserId(principal);
-        if (currentUserId <= 0)
-        {
-            await transaction.RollbackAsync(ct);
-            return Results.Unauthorized();
-        }
-
-        var affected = await db.Database.ExecuteSqlInterpolatedAsync(
-            $"""
-            UPDATE sys_workflow_instancias
-            SET estado_atual = {regraSelecionada.Destino},
-                updated_at = UTC_TIMESTAMP()
-            WHERE id = {id.ToString()}
-              AND tenant_id = {tenantContext.TenantId.ToString()}
-              AND estado_atual = {instancia.EstadoAtual}
-              AND is_deleted = 0
-            """,
-            ct);
-        if (affected != 1)
-        {
-            await transaction.RollbackAsync(ct);
-            return Results.Conflict(ApiResponse<WorkflowTransicaoDto>.Erro("A instancia foi alterada por outra operacao. Recarregue o estado atual."));
-        }
-
-        var transicaoId = Guid.NewGuid().ToString();
-        await db.Database.ExecuteSqlInterpolatedAsync(
-            $"""
-            INSERT INTO sys_workflow_transicoes
-                (id, tenant_id, instancia_id, estado_origem, estado_destino, acao, usuario_id, observacao, created_at)
-            VALUES
-                ({transicaoId}, {tenantContext.TenantId.ToString()}, {id.ToString()}, {instancia.EstadoAtual}, {regraSelecionada.Destino}, {regraSelecionada.Acao}, {currentUserId}, {TrimOrNull(request.Observacao)}, UTC_TIMESTAMP())
-            """,
-            ct);
-
-        await transaction.CommitAsync(ct);
-
-        var response = new WorkflowTransicaoDto(transicaoId, id.ToString(), instancia.EstadoAtual, regraSelecionada.Destino, regraSelecionada.Acao, currentUserId, DateTime.UtcNow);
-        return Results.Ok(ApiResponse<WorkflowTransicaoDto>.Ok(response, "Transicao de workflow registrada."));
-    });
-})
-.WithName("WorkflowsInstanciasTransicionar");
-
-app.MapDelete("/api/workflows/instancias/{id:guid}", [Authorize(Policy = "Gerente")] async (
-    Guid id,
-    NexumDbContext db,
-    ITenantContext tenantContext,
-    CancellationToken ct) =>
-{
-    var affected = await db.Database.ExecuteSqlInterpolatedAsync(
-        $"""
-        UPDATE sys_workflow_instancias
-        SET is_deleted = 1,
-            deleted_at = UTC_TIMESTAMP(),
-            updated_at = UTC_TIMESTAMP()
-        WHERE id = {id.ToString()} AND tenant_id = {tenantContext.TenantId.ToString()} AND is_deleted = 0
-        """,
-        ct);
-
-    return affected == 0
-        ? Results.NotFound(ApiResponse<object>.Erro("Instancia de workflow nao encontrada."))
-        : Results.NoContent();
-})
-.WithName("WorkflowsInstanciasExcluir");
-
-app.MapPost("/api/sistema/validar-token", async (
-    ValidacaoTokenRequest request,
-    NexumDbContext db,
-    CancellationToken ct) =>
-{
-    var token = TrimOrNull(request.Token);
-    if (string.IsNullOrWhiteSpace(token))
-    {
-        return Results.Unauthorized();
-    }
-
-    var tokenHash = ComputeSha256Hash(token);
-    var credencial = await db.ConfiguracoesSistema
+    var configs = await db.ConfiguracoesSistema
         .AsNoTracking()
-        .Where(item => item.Grupo == "Credenciais" && item.Chave.StartsWith("validacao_token_"))
-        .FirstOrDefaultAsync(item => item.Valor == tokenHash, ct);
+        .ToListAsync(ct);
 
-    if (credencial is null)
-    {
-        return Results.Unauthorized();
-    }
+    var configMap = configs
+        .GroupBy(item => item.Chave, StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(group => group.Key, group => group.Last().Valor, StringComparer.OrdinalIgnoreCase);
 
-    var response = new ValidacaoTokenResponse(credencial.Chave.ToUpperInvariant(), credencial.Descricao ?? "Token de validacao ativo");
-    return Results.Ok(ApiResponse<ValidacaoTokenResponse>.Ok(response, "Token validado com sucesso."));
+    var publicConfig = BuildPublicSiteConfig(configMap);
+    return Results.Ok(ApiResponse<SiteConfiguracaoPublicaDto>.Ok(publicConfig));
 })
 .AllowAnonymous()
-.WithName("ValidarTokenSistema");
+.WithName("SiteConfiguracoesPublicas")
+;
 
-app.MapGet("/api/sistema/credenciais/status", [Authorize(Policy = "Admin")] async (NexumDbContext db, CancellationToken ct) =>
+app.MapGet("/api/site/configuracoes", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
 {
-    var tokens = await db.ConfiguracoesSistema
+    var items = await db.ConfiguracoesSistema
         .AsNoTracking()
-        .Where(item => item.Grupo == "Credenciais" && item.Chave.StartsWith("validacao_token_"))
-        .OrderBy(item => item.Chave)
-        .Select(item => new CredencialSistemaStatusDto(
-            item.Chave.ToUpperInvariant(),
-            !string.IsNullOrWhiteSpace(item.Valor),
+        .OrderBy(item => item.Grupo)
+        .ThenBy(item => item.Chave)
+        .Select(item => new SiteConfiguracaoItemDto(
+            item.Id,
+            item.Chave,
+            item.Valor,
+            item.Tipo.ToString(),
             item.Descricao,
+            item.Grupo,
+            item.Editavel,
             item.UpdatedAt))
         .ToListAsync(ct);
 
-    var perfisAtivos = await db.Usuarios
-        .AsNoTracking()
-        .Where(item => item.Ativo)
-        .Select(item => item.Perfil)
-        .ToListAsync(ct);
+    return Results.Ok(ApiResponse<List<SiteConfiguracaoItemDto>>.Ok(items));
+})
+.WithName("SiteConfiguracoesAdmin")
+;
 
-    var usuarios = perfisAtivos
-        .GroupBy(perfil => perfil)
-        .Select(group => new UsuarioPerfilStatusDto(group.Key.ToString(), group.Count()))
-        .OrderBy(item => item.Perfil)
+app.MapPut("/api/site/configuracoes", [Authorize(Policy = "Gerente")] async (SiteConfiguracaoUpdateRequest request, NexumDbContext db, CancellationToken ct) =>
+{
+    if (request.Itens is null || request.Itens.Count == 0)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Nenhuma configuraÃ§Ã£o foi enviada."));
+    }
+
+    var requestedKeys = request.Itens
+        .Where(item => !string.IsNullOrWhiteSpace(item.Chave))
+        .Select(item => item.Chave.Trim())
+        .Distinct(StringComparer.OrdinalIgnoreCase)
         .ToList();
 
-    return Results.Ok(ApiResponse<CredenciaisSistemaStatusDto>.Ok(
-        new CredenciaisSistemaStatusDto(tokens, usuarios),
-        "Credenciais operacionais cadastradas sem exposicao de valores sensiveis."));
-})
-.WithName("CredenciaisSistemaStatus");
-
-app.MapGet("/api/admin/usuarios", [Authorize(Policy = "Admin")] async (NexumDbContext db, CancellationToken ct) =>
-{
-    var usuarios = await db.Usuarios
-        .AsNoTracking()
-        .OrderBy(usuario => usuario.Nome)
-        .Select(usuario => new UsuarioAcessoDto(
-            usuario.Id,
-            usuario.Nome,
-            usuario.Email,
-            usuario.Perfil.ToString(),
-            usuario.Ativo,
-            usuario.Telefone,
-            usuario.UltimoLogin,
-            usuario.UpdatedAt))
+    var existing = await db.ConfiguracoesSistema
+        .Where(item => requestedKeys.Contains(item.Chave))
         .ToListAsync(ct);
 
-    return Results.Ok(ApiResponse<List<UsuarioAcessoDto>>.Ok(
-        usuarios,
-        "Usuarios administrativos carregados para GenesisGest.Net e Nexum."));
-})
-.WithName("AdminUsuariosListar");
+    foreach (var item in request.Itens)
+    {
+        var chave = item.Chave?.Trim();
+        if (string.IsNullOrWhiteSpace(chave))
+        {
+            continue;
+        }
 
-app.MapPost("/api/admin/usuarios", [Authorize(Policy = "Admin")] async (
-    UsuarioAcessoUpsertRequest request,
+        var entity = existing.FirstOrDefault(config => string.Equals(config.Chave, chave, StringComparison.OrdinalIgnoreCase));
+        if (entity is null)
+        {
+            entity = new ConfiguracaoSistema
+            {
+                Chave = chave,
+                CreatedAt = DateTime.UtcNow
+            };
+            db.ConfiguracoesSistema.Add(entity);
+            existing.Add(entity);
+        }
+
+        entity.Valor = item.Valor?.Trim();
+        entity.Descricao = item.Descricao?.Trim();
+        entity.Grupo = item.Grupo?.Trim();
+        entity.Editavel = item.Editavel ?? true;
+        entity.UpdatedAt = DateTime.UtcNow;
+
+        if (Enum.TryParse<TipoConfiguracao>(item.Tipo, true, out var tipo))
+        {
+            entity.Tipo = tipo;
+        }
+        else if (LooksLikeJson(entity.Valor))
+        {
+            entity.Tipo = TipoConfiguracao.JSON;
+        }
+        else
+        {
+            entity.Tipo = TipoConfiguracao.Texto;
+        }
+    }
+
+    await db.SaveChangesAsync(ct);
+
+    return Results.Ok(ApiResponse<string>.Ok("ok", "ConfiguraÃ§Ãµes pÃºblicas do site atualizadas com sucesso."));
+})
+.WithName("AtualizarSiteConfiguracoes")
+;
+
+app.MapGet("/api/categorias", async (NexumDbContext db, CancellationToken ct) =>
+{
+    var categorias = await db.Categorias
+        .AsNoTracking()
+        .Where(categoria => categoria.Ativa)
+        .OrderBy(categoria => categoria.Ordem)
+        .ThenBy(categoria => categoria.Nome)
+        .Select(categoria => new CategoriaDto(
+            categoria.Slug,
+            categoria.Nome,
+            categoria.Descricao ?? string.Empty,
+            categoria.CategoriaPai != null ? categoria.CategoriaPai.Slug : null,
+            categoria.CategoriaPaiId.HasValue ? 2 : 1,
+            categoria.CategoriaPai != null ? $"{categoria.CategoriaPai.Nome} / {categoria.Nome}" : categoria.Nome,
+            categoria.Ordem,
+            categoria.Ativa))
+        .ToListAsync(ct);
+
+    if (categorias.Count == 0)
+    {
+        categorias = StoreData.Categorias;
+    }
+
+    return Results.Ok(ApiResponse<List<CategoriaDto>>.Ok(categorias));
+})
+.AllowAnonymous()
+.WithName("Categorias")
+;
+
+app.MapPost("/api/categorias", [Authorize(Policy = "Gerente")] async (
+    CategoriaDto request,
     NexumDbContext db,
-    ClaimsPrincipal principal,
-    HttpContext httpContext,
     CancellationToken ct) =>
 {
-    var email = NormalizeEmail(request.Email);
-    var nome = TrimOrNull(request.Nome);
-    if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(nome))
+    var slug = Slugify(request.Id);
+    if (string.IsNullOrWhiteSpace(slug))
     {
-        return Results.BadRequest(ApiResponse<UsuarioAcessoDto>.Erro("Nome e e-mail sao obrigatorios."));
+        slug = Slugify(request.Nome);
     }
 
-    if (!Enum.TryParse<PerfilUsuario>(request.Perfil, true, out var perfil))
+    if (string.IsNullOrWhiteSpace(slug))
     {
-        return Results.BadRequest(ApiResponse<UsuarioAcessoDto>.Erro("Perfil invalido."));
+        return Results.BadRequest(ApiResponse<string>.Erro("Slug da categoria invalido."));
     }
 
-    var usuarioExistente = await db.Usuarios.FirstOrDefaultAsync(u => u.Email == email, ct);
-    if (usuarioExistente is not null)
+    var exists = await db.Categorias.AnyAsync(categoria => categoria.Slug == slug, ct);
+    if (exists)
     {
-        usuarioExistente.Nome = nome;
-        usuarioExistente.Perfil = perfil;
-        usuarioExistente.Ativo = request.Ativo;
-        usuarioExistente.Telefone = TrimOrNull(request.Telefone);
-        if (!string.IsNullOrWhiteSpace(request.Senha))
-        {
-            usuarioExistente.SenhaHash = BCrypt.Net.BCrypt.HashPassword(request.Senha);
-        }
-        usuarioExistente.UpdatedAt = DateTime.UtcNow;
-
-        db.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "sys_usuarios", usuarioExistente.Id, AcaoAuditoria.UPDATE, null, usuarioExistente));
-        await db.SaveChangesAsync(ct);
-
-        var dtoExistente = new UsuarioAcessoDto(
-            usuarioExistente.Id,
-            usuarioExistente.Nome,
-            usuarioExistente.Email,
-            usuarioExistente.Perfil.ToString(),
-            usuarioExistente.Ativo,
-            usuarioExistente.Telefone,
-            usuarioExistente.UltimoLogin,
-            usuarioExistente.UpdatedAt);
-
-        return Results.Ok(ApiResponse<UsuarioAcessoDto>.Ok(dtoExistente, "Usuario atualizado com sucesso."));
+        return Results.Conflict(ApiResponse<string>.Erro("Categoria ja existe."));
     }
 
-    if (string.IsNullOrWhiteSpace(request.Senha))
+    var lojaId = await db.Lojas
+        .AsNoTracking()
+        .Where(loja => loja.Ativa)
+        .OrderBy(loja => loja.OrdemExibicao)
+        .Select(loja => loja.Id)
+        .FirstOrDefaultAsync(ct);
+
+    if (lojaId == 0)
     {
-        return Results.BadRequest(ApiResponse<UsuarioAcessoDto>.Erro("Senha e obrigatoria para novos usuarios."));
+        return Results.Problem("Nenhuma loja ativa cadastrada.", statusCode: StatusCodes.Status500InternalServerError);
     }
 
-    var novoUsuario = new Usuario
+    int? categoriaPaiId = null;
+    if (!string.IsNullOrWhiteSpace(request.CategoriaPaiId))
     {
-        Nome = nome,
-        Email = email,
-        SenhaHash = BCrypt.Net.BCrypt.HashPassword(request.Senha),
-        Perfil = perfil,
-        Ativo = request.Ativo,
-        Telefone = TrimOrNull(request.Telefone),
+        var categoriaPaiSlug = request.CategoriaPaiId.Trim();
+        categoriaPaiId = await db.Categorias
+            .AsNoTracking()
+            .Where(categoria => categoria.Slug == categoriaPaiSlug && categoria.Ativa)
+            .Select(categoria => (int?)categoria.Id)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    var categoria = new Categoria
+    {
+        LojaId = lojaId,
+        Nome = request.Nome,
+        Slug = slug,
+        Descricao = request.Descricao,
+        CategoriaPaiId = categoriaPaiId,
+        Ordem = request.Ordem ?? 0,
+        Ativa = true,
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow
     };
 
-    db.Usuarios.Add(novoUsuario);
+    db.Categorias.Add(categoria);
     await db.SaveChangesAsync(ct);
 
-    db.LogsAuditoria.Add(CreateIamAuditLog(principal, httpContext, "sys_usuarios", novoUsuario.Id, AcaoAuditoria.INSERT, null, novoUsuario));
-    await db.SaveChangesAsync(ct);
-
-    var dtoNovo = new UsuarioAcessoDto(
-        novoUsuario.Id,
-        novoUsuario.Nome,
-        novoUsuario.Email,
-        novoUsuario.Perfil.ToString(),
-        novoUsuario.Ativo,
-        novoUsuario.Telefone,
-        novoUsuario.UltimoLogin,
-        novoUsuario.UpdatedAt);
-
-    return Results.Created($"/api/admin/usuarios/{novoUsuario.Id}", ApiResponse<UsuarioAcessoDto>.Ok(dtoNovo, "Usuario criado com sucesso."));
+    return Results.Created($"/api/categorias/{categoria.Slug}", ApiResponse<CategoriaDto>.Ok(new CategoriaDto(
+        categoria.Slug,
+        categoria.Nome,
+        categoria.Descricao ?? string.Empty,
+        request.CategoriaPaiId,
+        categoria.CategoriaPaiId.HasValue ? 2 : 1,
+        categoria.CategoriaPaiId.HasValue ? $"{request.CategoriaPaiId} / {categoria.Nome}" : categoria.Nome,
+        categoria.Ordem,
+        categoria.Ativa), "Categoria cadastrada."));
 })
-.WithName("AdminUsuariosCriar");
+.WithName("CriarCategoria")
+;
 
-app.Run();
-
-// Helper Methods
-static string GetReleaseVersion() => "1.1.5.7225";
-
-static string ResolveJwtSecret(IConfiguration config)
+app.MapGet("/api/produtos", async (string? categoria_id, NexumDbContext db, CancellationToken ct) =>
 {
-    return config["JwtSettings:SecretKey"]
-        ?? config["JwtSettings__SecretKey"]
-        ?? Environment.GetEnvironmentVariable("JWT_SECRET_KEY")
-        ?? "S3cur3S3cr3tK3yF0rJ3wT1A2B3C4D5E6F7G8H9I0!";
-}
+    const string defaultImage = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85";
 
-static string? ResolveConfiguredConnectionString(IConfiguration config, params string[] names)
-{
-    foreach (var name in names)
+    IQueryable<Produto> query = db.Produtos.AsNoTracking().Where(produto => produto.Ativo);
+
+    if (!string.IsNullOrWhiteSpace(categoria_id))
     {
-        var conn = config.GetConnectionString(name) ?? config[$"ConnectionStrings:{name}"];
-        if (!string.IsNullOrWhiteSpace(conn)) return conn;
-    }
-    return null;
-}
+        var categoriaId = await db.Categorias
+            .AsNoTracking()
+            .Where(categoria => categoria.Slug == categoria_id)
+            .Select(categoria => (int?)categoria.Id)
+            .FirstOrDefaultAsync(ct);
 
-static string[] GetCorsOrigins(IConfiguration config)
-{
-    var origins = config.GetSection("Cors:AllowedOrigins").Get<string[]>();
-    return origins ?? new[] { "https://genesisgest.net", "https://admin.nexumaltivon.com" };
-}
-
-static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogger logger)
-{
-    try
-    {
-        using var scope = services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<NexumDbContext>();
-        await db.Database.EnsureCreatedAsync();
-        logger.LogInformation("Operational schema verificado/aplicado com sucesso.");
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Erro ao garantir o schema operacional.");
-    }
-}
-
-static async Task<IResult> CheckMySqlHealthAsync(string? connectionString, string fallbackStatus, string dbName, CancellationToken ct)
-{
-    if (string.IsNullOrWhiteSpace(connectionString))
-    {
-        return Results.Ok(new { status = fallbackStatus, database = dbName });
-    }
-
-    try
-    {
-        using var conn = new MySqlConnection(connectionString);
-        await conn.OpenAsync(ct);
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT 1;";
-        await cmd.ExecuteScalarAsync(ct);
-
-        return Results.Ok(new { status = "Healthy", database = dbName });
-    }
-    catch (Exception ex)
-    {
-        return Results.Problem($"Falha de conexao ao banco MySQL '{dbName}': {ex.Message}");
-    }
-}
-
-static bool TryResolveRedisEndpoint(string connectionString, out string host, out int port, out string? error)
-{
-    host = "localhost";
-    port = 6379;
-    error = null;
-
-    try
-    {
-        var parts = connectionString.Split(',');
-        var endpoint = parts[0].Trim();
-        var hostPort = endpoint.Split(':');
-        host = hostPort[0];
-        if (hostPort.Length > 1 && int.TryParse(hostPort[1], out var p))
+        if (categoriaId is null)
         {
-            port = p;
+            return Results.Ok(ApiResponse<List<ProdutoLojaDto>>.Ok([]));
         }
-        return true;
-    }
-    catch (Exception ex)
-    {
-        error = ex.Message;
-        return false;
-    }
-}
 
-static async Task<string> BuildYaraOperationalContextAsync(NexumDbContext db, string mensagem, CancellationToken ct)
-{
-    await Task.Yield();
-    return "Contexto operacional de atendimento publico da assistente Yara.";
-}
+        query = query.Where(produto => produto.CategoriaId == categoriaId);
+    }
 
-static LogAuditoria CreateIamAuditLog(ClaimsPrincipal principal, HttpContext context, string tabela, object id, AcaoAuditoria acao, object? anterior, object? atual)
-{
-    var userId = GetCurrentUserId(principal);
-    return new LogAuditoria
+    var produtos = await query
+        .OrderByDescending(produto => produto.Destaque)
+        .ThenByDescending(produto => produto.UpdatedAt)
+        .Select(produto => new ProdutoLojaDto(
+            produto.Slug,
+            produto.Nome,
+            produto.DescricaoCurta ?? produto.DescricaoLonga ?? string.Empty,
+            produto.DescricaoCurta,
+            produto.Preco,
+            produto.PrecoPromocional,
+            produto.ImagemPrincipal ?? defaultImage,
+            produto.EstoqueAtual,
+            produto.EstoqueMinimo,
+            produto.EstoqueReservado,
+            produto.Destaque,
+            produto.Sku,
+            produto.Categoria != null ? produto.Categoria.Slug : "classicos",
+            4.8m,
+            produto.Custo,
+            produto.Peso,
+            produto.Altura,
+            produto.Largura,
+            produto.Comprimento,
+            produto.TipoProduto.ToString(),
+            produto.FornecedorId,
+            produto.Marca,
+            produto.Tags,
+            produto.SeoTitulo,
+            produto.SeoDescricao,
+            produto.SeoKeywords,
+            produto.ImagensGaleria))
+        .ToListAsync(ct);
+
+    if (produtos.Count == 0)
     {
-        Tabela = tabela,
-        RegistroId = id.ToString() ?? "0",
-        Acao = acao,
-        UsuarioId = userId > 0 ? userId : null,
-        Ip = context.Connection.RemoteIpAddress?.ToString(),
-        DadosAnteriores = anterior != null ? JsonSerializer.Serialize(anterior) : null,
-        DadosNovos = atual != null ? JsonSerializer.Serialize(atual) : null,
-        CreatedAt = DateTime.UtcNow
+        produtos = string.IsNullOrWhiteSpace(categoria_id)
+            ? StoreData.Produtos
+            : StoreData.Produtos
+                .Where(produto => string.Equals(produto.CategoriaId, categoria_id, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+    }
+
+    return Results.Ok(ApiResponse<List<ProdutoLojaDto>>.Ok(produtos));
+})
+.AllowAnonymous()
+.WithName("Produtos")
+;
+
+app.MapGet("/api/produtos/destaques", async (NexumDbContext db, CancellationToken ct) =>
+{
+    const string defaultImage = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85";
+
+    var produtos = await db.Produtos
+        .AsNoTracking()
+        .Where(produto => produto.Ativo && produto.Destaque)
+        .OrderByDescending(produto => produto.UpdatedAt)
+        .Take(24)
+        .Select(produto => new ProdutoLojaDto(
+            produto.Slug,
+            produto.Nome,
+            produto.DescricaoCurta ?? produto.DescricaoLonga ?? string.Empty,
+            produto.DescricaoCurta,
+            produto.Preco,
+            produto.PrecoPromocional,
+            produto.ImagemPrincipal ?? defaultImage,
+            produto.EstoqueAtual,
+            produto.EstoqueMinimo,
+            produto.EstoqueReservado,
+            produto.Destaque,
+            produto.Sku,
+            produto.Categoria != null ? produto.Categoria.Slug : "classicos",
+            4.8m,
+            produto.Custo,
+            produto.Peso,
+            produto.Altura,
+            produto.Largura,
+            produto.Comprimento,
+            produto.TipoProduto.ToString(),
+            produto.FornecedorId,
+            produto.Marca,
+            produto.Tags,
+            produto.SeoTitulo,
+            produto.SeoDescricao,
+            produto.SeoKeywords,
+            produto.ImagensGaleria))
+        .ToListAsync(ct);
+
+    if (produtos.Count == 0)
+    {
+        produtos = StoreData.Produtos.Where(produto => produto.Destaque).ToList();
+    }
+
+    return Results.Ok(ApiResponse<List<ProdutoLojaDto>>.Ok(produtos));
+})
+.AllowAnonymous()
+.WithName("ProdutosDestaques")
+;
+
+app.MapGet("/api/produtos/{id}", async (string id, NexumDbContext db, CancellationToken ct) =>
+{
+    const string defaultImage = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85";
+
+    var dto = await db.Produtos
+        .AsNoTracking()
+        .Where(item => item.Slug == id)
+        .Select(item => new ProdutoLojaDto(
+            item.Slug,
+            item.Nome,
+            item.DescricaoCurta ?? item.DescricaoLonga ?? string.Empty,
+            item.DescricaoCurta,
+            item.Preco,
+            item.PrecoPromocional,
+            item.ImagemPrincipal ?? defaultImage,
+            item.EstoqueAtual,
+            item.EstoqueMinimo,
+            item.EstoqueReservado,
+            item.Destaque,
+            item.Sku,
+            item.Categoria != null ? item.Categoria.Slug : "classicos",
+            4.8m,
+            item.Custo,
+            item.Peso,
+            item.Altura,
+            item.Largura,
+            item.Comprimento,
+            item.TipoProduto.ToString(),
+            item.FornecedorId,
+            item.Marca,
+            item.Tags,
+            item.SeoTitulo,
+            item.SeoDescricao,
+            item.SeoKeywords,
+            item.ImagensGaleria))
+        .FirstOrDefaultAsync(ct);
+
+    if (dto is null)
+    {
+        var fallback = StoreData.Produtos.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+        return fallback is null
+            ? Results.NotFound(ApiResponse<string>.Erro("Produto nao encontrado."))
+            : Results.Ok(ApiResponse<ProdutoLojaDto>.Ok(fallback));
+    }
+
+    return Results.Ok(ApiResponse<ProdutoLojaDto>.Ok(dto));
+})
+.AllowAnonymous()
+.WithName("ProdutoPorId")
+;
+
+app.MapPost("/api/uploads/produtos/imagens", [Authorize(Policy = "Gerente")] async (
+    UploadImagemRequest request,
+    IWebHostEnvironment environment,
+    HttpContext http,
+    CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.DataUrl))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Imagem obrigatoria."));
+    }
+
+    var separatorIndex = request.DataUrl.IndexOf(",", StringComparison.Ordinal);
+    var header = separatorIndex > 0 ? request.DataUrl[..separatorIndex] : string.Empty;
+    var base64 = separatorIndex > 0 ? request.DataUrl[(separatorIndex + 1)..] : request.DataUrl;
+    var contentType = string.IsNullOrWhiteSpace(request.ContentType)
+        ? header.Contains("image/png", StringComparison.OrdinalIgnoreCase) ? "image/png" : "image/jpeg"
+        : request.ContentType.Trim().ToLowerInvariant();
+
+    var extension = contentType switch
+    {
+        "image/png" => ".png",
+        "image/webp" => ".webp",
+        "image/gif" => ".gif",
+        _ => ".jpg"
     };
-}
 
-static bool ValidateDesktopTerminalAccess(HttpRequest request, IConfiguration config, out string terminalIdentity, out string? rejection)
-{
-    terminalIdentity = "Terminal-Desktop";
-    rejection = null;
-    if (request.Headers.TryGetValue("X-Terminal-Key", out var key) && !string.IsNullOrWhiteSpace(key))
+    if (contentType is not ("image/jpeg" or "image/jpg" or "image/png" or "image/webp" or "image/gif"))
     {
-        terminalIdentity = $"Terminal-{key}";
-        return true;
+        return Results.BadRequest(ApiResponse<string>.Erro("Formato de imagem invalido."));
     }
-    return true;
+
+    byte[] bytes;
+    try
+    {
+        bytes = Convert.FromBase64String(base64);
+    }
+    catch
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Imagem invalida."));
+    }
+
+    if (bytes.Length == 0 || bytes.Length > 2 * 1024 * 1024)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Imagem deve ter ate 2MB."));
+    }
+
+    var root = environment.WebRootPath ?? Path.Combine(environment.ContentRootPath, "wwwroot");
+    var uploadDir = Path.Combine(root, "uploads", "produtos");
+    Directory.CreateDirectory(uploadDir);
+
+    var fileName = $"produto-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}{extension}";
+    var filePath = Path.Combine(uploadDir, fileName);
+    await File.WriteAllBytesAsync(filePath, bytes, ct);
+
+    var forwardedProto = http.Request.Headers["X-Forwarded-Proto"].FirstOrDefault();
+    var scheme = !string.IsNullOrWhiteSpace(forwardedProto)
+        ? forwardedProto
+        : http.Request.Host.Host.EndsWith("trycloudflare.com", StringComparison.OrdinalIgnoreCase)
+            ? "https"
+            : http.Request.Scheme;
+    var publicUrl = $"{scheme}://{http.Request.Host}/uploads/produtos/{fileName}";
+    return Results.Ok(ApiResponse<UploadImagemDto>.Ok(new UploadImagemDto(publicUrl), "Imagem enviada."));
+})
+.WithName("UploadImagemProduto")
+;
+
+app.MapPost("/api/produtos", [Authorize(Policy = "Gerente")] async (
+    ProdutoRequest request,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var slug = Slugify(request.Id) ?? Slugify(request.Nome);
+    if (string.IsNullOrWhiteSpace(slug))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Id do produto invalido."));
+    }
+
+    var exists = await db.Produtos.AnyAsync(produto => produto.Slug == slug, ct);
+    if (exists)
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("Produto ja existe."));
+    }
+
+    var sku = string.IsNullOrWhiteSpace(request.Sku)
+        ? $"NA-{Math.Abs(HashCode.Combine(request.Nome, request.Preco)):000000}"
+        : request.Sku.Trim();
+
+    if (await db.Produtos.AnyAsync(produto => produto.Sku == sku, ct))
+    {
+        sku = $"{sku}-{Random.Shared.Next(10, 99)}";
+    }
+
+    var lojaId = await db.Lojas
+        .AsNoTracking()
+        .Where(loja => loja.Ativa)
+        .OrderBy(loja => loja.OrdemExibicao)
+        .Select(loja => loja.Id)
+        .FirstOrDefaultAsync(ct);
+
+    if (lojaId == 0)
+    {
+        return Results.Problem("Nenhuma loja ativa cadastrada.", statusCode: StatusCodes.Status500InternalServerError);
+    }
+
+    int? categoriaId = null;
+    var categoriaSlug = !string.IsNullOrWhiteSpace(request.SubcategoriaId)
+        ? request.SubcategoriaId
+        : request.CategoriaId;
+    if (!string.IsNullOrWhiteSpace(categoriaSlug))
+    {
+        categoriaId = await db.Categorias
+            .AsNoTracking()
+            .Where(categoria => categoria.Slug == categoriaSlug)
+            .Select(categoria => (int?)categoria.Id)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    var produto = new Produto
+    {
+        LojaId = lojaId,
+        CategoriaId = categoriaId,
+        Sku = sku,
+        Nome = request.Nome,
+        Slug = slug,
+        DescricaoCurta = TrimOrNull(request.DescricaoCurta) ?? TrimOrNull(request.Descricao),
+        DescricaoLonga = request.Descricao,
+        Preco = request.Preco,
+        PrecoPromocional = request.PrecoPromocional,
+        Custo = request.Custo ?? 0m,
+        Peso = request.Peso ?? 0m,
+        Altura = request.Altura ?? 0m,
+        Largura = request.Largura ?? 0m,
+        Comprimento = request.Comprimento ?? 0m,
+        ImagemPrincipal = request.ImagemUrl,
+        ImagensGaleria = TrimOrNull(request.ImagensGaleria),
+        EstoqueMinimo = request.EstoqueMinimo ?? 5,
+        EstoqueAtual = request.Estoque,
+        EstoqueReservado = request.EstoqueReservado ?? 0,
+        TipoProduto = Enum.TryParse<NexumAltivon.API.Models.TipoProduto>(request.TipoProduto, true, out var tipoProduto) ? tipoProduto : NexumAltivon.API.Models.TipoProduto.Proprio,
+        FornecedorId = request.FornecedorId,
+        Marca = TrimOrNull(request.Marca),
+        Tags = TrimOrNull(request.Tags),
+        SeoTitulo = TrimOrNull(request.SeoTitulo),
+        SeoDescricao = TrimOrNull(request.SeoDescricao),
+        SeoKeywords = TrimOrNull(request.SeoKeywords),
+        Destaque = request.Destaque,
+        Ativo = true,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
+    };
+
+    db.Produtos.Add(produto);
+    await db.SaveChangesAsync(ct);
+
+    const string defaultImage = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85";
+    var dto = new ProdutoLojaDto(
+        produto.Slug,
+        produto.Nome,
+        produto.DescricaoCurta ?? produto.DescricaoLonga ?? string.Empty,
+        produto.DescricaoCurta,
+        produto.Preco,
+        produto.PrecoPromocional,
+        produto.ImagemPrincipal ?? defaultImage,
+        produto.EstoqueAtual,
+        produto.EstoqueMinimo,
+        produto.EstoqueReservado,
+        produto.Destaque,
+        produto.Sku,
+        categoriaSlug ?? "classicos",
+        4.8m,
+        produto.Custo,
+        produto.Peso,
+        produto.Altura,
+        produto.Largura,
+        produto.Comprimento,
+        produto.TipoProduto.ToString(),
+        produto.FornecedorId,
+        produto.Marca,
+        produto.Tags,
+        produto.SeoTitulo,
+        produto.SeoDescricao,
+        produto.SeoKeywords,
+        produto.ImagensGaleria);
+
+    return Results.Created($"/api/produtos/{produto.Slug}", ApiResponse<ProdutoLojaDto>.Ok(dto, "Produto cadastrado."));
+})
+.WithName("CriarProduto")
+;
+
+app.MapPut("/api/produtos/{id}", [Authorize(Policy = "Gerente")] async (
+    string id,
+    ProdutoRequest request,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var produto = await db.Produtos.FirstOrDefaultAsync(item => item.Slug == id, ct);
+    if (produto is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Produto nao encontrado."));
+    }
+
+    if (!string.IsNullOrWhiteSpace(request.Sku) && !string.Equals(produto.Sku, request.Sku.Trim(), StringComparison.OrdinalIgnoreCase))
+    {
+        var sku = request.Sku.Trim();
+        var conflict = await db.Produtos.AnyAsync(item => item.Sku == sku && item.Id != produto.Id, ct);
+        if (conflict)
+        {
+            return Results.Conflict(ApiResponse<string>.Erro("SKU ja em uso."));
+        }
+
+        produto.Sku = sku;
+    }
+
+    produto.Nome = request.Nome;
+    produto.DescricaoCurta = TrimOrNull(request.DescricaoCurta) ?? TrimOrNull(request.Descricao);
+    produto.DescricaoLonga = request.Descricao;
+    produto.Preco = request.Preco;
+    produto.PrecoPromocional = request.PrecoPromocional;
+    produto.Custo = request.Custo ?? produto.Custo;
+    produto.Peso = request.Peso ?? produto.Peso;
+    produto.Altura = request.Altura ?? produto.Altura;
+    produto.Largura = request.Largura ?? produto.Largura;
+    produto.Comprimento = request.Comprimento ?? produto.Comprimento;
+    produto.ImagemPrincipal = request.ImagemUrl;
+    produto.ImagensGaleria = TrimOrNull(request.ImagensGaleria);
+    produto.EstoqueMinimo = request.EstoqueMinimo ?? produto.EstoqueMinimo;
+    produto.EstoqueAtual = request.Estoque;
+    produto.EstoqueReservado = request.EstoqueReservado ?? produto.EstoqueReservado;
+    produto.TipoProduto = Enum.TryParse<NexumAltivon.API.Models.TipoProduto>(request.TipoProduto, true, out var tipoProdutoAtualizado) ? tipoProdutoAtualizado : produto.TipoProduto;
+    produto.FornecedorId = request.FornecedorId;
+    produto.Marca = TrimOrNull(request.Marca);
+    produto.Tags = TrimOrNull(request.Tags);
+    produto.SeoTitulo = TrimOrNull(request.SeoTitulo);
+    produto.SeoDescricao = TrimOrNull(request.SeoDescricao);
+    produto.SeoKeywords = TrimOrNull(request.SeoKeywords);
+    produto.Destaque = request.Destaque;
+    produto.UpdatedAt = DateTime.UtcNow;
+
+    var categoriaAtualizacaoSlug = !string.IsNullOrWhiteSpace(request.SubcategoriaId)
+        ? request.SubcategoriaId
+        : request.CategoriaId;
+    if (!string.IsNullOrWhiteSpace(categoriaAtualizacaoSlug))
+    {
+        var categoriaId = await db.Categorias
+            .AsNoTracking()
+            .Where(categoria => categoria.Slug == categoriaAtualizacaoSlug)
+            .Select(categoria => (int?)categoria.Id)
+            .FirstOrDefaultAsync(ct);
+
+        produto.CategoriaId = categoriaId;
+    }
+
+    await db.SaveChangesAsync(ct);
+
+    const string defaultImage = "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85";
+    var dto = new ProdutoLojaDto(
+        produto.Slug,
+        produto.Nome,
+        produto.DescricaoCurta ?? produto.DescricaoLonga ?? string.Empty,
+        produto.DescricaoCurta,
+        produto.Preco,
+        produto.PrecoPromocional,
+        produto.ImagemPrincipal ?? defaultImage,
+        produto.EstoqueAtual,
+        produto.EstoqueMinimo,
+        produto.EstoqueReservado,
+        produto.Destaque,
+        produto.Sku,
+        categoriaAtualizacaoSlug ?? "classicos",
+        4.8m,
+        produto.Custo,
+        produto.Peso,
+        produto.Altura,
+        produto.Largura,
+        produto.Comprimento,
+        produto.TipoProduto.ToString(),
+        produto.FornecedorId,
+        produto.Marca,
+        produto.Tags,
+        produto.SeoTitulo,
+        produto.SeoDescricao,
+        produto.SeoKeywords,
+        produto.ImagensGaleria);
+
+    return Results.Ok(ApiResponse<ProdutoLojaDto>.Ok(dto, "Produto atualizado."));
+})
+.WithName("AtualizarProduto")
+;
+
+app.MapGet("/api/cupons/{codigo}", async (string codigo, NexumDbContext db, CancellationToken ct) =>
+{
+    var cupom = await db.Cupons
+        .AsNoTracking()
+        .FirstOrDefaultAsync(item => item.Codigo == codigo && item.Ativo, ct);
+
+    if (cupom is null)
+    {
+        var fallback = StoreData.Cupons.FirstOrDefault(item => string.Equals(item.Codigo, codigo, StringComparison.OrdinalIgnoreCase));
+        return fallback is null
+            ? Results.NotFound(ApiResponse<string>.Erro("Cupom invalido."))
+            : Results.Ok(ApiResponse<CupomDto>.Ok(fallback));
+    }
+
+    if (cupom.ValidoDe.HasValue && cupom.ValidoDe.Value > DateTime.UtcNow)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Cupom invalido."));
+    }
+
+    if (cupom.ValidoAte.HasValue && cupom.ValidoAte.Value < DateTime.UtcNow)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Cupom invalido."));
+    }
+
+    var dto = cupom.Tipo switch
+    {
+        TipoCupom.Percentual => new CupomDto(cupom.Codigo, cupom.Valor, null, cupom.ValorMinimoPedido),
+        TipoCupom.ValorFixo => new CupomDto(cupom.Codigo, null, cupom.Valor, cupom.ValorMinimoPedido),
+        TipoCupom.FreteGratis => new CupomDto(cupom.Codigo, null, cupom.Valor, cupom.ValorMinimoPedido),
+        _ => new CupomDto(cupom.Codigo, cupom.Valor, null, cupom.ValorMinimoPedido)
+    };
+
+    return Results.Ok(ApiResponse<CupomDto>.Ok(dto));
+})
+.AllowAnonymous()
+.WithName("CupomPorCodigo")
+;
+
+app.MapGet("/api/clientes", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var clientes = await db.Clientes
+        .AsNoTracking()
+        .OrderByDescending(cliente => cliente.CreatedAt)
+        .Take(500)
+        .Select(cliente => new ClienteLojaDto(cliente.Id, cliente.Nome, cliente.Email, cliente.Telefone, cliente.CpfCnpj))
+        .ToListAsync(ct);
+
+    return Results.Ok(ApiResponse<List<ClienteLojaDto>>.Ok(clientes));
+})
+.WithName("Clientes")
+;
+
+app.MapGet("/api/clientes/verificar", async (string? email, string? cpf, NexumDbContext db, CancellationToken ct) =>
+{
+    var normalizedEmail = NormalizeEmail(email);
+    var normalizedDocument = NormalizeDocument(cpf);
+
+    if (string.IsNullOrWhiteSpace(normalizedEmail) && string.IsNullOrWhiteSpace(normalizedDocument))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Informe email ou CPF/CNPJ para verificar o cadastro."));
+    }
+
+    var cliente = await db.Clientes
+        .AsNoTracking()
+        .OrderByDescending(item => item.UpdatedAt)
+        .FirstOrDefaultAsync(item =>
+            (!string.IsNullOrWhiteSpace(normalizedEmail) && item.Email == normalizedEmail) ||
+            (!string.IsNullOrWhiteSpace(normalizedDocument) &&
+             ((item.CpfCnpj ?? string.Empty)
+                 .Replace(".", string.Empty)
+                 .Replace("-", string.Empty)
+                 .Replace("/", string.Empty)
+                 .Replace(" ", string.Empty)) == normalizedDocument), ct);
+
+    var dto = cliente is null
+        ? null
+        : new ClienteLojaDto(cliente.Id, cliente.Nome, cliente.Email, cliente.Telefone, cliente.CpfCnpj);
+
+    return Results.Ok(ApiResponse<CadastroClienteStatusDto>.Ok(
+        new CadastroClienteStatusDto(cliente is not null, dto),
+        cliente is null ? "Cadastro disponÃ­vel para criaÃ§Ã£o." : "Cliente jÃ¡ cadastrado."));
+})
+.AllowAnonymous()
+.WithName("VerificarCadastroCliente")
+;
+
+app.MapPost("/api/clientes", async (ClienteRequest request, NexumDbContext db, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Nome))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Nome e email sao obrigatorios."));
+    }
+
+    var email = NormalizeEmail(request.Email)!;
+    var cpfCnpj = NormalizeDocument(request.Cpf);
+    var clienteExistente = await db.Clientes.FirstOrDefaultAsync(cliente =>
+        cliente.Email == email ||
+        (!string.IsNullOrWhiteSpace(cpfCnpj) &&
+         ((cliente.CpfCnpj ?? string.Empty)
+             .Replace(".", string.Empty)
+             .Replace("-", string.Empty)
+             .Replace("/", string.Empty)
+             .Replace(" ", string.Empty)) == cpfCnpj), ct);
+
+    if (clienteExistente is not null)
+    {
+        if (string.IsNullOrWhiteSpace(clienteExistente.SenhaHash) && !string.IsNullOrWhiteSpace(request.Senha))
+        {
+            clienteExistente.SenhaHash = BCrypt.Net.BCrypt.HashPassword(request.Senha.Trim(), 12);
+        }
+
+        if (string.IsNullOrWhiteSpace(clienteExistente.Telefone) && !string.IsNullOrWhiteSpace(request.Telefone))
+        {
+            clienteExistente.Telefone = request.Telefone.Trim();
+            clienteExistente.UpdatedAt = DateTime.UtcNow;
+        }
+
+        clienteExistente.Newsletter = request.Newsletter ?? clienteExistente.Newsletter;
+        clienteExistente.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+
+        var existenteDto = new ClienteLojaDto(clienteExistente.Id, clienteExistente.Nome, clienteExistente.Email, clienteExistente.Telefone, clienteExistente.CpfCnpj);
+        return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(existenteDto, "Cliente ja cadastrado. Registro existente reutilizado."));
+    }
+
+    var cliente = new Cliente
+    {
+        Nome = request.Nome.Trim(),
+        Email = email,
+        Telefone = request.Telefone,
+        Whatsapp = request.Telefone,
+        CpfCnpj = cpfCnpj,
+        SenhaHash = !string.IsNullOrWhiteSpace(request.Senha) ? BCrypt.Net.BCrypt.HashPassword(request.Senha.Trim(), 12) : null,
+        Newsletter = request.Newsletter ?? true,
+        Status = StatusCliente.Ativo,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
+    };
+
+    db.Clientes.Add(cliente);
+    await db.SaveChangesAsync(ct);
+
+    var dto = new ClienteLojaDto(cliente.Id, cliente.Nome, cliente.Email, cliente.Telefone, cliente.CpfCnpj);
+    return Results.Ok(ApiResponse<ClienteLojaDto>.Ok(dto, "Cliente registrado."));
+})
+.AllowAnonymous()
+.WithName("CriarCliente")
+;
+
+app.MapGet("/api/clientes/portal/me", [Authorize] async (ClaimsPrincipal principal, NexumDbContext db, CancellationToken ct) =>
+{
+    var email = principal.FindFirstValue(ClaimTypes.Email) ?? principal.FindFirstValue(JwtRegisteredClaimNames.Email);
+    if (string.IsNullOrWhiteSpace(email))
+    {
+        return Results.Unauthorized();
+    }
+
+    var cliente = await db.Clientes
+        .AsNoTracking()
+        .FirstOrDefaultAsync(item => item.Email == email, ct);
+
+    if (cliente is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Cliente nao localizado para esta sessao."));
+    }
+
+    var pedidos = await db.Pedidos
+        .Include(item => item.Pagamentos)
+        .AsNoTracking()
+        .Where(item => item.ClienteId == cliente.Id)
+        .OrderByDescending(item => item.CreatedAt)
+        .Select(item => new ClientePortalPedidoDto(
+            item.Id,
+            item.NumeroPedido,
+            item.Status.ToString(),
+            item.StatusPagamento.ToString(),
+            item.Total,
+            item.CreatedAt,
+            item.MeioPagamento ?? item.GatewayPagamento,
+            item.FreteCodigoRastreio,
+            item.FreteTransportadora))
+        .ToListAsync(ct);
+
+    var pedidoIds = pedidos.Select(item => item.Id).ToList();
+    var documentos = pedidoIds.Count == 0
+        ? []
+        : await db.Fiscais
+            .AsNoTracking()
+            .Where(item => pedidoIds.Contains(item.PedidoId))
+            .OrderByDescending(item => item.CreatedAt)
+            .Select(item => new ClientePortalDocumentoDto(
+                item.Id,
+                item.PedidoId,
+                item.NumeroNfe,
+                item.ModeloDocumento,
+                item.StatusNfe.ToString(),
+                item.ChaveAcesso,
+                item.DanfeUrl,
+                item.XmlUrl,
+                item.CreatedAt))
+            .ToListAsync(ct);
+
+    var totalCompras = pedidos.Sum(item => item.Total);
+    var score = cliente.Vip ? "Premium" : cliente.PontosFidelidade >= 500 ? "Gold" : cliente.PontosFidelidade >= 150 ? "Silver" : "Start";
+    var portal = new ClientePortalDto(
+        cliente.Id,
+        cliente.Nome,
+        cliente.Email,
+        cliente.Telefone,
+        cliente.CpfCnpj,
+        cliente.PontosFidelidade,
+        score,
+        cliente.Vip,
+        Math.Round(totalCompras / 10m, 2),
+        pedidos,
+        documentos,
+        [
+            "Canal direto com o Grupo Nexum Altivon.",
+            "PontuaÃ§Ã£o de fidelidade acumulada por compras aprovadas.",
+            "EspaÃ§o preparado para limites e relacionamento futuro."
+        ]);
+
+    return Results.Ok(ApiResponse<ClientePortalDto>.Ok(portal));
+})
+.WithName("ClientePortalMe")
+;
+
+app.MapGet("/api/fornecedores", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var fornecedores = await db.Fornecedores
+        .AsNoTracking()
+        .OrderByDescending(fornecedor => fornecedor.CreatedAt)
+        .Take(500)
+        .Select(fornecedor => new FornecedorDto(
+            fornecedor.Id,
+            string.IsNullOrWhiteSpace(fornecedor.NomeFantasia) ? fornecedor.RazaoSocial : fornecedor.NomeFantasia,
+            fornecedor.Cnpj ?? string.Empty,
+            fornecedor.Email ?? string.Empty,
+            fornecedor.Telefone ?? string.Empty,
+            fornecedor.Segmento ?? "Geral",
+            fornecedor.CreatedAt))
+        .ToListAsync(ct);
+
+    return Results.Ok(ApiResponse<List<FornecedorDto>>.Ok(fornecedores));
+})
+.WithName("Fornecedores")
+;
+
+app.MapPost("/api/fornecedores", [Authorize(Policy = "Gerente")] async (FornecedorRequest request, NexumDbContext db, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Nome))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Nome do fornecedor obrigatorio."));
+    }
+
+    var documento = string.IsNullOrWhiteSpace(request.Documento) ? null : request.Documento.Trim();
+    var email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim().ToLowerInvariant();
+    var fornecedorExistente = await db.Fornecedores.FirstOrDefaultAsync(fornecedor =>
+        (!string.IsNullOrWhiteSpace(documento) && fornecedor.Cnpj == documento) ||
+        (!string.IsNullOrWhiteSpace(email) && fornecedor.Email != null && fornecedor.Email.ToLower() == email), ct);
+
+    if (fornecedorExistente is not null)
+    {
+        return Results.Conflict(ApiResponse<string>.Erro("Fornecedor ja cadastrado com este documento ou e-mail."));
+    }
+
+    var fornecedor = new Fornecedor
+    {
+        RazaoSocial = request.Nome.Trim(),
+        Cnpj = documento,
+        Email = email,
+        Telefone = request.Telefone,
+        Segmento = request.Categoria,
+        Status = StatusFornecedor.Ativo,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
+    };
+
+    db.Fornecedores.Add(fornecedor);
+    await db.SaveChangesAsync(ct);
+
+    var dto = new FornecedorDto(
+        fornecedor.Id,
+        string.IsNullOrWhiteSpace(fornecedor.NomeFantasia) ? fornecedor.RazaoSocial : fornecedor.NomeFantasia,
+        fornecedor.Cnpj ?? string.Empty,
+        fornecedor.Email ?? string.Empty,
+        fornecedor.Telefone ?? string.Empty,
+        fornecedor.Segmento ?? "Geral",
+        fornecedor.CreatedAt);
+
+    return Results.Ok(ApiResponse<FornecedorDto>.Ok(dto, "Fornecedor cadastrado."));
+})
+.WithName("CriarFornecedor")
+;
+
+app.MapGet("/api/pedidos", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var pedidos = await db.Pedidos
+        .AsNoTracking()
+        .Include(pedido => pedido.Pagamentos)
+        .OrderByDescending(pedido => pedido.CreatedAt)
+        .Take(500)
+        .ToListAsync(ct);
+
+    var dtos = pedidos.Select(pedido =>
+    {
+        var pagamentoAtual = pedido.Pagamentos?
+            .OrderByDescending(item => item.CreatedAt)
+            .FirstOrDefault();
+
+        return new PedidoLojaDto(
+        pedido.Id,
+        pedido.NumeroPedido,
+        pedido.Total,
+        FormatStatusPedido(pedido.Status),
+        pedido.CreatedAt,
+        FormatStatusPagamento(pedido.StatusPagamento),
+        pedido.MeioPagamento,
+        pedido.GatewayPagamento,
+        pedido.GatewayTransacaoId,
+        pedido.FreteValor,
+        pedido.FreteMetodo,
+        pedido.FreteTransportadora,
+        pedido.FretePrazoDias,
+        BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId),
+        pagamentoAtual?.Parcelas ?? 1,
+        pagamentoAtual?.PixQrcode,
+        pagamentoAtual?.BoletoUrl);
+    }).ToList();
+
+    return Results.Ok(ApiResponse<List<PedidoLojaDto>>.Ok(dtos));
+})
+.WithName("Pedidos")
+;
+
+app.MapPut("/api/pedidos/{id}/status", [Authorize(Policy = "Gerente")] async (
+    int id,
+    StatusUpdateRequest request,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+    var pedido = await db.Pedidos
+        .Include(item => item.Itens)
+        .Include(item => item.Pagamentos)
+        .FirstOrDefaultAsync(item => item.Id == id, ct);
+    if (pedido is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Pedido nao encontrado."));
+    }
+
+    if (!TryParseStatusPedido(request.NovoStatus, out var status))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Status do pedido invalido."));
+    }
+
+    var statusAnterior = pedido.Status;
+    var statusAnteriorConfirmaEstoque = statusAnterior is StatusPedido.Pago or StatusPedido.EmSeparacao or StatusPedido.Enviado or StatusPedido.Entregue;
+    var novoStatusConfirmaEstoque = status is StatusPedido.Pago or StatusPedido.EmSeparacao or StatusPedido.Enviado or StatusPedido.Entregue;
+    var novoStatusCancelaEstoque = status is StatusPedido.Cancelado or StatusPedido.Devolvido or StatusPedido.Reembolsado;
+
+    if (pedido.Itens is { Count: > 0 } && statusAnterior != status)
+    {
+        var produtoIds = pedido.Itens
+            .Where(item => item.ProdutoId.HasValue)
+            .Select(item => item.ProdutoId!.Value)
+            .Distinct()
+            .ToList();
+        var produtos = await db.Produtos
+            .Where(produto => produtoIds.Contains(produto.Id))
+            .ToDictionaryAsync(produto => produto.Id, ct);
+
+        foreach (var item in pedido.Itens)
+        {
+            if (!item.ProdutoId.HasValue || !produtos.TryGetValue(item.ProdutoId.Value, out var produto))
+            {
+                return Results.BadRequest(ApiResponse<string>.Erro($"Produto do pedido nao encontrado: {item.NomeProduto}."));
+            }
+
+            if (!statusAnteriorConfirmaEstoque && novoStatusConfirmaEstoque)
+            {
+                if (produto.EstoqueAtual < item.Quantidade)
+                {
+                    return Results.BadRequest(ApiResponse<string>.Erro($"Estoque insuficiente para confirmar {item.NomeProduto}."));
+                }
+
+                produto.EstoqueReservado = Math.Max(0, produto.EstoqueReservado - item.Quantidade);
+                produto.EstoqueAtual -= item.Quantidade;
+            }
+            else if (!statusAnteriorConfirmaEstoque && novoStatusCancelaEstoque)
+            {
+                produto.EstoqueReservado = Math.Max(0, produto.EstoqueReservado - item.Quantidade);
+            }
+            else if (statusAnteriorConfirmaEstoque && novoStatusCancelaEstoque)
+            {
+                produto.EstoqueAtual += item.Quantidade;
+            }
+
+            produto.UpdatedAt = DateTime.UtcNow;
+        }
+    }
+
+    pedido.Status = status;
+    if (novoStatusConfirmaEstoque && pedido.StatusPagamento == StatusPagamento.Aguardando)
+    {
+        pedido.StatusPagamento = StatusPagamento.Aprovado;
+        pedido.DataPagamento ??= DateTime.UtcNow;
+    }
+    else if (status == StatusPedido.Cancelado && pedido.StatusPagamento == StatusPagamento.Aguardando)
+    {
+        pedido.StatusPagamento = StatusPagamento.Cancelado;
+    }
+
+    if (pedido.Pagamentos is { Count: > 0 })
+    {
+        foreach (var pagamento in pedido.Pagamentos)
+        {
+            pagamento.Status = pedido.StatusPagamento switch
+            {
+                StatusPagamento.Aprovado => StatusPagamentoDetalhado.Aprovado,
+                StatusPagamento.Recusado => StatusPagamentoDetalhado.Recusado,
+                StatusPagamento.Estornado => StatusPagamentoDetalhado.Estornado,
+                StatusPagamento.Cancelado => StatusPagamentoDetalhado.Cancelado,
+                _ => pagamento.Status
+            };
+            pagamento.DataProcessamento ??= pedido.DataPagamento;
+            pagamento.UpdatedAt = DateTime.UtcNow;
+        }
+    }
+
+    pedido.UpdatedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync(ct);
+    await transaction.CommitAsync(ct);
+
+    var pagamentoAtual = pedido.Pagamentos?
+        .OrderByDescending(item => item.CreatedAt)
+        .FirstOrDefault();
+
+    var dto = new PedidoLojaDto(
+        pedido.Id,
+        pedido.NumeroPedido,
+        pedido.Total,
+        FormatStatusPedido(pedido.Status),
+        pedido.CreatedAt,
+        FormatStatusPagamento(pedido.StatusPagamento),
+        pedido.MeioPagamento,
+        pedido.GatewayPagamento,
+        pedido.GatewayTransacaoId,
+        pedido.FreteValor,
+        pedido.FreteMetodo,
+        pedido.FreteTransportadora,
+        pedido.FretePrazoDias,
+        BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId),
+        pagamentoAtual?.Parcelas ?? 1,
+        pagamentoAtual?.PixQrcode,
+        pagamentoAtual?.BoletoUrl);
+    return Results.Ok(ApiResponse<PedidoLojaDto>.Ok(dto, "Status do pedido atualizado."));
+})
+.WithName("AtualizarStatusPedido")
+;
+
+app.MapPost("/api/pedidos", async (
+    PedidoRequest request,
+    NexumDbContext db,
+    IConfiguration configuration,
+    IFiscalRoutingEngine fiscalRoutingEngine,
+    IHttpClientFactory httpClientFactory,
+    HttpContext http,
+    CancellationToken ct) =>
+{
+    if (request.Itens is null || request.Itens.Count == 0)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Itens do pedido obrigatorios."));
+    }
+
+    if (request.Itens.Any(item => string.IsNullOrWhiteSpace(item.ProdutoId) || item.Quantidade <= 0))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Produto e quantidade devem ser validos."));
+    }
+
+    var itensSolicitados = request.Itens
+        .GroupBy(item => item.ProdutoId.Trim(), StringComparer.OrdinalIgnoreCase)
+        .Select(group => new PedidoItemRequest(group.Key, group.Sum(item => item.Quantidade)))
+        .ToList();
+
+    var cliente = await db.Clientes.FirstOrDefaultAsync(item => item.Id == request.ClienteId, ct);
+    if (cliente is null)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Cliente invalido."));
+    }
+
+    int? lojaId = null;
+    if (int.TryParse(request.LojaId, out var lojaIdParsed))
+    {
+        lojaId = lojaIdParsed;
+    }
+
+    await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+    var produtoSlugs = itensSolicitados.Select(item => item.ProdutoId).ToList();
+    var produtosMap = await db.Produtos
+        .Include(produto => produto.Fornecedor)
+        .Where(produto => produto.Ativo && produtoSlugs.Contains(produto.Slug))
+        .ToDictionaryAsync(produto => produto.Slug, ct);
+
+    if (produtosMap.Count != produtoSlugs.Count)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Um ou mais produtos nao estao disponiveis."));
+    }
+
+    decimal subtotal = 0m;
+    var itens = new List<PedidoItem>(itensSolicitados.Count);
+    var abastecimentoResumo = new List<string>(itensSolicitados.Count);
+    foreach (var item in itensSolicitados)
+    {
+        if (!produtosMap.TryGetValue(item.ProdutoId, out var produto))
+        {
+            return Results.BadRequest(ApiResponse<string>.Erro("Produto invalido."));
+        }
+
+        if (produto.TipoProduto == NexumAltivon.API.Models.TipoProduto.Dropshipping && produto.FornecedorId is null)
+        {
+            return Results.BadRequest(ApiResponse<string>.Erro(
+                $"O produto {produto.Nome} estÃ¡ marcado como dropshipping, mas ainda nÃ£o possui fornecedor vinculado."));
+        }
+
+        var estoqueDisponivel = produto.EstoqueAtual - produto.EstoqueReservado;
+        if (estoqueDisponivel < item.Quantidade)
+        {
+            return Results.BadRequest(ApiResponse<string>.Erro(
+                $"Estoque insuficiente para {produto.Nome}. Disponivel: {Math.Max(0, estoqueDisponivel)}."));
+        }
+
+        var precoUnitario = produto.PrecoPromocional ?? produto.Preco;
+        var precoTotal = precoUnitario * item.Quantidade;
+        subtotal += precoTotal;
+        produto.EstoqueReservado += item.Quantidade;
+        produto.UpdatedAt = DateTime.UtcNow;
+
+        itens.Add(new PedidoItem
+        {
+            ProdutoId = produto.Id,
+            NomeProduto = produto.Nome,
+            SkuProduto = produto.Sku,
+            ImagemProduto = produto.ImagemPrincipal,
+            Quantidade = item.Quantidade,
+            PrecoUnitario = precoUnitario,
+            PrecoTotal = precoTotal,
+            CreatedAt = DateTime.UtcNow
+        });
+
+        abastecimentoResumo.Add(BuildAbastecimentoResumo(produto, item.Quantidade));
+    }
+
+    decimal desconto = 0m;
+    if (!string.IsNullOrWhiteSpace(request.CupomCodigo))
+    {
+        var cupom = await db.Cupons.AsNoTracking().FirstOrDefaultAsync(c => c.Codigo == request.CupomCodigo && c.Ativo, ct);
+        if (cupom is not null && subtotal >= cupom.ValorMinimoPedido)
+        {
+            desconto = cupom.Tipo switch
+            {
+                TipoCupom.Percentual => subtotal * (cupom.Valor / 100m),
+                TipoCupom.ValorFixo => cupom.Valor,
+                TipoCupom.FreteGratis => cupom.Valor,
+                _ => 0m
+            };
+            desconto = Math.Min(desconto, subtotal);
+        }
+    }
+
+    int? enderecoEntregaId = null;
+    if (request.EnderecoEntrega is not null)
+    {
+        var enderecoJson = System.Text.Json.JsonSerializer.Serialize(request.EnderecoEntrega);
+        var enderecoRequest = System.Text.Json.JsonSerializer.Deserialize<EnderecoEntregaRequest>(
+            enderecoJson,
+            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        if (enderecoRequest is not null && !string.IsNullOrWhiteSpace(enderecoRequest.Cep) && !string.IsNullOrWhiteSpace(enderecoRequest.Logradouro))
+        {
+            var endereco = new Endereco
+            {
+                ClienteId = cliente.Id,
+                Tipo = TipoEndereco.Entrega,
+                Apelido = "Entrega",
+                Cep = enderecoRequest.Cep.Trim(),
+                Logradouro = enderecoRequest.Logradouro.Trim(),
+                Numero = enderecoRequest.Numero?.Trim() ?? "S/N",
+                Complemento = enderecoRequest.Complemento,
+                Bairro = enderecoRequest.Bairro,
+                Cidade = enderecoRequest.Cidade,
+                Estado = enderecoRequest.Estado,
+                Pais = "Brasil",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            db.Enderecos.Add(endereco);
+            await db.SaveChangesAsync(ct);
+            enderecoEntregaId = endereco.Id;
+        }
+    }
+
+    var pedido = new Pedido
+    {
+        NumeroPedido = $"NX{DateTime.UtcNow:yyMMddHHmmss}{Random.Shared.Next(10, 99)}",
+        ClienteId = cliente.Id,
+        EnderecoEntregaId = enderecoEntregaId,
+        LojaId = lojaId,
+        Status = StatusPedido.Pendente,
+        StatusPagamento = StatusPagamento.Aguardando,
+        MeioPagamento = request.MetodoPagamento,
+        GatewayPagamento = string.IsNullOrWhiteSpace(request.GatewayPagamento) ? "ConfiguracaoPendente" : request.GatewayPagamento,
+        Subtotal = subtotal,
+        Desconto = desconto,
+        FreteValor = request.FreteValor ?? 0m,
+        FreteMetodo = request.FreteMetodo,
+        FreteTransportadora = request.FreteTransportadora,
+        FretePrazoDias = request.FretePrazoDias ?? 0,
+        Total = Math.Max(0m, subtotal + (request.FreteValor ?? 0m) - desconto),
+        CupomCodigo = request.CupomCodigo,
+        Origem = OrigemPedido.Site,
+        IpCliente = http.Connection.RemoteIpAddress?.ToString(),
+        UserAgent = http.Request.Headers.UserAgent.ToString(),
+        ObservacoesInternas = abastecimentoResumo.Count == 0
+            ? null
+            : $"Abastecimento automÃ¡tico: {string.Join(" | ", abastecimentoResumo)}",
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow,
+        Itens = itens
+    };
+
+    pedido.Pagamentos = new List<Pagamento>
+    {
+        new()
+        {
+            Gateway = string.IsNullOrWhiteSpace(pedido.GatewayPagamento) ? "ConfiguracaoPendente" : pedido.GatewayPagamento,
+            Metodo = ParseMetodoPagamento(pedido.MeioPagamento),
+            Status = StatusPagamentoDetalhado.Pendente,
+            Valor = pedido.Total,
+            Parcelas = Math.Clamp(request.Parcelas ?? 1, 1, 24),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        }
+    };
+
+    db.Pedidos.Add(pedido);
+    await db.SaveChangesAsync(ct);
+
+    await EnsurePedidoFiscalAutomationAsync(pedido, cliente, request, db, fiscalRoutingEngine, ct);
+    await db.SaveChangesAsync(ct);
+    await transaction.CommitAsync(ct);
+
+    var gatewayResult = await TryStartGatewayPaymentAsync(pedido, cliente, configuration, httpClientFactory, http, ct);
+    if (gatewayResult.Started)
+    {
+        pedido.GatewayPagamento = gatewayResult.Gateway;
+        pedido.GatewayTransacaoId = gatewayResult.TransactionId;
+        pedido.StatusPagamento = StatusPagamento.Aguardando;
+        var pagamento = pedido.Pagamentos?.FirstOrDefault();
+        if (pagamento is not null)
+        {
+            pagamento.Gateway = gatewayResult.Gateway;
+            pagamento.GatewayTransacaoId = gatewayResult.TransactionId;
+            pagamento.PixQrcode = gatewayResult.PixQrcode;
+            pagamento.BoletoUrl = gatewayResult.PaymentUrl;
+            pagamento.Status = StatusPagamentoDetalhado.Pendente;
+            pagamento.WebhookPayload = gatewayResult.RawPayload;
+            pagamento.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    var pagamentoFinal = pedido.Pagamentos?
+        .OrderByDescending(item => item.CreatedAt)
+        .FirstOrDefault();
+
+    var dto = new PedidoLojaDto(
+        pedido.Id,
+        pedido.NumeroPedido,
+        pedido.Total,
+        FormatStatusPedido(pedido.Status),
+        pedido.CreatedAt,
+        FormatStatusPagamento(pedido.StatusPagamento),
+        pedido.MeioPagamento,
+        pedido.GatewayPagamento,
+        pedido.GatewayTransacaoId,
+        pedido.FreteValor,
+        pedido.FreteMetodo,
+        pedido.FreteTransportadora,
+        pedido.FretePrazoDias,
+        BuildPedidoInstruction(pedido.StatusPagamento, pedido.MeioPagamento, pedido.GatewayTransacaoId),
+        pagamentoFinal?.Parcelas ?? 1,
+        pagamentoFinal?.PixQrcode,
+        pagamentoFinal?.BoletoUrl);
+    return Results.Ok(ApiResponse<PedidoLojaDto>.Ok(dto, "Pedido criado com sucesso."));
+})
+.AllowAnonymous()
+.WithName("CriarPedido")
+;
+
+app.MapGet("/api/integracoes/status", [Authorize(Policy = "Gerente")] async (
+    IConfiguration configuration,
+    NexumDbContext db,
+    CancellationToken ct) =>
+{
+    var mercadoPagoConfigurado = IsConfiguredSecret(GetIntegrationValue(configuration, "MercadoPago:AccessToken", "Integracoes:MercadoPago:AccessToken"));
+    var melhorEnvioConfigurado = IsConfiguredSecret(GetIntegrationValue(configuration, "MelhorEnvio:Token", "Integracoes:MelhorEnvio:Token"));
+    var mercadoLivreConfigurado = IsConfiguredSecret(GetIntegrationValue(configuration, "MercadoLivre:AccessToken", "Integracoes:MercadoLivre:AccessToken"));
+    var mercadoLivreOAuthPronto = HasAllIntegrationValues(
+        configuration,
+        ("MercadoLivre:AppId", "Integracoes:MercadoLivre:AppId"),
+        ("MercadoLivre:ClientSecret", "Integracoes:MercadoLivre:ClientSecret"),
+        ("MercadoLivre:RedirectUri", "Integracoes:MercadoLivre:RedirectUri"));
+    var shopifyConfigurado = HasAllIntegrationValues(
+        configuration,
+        ("Shopify:StoreDomain", "Integracoes:Shopify:StoreDomain"),
+        ("Shopify:AdminApiAccessToken", "Integracoes:Shopify:AdminApiAccessToken"),
+        ("Shopify:ApiVersion", "Integracoes:Shopify:ApiVersion"));
+    var cjDropshippingConfigurado = HasAllIntegrationValues(
+        configuration,
+        ("CJDropshipping:ApiEndpoint", "Integracoes:CJDropshipping:ApiEndpoint"),
+        ("CJDropshipping:AccessToken", "Integracoes:CJDropshipping:AccessToken"));
+    var fornecedoresAtivos = await db.Fornecedores
+        .AsNoTracking()
+        .CountAsync(fornecedor => fornecedor.Status == StatusFornecedor.Ativo, ct);
+    var dropshippingAtivos = await db.DropshippingConfigs
+        .AsNoTracking()
+        .CountAsync(config => config.Ativo, ct);
+    var shopifyCanalAtivo = await db.DropshippingConfigs
+        .AsNoTracking()
+        .AnyAsync(config => config.Ativo && config.Slug == "shopify", ct);
+    var cjCanalAtivo = await db.DropshippingConfigs
+        .AsNoTracking()
+        .AnyAsync(config => config.Ativo && config.Slug == "cjdropshipping", ct);
+
+    var modules = new List<IntegracaoStatusDto>
+    {
+        new(
+            "E-commerce e API",
+            "ecommerce",
+            "Operacional",
+            "Catalogo, clientes, pedidos, estoque e painel usam a API operacional.",
+            true,
+            "Producao"),
+        new(
+            "Dropshipping",
+            "dropshipping",
+            fornecedoresAtivos + dropshippingAtivos > 0 ? "Base ativa" : "Aguardando cadastros",
+            fornecedoresAtivos + dropshippingAtivos > 0
+                ? $"{fornecedoresAtivos} fornecedor(es) ativo(s) e {dropshippingAtivos} canal(is) dropshipping disponivel(is) para roteamento."
+                : "Cadastre fornecedores/canais e vincule produtos antes de liberar o roteamento.",
+            fornecedoresAtivos + dropshippingAtivos > 0,
+            "Producao assistida"),
+        new(
+            "Shopify",
+            "shopify",
+            shopifyConfigurado ? "Credenciais prontas" : shopifyCanalAtivo ? "Canal publicado" : "Aguardando conexÃ£o",
+            shopifyConfigurado
+                ? "Loja Shopify preparada para autenticar catÃ¡logo, pedidos e estoque assim que os tokens reais forem inseridos."
+                : shopifyCanalAtivo
+                    ? "Canal Shopify jÃ¡ estÃ¡ publicado no sistema e aguardando domÃ­nio/tokens oficiais."
+                    : "Estrutura Shopify serÃ¡ habilitada apÃ³s cadastrar domÃ­nio da loja e token Admin API.",
+            shopifyConfigurado || shopifyCanalAtivo,
+            shopifyConfigurado ? "Staging pronto" : "Aguardando credenciais"),
+        new(
+            "CJ Dropshipping",
+            "cjdropshipping",
+            cjDropshippingConfigurado ? "Credenciais prontas" : cjCanalAtivo ? "Canal publicado" : "Aguardando conexÃ£o",
+            cjDropshippingConfigurado
+                ? "Canal CJ preparado para catÃ¡logo, sourcing e roteamento de pedidos conforme as credenciais do fornecedor."
+                : cjCanalAtivo
+                    ? "Canal CJ Dropshipping jÃ¡ estÃ¡ publicado no sistema e aguardando token real da operaÃ§Ã£o."
+                    : "Estrutura CJ Dropshipping serÃ¡ habilitada apÃ³s cadastrar endpoint e token da conta contratada.",
+            cjDropshippingConfigurado || cjCanalAtivo,
+            cjDropshippingConfigurado ? "Staging pronto" : "Aguardando credenciais"),
+        new(
+            "Logistica e Fretes",
+            "logistica",
+            melhorEnvioConfigurado ? "Configurado" : "Aguardando credenciais",
+            melhorEnvioConfigurado
+                ? "Token logÃ­stico encontrado; falta concluir o teste de cotacao e etiqueta."
+                : "Checkout registra frete, mas cotacao e etiqueta dependem do token da transportadora.",
+            melhorEnvioConfigurado,
+            configuration.GetValue("MelhorEnvio:Sandbox", true) ? "Sandbox" : "Producao"),
+        new(
+            "Gateways de pagamento",
+            "gateways",
+            mercadoPagoConfigurado ? "Configurado" : "Aguardando credenciais",
+            mercadoPagoConfigurado
+                ? "Credencial do gateway encontrada; falta validar cobranca e webhook."
+                : "Pedido registra o metodo, mas a cobranca depende do token do gateway.",
+            mercadoPagoConfigurado,
+            mercadoPagoConfigurado ? "Configurado" : "Nao configurado"),
+        new(
+            "Marketplaces",
+            "marketplaces",
+            mercadoLivreConfigurado ? "Token ativo" : mercadoLivreOAuthPronto ? "OAuth pronto" : "Aguardando credenciais",
+            mercadoLivreConfigurado
+                ? "Access token encontrado; sincronizacao pode ser testada contra a API do Mercado Livre."
+                : mercadoLivreOAuthPronto
+                    ? "Aplicacao pronta para autorizacao do vendedor; falta concluir login OAuth e gerar access token."
+                    : "Importacao de catalogo e pedidos depende das credenciais do marketplace.",
+            mercadoLivreConfigurado || mercadoLivreOAuthPronto,
+            "Integracao externa"),
+        new(
+            "Bancos e conciliacao",
+            "bancaria",
+            "Planejado",
+            "A conciliacao bancaria sera ativada apos definir banco, convenio e credenciais seguras.",
+            false,
+            "Nao configurado")
+    };
+
+    return Results.Ok(ApiResponse<List<IntegracaoStatusDto>>.Ok(modules));
+})
+.WithName("IntegracoesStatus")
+;
+
+app.MapGet("/api/integracoes/diagnostico", [Authorize(Policy = "Gerente")] async (
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct) =>
+{
+    var slugs = new[] { "ecommerce", "dropshipping", "shopify", "cjdropshipping", "mercadopago", "melhorenvio", "mercadolivre", "bancaria" };
+    var resultados = new List<IntegracaoDiagnosticoDto>();
+
+    foreach (var slug in slugs)
+    {
+        resultados.Add(await BuildIntegracaoDiagnosticoAsync(slug, configuration, db, httpClientFactory, ct));
+    }
+
+    return Results.Ok(ApiResponse<List<IntegracaoDiagnosticoDto>>.Ok(resultados, "Diagnostico operacional das integracoes."));
+})
+.WithName("IntegracoesDiagnostico")
+;
+
+app.MapGet("/api/integracoes/credenciais-modelo", [Authorize(Policy = "Gerente")] () =>
+{
+    var credenciais = new List<IntegracaoCredencialDto>
+    {
+        new("Mercado Pago", "gateway", "MercadoPago__AccessToken", "Token privado do Mercado Pago para criar cobranÃ§as Pix/boleto/cartÃ£o.", true),
+        new("Mercado Pago", "gateway", "MercadoPago__PublicKey", "Chave pÃºblica usada no checkout transparente quando o front capturar cartÃ£o.", false),
+        new("Mercado Pago", "gateway", "MercadoPago__WebhookSecret", "Segredo para validar notificaÃ§Ãµes/webhooks do Mercado Pago.", false),
+        new("Gateway principal", "gateway", "GatewayPrincipal__Provider / GatewayPrincipal__AccessToken / GatewayPrincipal__PublicKey / GatewayPrincipal__WebhookSecret", "Estrutura reserva para o primeiro gateway adicional escolhido pela diretoria.", false),
+        new("Gateway secundÃ¡rio", "gateway", "GatewaySecundario__Provider / GatewaySecundario__AccessToken / GatewaySecundario__PublicKey / GatewaySecundario__WebhookSecret", "Estrutura reserva para o segundo gateway adicional e contingÃªncia de cobranÃ§a.", false),
+        new("Melhor Envio", "logistica", "MelhorEnvio__Token", "Token Bearer do Melhor Envio para cotaÃ§Ã£o, compra de frete e etiqueta.", true),
+        new("Melhor Envio", "logistica", "MelhorEnvio__Sandbox", "true para homologaÃ§Ã£o; false para produÃ§Ã£o.", false),
+        new("LogÃ­stica principal", "logistica", "LogisticaPrincipal__Provider / LogisticaPrincipal__ApiEndpoint / LogisticaPrincipal__Token / LogisticaPrincipal__ClientId / LogisticaPrincipal__ClientSecret", "Estrutura para a principal transportadora/hub escolhida para produÃ§Ã£o.", false),
+        new("LogÃ­stica secundÃ¡ria", "logistica", "LogisticaSecundaria__Provider / LogisticaSecundaria__ApiEndpoint / LogisticaSecundaria__Token / LogisticaSecundaria__ClientId / LogisticaSecundaria__ClientSecret", "Estrutura de contingÃªncia para uma segunda transportadora ou hub logÃ­stico.", false),
+        new("Dropshipping principal", "dropshipping", "DropshippingPrincipal__Provider / DropshippingPrincipal__ApiEndpoint / DropshippingPrincipal__ApiKey / DropshippingPrincipal__ApiSecret", "Canal principal de dropshipping preparado para receber as credenciais reais.", false),
+        new("Dropshipping secundÃ¡rio", "dropshipping", "DropshippingSecundario__Provider / DropshippingSecundario__ApiEndpoint / DropshippingSecundario__ApiKey / DropshippingSecundario__ApiSecret", "Canal secundÃ¡rio para contingÃªncia ou operaÃ§Ã£o paralela de dropshipping.", false),
+        new("Shopify", "dropshipping", "Shopify__StoreDomain", "DomÃ­nio da loja Shopify que serÃ¡ sincronizada com catÃ¡logo, estoque e pedidos.", true),
+        new("Shopify", "dropshipping", "Shopify__ApiVersion", "VersÃ£o da Admin API usada pelo conector privado do servidor.", true),
+        new("Shopify", "dropshipping", "Shopify__AdminApiAccessToken", "Token privado Admin API da loja Shopify.", true),
+        new("Shopify", "dropshipping", "Shopify__WebhookSecret", "Segredo para validar webhooks de pedido, produto e estoque da Shopify.", false),
+        new("CJ Dropshipping", "dropshipping", "CJDropshipping__ApiEndpoint", "Endpoint base da API privada do CJ Dropshipping.", true),
+        new("CJ Dropshipping", "dropshipping", "CJDropshipping__AccessToken", "Token principal para sincronizar produtos e pedidos com o CJ Dropshipping.", true),
+        new("CJ Dropshipping", "dropshipping", "CJDropshipping__ApiKey", "Chave complementar da conta CJ quando o contrato exigir autenticaÃ§Ã£o dupla.", false),
+        new("CJ Dropshipping", "dropshipping", "CJDropshipping__WebhookSecret", "Segredo para validar notificaÃ§Ãµes recebidas do CJ Dropshipping.", false),
+        new("Mercado Livre", "marketplace", "MercadoLivre__AppId", "ID do aplicativo Mercado Livre.", true),
+        new("Mercado Livre", "marketplace", "MercadoLivre__ClientSecret", "Segredo do aplicativo Mercado Livre.", true),
+        new("Mercado Livre", "marketplace", "MercadoLivre__RedirectUri", "URL de retorno cadastrada exatamente no Mercado Livre.", true),
+        new("Mercado Livre", "marketplace", "MercadoLivre__AccessToken", "Token do vendedor apÃ³s autorizar o aplicativo.", false),
+        new("IntegraÃ§Ãµes bancÃ¡rias", "bancaria", "Banco__Provider / Banco__ClientId / Banco__ClientSecret", "Credenciais do banco ou PSP escolhido para conciliaÃ§Ã£o.", false)
+    };
+
+    return Results.Ok(ApiResponse<List<IntegracaoCredencialDto>>.Ok(credenciais, "Credenciais necessarias sem expor valores sensiveis."));
+})
+.WithName("IntegracoesCredenciaisModelo")
+;
+
+app.MapPost("/api/integracoes/testar/{slug}", [Authorize(Policy = "Gerente")] async (
+    string slug,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct) =>
+{
+    var resultado = await BuildIntegracaoDiagnosticoAsync(slug, configuration, db, httpClientFactory, ct);
+    return Results.Ok(ApiResponse<IntegracaoDiagnosticoDto>.Ok(resultado, $"Teste executado para {resultado.Nome}."));
+})
+.WithName("TestarIntegracao")
+;
+
+app.MapPost("/api/frete/cotar", async (
+    FreteCotacaoRequest request,
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct) =>
+{
+    var cotacoes = await CotarFreteAsync(request, configuration, httpClientFactory, ct);
+    return Results.Ok(ApiResponse<List<FreteCotacaoDto>>.Ok(cotacoes, cotacoes.Any(c => c.Fonte == "Melhor Envio")
+        ? "Cotacao consultada no Melhor Envio."
+        : "Cotacao operacional gerada pela tabela local ate configurar a transportadora."));
+})
+.AllowAnonymous()
+.WithName("CotarFrete")
+;
+
+app.MapPost("/api/webhooks/mercadopago", async (
+    HttpContext http,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct) =>
+{
+    using var reader = new StreamReader(http.Request.Body, Encoding.UTF8);
+    var payload = await reader.ReadToEndAsync(ct);
+    var paymentId = http.Request.Query["id"].FirstOrDefault()
+        ?? http.Request.Query["data.id"].FirstOrDefault()
+        ?? TryExtractJsonPath(payload, "data", "id")
+        ?? TryExtractJsonField(payload, "id");
+
+    if (!IsConfiguredSecret(paymentId))
+    {
+        return Results.Ok(new { received = true, updated = false, reason = "sem_id_pagamento" });
+    }
+
+    var token = GetIntegrationValue(configuration, "MercadoPago:AccessToken", "Integracoes:MercadoPago:AccessToken");
+    string? status = null;
+    string? rawPaymentPayload = null;
+
+    if (IsConfiguredSecret(token))
+    {
+        try
+        {
+            var client = httpClientFactory.CreateClient("mercado-pago");
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"v1/payments/{paymentId}");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            using var response = await client.SendAsync(request, ct);
+            rawPaymentPayload = await response.Content.ReadAsStringAsync(ct);
+            if (response.IsSuccessStatusCode)
+            {
+                status = TryExtractJsonField(rawPaymentPayload, "status");
+            }
+        }
+        catch
+        {
+            rawPaymentPayload = payload;
+        }
+    }
+
+    var pagamento = await db.Pagamentos
+        .Include(item => item.Pedido)
+        .FirstOrDefaultAsync(item => item.GatewayTransacaoId == paymentId, ct);
+
+    if (pagamento is null)
+    {
+        return Results.Ok(new { received = true, updated = false, reason = "pagamento_nao_encontrado" });
+    }
+
+    pagamento.WebhookPayload = rawPaymentPayload ?? payload;
+    pagamento.DataProcessamento = DateTime.UtcNow;
+    pagamento.UpdatedAt = DateTime.UtcNow;
+
+    if (!string.IsNullOrWhiteSpace(status))
+    {
+        ApplyMercadoPagoStatus(status, pagamento);
+    }
+
+    await db.SaveChangesAsync(ct);
+    return Results.Ok(new { received = true, updated = true, paymentId, status });
+})
+.AllowAnonymous()
+.WithName("WebhookMercadoPago")
+;
+
+app.MapGet("/api/dashboard/resumo", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var hoje = DateTime.UtcNow.Date;
+    var inicioMes = new DateTime(hoje.Year, hoje.Month, 1);
+
+    var pedidosHoje = await db.Pedidos.AsNoTracking().CountAsync(pedido => pedido.CreatedAt >= hoje, ct);
+    var totalClientes = await db.Clientes.AsNoTracking().CountAsync(ct);
+    var faturamentoMes = await db.Pedidos.AsNoTracking().Where(pedido => pedido.CreatedAt >= inicioMes).SumAsync(pedido => (decimal?)pedido.Total, ct) ?? 0m;
+    var leadsNovos = await db.CrmLeads.AsNoTracking().CountAsync(lead => lead.Status == StatusLead.Novo, ct);
+    var produtosEstoqueBaixo = await db.Produtos.AsNoTracking().CountAsync(produto => produto.Ativo && produto.EstoqueAtual <= produto.EstoqueMinimo, ct);
+
+    var totalLeads = await db.CrmLeads.AsNoTracking().CountAsync(ct);
+    var leadsConvertidos = await db.CrmLeads.AsNoTracking().CountAsync(lead => lead.Status == StatusLead.Convertido, ct);
+    var conversao = totalLeads == 0 ? 0m : Math.Round((decimal)leadsConvertidos / totalLeads * 100m, 2);
+
+    var ticketMedio = await db.Pedidos.AsNoTracking()
+        .Where(pedido => pedido.CreatedAt >= inicioMes)
+        .AverageAsync(pedido => (decimal?)pedido.Total, ct) ?? 0m;
+
+    var resumo = new DashboardResumoDto(
+        pedidosHoje,
+        totalClientes,
+        faturamentoMes,
+        leadsNovos,
+        produtosEstoqueBaixo,
+        conversao,
+        ticketMedio);
+
+    return Results.Ok(ApiResponse<DashboardResumoDto>.Ok(resumo));
+})
+.WithName("DashboardResumo")
+;
+
+app.MapGet("/api/crm/leads", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var leads = await db.Database.SqlQueryRaw<LeadRow>(
+            """
+            SELECT
+                id AS Id,
+                nome AS Nome,
+                COALESCE(email, '') AS Email,
+                COALESCE(telefone, '') AS Telefone,
+                COALESCE(empresa, '') AS Empresa,
+                CAST(origem AS CHAR) AS Origem,
+                COALESCE(anotacoes, '') AS Mensagem,
+                CAST(status AS CHAR) AS Status,
+                created_at AS CreatedAt
+            FROM crm_leads
+            ORDER BY created_at DESC
+            LIMIT 500
+            """)
+        .ToListAsync(ct);
+
+    var dtos = leads.Select(lead => new LeadLojaDto(
+        lead.Id,
+        lead.Nome,
+        lead.Email,
+        lead.Telefone,
+        FormatStatusLeadValue(lead.Status),
+        lead.CreatedAt,
+        lead.Empresa,
+        FormatOrigemLeadValue(lead.Origem),
+        lead.Mensagem)).ToList();
+
+    return Results.Ok(ApiResponse<List<LeadLojaDto>>.Ok(dtos));
+})
+.WithName("Leads")
+;
+
+app.MapPost("/api/crm/leads", async (LeadRequest request, NexumDbContext db, INotificacaoService notificacaoService, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Nome))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Nome do lead obrigatorio."));
+    }
+
+    var email = NormalizeEmail(request.Email);
+    if (string.IsNullOrWhiteSpace(email))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("E-mail do lead obrigatorio."));
+    }
+
+    var telefone = NormalizePhone(request.Telefone);
+    var whatsapp = NormalizePhone(request.Whatsapp) ?? telefone;
+    var cnpj = NormalizeDocument(request.Cnpj);
+
+    var existingLead = await db.CrmLeads
+        .FirstOrDefaultAsync(item =>
+            item.Email == email
+            || (!string.IsNullOrWhiteSpace(telefone) && item.Telefone == telefone)
+            || (!string.IsNullOrWhiteSpace(cnpj) && item.Cnpj == cnpj), ct);
+
+    var lead = existingLead ?? new CrmLead
+    {
+        CreatedAt = DateTime.UtcNow,
+        Status = StatusLead.Novo
+    };
+
+    lead.Nome = request.Nome.Trim();
+    lead.Email = email;
+    lead.Telefone = telefone;
+    lead.Whatsapp = whatsapp;
+    lead.Empresa = TrimOrNull(request.Empresa);
+    lead.Cnpj = cnpj;
+    lead.Segmento = TrimOrNull(request.Segmento);
+    lead.Tipo = TryParseTipoLead(request.Tipo, out var tipo) ? tipo : TipoLead.ClienteVIP;
+    lead.Status = TryParseStatusLead(request.Status, out var status) ? status : lead.Status;
+    lead.Origem = TryParseOrigemLead(request.Origem, out var origem) ? origem : OrigemLead.Site;
+    lead.Anotacoes = AppendLeadNotes(lead.Anotacoes, BuildLeadObservacao(request));
+    lead.UpdatedAt = DateTime.UtcNow;
+
+    if (existingLead is null)
+    {
+        db.CrmLeads.Add(lead);
+    }
+
+    await db.SaveChangesAsync(ct);
+
+    await notificacaoService.EnviarEmailAsync(
+        "corporativo.gna@gmail.com",
+        existingLead is null ? $"Novo lead pÃºblico: {lead.Nome}" : $"Lead pÃºblico atualizado: {lead.Nome}",
+        BuildLeadNotificationEmail(lead));
+
+    var dto = new LeadLojaDto(
+        lead.Id,
+        lead.Nome,
+        lead.Email ?? string.Empty,
+        lead.Telefone ?? string.Empty,
+        FormatStatusLead(lead.Status),
+        lead.CreatedAt,
+        lead.Empresa,
+        FormatOrigemLead(lead.Origem),
+        lead.Anotacoes);
+
+    var message = existingLead is null
+        ? "Lead cadastrado no CRM."
+        : "Lead jÃ¡ existente reaproveitado e atualizado no CRM.";
+
+    return Results.Ok(ApiResponse<LeadLojaDto>.Ok(dto, message));
+})
+.WithName("CriarLead")
+.AllowAnonymous()
+;
+
+app.MapPut("/api/crm/leads/{id}/status", [Authorize(Policy = "Gerente")] async (int id, StatusUpdateRequest request, NexumDbContext db, CancellationToken ct) =>
+{
+    var lead = await db.CrmLeads.FirstOrDefaultAsync(item => item.Id == id, ct);
+    if (lead is null)
+    {
+        return Results.NotFound(ApiResponse<string>.Erro("Lead nao encontrado."));
+    }
+
+    if (!TryParseStatusLead(request.NovoStatus, out var status))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("Status do lead invalido."));
+    }
+
+    lead.Status = status;
+    lead.ResponsavelId = request.ResponsavelId;
+    lead.UpdatedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync(ct);
+
+    var dto = new LeadLojaDto(
+        lead.Id,
+        lead.Nome,
+        lead.Email ?? string.Empty,
+        lead.Telefone ?? string.Empty,
+        FormatStatusLead(lead.Status),
+        lead.CreatedAt,
+        lead.Empresa,
+        FormatOrigemLead(lead.Origem),
+        lead.Anotacoes);
+    return Results.Ok(ApiResponse<LeadLojaDto>.Ok(dto, "Status do lead atualizado."));
+})
+.WithName("AtualizarStatusLead")
+;
+
+app.MapGet("/api/erp/empresas", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var empresas = await db.EmpresasGrupo
+        .AsNoTracking()
+        .OrderByDescending(item => item.EmitentePreferencial)
+        .ThenBy(item => item.PrioridadeFiscal)
+        .ThenBy(item => item.RazaoSocial)
+        .Select(item => new EmpresaGrupoDto(
+            item.Id,
+            item.TipoCadastro,
+            item.RazaoSocial,
+            item.NomeFantasia,
+            item.Cnpj,
+            item.InscricaoEstadual,
+            item.InscricaoMunicipal,
+            item.MatrizFilial,
+            item.CodigoEmpresa,
+            item.RegimeTributario,
+            item.Crt,
+            item.CnaePrincipal,
+            item.CnaesSecundarios,
+            item.CategoriaFiscal,
+            item.SubcategoriaFiscal,
+            item.NcmPadrao,
+            item.NaturezaOperacaoPadrao,
+            item.ResponsavelLegal,
+            item.ResponsavelFiscal,
+            item.EmailFiscal,
+            item.EmailComercial,
+            item.Telefone,
+            item.Whatsapp,
+            item.Cep,
+            item.Logradouro,
+            item.Numero,
+            item.Complemento,
+            item.Bairro,
+            item.Cidade,
+            item.Estado,
+            item.Pais,
+            item.AmbienteNfe,
+            item.SerieNfe,
+            item.SerieNfce,
+            item.ModeloDocumentoPdv,
+            item.AmbienteNfce,
+            item.ProximaNfceNumero,
+            item.NfceCsc,
+            item.NfceCscIdToken,
+            item.PdvSerieSat,
+            item.PdvImpressoraFiscal,
+            item.PdvNomeCaixaPadrao,
+            item.PdvContingenciaOffline,
+            item.ProximaNfeNumero,
+            item.CfopPadraoInterno,
+            item.CfopPadraoInterestadual,
+            item.AliquotaIcmsInterna,
+            item.AliquotaIcmsInterestadual,
+            item.AliquotaPis,
+            item.AliquotaCofins,
+            item.AliquotaIss,
+            item.AliquotaIpi,
+            item.CargaTributariaPercentual,
+            item.PerfilTributacao,
+            item.UsaStLegado,
+            item.DestacaIcmsStSeparado,
+            item.CustoOperacionalPercentual,
+            item.MargemMinimaPercentual,
+            item.PrioridadeFiscal,
+            item.PermiteNfeEntrada,
+            item.PermiteNfeSaida,
+            item.PermiteDropshipping,
+            item.PermiteMarketplace,
+            item.EmitentePreferencial,
+            item.Ativa,
+            item.BeneficiosEstrategicos,
+            item.ContratoResumo,
+            item.Observacoes,
+            item.CreatedAt,
+            item.UpdatedAt))
+        .ToListAsync(ct);
+
+    return Results.Ok(ApiResponse<List<EmpresaGrupoDto>>.Ok(empresas));
+})
+.WithName("EmpresasGrupo")
+;
+
+app.MapPost("/api/erp/empresas", [Authorize(Policy = "Gerente")] async (EmpresaGrupoRequest request, NexumDbContext db, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.RazaoSocial) || string.IsNullOrWhiteSpace(request.Cnpj))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("RazÃ£o social e CNPJ sÃ£o obrigatÃ³rios."));
+    }
+
+    var cnpj = NormalizeDocument(request.Cnpj);
+    if (string.IsNullOrWhiteSpace(cnpj))
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("CNPJ invÃ¡lido."));
+    }
+
+    var codigoEmpresa = TrimOrNull(request.CodigoEmpresa);
+    var emailFiscal = NormalizeEmail(request.EmailFiscal);
+
+    var duplicate = await db.EmpresasGrupo.AsNoTracking().FirstOrDefaultAsync(item =>
+        item.Cnpj == cnpj
+        || (!string.IsNullOrWhiteSpace(codigoEmpresa) && item.CodigoEmpresa == codigoEmpresa), ct);
+
+    if (duplicate is not null)
+    {
+        return Results.BadRequest(ApiResponse<string>.Erro("JÃ¡ existe empresa fiscal cadastrada com o CNPJ ou cÃ³digo interno informado."));
+    }
+
+    var empresa = new EmpresaGrupo
+    {
+        TipoCadastro = TrimOrNull(request.TipoCadastro) ?? "GrupoSocietario",
+        RazaoSocial = request.RazaoSocial.Trim(),
+        NomeFantasia = TrimOrNull(request.NomeFantasia),
+        Cnpj = cnpj,
+        InscricaoEstadual = TrimOrNull(request.InscricaoEstadual),
+        InscricaoMunicipal = TrimOrNull(request.InscricaoMunicipal),
+        MatrizFilial = TrimOrNull(request.MatrizFilial),
+        CodigoEmpresa = codigoEmpresa,
+        RegimeTributario = TrimOrNull(request.RegimeTributario),
+        Crt = TrimOrNull(request.Crt),
+        CnaePrincipal = TrimOrNull(request.CnaePrincipal),
+        CnaesSecundarios = TrimOrNull(request.CnaesSecundarios),
+        CategoriaFiscal = TrimOrNull(request.CategoriaFiscal),
+        SubcategoriaFiscal = TrimOrNull(request.SubcategoriaFiscal),
+        NcmPadrao = TrimOrNull(request.NcmPadrao),
+        NaturezaOperacaoPadrao = TrimOrNull(request.NaturezaOperacaoPadrao),
+        ResponsavelLegal = TrimOrNull(request.ResponsavelLegal),
+        ResponsavelFiscal = TrimOrNull(request.ResponsavelFiscal),
+        EmailFiscal = emailFiscal,
+        EmailComercial = NormalizeEmail(request.EmailComercial),
+        Telefone = NormalizePhone(request.Telefone),
+        Whatsapp = NormalizePhone(request.Whatsapp),
+        Cep = TrimOrNull(request.Cep),
+        Logradouro = TrimOrNull(request.Logradouro),
+        Numero = TrimOrNull(request.Numero),
+        Complemento = TrimOrNull(request.Complemento),
+        Bairro = TrimOrNull(request.Bairro),
+        Cidade = TrimOrNull(request.Cidade),
+        Estado = TrimOrNull(request.Estado)?.ToUpperInvariant(),
+        Pais = TrimOrNull(request.Pais) ?? "Brasil",
+        AmbienteNfe = TrimOrNull(request.AmbienteNfe),
+        SerieNfe = TrimOrNull(request.SerieNfe),
+        SerieNfce = TrimOrNull(request.SerieNfce),
+        ModeloDocumentoPdv = TrimOrNull(request.ModeloDocumentoPdv) ?? "NFCe",
+        AmbienteNfce = TrimOrNull(request.AmbienteNfce) ?? TrimOrNull(request.AmbienteNfe),
+        ProximaNfceNumero = request.ProximaNfceNumero,
+        NfceCsc = TrimOrNull(request.NfceCsc),
+        NfceCscIdToken = TrimOrNull(request.NfceCscIdToken),
+        PdvSerieSat = TrimOrNull(request.PdvSerieSat),
+        PdvImpressoraFiscal = TrimOrNull(request.PdvImpressoraFiscal),
+        PdvNomeCaixaPadrao = TrimOrNull(request.PdvNomeCaixaPadrao),
+        PdvContingenciaOffline = request.PdvContingenciaOffline ?? false,
+        ProximaNfeNumero = request.ProximaNfeNumero,
+        CfopPadraoInterno = TrimOrNull(request.CfopPadraoInterno),
+        CfopPadraoInterestadual = TrimOrNull(request.CfopPadraoInterestadual),
+        AliquotaIcmsInterna = request.AliquotaIcmsInterna,
+        AliquotaIcmsInterestadual = request.AliquotaIcmsInterestadual,
+        AliquotaPis = request.AliquotaPis,
+        AliquotaCofins = request.AliquotaCofins,
+        AliquotaIss = request.AliquotaIss,
+        AliquotaIpi = request.AliquotaIpi,
+        CargaTributariaPercentual = request.CargaTributariaPercentual,
+        PerfilTributacao = TrimOrNull(request.PerfilTributacao) ?? "TributacaoAtual",
+        UsaStLegado = request.UsaStLegado ?? false,
+        DestacaIcmsStSeparado = request.DestacaIcmsStSeparado ?? false,
+        CustoOperacionalPercentual = request.CustoOperacionalPercentual,
+        MargemMinimaPercentual = request.MargemMinimaPercentual,
+        PrioridadeFiscal = request.PrioridadeFiscal ?? 100,
+        PermiteNfeEntrada = request.PermiteNfeEntrada ?? true,
+        PermiteNfeSaida = request.PermiteNfeSaida ?? true,
+        PermiteDropshipping = request.PermiteDropshipping ?? false,
+        PermiteMarketplace = request.PermiteMarketplace ?? false,
+        EmitentePreferencial = request.EmitentePreferencial ?? false,
+        Ativa = request.Ativa ?? true,
+        BeneficiosEstrategicos = TrimOrNull(request.BeneficiosEstrategicos),
+        ContratoResumo = TrimOrNull(request.ContratoResumo),
+        Observacoes = TrimOrNull(request.Observacoes),
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
+    };
+
+    db.EmpresasGrupo.Add(empresa);
+    await db.SaveChangesAsync(ct);
+
+    var dto = new EmpresaGrupoDto(
+        empresa.Id,
+        empresa.TipoCadastro,
+        empresa.RazaoSocial,
+        empresa.NomeFantasia,
+        empresa.Cnpj,
+        empresa.InscricaoEstadual,
+        empresa.InscricaoMunicipal,
+        empresa.MatrizFilial,
+        empresa.CodigoEmpresa,
+        empresa.RegimeTributario,
+        empresa.Crt,
+        empresa.CnaePrincipal,
+        empresa.CnaesSecundarios,
+        empresa.CategoriaFiscal,
+        empresa.SubcategoriaFiscal,
+        empresa.NcmPadrao,
+        empresa.NaturezaOperacaoPadrao,
+        empresa.ResponsavelLegal,
+        empresa.ResponsavelFiscal,
+        empresa.EmailFiscal,
+        empresa.EmailComercial,
+        empresa.Telefone,
+        empresa.Whatsapp,
+        empresa.Cep,
+        empresa.Logradouro,
+        empresa.Numero,
+        empresa.Complemento,
+        empresa.Bairro,
+        empresa.Cidade,
+        empresa.Estado,
+        empresa.Pais,
+        empresa.AmbienteNfe,
+        empresa.SerieNfe,
+        empresa.SerieNfce,
+        empresa.ModeloDocumentoPdv,
+        empresa.AmbienteNfce,
+        empresa.ProximaNfceNumero,
+        empresa.NfceCsc,
+        empresa.NfceCscIdToken,
+        empresa.PdvSerieSat,
+        empresa.PdvImpressoraFiscal,
+        empresa.PdvNomeCaixaPadrao,
+        empresa.PdvContingenciaOffline,
+        empresa.ProximaNfeNumero,
+        empresa.CfopPadraoInterno,
+        empresa.CfopPadraoInterestadual,
+        empresa.AliquotaIcmsInterna,
+        empresa.AliquotaIcmsInterestadual,
+        empresa.AliquotaPis,
+        empresa.AliquotaCofins,
+        empresa.AliquotaIss,
+        empresa.AliquotaIpi,
+        empresa.CargaTributariaPercentual,
+        empresa.PerfilTributacao,
+        empresa.UsaStLegado,
+        empresa.DestacaIcmsStSeparado,
+        empresa.CustoOperacionalPercentual,
+        empresa.MargemMinimaPercentual,
+        empresa.PrioridadeFiscal,
+        empresa.PermiteNfeEntrada,
+        empresa.PermiteNfeSaida,
+        empresa.PermiteDropshipping,
+        empresa.PermiteMarketplace,
+        empresa.EmitentePreferencial,
+        empresa.Ativa,
+        empresa.BeneficiosEstrategicos,
+        empresa.ContratoResumo,
+        empresa.Observacoes,
+        empresa.CreatedAt,
+        empresa.UpdatedAt);
+
+    return Results.Ok(ApiResponse<EmpresaGrupoDto>.Ok(dto, "Empresa societÃ¡ria/fiscal cadastrada com sucesso."));
+})
+.WithName("CriarEmpresaGrupo")
+;
+
+app.MapGet("/api/fiscal/pdv/configuracoes", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var configuracoes = await db.EmpresasGrupo
+        .AsNoTracking()
+        .Where(item => item.Ativa && item.PermiteNfeSaida)
+        .OrderByDescending(item => item.EmitentePreferencial)
+        .ThenBy(item => item.PrioridadeFiscal)
+        .Select(item => new PdvFiscalConfigDto(
+            item.Id,
+            item.CodigoEmpresa,
+            item.RazaoSocial,
+            item.Cnpj,
+            item.ModeloDocumentoPdv ?? "NFCe",
+            item.AmbienteNfce ?? item.AmbienteNfe,
+            item.SerieNfce,
+            item.ProximaNfceNumero,
+            item.NfceCscIdToken,
+            !string.IsNullOrWhiteSpace(item.NfceCsc),
+            item.PdvSerieSat,
+            item.PdvImpressoraFiscal,
+            item.PdvNomeCaixaPadrao,
+            item.PdvContingenciaOffline,
+            item.EmitentePreferencial,
+            item.Estado))
+        .ToListAsync(ct);
+
+    return Results.Ok(ApiResponse<List<PdvFiscalConfigDto>>.Ok(configuracoes));
+})
+.WithName("PdvFiscalConfiguracoes")
+;
+
+app.MapGet("/api/fiscal/pedidos", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
+{
+    var registros = await db.Fiscais
+        .AsNoTracking()
+        .OrderByDescending(item => item.CreatedAt)
+        .Take(100)
+        .Select(item => new FiscalPedidoDto(
+            item.Id,
+            item.PedidoId,
+            item.EmpresaGrupoId,
+            item.EmpresaEmitente,
+            item.CodigoEmpresaEmitente,
+            item.CnpjEmitente,
+            item.NumeroNfe,
+            item.Serie,
+            item.StatusNfe.ToString(),
+            item.StatusAutomacao,
+            item.ModeloDocumento,
+            item.AmbienteDocumento,
+            item.Cfop,
+            item.NaturezaOperacao,
+            item.ValorTotal,
+            item.ResumoRoteamento,
+            item.CreatedAt,
+            item.UpdatedAt))
+        .ToListAsync(ct);
+
+    return Results.Ok(ApiResponse<List<FiscalPedidoDto>>.Ok(registros));
+})
+.WithName("FiscalPedidos")
+;
+
+app.MapPost("/api/fiscal/simular-roteamento", [Authorize(Policy = "Gerente")] async (
+    FiscalRoutingSimulationRequest request,
+    NexumDbContext db,
+    IFiscalRoutingEngine fiscalRoutingEngine,
+    CancellationToken ct) =>
+{
+    var empresas = await db.EmpresasGrupo
+        .AsNoTracking()
+        .Where(item => item.Ativa)
+        .ToListAsync(ct);
+
+    var decision = fiscalRoutingEngine.Evaluate(
+        new FiscalRoutingRequest(
+            request.TipoOperacao,
+            request.ValorProdutos,
+            request.ValorFrete,
+            request.EstadoOrigem,
+            request.EstadoDestino,
+            request.CategoriaFiscal,
+            request.SubcategoriaFiscal,
+            request.NaturezaOperacao,
+            request.ExigeMarketplace,
+            request.ExigeDropshipping,
+            request.RequerSaidaNfe,
+            request.RequerEntradaNfe),
+        empresas.Select(fiscalRoutingEngine.ToSnapshot).ToList());
+
+    var resultado = new FiscalRoutingSimulationDto(
+        decision.Sucesso,
+        decision.Resumo,
+        decision.EmpresaSelecionada?.CodigoEmpresa,
+        decision.EmpresaSelecionada?.RazaoSocial,
+        decision.EmpresaSelecionada?.Cnpj,
+        decision.EmpresaSelecionada?.Estado,
+        decision.Ranking.Select(item => new FiscalRoutingRankingDto(
+            item.Empresa.CodigoEmpresa,
+            item.Empresa.RazaoSocial,
+            item.Empresa.Cnpj,
+            item.Empresa.RegimeTributario,
+            item.Empresa.CategoriaFiscal,
+            item.Empresa.SubcategoriaFiscal,
+            item.CustoTributarioEstimado,
+            item.CustoOperacionalEstimado,
+            item.LucroEstimado,
+            item.MargemEstimadaPercentual,
+            item.Score,
+            item.Justificativas.ToList())).ToList());
+
+    return Results.Ok(ApiResponse<FiscalRoutingSimulationDto>.Ok(resultado));
+})
+.WithName("FiscalSimularRoteamento")
+;
+
+static string? Slugify(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return null;
+    }
+
+    var normalized = value.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD);
+    var builder = new StringBuilder(normalized.Length);
+    var lastWasDash = false;
+
+    foreach (var c in normalized)
+    {
+        if (CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.NonSpacingMark)
+        {
+            continue;
+        }
+
+        if (char.IsLetterOrDigit(c))
+        {
+            builder.Append(c);
+            lastWasDash = false;
+            continue;
+        }
+
+        if (c is ' ' or '-' or '_' or '/' or '\\' or '.')
+        {
+            if (!lastWasDash && builder.Length > 0)
+            {
+                builder.Append('-');
+                lastWasDash = true;
+            }
+        }
+    }
+
+    var slug = builder.ToString().Trim('-');
+    return slug.Length == 0 ? null : slug;
 }
 
-static string? TrimOrNull(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+static string? NormalizeEmail(string? value) =>
+    string.IsNullOrWhiteSpace(value)
+        ? null
+        : value.Trim().ToLowerInvariant();
 
-static string? NormalizeBusinessKey(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToUpperInvariant();
-
-static string? NormalizeEmail(string? email) => string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLowerInvariant();
-
-static string? OnlyDigitsOrNull(string? value)
+static string? NormalizeDocument(string? value)
 {
-    if (string.IsNullOrWhiteSpace(value)) return null;
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return null;
+    }
+
     var digits = new string(value.Where(char.IsDigit).ToArray());
-    return string.IsNullOrWhiteSpace(digits) ? null : digits;
+    return digits.Length == 0 ? null : digits;
 }
 
-static int GetCurrentUserId(ClaimsPrincipal principal)
+static async Task EnsurePedidoFiscalAutomationAsync(
+    Pedido pedido,
+    Cliente cliente,
+    PedidoRequest request,
+    NexumDbContext db,
+    IFiscalRoutingEngine fiscalRoutingEngine,
+    CancellationToken ct)
 {
-    var sub = principal.FindFirstValue(ClaimTypes.NameIdentifier) ?? principal.FindFirstValue(JwtRegisteredClaimNames.Sub);
-    return int.TryParse(sub, out var id) ? id : 0;
-}
-
-static Guid? GetCurrentUserGuidOrNull(ClaimsPrincipal principal)
-{
-    var sub = principal.FindFirstValue(ClaimTypes.NameIdentifier) ?? principal.FindFirstValue(JwtRegisteredClaimNames.Sub);
-    return Guid.TryParse(sub, out var guid) ? guid : null;
-}
-
-static async Task<T?> ExecuteScalarAsync<T>(NexumDbContext db, string sql, CancellationToken ct)
-{
-    using var command = db.Database.GetDbConnection().CreateCommand();
-    command.CommandText = sql;
-    if (db.Database.CurrentTransaction != null)
+    var pedidoFiscalExistente = await db.Fiscais.FirstOrDefaultAsync(item => item.PedidoId == pedido.Id, ct);
+    if (pedidoFiscalExistente is not null)
     {
-        command.Transaction = db.Database.CurrentTransaction.GetDbTransaction();
+        return;
     }
-    if (command.Connection?.State != ConnectionState.Open)
+
+    var empresas = await db.EmpresasGrupo
+        .AsNoTracking()
+        .Where(item => item.Ativa)
+        .ToListAsync(ct);
+
+    if (empresas.Count == 0)
     {
-        await db.Database.OpenConnectionAsync(ct);
+        db.Fiscais.Add(new Fiscal
+        {
+            PedidoId = pedido.Id,
+            ValorTotal = pedido.Total,
+            NaturezaOperacao = "Venda de mercadoria",
+            ModeloDocumento = "NFe",
+            AmbienteDocumento = "Pendente",
+            StatusNfe = StatusNfe.Pendente,
+            StatusAutomacao = "Aguardando cadastro de empresa emitente",
+            ResumoRoteamento = "Nenhuma empresa fiscal ativa cadastrada para emitir a operaÃ§Ã£o.",
+            PayloadOperacao = JsonSerializer.Serialize(new
+            {
+                pedido.NumeroPedido,
+                pedido.MeioPagamento,
+                pedido.GatewayPagamento,
+                pedido.Total
+            }),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        });
+        return;
     }
-    var result = await command.ExecuteScalarAsync(ct);
-    if (result is DBNull || result is null) return default;
-    return (T)Convert.ChangeType(result, typeof(T));
-}
 
-static async Task ReplaceOpsOrdemItensAsync(NexumDbContext db, Guid tenantId, int ordemId, List<OpsOrdemServicoItemRequest>? itens, CancellationToken ct)
-{
-    await db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM ops_ordem_servico_itens WHERE oso_id = {ordemId} AND tenant_id = {tenantId.ToString()}", ct);
-    if (itens == null || itens.Count == 0) return;
+    var estadoDestino = InferDestinationState(request.EnderecoEntrega, cliente);
+    var empresaOrigemPadrao = empresas
+        .OrderByDescending(item => item.EmitentePreferencial)
+        .ThenBy(item => item.PrioridadeFiscal)
+        .First();
 
-    foreach (var item in itens)
+    var routingRequest = new FiscalRoutingRequest(
+        string.Equals(estadoDestino, empresaOrigemPadrao.Estado, StringComparison.OrdinalIgnoreCase)
+            ? TipoOperacaoFiscal.VendaInterna
+            : TipoOperacaoFiscal.VendaInterestadual,
+        pedido.Subtotal,
+        pedido.FreteValor,
+        empresaOrigemPadrao.Estado ?? estadoDestino,
+        estadoDestino,
+        empresaOrigemPadrao.CategoriaFiscal,
+        empresaOrigemPadrao.SubcategoriaFiscal,
+        empresaOrigemPadrao.NaturezaOperacaoPadrao ?? "Venda de mercadoria",
+        !string.IsNullOrWhiteSpace(pedido.Origem.ToString()) && pedido.Origem == OrigemPedido.Marketplace,
+        false,
+        true,
+        false);
+
+    var decision = fiscalRoutingEngine.Evaluate(routingRequest, empresas.Select(fiscalRoutingEngine.ToSnapshot).ToList());
+    var selecionada = decision.EmpresaSelecionada;
+
+    var empresaEmitente = selecionada is null
+        ? empresaOrigemPadrao
+        : empresas.FirstOrDefault(item => item.Id == selecionada.Id) ?? empresaOrigemPadrao;
+
+    var mesmaUf = string.Equals(empresaEmitente.Estado, estadoDestino, StringComparison.OrdinalIgnoreCase);
+    var cfop = mesmaUf
+        ? empresaEmitente.CfopPadraoInterno
+        : empresaEmitente.CfopPadraoInterestadual;
+
+    var resumoPagamento = BuildFiscalPaymentSummary(pedido.MeioPagamento, pedido.GatewayPagamento);
+    var perfilTributacao = empresaEmitente.PerfilTributacao ?? "TributacaoAtual";
+
+    db.Fiscais.Add(new Fiscal
     {
-        await db.Database.ExecuteSqlInterpolatedAsync(
-            $"""
-            INSERT INTO ops_ordem_servico_itens
-                (tenant_id, oso_id, osi_tipo, osi_codigo, osi_descricao, osi_quantidade, osi_unidade, osi_custo_unitario, osi_total)
-            VALUES
-                ({tenantId.ToString()}, {ordemId}, {NormalizeBusinessKey(item.Tipo)}, {NormalizeBusinessKey(item.Codigo)}, {TrimOrNull(item.Descricao)}, {item.Quantidade}, {NormalizeBusinessKey(item.Unidade)}, {item.CustoUnitario}, {item.Quantidade * item.CustoUnitario})
-            """, ct);
+        PedidoId = pedido.Id,
+        EmpresaGrupoId = empresaEmitente.Id,
+        EmpresaEmitente = empresaEmitente.RazaoSocial,
+        CodigoEmpresaEmitente = empresaEmitente.CodigoEmpresa,
+        CnpjEmitente = empresaEmitente.Cnpj,
+        NumeroNfe = empresaEmitente.ProximaNfeNumero?.ToString(),
+        Serie = empresaEmitente.SerieNfe,
+        ValorTotal = pedido.Total,
+        Cfop = cfop,
+        NaturezaOperacao = empresaEmitente.NaturezaOperacaoPadrao ?? "Venda de mercadoria",
+        ModeloDocumento = "NFe",
+        AmbienteDocumento = empresaEmitente.AmbienteNfe ?? "Homologacao",
+        StatusNfe = StatusNfe.Pendente,
+        StatusAutomacao = "PrÃ©-emissÃ£o automÃ¡tica preparada",
+        ResumoRoteamento = $"{decision.Resumo} Perfil tributÃ¡rio: {perfilTributacao}. {resumoPagamento}",
+        PayloadOperacao = JsonSerializer.Serialize(new
+        {
+            pedido.Id,
+            pedido.NumeroPedido,
+            pedido.Total,
+            pedido.Subtotal,
+            pedido.FreteValor,
+            pedido.MeioPagamento,
+            pedido.GatewayPagamento,
+            resumoPagamento,
+            perfilTributacao,
+            usaStLegado = empresaEmitente.UsaStLegado,
+            destacaIcmsStSeparado = empresaEmitente.DestacaIcmsStSeparado,
+            cliente = new { cliente.Id, cliente.Nome, cliente.Email, cliente.CpfCnpj },
+            destino = new { estadoDestino },
+            ranking = decision.Ranking.Select(item => new
+            {
+                item.Empresa.CodigoEmpresa,
+                item.Empresa.RazaoSocial,
+                item.Score,
+                item.CustoTributarioEstimado,
+                item.CustoOperacionalEstimado,
+                item.MargemEstimadaPercentual,
+                item.Justificativas
+            }).ToList()
+        }),
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
+    });
+
+    if (empresaEmitente.ProximaNfeNumero.HasValue)
+    {
+        empresaEmitente.ProximaNfeNumero += 1;
+        db.EmpresasGrupo.Update(empresaEmitente);
     }
 }
 
-static string GenerateRefreshToken()
+static string InferDestinationState(object? enderecoEntrega, Cliente cliente)
 {
-    var randomNumber = new byte[64];
-    using var rng = RandomNumberGenerator.Create();
-    rng.GetBytes(randomNumber);
-    return Convert.ToBase64String(randomNumber);
+    if (enderecoEntrega is not null)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(enderecoEntrega);
+            var enderecoRequest = JsonSerializer.Deserialize<EnderecoEntregaRequest>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            var estado = TrimOrNull(enderecoRequest?.Estado);
+            if (!string.IsNullOrWhiteSpace(estado))
+            {
+                return estado.ToUpperInvariant();
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    return "SP";
 }
 
-static string ComputeSha256Hash(string rawData)
+static string BuildFiscalPaymentSummary(string? metodoPagamento, string? gatewayPagamento)
 {
-    using var sha256 = SHA256.Create();
-    var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(rawData));
-    return Convert.ToHexString(bytes);
+    var metodo = TrimOrNull(metodoPagamento)?.ToUpperInvariant() ?? "NAO INFORMADO";
+    var gateway = TrimOrNull(gatewayPagamento) ?? "gateway-pendente";
+
+    return metodo switch
+    {
+        "CARTAO_CREDITO" or "CARTAO DE CREDITO" or "CREDITO" => $"Pagamento em cartÃ£o de crÃ©dito via {gateway}; considerar retenÃ§Ãµes, MDR e liquidaÃ§Ã£o lÃ­quida no financeiro.",
+        "PIX" => $"Pagamento via PIX por {gateway}; liquidaÃ§Ã£o e baixa automÃ¡tica por webhook.",
+        "BOLETO" => $"Pagamento via boleto por {gateway}; aguarda compensaÃ§Ã£o e baixa automÃ¡tica.",
+        "DEBITO" => $"Pagamento em dÃ©bito via {gateway}; tratar confirmaÃ§Ã£o e liquidaÃ§Ã£o bancÃ¡ria.",
+        "DEPOSITO" => $"Pagamento por depÃ³sito identificado; exigir conciliaÃ§Ã£o bancÃ¡ria assistida.",
+        _ => $"Forma de pagamento {metodo} via {gateway}; validar regra financeira correspondente."
+    };
 }
 
 static LoginResponse CreateLoginResponse(
@@ -3007,280 +2747,2194 @@ static LoginResponse CreateLoginResponse(
     string nome,
     string email,
     string perfil,
-    Guid tenantId,
-    string subjectType,
     string issuer,
     string audience,
     SymmetricSecurityKey signingKey,
-    int expirationHours,
-    string refreshToken)
+    int expirationHours)
 {
-    var tokenHandler = new JwtSecurityTokenHandler();
-    var expires = DateTime.UtcNow.AddHours(expirationHours);
+    var expiresAt = DateTime.UtcNow.AddHours(expirationHours);
     var claims = new[]
     {
-        new Claim(JwtRegisteredClaimNames.Sub, id.ToString(CultureInfo.InvariantCulture)),
-        new Claim(ClaimTypes.NameIdentifier, id.ToString(CultureInfo.InvariantCulture)),
+        new Claim(JwtRegisteredClaimNames.Sub, id.ToString()),
+        new Claim(JwtRegisteredClaimNames.Email, email),
         new Claim(ClaimTypes.Name, nome),
         new Claim(ClaimTypes.Email, email),
         new Claim(ClaimTypes.Role, perfil),
-        new Claim("tenant_id", tenantId.ToString()),
-        new Claim("subject_type", subjectType)
+        new Claim("perfil", perfil)
     };
 
-    var tokenDescriptor = new SecurityTokenDescriptor
-    {
-        Subject = new ClaimsIdentity(claims),
-        Expires = expires,
-        Issuer = issuer,
-        Audience = audience,
-        SigningCredentials = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256Signature)
-    };
+    var token = new JwtSecurityToken(
+        issuer,
+        audience,
+        claims,
+        expires: expiresAt,
+        signingCredentials: new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256));
 
-    var token = tokenHandler.CreateToken(tokenDescriptor);
-    return new LoginResponse(tokenHandler.WriteToken(token), refreshToken, expires, nome, email, perfil, tenantId.ToString());
+    return new LoginResponse(
+        new JwtSecurityTokenHandler().WriteToken(token),
+        string.Empty,
+        expiresAt,
+        new UsuarioDto(id, nome, email, perfil));
 }
 
-static ClaimsPrincipal? ValidateExpiredJwtToken(string token, string issuer, string audience, SymmetricSecurityKey signingKey)
+static string? NormalizePhone(string? value)
 {
-    var tokenHandler = new JwtSecurityTokenHandler();
-    var validationParameters = new TokenValidationParameters
+    if (string.IsNullOrWhiteSpace(value))
     {
-        ValidateIssuer = true,
-        ValidateAudience = true,
-        ValidateLifetime = false,
-        ValidateIssuerSigningKey = true,
-        ValidIssuer = issuer,
-        ValidAudience = audience,
-        IssuerSigningKey = signingKey
+        return null;
+    }
+
+    var digits = new string(value.Where(char.IsDigit).ToArray());
+    return digits.Length == 0 ? null : digits;
+}
+
+static string? TrimOrNull(string? value) =>
+    string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+static string FormatStatusPedido(StatusPedido status) =>
+    status switch
+    {
+        StatusPedido.EmSeparacao => "Processando",
+        _ => status.ToString()
     };
 
-    try
+static string FormatStatusPagamento(StatusPagamento status) =>
+    status switch
     {
-        var principal = tokenHandler.ValidateToken(token, validationParameters, out var securityToken);
-        if (securityToken is JwtSecurityToken jwtToken && jwtToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.OrdinalIgnoreCase))
+        StatusPagamento.Aguardando => "Aguardando pagamento",
+        StatusPagamento.Aprovado => "Pagamento aprovado",
+        StatusPagamento.Recusado => "Pagamento recusado",
+        StatusPagamento.Estornado => "Pagamento estornado",
+        StatusPagamento.Cancelado => "Pagamento cancelado",
+        _ => status.ToString()
+    };
+
+static MetodoPagamento ParseMetodoPagamento(string? metodo)
+{
+    var token = (metodo ?? string.Empty).Trim().ToLowerInvariant();
+    return token switch
+    {
+        "pix" => MetodoPagamento.PIX,
+        "cartao" or "cartÃ£o" or "cartao_credito" or "cartÃ£ocredito" or "cartaocredito" => MetodoPagamento.CartaoCredito,
+        "cartao_debito" or "cartÃ£odebito" or "cartaodebito" => MetodoPagamento.CartaoDebito,
+        "boleto" => MetodoPagamento.Boleto,
+        "transferencia" or "transferÃªncia" => MetodoPagamento.Transferencia,
+        "wallet" or "carteira" => MetodoPagamento.Wallet,
+        _ => MetodoPagamento.Outro
+    };
+}
+
+static string? GetIntegrationValue(IConfiguration configuration, params string[] keys)
+{
+    foreach (var key in keys)
+    {
+        var value = configuration[key];
+        if (IsConfiguredSecret(value))
         {
-            return principal;
+            return value;
         }
     }
-    catch
-    {
-        // Ignore validation failures
-    }
+
     return null;
 }
 
-static string GenerateTotpSecret()
+static bool IsConfiguredSecret(string? value) =>
+    !string.IsNullOrWhiteSpace(value) &&
+    !value.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase) &&
+    !value.Contains("USE_ENV", StringComparison.OrdinalIgnoreCase) &&
+    !value.Equals("null", StringComparison.OrdinalIgnoreCase);
+
+static bool HasAllIntegrationValues(IConfiguration configuration, params (string Primary, string Secondary)[] keys) =>
+    keys.All(pair => IsConfiguredSecret(GetIntegrationValue(configuration, pair.Primary, pair.Secondary)));
+
+static async Task<IntegracaoDiagnosticoDto> BuildIntegracaoDiagnosticoAsync(
+    string slug,
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct)
 {
-    var bytes = new byte[20];
-    using var rng = RandomNumberGenerator.Create();
-    rng.GetBytes(bytes);
-    return Base32Encode(bytes);
+    var normalizedSlug = NormalizeIntegrationSlug(slug);
+    return normalizedSlug switch
+    {
+        "ecommerce" => await TestEcommerceAsync(db, ct),
+        "mercadopago" or "gateways" or "gateway" => await TestMercadoPagoAsync(configuration, httpClientFactory, ct),
+        "melhorenvio" or "logistica" or "frete" => await TestMelhorEnvioAsync(configuration, httpClientFactory, ct),
+        "mercadolivre" or "marketplaces" or "marketplace" => await TestMercadoLivreAsync(configuration, httpClientFactory, ct),
+        "dropshipping" or "dropship" => await TestDropshippingAsync(db, ct),
+        "shopify" => await TestShopifyAsync(configuration, db, httpClientFactory, ct),
+        "cjdropshipping" or "cjdropship" or "cj" => await TestCjDropshippingAsync(configuration, db, ct),
+        "bancaria" or "bancos" or "financeiro" => TestBancaria(configuration),
+        _ => new IntegracaoDiagnosticoDto(
+            slug,
+            normalizedSlug,
+            "Desconhecida",
+            false,
+            false,
+            "IntegraÃ§Ã£o nÃ£o mapeada no Nexum Altivon.",
+            ["Use: ecommerce, dropshipping, shopify, cjdropshipping, mercadopago, melhorenvio, mercadolivre ou bancaria."],
+            DateTime.UtcNow,
+            null)
+    };
 }
 
-static string ProtectMfaSecret(string secret, IDataProtectionProvider provider)
+static async Task<IntegracaoDiagnosticoDto> TestEcommerceAsync(NexumDbContext db, CancellationToken ct)
 {
-    var protector = provider.CreateProtector("GenesisGest.Net.MfaSecret");
-    return protector.Protect(secret);
+    var canConnect = await db.Database.CanConnectAsync(ct);
+    var produtos = canConnect ? await db.Produtos.AsNoTracking().CountAsync(ct) : 0;
+    var pedidos = canConnect ? await db.Pedidos.AsNoTracking().CountAsync(ct) : 0;
+
+    return new IntegracaoDiagnosticoDto(
+        "E-commerce e API",
+        "ecommerce",
+        canConnect ? "Operacional" : "IndisponÃ­vel",
+        true,
+        canConnect,
+        canConnect
+            ? $"API e banco respondendo. Produtos: {produtos}; pedidos: {pedidos}."
+            : "A API nÃ£o conseguiu conectar ao banco de dados real.",
+        canConnect ? [] : ["Conferir serviÃ§o MariaDB/MySQL e ConnectionStrings__DefaultConnection."],
+        DateTime.UtcNow,
+        canConnect ? "Banco real conectado" : null);
 }
 
-static bool TryUnprotectMfaSecret(string? protectedSecret, IDataProtectionProvider provider, out string secret)
+static async Task<IntegracaoDiagnosticoDto> TestMercadoPagoAsync(
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct)
 {
-    secret = string.Empty;
-    if (string.IsNullOrWhiteSpace(protectedSecret)) return false;
+    var accessToken = GetIntegrationValue(configuration, "MercadoPago:AccessToken", "Integracoes:MercadoPago:AccessToken");
+    if (!IsConfiguredSecret(accessToken))
+    {
+        return MissingIntegration(
+            "Mercado Pago",
+            "mercadopago",
+            "Gateway pronto no sistema, aguardando token oficial.",
+            ["MercadoPago__AccessToken"]);
+    }
+
     try
     {
-        var protector = provider.CreateProtector("GenesisGest.Net.MfaSecret");
-        secret = protector.Unprotect(protectedSecret);
-        return true;
-    }
-    catch
-    {
-        return false;
-    }
-}
+        var client = httpClientFactory.CreateClient("mercado-pago");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "users/me");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var response = await client.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
 
-static bool TryValidateTotpCode(string secret, string code, DateTimeOffset now, long? lastTimestep, out long matchedTimestep)
-{
-    matchedTimestep = 0;
-    if (string.IsNullOrWhiteSpace(code) || code.Length != 6) return false;
-
-    var currentStep = now.ToUnixTimeSeconds() / 30;
-    for (var i = -1; i <= 1; i++)
-    {
-        var step = currentStep + i;
-        if (lastTimestep.HasValue && step <= lastTimestep.Value) continue;
-
-        if (GenerateTotpCode(secret, step) == code)
-        {
-            matchedTimestep = step;
-            return true;
-        }
-    }
-    return false;
-}
-
-static string GenerateTotpCode(string secret, long timestep)
-{
-    var key = Base32Decode(secret);
-    var timestepBytes = BitConverter.GetBytes(IPAddress.HostToNetworkOrder(timestep));
-    using var hmac = new HMACSHA1(key);
-    var hash = hmac.ComputeHash(timestepBytes);
-    var offset = hash[^1] & 0x0F;
-    var binaryCode = ((hash[offset] & 0x7F) << 24)
-                   | ((hash[offset + 1] & 0xFF) << 16)
-                   | ((hash[offset + 2] & 0xFF) << 8)
-                   | (hash[offset + 3] & 0xFF);
-    return (binaryCode % 1000000).ToString("D6");
-}
-
-static string Base32Encode(byte[] data)
-{
-    const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-    var output = new StringBuilder();
-    int bitBuffer = 0, bitCount = 0;
-    foreach (var b in data)
-    {
-        bitBuffer = (bitBuffer << 8) | b;
-        bitCount += 8;
-        while (bitCount >= 5)
-        {
-            bitCount -= 5;
-            output.Append(alphabet[(bitBuffer >> bitCount) & 31]);
-        }
-    }
-    if (bitCount > 0)
-    {
-        output.Append(alphabet[(bitBuffer << (5 - bitCount)) & 31]);
-    }
-    return output.ToString();
-}
-
-static byte[] Base32Decode(string base32)
-{
-    const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-    var cleaned = base32.TrimEnd('=').ToUpperInvariant();
-    var bytes = new List<byte>();
-    int bitBuffer = 0, bitCount = 0;
-    foreach (var c in cleaned)
-    {
-        var val = alphabet.IndexOf(c);
-        if (val < 0) continue;
-        bitBuffer = (bitBuffer << 5) | val;
-        bitCount += 5;
-        if (bitCount >= 8)
-        {
-            bitCount -= 8;
-            bytes.Add((byte)(bitBuffer >> bitCount));
-        }
-    }
-    return bytes.ToArray();
-}
-
-static async Task<WorkflowDefinicaoDto?> LoadWorkflowDefinitionAsync(NexumDbContext db, Guid tenantId, Guid id, CancellationToken ct)
-{
-    return await db.Database.SqlQueryRaw<WorkflowDefinicaoDto>(
-        """
-        SELECT
-            CAST(id AS CHAR) AS Id,
-            entidade AS Entidade,
-            codigo AS Codigo,
-            nome AS Nome,
-            estados_json AS EstadosJson,
-            transicoes_json AS TransicoesJson,
-            ativo AS Ativo,
-            created_at AS CriadoEm,
-            updated_at AS AtualizadoEm
-        FROM sys_workflow_definicoes
-        WHERE id = {0} AND tenant_id = {1} AND is_deleted = 0
-        LIMIT 1
-        """,
-        id.ToString(),
-        tenantId.ToString())
-        .FirstOrDefaultAsync(ct);
-}
-
-static bool TryParseWorkflowDefinition(WorkflowDefinicaoDto dto, out WorkflowDefinicaoModelo? modelo, out string? error)
-{
-    modelo = null;
-    error = null;
-    try
-    {
-        var estados = JsonSerializer.Deserialize<List<string>>(dto.EstadosJson) ?? new();
-        var transicoes = JsonSerializer.Deserialize<List<WorkflowTransicaoRegraModelo>>(dto.TransicoesJson) ?? new();
-        modelo = new WorkflowDefinicaoModelo(dto.Entidade, dto.Codigo, dto.Nome, estados, transicoes, dto.Ativo);
-        return true;
+        return new IntegracaoDiagnosticoDto(
+            "Mercado Pago",
+            "mercadopago",
+            response.IsSuccessStatusCode ? "Conectado" : "Credencial recusada",
+            true,
+            response.IsSuccessStatusCode,
+            response.IsSuccessStatusCode
+                ? "Mercado Pago respondeu com sucesso. Gateway apto para iniciar cobranÃ§a real."
+                : $"Mercado Pago retornou {(int)response.StatusCode}. Revise token, ambiente e permissÃµes.",
+            response.IsSuccessStatusCode ? [] : ["Validar MercadoPago__AccessToken.", "Conferir se a conta tem Pix/Checkout ativo."],
+            DateTime.UtcNow,
+            TryExtractJsonField(body, "nickname") ?? TryExtractJsonField(body, "email"));
     }
     catch (Exception ex)
     {
-        error = ex.Message;
-        return false;
+        return ExternalError("Mercado Pago", "mercadopago", ex);
     }
 }
 
-static WorkflowDefinicaoModelo? NormalizeWorkflowDefinition(WorkflowDefinicaoRequest request, out string? error)
+static async Task<IntegracaoDiagnosticoDto> TestMelhorEnvioAsync(
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct)
 {
-    error = null;
-    var entidade = NormalizeBusinessKey(request.Entidade);
-    var codigo = NormalizeBusinessKey(request.Codigo);
-    var nome = TrimOrNull(request.Nome);
-    if (string.IsNullOrWhiteSpace(entidade) || string.IsNullOrWhiteSpace(codigo) || string.IsNullOrWhiteSpace(nome))
+    var token = GetIntegrationValue(configuration, "MelhorEnvio:Token", "Integracoes:MelhorEnvio:Token");
+    var sandbox = configuration.GetValue("MelhorEnvio:Sandbox", configuration.GetValue("Integracoes:MelhorEnvio:Sandbox", true));
+    if (!IsConfiguredSecret(token))
     {
-        error = "Entidade, codigo e nome sao obrigatorios.";
-        return null;
+        return MissingIntegration(
+            "Melhor Envio",
+            "melhorenvio",
+            "LogÃ­stica pronta no sistema, aguardando token da transportadora/hub.",
+            ["MelhorEnvio__Token"]);
     }
 
-    var estados = request.Estados?.Select(NormalizeBusinessKey).Where(e => !string.IsNullOrWhiteSpace(e)).Select(e => e!).Distinct().ToList() ?? new();
-    if (estados.Count == 0)
+    try
     {
-        error = "Informe ao menos um estado valido.";
-        return null;
+        var client = httpClientFactory.CreateClient("melhor-envio");
+        client.BaseAddress = new Uri(sandbox ? "https://sandbox.melhorenvio.com.br/" : "https://www.melhorenvio.com.br/");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/v2/me/shipment/services");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var response = await client.SendAsync(request, ct);
+
+        return new IntegracaoDiagnosticoDto(
+            "Melhor Envio",
+            "melhorenvio",
+            response.IsSuccessStatusCode ? "Conectado" : "Credencial recusada",
+            true,
+            response.IsSuccessStatusCode,
+            response.IsSuccessStatusCode
+                ? "Melhor Envio respondeu. CotaÃ§Ã£o/compra de frete pode ser ativada com dados completos de origem e volumes."
+                : $"Melhor Envio retornou {(int)response.StatusCode}. Revise token, sandbox/produÃ§Ã£o e permissÃµes.",
+            response.IsSuccessStatusCode ? [] : ["Validar MelhorEnvio__Token.", "Confirmar se MelhorEnvio__Sandbox estÃ¡ no ambiente correto."],
+            DateTime.UtcNow,
+            sandbox ? "Sandbox" : "ProduÃ§Ã£o");
+    }
+    catch (Exception ex)
+    {
+        return ExternalError("Melhor Envio", "melhorenvio", ex);
+    }
+}
+
+static async Task<IntegracaoDiagnosticoDto> TestMercadoLivreAsync(
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct)
+{
+    var accessToken = GetIntegrationValue(configuration, "MercadoLivre:AccessToken", "Integracoes:MercadoLivre:AccessToken");
+    var oauthReady = HasAllIntegrationValues(
+        configuration,
+        ("MercadoLivre:AppId", "Integracoes:MercadoLivre:AppId"),
+        ("MercadoLivre:ClientSecret", "Integracoes:MercadoLivre:ClientSecret"),
+        ("MercadoLivre:RedirectUri", "Integracoes:MercadoLivre:RedirectUri"));
+
+    if (!IsConfiguredSecret(accessToken))
+    {
+        return new IntegracaoDiagnosticoDto(
+            "Mercado Livre",
+            "mercadolivre",
+            oauthReady ? "OAuth pronto" : "Aguardando credenciais",
+            oauthReady,
+            false,
+            oauthReady
+                ? "Aplicativo configurado. Falta o vendedor autorizar para gerar access token e sincronizar anÃºncios/pedidos."
+                : "Marketplace preparado, mas ainda sem AppId, ClientSecret e RedirectUri completos.",
+            oauthReady ? ["Concluir autorizaÃ§Ã£o OAuth do vendedor.", "Salvar MercadoLivre__AccessToken e RefreshToken."] : ["MercadoLivre__AppId", "MercadoLivre__ClientSecret", "MercadoLivre__RedirectUri"],
+            DateTime.UtcNow,
+            null);
     }
 
-    var transicoes = new List<WorkflowTransicaoRegraModelo>();
-    if (request.Transicoes != null)
+    try
     {
-        foreach (var t in request.Transicoes)
+        var client = httpClientFactory.CreateClient("mercado-livre");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "users/me");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var response = await client.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+
+        return new IntegracaoDiagnosticoDto(
+            "Mercado Livre",
+            "mercadolivre",
+            response.IsSuccessStatusCode ? "Conectado" : "Credencial recusada",
+            true,
+            response.IsSuccessStatusCode,
+            response.IsSuccessStatusCode
+                ? "Mercado Livre respondeu com o vendedor autenticado. Pronto para sincronizar catÃ¡logo e pedidos autorizados."
+                : $"Mercado Livre retornou {(int)response.StatusCode}. RefaÃ§a OAuth ou revise permissÃµes.",
+            response.IsSuccessStatusCode ? [] : ["Refazer OAuth do vendedor.", "Atualizar MercadoLivre__AccessToken/RefreshToken."],
+            DateTime.UtcNow,
+            TryExtractJsonField(body, "nickname") ?? TryExtractJsonField(body, "id"));
+    }
+    catch (Exception ex)
+    {
+        return ExternalError("Mercado Livre", "mercadolivre", ex);
+    }
+}
+
+static async Task<IntegracaoDiagnosticoDto> TestDropshippingAsync(NexumDbContext db, CancellationToken ct)
+{
+    var fornecedores = await db.Fornecedores.AsNoTracking().CountAsync(fornecedor => fornecedor.Status == StatusFornecedor.Ativo, ct);
+    var canais = await db.DropshippingConfigs.AsNoTracking().CountAsync(config => config.Ativo, ct);
+    var operacional = fornecedores > 0 || canais > 0;
+
+    return new IntegracaoDiagnosticoDto(
+        "Dropshipping",
+        "dropshipping",
+        operacional ? "Base ativa" : "Aguardando cadastros",
+        operacional,
+        operacional,
+        operacional
+            ? $"{fornecedores} fornecedor(es) ativo(s) e {canais} canal(is) de dropshipping ativo(s)."
+            : "Sem fornecedor/canal ativo para roteamento real de dropshipping.",
+        operacional ? [] : ["Cadastrar fornecedor ativo.", "Vincular produtos ao fornecedor.", "Ativar canal de dropshipping com chave/API quando existir."],
+        DateTime.UtcNow,
+        "Roteamento interno");
+}
+
+static async Task<IntegracaoDiagnosticoDto> TestShopifyAsync(
+    IConfiguration configuration,
+    NexumDbContext db,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct)
+{
+    var storeDomain = GetIntegrationValue(configuration, "Shopify:StoreDomain", "Integracoes:Shopify:StoreDomain");
+    var apiVersion = GetIntegrationValue(configuration, "Shopify:ApiVersion", "Integracoes:Shopify:ApiVersion");
+    var accessToken = GetIntegrationValue(configuration, "Shopify:AdminApiAccessToken", "Integracoes:Shopify:AdminApiAccessToken");
+    var configCompleta = IsConfiguredSecret(storeDomain) && IsConfiguredSecret(apiVersion) && IsConfiguredSecret(accessToken);
+    var canalPublicado = await db.DropshippingConfigs.AsNoTracking().AnyAsync(config => config.Slug == "shopify", ct);
+
+    if (!configCompleta)
+    {
+        return new IntegracaoDiagnosticoDto(
+            "Shopify",
+            "shopify",
+            canalPublicado ? "Canal publicado" : "Aguardando conexÃ£o",
+            canalPublicado,
+            false,
+            canalPublicado
+                ? "Canal Shopify cadastrado internamente; faltam domÃ­nio da loja e token Admin API para ativaÃ§Ã£o."
+                : "Conector Shopify ainda nÃ£o recebeu StoreDomain, ApiVersion e AdminApiAccessToken.",
+            ["Shopify__StoreDomain", "Shopify__ApiVersion", "Shopify__AdminApiAccessToken"],
+            DateTime.UtcNow,
+            canalPublicado ? "Canal interno publicado" : null);
+    }
+
+    try
+    {
+        var client = httpClientFactory.CreateClient();
+        client.BaseAddress = new Uri($"https://{storeDomain}/admin/api/{apiVersion.Trim('/')}/");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "shop.json");
+        request.Headers.TryAddWithoutValidation("X-Shopify-Access-Token", accessToken);
+        using var response = await client.SendAsync(request, ct);
+
+        return new IntegracaoDiagnosticoDto(
+            "Shopify",
+            "shopify",
+            response.IsSuccessStatusCode ? "Conectado" : "Credencial recusada",
+            true,
+            response.IsSuccessStatusCode,
+            response.IsSuccessStatusCode
+                ? "Shopify respondeu com sucesso. CatÃ¡logo, pedidos e estoque podem seguir para a fase de ligaÃ§Ã£o real."
+                : "Shopify recebeu a requisiÃ§Ã£o, mas recusou a credencial ou o domÃ­nio informado.",
+            response.IsSuccessStatusCode ? [] : ["Conferir domÃ­nio da loja.", "Validar Shopify__AdminApiAccessToken."],
+            DateTime.UtcNow,
+            storeDomain);
+    }
+    catch (Exception ex)
+    {
+        return new IntegracaoDiagnosticoDto(
+            "Shopify",
+            "shopify",
+            "Erro de comunicaÃ§Ã£o",
+            true,
+            false,
+            $"Falha ao consultar a Shopify: {ex.Message}",
+            ["Conferir acesso externo do servidor.", "Validar domÃ­nio da loja Shopify.", "Repetir teste apÃ³s inserir o token real."],
+            DateTime.UtcNow,
+            storeDomain);
+    }
+}
+
+static async Task<IntegracaoDiagnosticoDto> TestCjDropshippingAsync(
+    IConfiguration configuration,
+    NexumDbContext db,
+    CancellationToken ct)
+{
+    var endpoint = GetIntegrationValue(configuration, "CJDropshipping:ApiEndpoint", "Integracoes:CJDropshipping:ApiEndpoint");
+    var accessToken = GetIntegrationValue(configuration, "CJDropshipping:AccessToken", "Integracoes:CJDropshipping:AccessToken");
+    var apiKey = GetIntegrationValue(configuration, "CJDropshipping:ApiKey", "Integracoes:CJDropshipping:ApiKey");
+    var configCompleta = IsConfiguredSecret(endpoint) && (IsConfiguredSecret(accessToken) || IsConfiguredSecret(apiKey));
+    var canalPublicado = await db.DropshippingConfigs.AsNoTracking().AnyAsync(config => config.Slug == "cjdropshipping", ct);
+
+    return new IntegracaoDiagnosticoDto(
+        "CJ Dropshipping",
+        "cjdropshipping",
+        configCompleta ? "Credenciais prontas" : canalPublicado ? "Canal publicado" : "Aguardando conexÃ£o",
+        configCompleta || canalPublicado,
+        false,
+        configCompleta
+            ? "Estrutura CJ Dropshipping estÃ¡ pronta no servidor e aguardando apenas o vÃ­nculo operacional dos produtos."
+            : canalPublicado
+                ? "Canal CJ jÃ¡ estÃ¡ publicado no sistema; falta inserir AccessToken/API key reais para ativaÃ§Ã£o."
+                : "Conector CJ ainda nÃ£o recebeu endpoint e token/credenciais reais.",
+        configCompleta
+            ? ["Vincular produtos do catÃ¡logo ao canal CJ.", "Executar primeira sincronizaÃ§Ã£o real apÃ³s inserir os tokens finais."]
+            : ["CJDropshipping__ApiEndpoint", "CJDropshipping__AccessToken ou CJDropshipping__ApiKey"],
+        DateTime.UtcNow,
+        IsConfiguredSecret(endpoint) ? endpoint : null);
+}
+
+static IntegracaoDiagnosticoDto TestBancaria(IConfiguration configuration)
+{
+    var provider = GetIntegrationValue(configuration, "Banco:Provider", "Integracoes:Banco:Provider");
+    var clientId = GetIntegrationValue(configuration, "Banco:ClientId", "Integracoes:Banco:ClientId");
+    var clientSecret = GetIntegrationValue(configuration, "Banco:ClientSecret", "Integracoes:Banco:ClientSecret");
+    var configured = IsConfiguredSecret(provider) && IsConfiguredSecret(clientId) && IsConfiguredSecret(clientSecret);
+
+    return new IntegracaoDiagnosticoDto(
+        "Bancos e conciliaÃ§Ã£o",
+        "bancaria",
+        configured ? "Credenciais cadastradas" : "Aguardando provedor",
+        configured,
+        configured,
+        configured
+            ? "Credenciais bancÃ¡rias encontradas. PrÃ³ximo passo: homologar extrato/cobranÃ§a com o banco definido."
+            : "Ainda falta definir banco/PSP e cadastrar credenciais para conciliaÃ§Ã£o automÃ¡tica.",
+        configured ? ["Homologar extrato/cobranÃ§a no provedor definido."] : ["Banco__Provider", "Banco__ClientId", "Banco__ClientSecret"],
+        DateTime.UtcNow,
+        provider);
+}
+
+static IntegracaoDiagnosticoDto MissingIntegration(string nome, string slug, string detalhe, List<string> pendencias) =>
+    new(nome, slug, "Aguardando credenciais", false, false, detalhe, pendencias, DateTime.UtcNow, null);
+
+static IntegracaoDiagnosticoDto ExternalError(string nome, string slug, Exception ex) =>
+    new(nome, slug, "Erro de comunicaÃ§Ã£o", true, false, $"Falha ao testar provedor externo: {ex.Message}", ["Conferir internet do servidor.", "Repetir teste apÃ³s validar token/provedor."], DateTime.UtcNow, null);
+
+static string NormalizeIntegrationSlug(string slug)
+{
+    var normalized = (slug ?? string.Empty).Normalize(NormalizationForm.FormD).ToLowerInvariant();
+    var builder = new StringBuilder(normalized.Length);
+    foreach (var character in normalized)
+    {
+        if (CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark && char.IsLetterOrDigit(character))
         {
-            var origem = NormalizeBusinessKey(t.Origem);
-            var destino = NormalizeBusinessKey(t.Destino);
-            var acao = NormalizeBusinessKey(t.Acao);
-            if (string.IsNullOrWhiteSpace(origem) || string.IsNullOrWhiteSpace(destino) || !estados.Contains(origem) || !estados.Contains(destino))
-            {
-                error = $"Transicao invalida de '{t.Origem}' para '{t.Destino}'.";
-                return null;
-            }
-            transicoes.Add(new WorkflowTransicaoRegraModelo(origem, destino, acao ?? "TRANSICIONAR", t.PerfisAutorizados ?? new()));
+            builder.Append(character);
         }
     }
 
-    return new WorkflowDefinicaoModelo(entidade, codigo, nome, estados, transicoes, request.Ativo);
+    return builder.ToString();
 }
 
-static async Task<WorkflowInstanciaDto?> LoadWorkflowInstanceAsync(NexumDbContext db, Guid tenantId, Guid id, CancellationToken ct)
+static string? TryExtractJsonField(string json, string propertyName)
 {
-    return await db.Database.SqlQueryRaw<WorkflowInstanciaDto>(
+    try
+    {
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.TryGetProperty(propertyName, out var property)
+            ? property.ToString()
+            : null;
+    }
+    catch
+    {
+        return null;
+    }
+}
+
+static string? TryExtractJsonPath(string json, params string[] path)
+{
+    try
+    {
+        using var document = JsonDocument.Parse(json);
+        var current = document.RootElement;
+        foreach (var segment in path)
+        {
+            if (!current.TryGetProperty(segment, out current))
+            {
+                return null;
+            }
+        }
+
+        return current.ToString();
+    }
+    catch
+    {
+        return null;
+    }
+}
+
+static void ApplyMercadoPagoStatus(string status, Pagamento pagamento)
+{
+    var normalized = status.Trim().ToLowerInvariant();
+    switch (normalized)
+    {
+        case "approved":
+        case "accredited":
+            pagamento.Status = StatusPagamentoDetalhado.Aprovado;
+            if (pagamento.Pedido is not null)
+            {
+                pagamento.Pedido.StatusPagamento = StatusPagamento.Aprovado;
+                pagamento.Pedido.Status = StatusPedido.Pago;
+                pagamento.Pedido.DataPagamento = DateTime.UtcNow;
+                pagamento.Pedido.UpdatedAt = DateTime.UtcNow;
+            }
+            break;
+        case "rejected":
+            pagamento.Status = StatusPagamentoDetalhado.Recusado;
+            if (pagamento.Pedido is not null)
+            {
+                pagamento.Pedido.StatusPagamento = StatusPagamento.Recusado;
+                pagamento.Pedido.UpdatedAt = DateTime.UtcNow;
+            }
+            break;
+        case "cancelled":
+            pagamento.Status = StatusPagamentoDetalhado.Cancelado;
+            if (pagamento.Pedido is not null)
+            {
+                pagamento.Pedido.StatusPagamento = StatusPagamento.Cancelado;
+                pagamento.Pedido.Status = StatusPedido.Cancelado;
+                pagamento.Pedido.UpdatedAt = DateTime.UtcNow;
+            }
+            break;
+        case "refunded":
+        case "charged_back":
+            pagamento.Status = normalized == "charged_back" ? StatusPagamentoDetalhado.Chargeback : StatusPagamentoDetalhado.Estornado;
+            if (pagamento.Pedido is not null)
+            {
+                pagamento.Pedido.StatusPagamento = StatusPagamento.Estornado;
+                pagamento.Pedido.Status = StatusPedido.Reembolsado;
+                pagamento.Pedido.UpdatedAt = DateTime.UtcNow;
+            }
+            break;
+        case "in_process":
+        case "pending":
+        default:
+            pagamento.Status = StatusPagamentoDetalhado.Pendente;
+            break;
+    }
+}
+
+static async Task<List<FreteCotacaoDto>> CotarFreteAsync(
+    FreteCotacaoRequest request,
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken ct)
+{
+    var token = GetIntegrationValue(configuration, "MelhorEnvio:Token", "Integracoes:MelhorEnvio:Token");
+    var sandbox = configuration.GetValue("MelhorEnvio:Sandbox", configuration.GetValue("Integracoes:MelhorEnvio:Sandbox", true));
+
+    if (IsConfiguredSecret(token) && !string.IsNullOrWhiteSpace(request.CepDestino))
+    {
+        try
+        {
+            var client = httpClientFactory.CreateClient("melhor-envio");
+            client.BaseAddress = new Uri(sandbox ? "https://sandbox.melhorenvio.com.br/" : "https://www.melhorenvio.com.br/");
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/v2/me/shipment/calculate");
+            httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            httpRequest.Content = JsonContent.Create(new
+            {
+                from = new { postal_code = request.CepOrigem ?? "17400000" },
+                to = new { postal_code = request.CepDestino },
+                products = request.Itens.Select((item, index) => new
+                {
+                    id = item.Sku ?? $"item-{index + 1}",
+                    width = item.LarguraCm ?? 16,
+                    height = item.AlturaCm ?? 8,
+                    length = item.ComprimentoCm ?? 24,
+                    weight = item.PesoKg ?? 0.5m,
+                    insurance_value = item.ValorUnitario,
+                    quantity = item.Quantidade <= 0 ? 1 : item.Quantidade
+                }).ToList()
+            });
+
+            using var response = await client.SendAsync(httpRequest, ct);
+            var json = await response.Content.ReadAsStringAsync(ct);
+            if (response.IsSuccessStatusCode)
+            {
+                var cotacoes = ParseMelhorEnvioCotacoes(json);
+                if (cotacoes.Count > 0)
+                {
+                    return cotacoes;
+                }
+            }
+        }
+        catch
+        {
+            // Se o provedor falhar, mantemos a venda com cotaÃ§Ã£o local controlada.
+        }
+    }
+
+    var valorItens = request.Itens.Sum(item => Math.Max(1, item.Quantidade) * item.ValorUnitario);
+    var cepDestino = request.CepDestino ?? string.Empty;
+    var interiorSp = cepDestino.StartsWith("17", StringComparison.Ordinal);
+    var freteBase = valorItens >= 1000 ? 0m : interiorSp ? 29.90m : 49.90m;
+
+    return
+    [
+        new("local-padrao", "Entrega padrÃ£o Nexum", "Tabela local", freteBase, interiorSp ? 3 : 7, "Tabela local"),
+        new("local-expresso", "Entrega expressa assistida", "Tabela local", freteBase + 35m, interiorSp ? 1 : 4, "Tabela local")
+    ];
+}
+
+static async Task<GatewayPaymentStartResult> TryStartGatewayPaymentAsync(
+    Pedido pedido,
+    Cliente cliente,
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    HttpContext http,
+    CancellationToken ct)
+{
+    var metodo = (pedido.MeioPagamento ?? string.Empty).Trim().ToLowerInvariant();
+    if (metodo != "pix")
+    {
+        return GatewayPaymentStartResult.NotStarted();
+    }
+
+    var token = GetIntegrationValue(configuration, "MercadoPago:AccessToken", "Integracoes:MercadoPago:AccessToken");
+    if (!IsConfiguredSecret(token))
+    {
+        return GatewayPaymentStartResult.NotStarted();
+    }
+
+    try
+    {
+        var client = httpClientFactory.CreateClient("mercado-pago");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "v1/payments");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Headers.Add("X-Idempotency-Key", $"nexum-{pedido.NumeroPedido}");
+
+        var notificationUrl = BuildPublicUrl(http, "/api/webhooks/mercadopago");
+        request.Content = JsonContent.Create(new
+        {
+            transaction_amount = pedido.Total,
+            description = $"Pedido {pedido.NumeroPedido} - Nexum Altivon",
+            payment_method_id = "pix",
+            notification_url = notificationUrl,
+            external_reference = pedido.NumeroPedido,
+            payer = new
+            {
+                email = cliente.Email,
+                first_name = cliente.Nome.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? cliente.Nome,
+                identification = new
+                {
+                    type = string.IsNullOrWhiteSpace(cliente.CpfCnpj) || cliente.CpfCnpj.Length > 14 ? "CNPJ" : "CPF",
+                    number = new string((cliente.CpfCnpj ?? string.Empty).Where(char.IsDigit).ToArray())
+                }
+            }
+        });
+
+        using var response = await client.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            return GatewayPaymentStartResult.NotStarted(body);
+        }
+
+        using var document = JsonDocument.Parse(body);
+        var root = document.RootElement;
+        var transactionId = root.TryGetProperty("id", out var id) ? id.ToString() : null;
+        string? qrCode = null;
+        string? paymentUrl = null;
+
+        if (root.TryGetProperty("point_of_interaction", out var pointOfInteraction)
+            && pointOfInteraction.TryGetProperty("transaction_data", out var transactionData))
+        {
+            qrCode = transactionData.TryGetProperty("qr_code", out var qrCodeProp) ? qrCodeProp.ToString() : null;
+            paymentUrl = transactionData.TryGetProperty("ticket_url", out var ticketUrlProp) ? ticketUrlProp.ToString() : null;
+        }
+
+        return GatewayPaymentStartResult.Success("MercadoPago", transactionId, qrCode, paymentUrl, body);
+    }
+    catch (Exception ex)
+    {
+        return GatewayPaymentStartResult.NotStarted(ex.Message);
+    }
+}
+
+static string BuildPublicUrl(HttpContext http, string path)
+{
+    var forwardedProto = http.Request.Headers["X-Forwarded-Proto"].FirstOrDefault();
+    var forwardedHost = http.Request.Headers["X-Forwarded-Host"].FirstOrDefault();
+    var scheme = string.IsNullOrWhiteSpace(forwardedProto) ? http.Request.Scheme : forwardedProto;
+    var host = string.IsNullOrWhiteSpace(forwardedHost) ? http.Request.Host.Value : forwardedHost;
+
+    if (string.IsNullOrWhiteSpace(host) || host.Contains("localhost", StringComparison.OrdinalIgnoreCase))
+    {
+        host = "api.nexumaltivon.com";
+        scheme = "https";
+    }
+
+    return $"{scheme}://{host}{path}";
+}
+
+static List<FreteCotacaoDto> ParseMelhorEnvioCotacoes(string json)
+{
+    var cotacoes = new List<FreteCotacaoDto>();
+    try
+    {
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.ValueKind != JsonValueKind.Array)
+        {
+            return cotacoes;
+        }
+
+        foreach (var item in document.RootElement.EnumerateArray())
+        {
+            var id = item.TryGetProperty("id", out var idProp) ? idProp.ToString() : Guid.NewGuid().ToString("N");
+            var name = item.TryGetProperty("name", out var nameProp) ? nameProp.ToString() : "Frete Melhor Envio";
+            var company = item.TryGetProperty("company", out var companyProp) && companyProp.TryGetProperty("name", out var companyName)
+                ? companyName.ToString()
+                : "Melhor Envio";
+            var priceText = item.TryGetProperty("price", out var priceProp) ? priceProp.ToString() : "0";
+            var prazo = item.TryGetProperty("delivery_time", out var prazoProp) && prazoProp.TryGetInt32(out var prazoInt) ? prazoInt : 0;
+
+            if (decimal.TryParse(priceText, NumberStyles.Any, CultureInfo.InvariantCulture, out var price))
+            {
+                cotacoes.Add(new FreteCotacaoDto(id, name, company, price, prazo, "Melhor Envio"));
+            }
+        }
+    }
+    catch
+    {
+        return [];
+    }
+
+    return cotacoes;
+}
+
+static string BuildPedidoInstruction(StatusPagamento statusPagamento, string? metodoPagamento, string? transacaoId)
+{
+    if (!string.IsNullOrWhiteSpace(transacaoId))
+    {
+        return "Pagamento iniciado no gateway. Acompanhe a confirmaÃ§Ã£o automÃ¡tica pelo painel.";
+    }
+
+    return statusPagamento switch
+    {
+        StatusPagamento.Aprovado => "Pagamento confirmado. Pedido pronto para separaÃ§Ã£o e logÃ­stica.",
+        StatusPagamento.Cancelado => "Pagamento cancelado. NÃ£o separar mercadoria.",
+        StatusPagamento.Recusado => "Pagamento recusado. Entrar em contato com o cliente antes de reenviar cobranÃ§a.",
+        StatusPagamento.Estornado => "Pagamento estornado. Conferir financeiro e estoque.",
+        _ when string.Equals(metodoPagamento, "pix", StringComparison.OrdinalIgnoreCase) =>
+            "Pedido reservado. Configure o gateway Pix para gerar QR Code e baixa automÃ¡tica.",
+        _ when string.Equals(metodoPagamento, "boleto", StringComparison.OrdinalIgnoreCase) =>
+            "Pedido reservado. Configure o gateway de boleto para gerar linha digitÃ¡vel e vencimento.",
+        _ =>
+            "Pedido reservado. Configure o gateway para cobranÃ§a real e confirmaÃ§Ã£o automÃ¡tica."
+    };
+}
+
+static string BuildAbastecimentoResumo(Produto produto, int quantidade)
+{
+    var origem = produto.TipoProduto switch
+    {
+        NexumAltivon.API.Models.TipoProduto.Dropshipping => "Dropshipping",
+        NexumAltivon.API.Models.TipoProduto.Marketplace => "Marketplace",
+        NexumAltivon.API.Models.TipoProduto.Afiliado => "Afiliado",
+        _ => "Estoque prÃ³prio"
+    };
+
+    var fornecedor = produto.Fornecedor is null
+        ? "sem fornecedor"
+        : string.IsNullOrWhiteSpace(produto.Fornecedor.NomeFantasia)
+            ? produto.Fornecedor.RazaoSocial
+            : produto.Fornecedor.NomeFantasia;
+
+    var prazo = produto.Fornecedor?.PrazoEntregaDias;
+    return prazo.HasValue && prazo.Value > 0
+        ? $"{produto.Sku} x{quantidade} via {origem} / {fornecedor} / prazo {prazo.Value}d"
+        : $"{produto.Sku} x{quantidade} via {origem} / {fornecedor}";
+}
+
+static bool TryParseStatusPedido(string? raw, out StatusPedido status)
+{
+    status = StatusPedido.Pendente;
+
+    if (string.IsNullOrWhiteSpace(raw))
+    {
+        return false;
+    }
+
+    var token = raw.Trim().ToLowerInvariant();
+    token = token.Replace(" ", "", StringComparison.Ordinal)
+        .Replace("-", "", StringComparison.Ordinal)
+        .Replace("_", "", StringComparison.Ordinal);
+
+    switch (token)
+    {
+        case "pendente":
+        case "recebido":
+            status = StatusPedido.Pendente;
+            return true;
+        case "pago":
+            status = StatusPedido.Pago;
+            return true;
+        case "processando":
+        case "emseparacao":
+        case "separacao":
+            status = StatusPedido.EmSeparacao;
+            return true;
+        case "enviado":
+            status = StatusPedido.Enviado;
+            return true;
+        case "entregue":
+            status = StatusPedido.Entregue;
+            return true;
+        case "cancelado":
+            status = StatusPedido.Cancelado;
+            return true;
+        case "devolvido":
+            status = StatusPedido.Devolvido;
+            return true;
+        case "reembolsado":
+            status = StatusPedido.Reembolsado;
+            return true;
+    }
+
+    return Enum.TryParse(raw.Trim(), ignoreCase: true, out status);
+}
+
+static string FormatStatusLead(StatusLead status) =>
+    status switch
+    {
+        StatusLead.EmAtendimento => "Contato",
+        StatusLead.Convertido => "Ganho",
+        _ => status.ToString()
+    };
+
+static string FormatOrigemLead(OrigemLead origem) =>
+    origem switch
+    {
+        OrigemLead.WhatsApp => "WhatsApp",
+        _ => origem.ToString()
+    };
+
+static string FormatOrigemLeadValue(string? raw)
+{
+    if (TryParseOrigemLead(raw, out var origem))
+    {
+        return FormatOrigemLead(origem);
+    }
+
+    return string.IsNullOrWhiteSpace(raw) ? "Site" : raw.Trim();
+}
+
+static string FormatStatusLeadValue(string? raw)
+{
+    if (TryParseStatusLead(raw, out var status))
+    {
+        return FormatStatusLead(status);
+    }
+
+    return string.IsNullOrWhiteSpace(raw) ? "Novo" : raw.Trim();
+}
+
+static bool TryParseStatusLead(string? raw, out StatusLead status)
+{
+    status = StatusLead.Novo;
+
+    if (string.IsNullOrWhiteSpace(raw))
+    {
+        return false;
+    }
+
+    var token = raw.Trim().ToLowerInvariant();
+    token = token.Replace(" ", "", StringComparison.Ordinal)
+        .Replace("-", "", StringComparison.Ordinal)
+        .Replace("_", "", StringComparison.Ordinal);
+
+    switch (token)
+    {
+        case "novo":
+            status = StatusLead.Novo;
+            return true;
+        case "contato":
+        case "negociacao":
+        case "ematendimento":
+            status = StatusLead.EmAtendimento;
+            return true;
+        case "qualificado":
+            status = StatusLead.Qualificado;
+            return true;
+        case "ganho":
+        case "convertido":
+            status = StatusLead.Convertido;
+            return true;
+        case "perdido":
+            status = StatusLead.Perdido;
+            return true;
+        case "arquivado":
+            status = StatusLead.Arquivado;
+            return true;
+    }
+
+    return Enum.TryParse(raw.Trim(), ignoreCase: true, out status);
+}
+
+static bool TryParseOrigemLead(string? raw, out OrigemLead origem)
+{
+    origem = OrigemLead.Site;
+
+    if (string.IsNullOrWhiteSpace(raw))
+    {
+        return false;
+    }
+
+    var token = raw.Trim().ToLowerInvariant();
+    token = token.Replace(" ", "", StringComparison.Ordinal)
+        .Replace("-", "", StringComparison.Ordinal)
+        .Replace("_", "", StringComparison.Ordinal);
+
+    switch (token)
+    {
+        case "site":
+            origem = OrigemLead.Site;
+            return true;
+        case "whatsapp":
+            origem = OrigemLead.WhatsApp;
+            return true;
+        case "email":
+            origem = OrigemLead.Email;
+            return true;
+        case "telefone":
+            origem = OrigemLead.Telefone;
+            return true;
+        case "marketplace":
+            origem = OrigemLead.Marketplace;
+            return true;
+        case "indicacao":
+            origem = OrigemLead.Indicacao;
+            return true;
+        case "campanha":
+            origem = OrigemLead.Campanha;
+            return true;
+        case "outro":
+            origem = OrigemLead.Outro;
+            return true;
+    }
+
+    return Enum.TryParse(raw.Trim(), ignoreCase: true, out origem);
+}
+
+static bool TryParseTipoLead(string? raw, out TipoLead tipo)
+{
+    tipo = TipoLead.ClienteVIP;
+
+    if (string.IsNullOrWhiteSpace(raw))
+    {
+        return false;
+    }
+
+    var token = raw.Trim().ToLowerInvariant()
+        .Replace(" ", "", StringComparison.Ordinal)
+        .Replace("-", "", StringComparison.Ordinal)
+        .Replace("_", "", StringComparison.Ordinal);
+
+    switch (token)
+    {
+        case "cliente":
+        case "clientevip":
+            tipo = TipoLead.ClienteVIP;
+            return true;
+        case "dropshipping":
+            tipo = TipoLead.Dropshipping;
+            return true;
+        case "fornecedor":
+            tipo = TipoLead.Fornecedor;
+            return true;
+        case "parceiro":
+            tipo = TipoLead.Parceiro;
+            return true;
+        case "afiliado":
+            tipo = TipoLead.Afiliado;
+            return true;
+        case "outro":
+            tipo = TipoLead.Outro;
+            return true;
+    }
+
+    return Enum.TryParse(raw.Trim(), ignoreCase: true, out tipo);
+}
+
+static string? BuildLeadObservacao(LeadRequest request)
+{
+    var notes = new List<string>();
+
+    if (!string.IsNullOrWhiteSpace(request.Mensagem))
+    {
+        notes.Add($"Mensagem: {request.Mensagem.Trim()}");
+    }
+
+    if (!string.IsNullOrWhiteSpace(request.Observacao))
+    {
+        notes.Add($"ObservaÃ§Ã£o: {request.Observacao.Trim()}");
+    }
+
+    if (!string.IsNullOrWhiteSpace(request.Segmento))
+    {
+        notes.Add($"Segmento: {request.Segmento.Trim()}");
+    }
+
+    return notes.Count == 0 ? null : string.Join(Environment.NewLine, notes);
+}
+
+static string? AppendLeadNotes(string? current, string? incoming)
+{
+    var currentValue = TrimOrNull(current);
+    var incomingValue = TrimOrNull(incoming);
+
+    if (string.IsNullOrWhiteSpace(currentValue))
+    {
+        return incomingValue;
+    }
+
+    if (string.IsNullOrWhiteSpace(incomingValue))
+    {
+        return currentValue;
+    }
+
+    if (currentValue.Contains(incomingValue, StringComparison.OrdinalIgnoreCase))
+    {
+        return currentValue;
+    }
+
+    return $"{currentValue}{Environment.NewLine}{Environment.NewLine}{incomingValue}";
+}
+
+static string BuildLeadNotificationEmail(CrmLead lead)
+{
+    var origem = FormatOrigemLead(lead.Origem);
+    var tipo = lead.Tipo.ToString();
+    var empresa = string.IsNullOrWhiteSpace(lead.Empresa) ? "-" : lead.Empresa;
+    var telefone = string.IsNullOrWhiteSpace(lead.Telefone) ? "-" : lead.Telefone;
+    var whatsapp = string.IsNullOrWhiteSpace(lead.Whatsapp) ? "-" : lead.Whatsapp;
+    var segmento = string.IsNullOrWhiteSpace(lead.Segmento) ? "-" : lead.Segmento;
+    var observacoes = string.IsNullOrWhiteSpace(lead.Anotacoes) ? "-" : lead.Anotacoes.Replace(Environment.NewLine, "<br/>");
+
+    return $"""
+    <html>
+      <body style="font-family:Arial,sans-serif;background:#f8fafc;color:#0f172a;">
+        <div style="max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;padding:24px;">
+          <h2 style="margin-top:0;color:#0f172a;">Novo contato recebido no site Nexum Altivon</h2>
+          <p>Um lead pÃºblico acabou de entrar pelo portal de vendas.</p>
+          <table style="width:100%;border-collapse:collapse;">
+            <tr><td style="padding:8px 0;font-weight:bold;">Nome</td><td>{lead.Nome}</td></tr>
+            <tr><td style="padding:8px 0;font-weight:bold;">E-mail</td><td>{lead.Email}</td></tr>
+            <tr><td style="padding:8px 0;font-weight:bold;">Telefone</td><td>{telefone}</td></tr>
+            <tr><td style="padding:8px 0;font-weight:bold;">WhatsApp</td><td>{whatsapp}</td></tr>
+            <tr><td style="padding:8px 0;font-weight:bold;">Empresa</td><td>{empresa}</td></tr>
+            <tr><td style="padding:8px 0;font-weight:bold;">CNPJ</td><td>{lead.Cnpj ?? "-"}</td></tr>
+            <tr><td style="padding:8px 0;font-weight:bold;">Segmento</td><td>{segmento}</td></tr>
+            <tr><td style="padding:8px 0;font-weight:bold;">Origem</td><td>{origem}</td></tr>
+            <tr><td style="padding:8px 0;font-weight:bold;">Tipo</td><td>{tipo}</td></tr>
+            <tr><td style="padding:8px 0;font-weight:bold;">Status inicial</td><td>{FormatStatusLead(lead.Status)}</td></tr>
+          </table>
+          <div style="margin-top:16px;padding:16px;background:#f8fafc;border-radius:12px;">
+            <strong>ObservaÃ§Ãµes / mensagem</strong>
+            <div style="margin-top:8px;">{observacoes}</div>
+          </div>
+        </div>
+      </body>
+    </html>
+    """;
+}
+
+static SiteConfiguracaoPublicaDto BuildPublicSiteConfig(IReadOnlyDictionary<string, string?> configMap)
+{
+    var contactEmail = GetConfigValue(configMap, "site_email_contato", "corporativo.gna@gmail.com");
+
+    return new SiteConfiguracaoPublicaDto(
+        GetConfigValue(configMap, "site_nome", "Grupo Nexum Altivon"),
+        GetConfigValue(configMap, "site_url", "https://www.nexumaltivon.com"),
+        contactEmail,
+        GetConfigValue(configMap, "site_telefone", "(14) 99673-1879"),
+        GetConfigValue(configMap, "site_telefone_secundario", "(14) 99634-8409"),
+        GetConfigValue(configMap, "site_whatsapp", "5514996731879"),
+        GetConfigValue(configMap, "site_whatsapp_secundario", "5514996348409"),
+        GetConfigValue(configMap, "site_yara_email", contactEmail),
+        GetConfigValue(configMap, "site_logo", "/assets/logo-2.jpg"),
+        ParseJsonList(GetConfigValue(configMap, "home_hero_slides", string.Empty), GetDefaultHeroSlides()),
+        GetConfigValue(configMap, "home_intro_titulo", "Uma Nova Era ComeÃ§a"),
+        GetConfigValue(configMap, "home_intro_texto_1", "A Nexum Altivon estÃ¡ chegando para transformar e inovar o mercado digital brasileiro."),
+        GetConfigValue(configMap, "home_intro_texto_2", "Nosso compromisso Ã© claro: entregar qualidade superior, atendimento que faz a diferenÃ§a e preÃ§os acessÃ­veis que respeitam o seu bolso."),
+        GetConfigValue(configMap, "home_intro_badge", "www.nexumaltivon.com"),
+        ParseJsonStringList(GetConfigValue(configMap, "home_quality_items", string.Empty), [
+            "Curadoria rigorosa de fornecedores",
+            "Atendimento humano e especializado",
+            "PolÃ­tica de devoluÃ§Ã£o simplificada",
+            "PreÃ§os justos e acessÃ­veis"
+        ]),
+        ParseJsonList(GetConfigValue(configMap, "home_partner_cards", string.Empty), GetDefaultPartnerCards()),
+        GetConfigValue(configMap, "home_footer_texto", "Portal em evoluÃ§Ã£o contÃ­nua para vendas, relacionamento, parceiros e operaÃ§Ãµes integradas."));
+}
+
+static string GetConfigValue(IReadOnlyDictionary<string, string?> configMap, string key, string fallback) =>
+    configMap.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
+        ? value.Trim()
+        : fallback;
+
+static bool LooksLikeJson(string? value)
+{
+    var normalized = value?.Trim();
+    return !string.IsNullOrWhiteSpace(normalized)
+        && ((normalized.StartsWith("{") && normalized.EndsWith("}"))
+            || (normalized.StartsWith("[") && normalized.EndsWith("]")));
+}
+
+static List<string> ParseJsonStringList(string? json, List<string> fallback)
+{
+    if (string.IsNullOrWhiteSpace(json))
+    {
+        return fallback;
+    }
+
+    try
+    {
+        var parsed = JsonSerializer.Deserialize<List<string>>(json);
+        return parsed?.Where(item => !string.IsNullOrWhiteSpace(item)).Select(item => item.Trim()).ToList() ?? fallback;
+    }
+    catch
+    {
+        return fallback;
+    }
+}
+
+static List<T> ParseJsonList<T>(string? json, List<T> fallback)
+{
+    if (string.IsNullOrWhiteSpace(json))
+    {
+        return fallback;
+    }
+
+    try
+    {
+        var parsed = JsonSerializer.Deserialize<List<T>>(json, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        });
+        return parsed is { Count: > 0 } ? parsed : fallback;
+    }
+    catch
+    {
+        return fallback;
+    }
+}
+
+static List<HeroSlideSiteDto> GetDefaultHeroSlides() =>
+[
+    new("ecommerce", "Grupo Nexum Altivon", "O Futuro do", "E-Commerce", "Seis lojas, uma operaÃ§Ã£o conectada e uma proposta premium para transformar a experiÃªncia de compra online.", "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1920&q=88"),
+    new("marcas", "6 marcas em expansÃ£o", "Uma operaÃ§Ã£o,", "mÃºltiplos mercados", "Turismo, relÃ³gios, moda, tecnologia, construÃ§Ã£o e festas com a mesma curadoria comercial do Grupo Nexum Altivon.", "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=1920&q=88"),
+    new("tecnologia", "ExperiÃªncia tecnolÃ³gica", "Compra segura com", "atendimento humano", "Fluxos preparados para catÃ¡logo, clientes, pedidos, integraÃ§Ãµes e relacionamento com visÃ£o de crescimento contÃ­nuo.", "https://images.unsplash.com/photo-1524805444758-089113d48a6d?auto=format&fit=crop&w=1920&q=88")
+];
+
+static List<PartnerCardSiteDto> GetDefaultPartnerCards() =>
+[
+    new("Parceiros de Vendas", "Lojas fÃ­sicas ou online podem ampliar seus horizontes de venda com nossa infraestrutura comercial e operaÃ§Ã£o integrada.", "Quero Vender", "https://wa.me/5514996731879?text=OlÃ¡! Tenho interesse em ser parceiro de vendas do Grupo Nexum Altivon.", "Store"),
+    new("Fornecedores & Distribuidores", "Distribuidores e fabricantes encontram um canal de venda em crescimento, com visÃ£o de volume, relacionamento e longo prazo.", "Quero Fornecer", "https://wa.me/5514996348409?text=OlÃ¡! Sou fornecedor/distribuidor e tenho interesse em parceria com o Grupo Nexum Altivon.", "Truck"),
+    new("Dropshipping", "Integre seu catÃ¡logo Ã s nossas lojas ou utilize nossa infraestrutura para conectar produtos, logÃ­stica e novos canais.", "Quero Fazer Dropship", "https://wa.me/5514996731879?text=OlÃ¡! Tenho interesse em parceria de dropshipping com o Grupo Nexum Altivon.", "Building2")
+];
+
+static async Task EnsureOperationalSchemaAsync(IServiceProvider services, ILogger logger)
+{
+    using var scope = services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<NexumDbContext>();
+
+    if (!await db.Database.CanConnectAsync())
+    {
+        logger.LogWarning("Banco indisponÃ­vel durante a verificaÃ§Ã£o de esquema operacional.");
+        return;
+    }
+
+    await db.Database.ExecuteSqlRawAsync(
         """
-        SELECT
-            CAST(id AS CHAR) AS Id,
-            CAST(definicao_id AS CHAR) AS DefinicaoId,
-            entidade AS Entidade,
-            registro_chave AS RegistroChave,
-            estado_atual AS EstadoAtual,
-            solicitante_user_id AS SolicitanteUserId,
-            created_at AS CriadoEm,
-            updated_at AS AtualizadoEm
-        FROM sys_workflow_instancias
-        WHERE id = {0} AND tenant_id = {1} AND is_deleted = 0
-        LIMIT 1
-        """,
-        id.ToString(),
-        tenantId.ToString())
-        .FirstOrDefaultAsync(ct);
+        CREATE TABLE IF NOT EXISTS erp_empresas_grupo (
+            id INT NOT NULL AUTO_INCREMENT,
+            tipo_cadastro VARCHAR(40) NOT NULL,
+            razao_social VARCHAR(200) NOT NULL,
+            nome_fantasia VARCHAR(200) NULL,
+            cnpj VARCHAR(18) NOT NULL,
+            inscricao_estadual VARCHAR(30) NULL,
+            inscricao_municipal VARCHAR(30) NULL,
+            matriz_filial VARCHAR(20) NULL,
+            codigo_empresa VARCHAR(50) NULL,
+            regime_tributario VARCHAR(60) NULL,
+            crt VARCHAR(10) NULL,
+            cnae_principal VARCHAR(20) NULL,
+            cnaes_secundarios TEXT NULL,
+            categoria_fiscal VARCHAR(100) NULL,
+            subcategoria_fiscal VARCHAR(100) NULL,
+            ncm_padrao VARCHAR(20) NULL,
+            natureza_operacao_padrao VARCHAR(120) NULL,
+            responsavel_legal VARCHAR(150) NULL,
+            responsavel_fiscal VARCHAR(150) NULL,
+            email_fiscal VARCHAR(150) NULL,
+            email_comercial VARCHAR(150) NULL,
+            telefone VARCHAR(25) NULL,
+            whatsapp VARCHAR(25) NULL,
+            cep VARCHAR(12) NULL,
+            logradouro VARCHAR(200) NULL,
+            numero VARCHAR(20) NULL,
+            complemento VARCHAR(120) NULL,
+            bairro VARCHAR(120) NULL,
+            cidade VARCHAR(120) NULL,
+            estado VARCHAR(2) NULL,
+            pais VARCHAR(60) NULL,
+            ambiente_nfe VARCHAR(30) NULL,
+            serie_nfe VARCHAR(10) NULL,
+            serie_nfce VARCHAR(10) NULL,
+            modelo_documento_pdv VARCHAR(20) NULL,
+            ambiente_nfce VARCHAR(30) NULL,
+            proxima_nfce_numero INT NULL,
+            nfce_csc VARCHAR(120) NULL,
+            nfce_csc_id_token VARCHAR(20) NULL,
+            pdv_serie_sat VARCHAR(20) NULL,
+            pdv_impressora_fiscal VARCHAR(120) NULL,
+            pdv_nome_caixa_padrao VARCHAR(80) NULL,
+            pdv_contingencia_offline TINYINT(1) NOT NULL DEFAULT 0,
+            proxima_nfe_numero INT NULL,
+            cfop_padrao_interno VARCHAR(10) NULL,
+            cfop_padrao_interestadual VARCHAR(10) NULL,
+            aliquota_icms_interna DECIMAL(10,4) NULL,
+            aliquota_icms_interestadual DECIMAL(10,4) NULL,
+            aliquota_pis DECIMAL(10,4) NULL,
+            aliquota_cofins DECIMAL(10,4) NULL,
+            aliquota_iss DECIMAL(10,4) NULL,
+            aliquota_ipi DECIMAL(10,4) NULL,
+            carga_tributaria_percentual DECIMAL(10,4) NULL,
+            custo_operacional_percentual DECIMAL(10,4) NULL,
+            margem_minima_percentual DECIMAL(10,4) NULL,
+            prioridade_fiscal INT NOT NULL DEFAULT 100,
+            permite_nfe_entrada TINYINT(1) NOT NULL DEFAULT 1,
+            permite_nfe_saida TINYINT(1) NOT NULL DEFAULT 1,
+            permite_dropshipping TINYINT(1) NOT NULL DEFAULT 0,
+            permite_marketplace TINYINT(1) NOT NULL DEFAULT 0,
+            emitente_preferencial TINYINT(1) NOT NULL DEFAULT 0,
+            ativa TINYINT(1) NOT NULL DEFAULT 1,
+            beneficios_estrategicos TEXT NULL,
+            contrato_resumo TEXT NULL,
+            observacoes TEXT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY ux_erp_empresas_grupo_cnpj (cnpj),
+            UNIQUE KEY ux_erp_empresas_grupo_codigo_empresa (codigo_empresa)
+        );
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS modelo_documento_pdv VARCHAR(20) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS ambiente_nfce VARCHAR(30) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS proxima_nfce_numero INT NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS nfce_csc VARCHAR(120) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS nfce_csc_id_token VARCHAR(20) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS pdv_serie_sat VARCHAR(20) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS pdv_impressora_fiscal VARCHAR(120) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS pdv_nome_caixa_padrao VARCHAR(80) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS pdv_contingencia_offline TINYINT(1) NOT NULL DEFAULT 0;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS perfil_tributacao VARCHAR(40) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS usa_st_legado TINYINT(1) NOT NULL DEFAULT 0;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE erp_empresas_grupo ADD COLUMN IF NOT EXISTS destaca_icms_st_separado TINYINT(1) NOT NULL DEFAULT 0;");
+
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        CREATE TABLE IF NOT EXISTS fiscal (
+            id INT NOT NULL AUTO_INCREMENT,
+            pedido_id INT NOT NULL,
+            empresa_grupo_id INT NULL,
+            empresa_emitente VARCHAR(200) NULL,
+            codigo_empresa_emitente VARCHAR(50) NULL,
+            cnpj_emitente VARCHAR(18) NULL,
+            numero_nfe VARCHAR(20) NULL,
+            serie VARCHAR(5) NULL,
+            chave_acesso VARCHAR(44) NULL,
+            xml_url VARCHAR(255) NULL,
+            danfe_url VARCHAR(255) NULL,
+            status_nfe VARCHAR(30) NOT NULL DEFAULT 'Pendente',
+            valor_total DECIMAL(10,2) NULL,
+            cfop VARCHAR(10) NULL,
+            natureza_operacao VARCHAR(100) NULL,
+            ambiente_documento VARCHAR(30) NULL,
+            modelo_documento VARCHAR(20) NULL,
+            status_automacao VARCHAR(40) NULL,
+            resumo_roteamento TEXT NULL,
+            payload_operacao LONGTEXT NULL,
+            data_emissao DATETIME NULL,
+            data_autorizacao DATETIME NULL,
+            protocolo VARCHAR(50) NULL,
+            motivo_cancelamento TEXT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY ix_fiscal_pedido_id (pedido_id),
+            KEY ix_fiscal_empresa_grupo_id (empresa_grupo_id)
+        );
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS empresa_grupo_id INT NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS empresa_emitente VARCHAR(200) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS codigo_empresa_emitente VARCHAR(50) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS cnpj_emitente VARCHAR(18) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS ambiente_documento VARCHAR(30) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS modelo_documento VARCHAR(20) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS status_automacao VARCHAR(40) NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS resumo_roteamento TEXT NULL;");
+    await db.Database.ExecuteSqlRawAsync("ALTER TABLE fiscal ADD COLUMN IF NOT EXISTS payload_operacao LONGTEXT NULL;");
+
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        CREATE TABLE IF NOT EXISTS dropshipping_config (
+            id INT NOT NULL AUTO_INCREMENT,
+            nome VARCHAR(100) NOT NULL,
+            slug VARCHAR(50) NOT NULL,
+            tipo INT NOT NULL,
+            api_endpoint VARCHAR(255) NULL,
+            api_key VARCHAR(255) NULL,
+            api_secret VARCHAR(255) NULL,
+            ativo TINYINT(1) NOT NULL DEFAULT 0,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY ux_dropshipping_config_slug (slug)
+        );
+        """);
+
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        INSERT INTO dropshipping_config (nome, slug, tipo, api_endpoint, ativo)
+        VALUES
+            ('Shopify', 'shopify', 5, 'https://{{store}}.myshopify.com/admin/api', 0),
+            ('CJ Dropshipping', 'cjdropshipping', 1, 'https://developers.cjdropshipping.com/api2.0/v1', 0)
+        ON DUPLICATE KEY UPDATE
+            nome = VALUES(nome),
+            tipo = VALUES(tipo),
+            api_endpoint = VALUES(api_endpoint),
+            updated_at = CURRENT_TIMESTAMP;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        CREATE TABLE IF NOT EXISTS configuracoes_sistema (
+            id INT NOT NULL AUTO_INCREMENT,
+            chave VARCHAR(100) NOT NULL,
+            valor TEXT NULL,
+            tipo VARCHAR(20) NOT NULL DEFAULT 'Texto',
+            descricao VARCHAR(255) NULL,
+            grupo VARCHAR(50) NULL,
+            editavel TINYINT(1) NOT NULL DEFAULT 1,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY ux_configuracoes_sistema_chave (chave),
+            KEY ix_configuracoes_sistema_grupo (grupo)
+        );
+        """);
+
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        INSERT INTO configuracoes_sistema (chave, valor, tipo, descricao, grupo, editavel)
+        VALUES
+            ('site_telefone_secundario', '(14) 99634-8409', 'Texto', 'Telefone comercial secundÃ¡rio', 'Geral', 1),
+            ('site_whatsapp_secundario', '5514996348409', 'Texto', 'WhatsApp comercial secundÃ¡rio', 'Geral', 1),
+            ('site_yara_email', 'corporativo.gna@gmail.com', 'Texto', 'E-mail de atendimento da Yara', 'Atendimento', 1),
+            ('home_intro_titulo', 'Uma Nova Era ComeÃ§a', 'Texto', 'TÃ­tulo principal do bloco institucional da home', 'SiteHome', 1),
+            ('home_intro_texto_1', 'A Nexum Altivon estÃ¡ chegando para transformar e inovar o mercado digital brasileiro.', 'Texto', 'Primeiro texto institucional da home', 'SiteHome', 1),
+            ('home_intro_texto_2', 'Nosso compromisso Ã© claro: entregar qualidade superior, atendimento que faz a diferenÃ§a e preÃ§os acessÃ­veis que respeitam o seu bolso.', 'Texto', 'Segundo texto institucional da home', 'SiteHome', 1),
+            ('home_intro_badge', 'www.nexumaltivon.com', 'Texto', 'Texto do selo institucional da home', 'SiteHome', 1),
+            ('home_footer_texto', 'Portal em evoluÃ§Ã£o contÃ­nua para vendas, relacionamento, parceiros e operaÃ§Ãµes integradas.', 'Texto', 'Texto do rodapÃ© pÃºblico da home', 'SiteHome', 1),
+            ('home_quality_items', '["Curadoria rigorosa de fornecedores","Atendimento humano e especializado","PolÃ­tica de devoluÃ§Ã£o simplificada","PreÃ§os justos e acessÃ­veis"]', 'JSON', 'Itens do bloco de qualidade da home', 'SiteHome', 1),
+            ('home_partner_cards', '[{"title":"Parceiros de Vendas","text":"Lojas fÃ­sicas ou online podem ampliar seus horizontes de venda com nossa infraestrutura comercial e operaÃ§Ã£o integrada.","cta":"Quero Vender","href":"https://wa.me/5514996731879?text=OlÃ¡! Tenho interesse em ser parceiro de vendas do Grupo Nexum Altivon.","icon":"Store"},{"title":"Fornecedores & Distribuidores","text":"Distribuidores e fabricantes encontram um canal de venda em crescimento, com visÃ£o de volume, relacionamento e longo prazo.","cta":"Quero Fornecer","href":"https://wa.me/5514996348409?text=OlÃ¡! Sou fornecedor/distribuidor e tenho interesse em parceria com o Grupo Nexum Altivon.","icon":"Truck"},{"title":"Dropshipping","text":"Integre seu catÃ¡logo Ã s nossas lojas ou utilize nossa infraestrutura para conectar produtos, logÃ­stica e novos canais.","cta":"Quero Fazer Dropship","href":"https://wa.me/5514996731879?text=OlÃ¡! Tenho interesse em parceria de dropshipping com o Grupo Nexum Altivon.","icon":"Building2"}]', 'JSON', 'Cards de parceria da home', 'SiteHome', 1),
+            ('home_hero_slides', '[{"id":"ecommerce","badge":"Grupo Nexum Altivon","title":"O Futuro do","highlight":"E-Commerce","description":"Seis lojas, uma operaÃ§Ã£o conectada e uma proposta premium para transformar a experiÃªncia de compra online.","image":"https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1920&q=88"},{"id":"marcas","badge":"6 marcas em expansÃ£o","title":"Uma operaÃ§Ã£o,","highlight":"mÃºltiplos mercados","description":"Turismo, relÃ³gios, moda, tecnologia, construÃ§Ã£o e festas com a mesma curadoria comercial do Grupo Nexum Altivon.","image":"https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=1920&q=88"},{"id":"tecnologia","badge":"ExperiÃªncia tecnolÃ³gica","title":"Compra segura com","highlight":"atendimento humano","description":"Fluxos preparados para catÃ¡logo, clientes, pedidos, integraÃ§Ãµes e relacionamento com visÃ£o de crescimento contÃ­nuo.","image":"https://images.unsplash.com/photo-1524805444758-089113d48a6d?auto=format&fit=crop&w=1920&q=88"}]', 'JSON', 'Slides principais da home', 'SiteHome', 1)
+        ON DUPLICATE KEY UPDATE
+            valor = VALUES(valor),
+            descricao = VALUES(descricao),
+            grupo = VALUES(grupo),
+            editavel = VALUES(editavel),
+            updated_at = CURRENT_TIMESTAMP;
+        """.Replace("{", "{{").Replace("}", "}}"));
 }
 
-static bool IsWorkflowProfileAuthorized(ClaimsPrincipal principal, List<string> perfisAutorizados)
+app.Run();
+
+public sealed record LoginRequest(string Email, string Senha);
+
+public sealed record LoginResponse(string Token, string RefreshToken, DateTime ExpiraEm, UsuarioDto Usuario);
+
+public sealed record UsuarioDto(int Id, string Nome, string Email, string Perfil);
+
+public sealed record ApiResponse<T>(
+    bool Sucesso,
+    string? Mensagem,
+    T? Dados,
+    List<string>? Erros = null,
+    int? TotalRegistros = null,
+    int? PaginaAtual = null,
+    int? TotalPaginas = null)
 {
-    if (perfisAutorizados == null || perfisAutorizados.Count == 0) return true;
-    return perfisAutorizados.Any(p => principal.IsInRole(p));
+    public static ApiResponse<T> Ok(T dados, string? mensagem = null, int? total = null, int? pagina = null, int? totalPaginas = null)
+        => new(true, mensagem, dados, null, total, pagina, totalPaginas);
+
+    public static ApiResponse<T> Erro(string mensagem, List<string>? erros = null)
+        => new(false, mensagem, default, erros);
+}
+
+public sealed record LojaDto(
+    int Id,
+    string Nome,
+    string Slug,
+    string Segmento,
+    string? Descricao,
+    string CorPrimaria,
+    string CorSecundaria,
+    bool Ativa,
+    int OrdemExibicao);
+
+public sealed record DashboardKpiDto(
+    decimal FaturamentoHoje,
+    decimal FaturamentoMes,
+    decimal FaturamentoAno,
+    int PedidosHoje,
+    int PedidosMes,
+    int PedidosPendentes,
+    int PedidosEnviados,
+    int PedidosEntregues,
+    int ClientesNovosMes,
+    int ClientesAtivos,
+    int TotalClientes,
+    decimal TicketMedio,
+    decimal TaxaConversao,
+    int ProdutosAtivos,
+    int ProdutosEstoqueBaixo,
+    int ProdutosSemEstoque,
+    int LeadsNovos,
+    int LeadsConvertidos,
+    int LeadsEmAtendimento);
+
+public sealed record FaturamentoPorPeriodoDto(string Periodo, decimal Faturamento, int QuantidadePedidos);
+
+public sealed record VendasPorLojaDto(string LojaNome, string LojaSlug, decimal Faturamento, int Pedidos, decimal TicketMedio, decimal Percentual);
+
+public sealed record ProdutosMaisVendidosDto(int ProdutoId, string Nome, string? Imagem, string LojaNome, int QuantidadeVendida, decimal ReceitaTotal);
+
+public sealed record ClientesRecentesDto(int Id, string Nome, string Email, string? Whatsapp, DateTime DataCadastro, int TotalPedidos, decimal TotalGasto);
+
+public sealed record PedidosRecentesDto(int Id, string NumeroPedido, string ClienteNome, decimal Total, string Status, string StatusPagamento, string? LojaNome, DateTime DataPedido);
+
+public sealed record LeadsRecentesDto(int Id, string Nome, string Tipo, string Status, string Prioridade, string? Email, string? Whatsapp, DateTime DataCriacao);
+
+public sealed record CategoriaDto(
+    string Id,
+    string Nome,
+    string Descricao,
+    string? CategoriaPaiId = null,
+    int Nivel = 1,
+    string? Caminho = null,
+    int? Ordem = null,
+    bool Ativa = true);
+
+public sealed record ProdutoLojaDto(
+    string Id,
+    string Nome,
+    string Descricao,
+    string? DescricaoCurta,
+    decimal Preco,
+    decimal? PrecoPromocional,
+    string ImagemUrl,
+    int Estoque,
+    int EstoqueMinimo,
+    int EstoqueReservado,
+    bool Destaque,
+    string Sku,
+    string CategoriaId,
+    decimal Avaliacao,
+    decimal Custo,
+    decimal Peso,
+    decimal Altura,
+    decimal Largura,
+    decimal Comprimento,
+    string TipoProduto,
+    int? FornecedorId,
+    string? Marca,
+    string? Tags,
+    string? SeoTitulo,
+    string? SeoDescricao,
+    string? SeoKeywords,
+    string? ImagensGaleria);
+
+public sealed record ProdutoRequest(
+    string? Id,
+    string Nome,
+    string? Descricao,
+    string? DescricaoCurta,
+    decimal Preco,
+    decimal? PrecoPromocional,
+    string? ImagemUrl,
+    int Estoque,
+    int? EstoqueMinimo,
+    int? EstoqueReservado,
+    bool Destaque,
+    string? Sku,
+    string? CategoriaId,
+    string? SubcategoriaId,
+    decimal? Avaliacao,
+    decimal? Custo,
+    decimal? Peso,
+    decimal? Altura,
+    decimal? Largura,
+    decimal? Comprimento,
+    string? TipoProduto,
+    int? FornecedorId,
+    string? Marca,
+    string? Tags,
+    string? SeoTitulo,
+    string? SeoDescricao,
+    string? SeoKeywords,
+    string? ImagensGaleria)
+{
+    public ProdutoLojaDto ToProduto(string? id = null)
+    {
+        var produtoId = string.IsNullOrWhiteSpace(id) ? Id : id;
+        if (string.IsNullOrWhiteSpace(produtoId))
+        {
+            produtoId = Nome.ToLowerInvariant()
+                .Replace(" ", "-")
+                .Replace("/", "-")
+                .Replace("\\", "-");
+        }
+
+        var sku = string.IsNullOrWhiteSpace(Sku)
+            ? $"NA-{Math.Abs(HashCode.Combine(Nome, Preco)):000000}"
+            : Sku;
+
+        return new ProdutoLojaDto(
+            produtoId,
+            Nome,
+            Descricao ?? string.Empty,
+            DescricaoCurta,
+            Preco,
+            PrecoPromocional,
+            ImagemUrl ?? "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85",
+            Estoque,
+            EstoqueMinimo ?? 5,
+            EstoqueReservado ?? 0,
+            Destaque,
+            sku,
+            string.IsNullOrWhiteSpace(CategoriaId) ? "classicos" : CategoriaId,
+            Avaliacao ?? 4.8m,
+            Custo ?? 0m,
+            Peso ?? 0m,
+            Altura ?? 0m,
+            Largura ?? 0m,
+            Comprimento ?? 0m,
+            string.IsNullOrWhiteSpace(TipoProduto) ? "Proprio" : TipoProduto,
+            FornecedorId,
+            Marca,
+            Tags,
+            SeoTitulo,
+            SeoDescricao,
+            SeoKeywords,
+            ImagensGaleria);
+    }
+}
+
+public sealed record UploadImagemRequest(string? FileName, string? ContentType, string DataUrl);
+
+public sealed record UploadImagemDto(string Url);
+
+public sealed record CupomDto(string Codigo, decimal? DescontoPercentual, decimal? DescontoValor, decimal? ValorMinimo);
+
+public sealed record ClienteRequest(string Nome, string Email, string? Cpf, string? Telefone, string? Senha = null, bool? Newsletter = null);
+
+public sealed record ClienteLojaDto(int Id, string Nome, string Email, string? Telefone, string? Cpf = null);
+
+public sealed record CadastroClienteStatusDto(bool Existe, ClienteLojaDto? Cliente);
+
+public sealed record ClientePortalPedidoDto(
+    int Id,
+    string NumeroPedido,
+    string Status,
+    string StatusPagamento,
+    decimal Total,
+    DateTime DataPedido,
+    string? MeioPagamento,
+    string? CodigoRastreio,
+    string? Transportadora);
+
+public sealed record ClientePortalDocumentoDto(
+    int Id,
+    int PedidoId,
+    string? NumeroDocumento,
+    string? ModeloDocumento,
+    string StatusDocumento,
+    string? ChaveAcesso,
+    string? DanfeUrl,
+    string? XmlUrl,
+    DateTime CreatedAt);
+
+public sealed record ClientePortalDto(
+    int Id,
+    string Nome,
+    string Email,
+    string? Telefone,
+    string? Documento,
+    int PontosFidelidade,
+    string ScoreRelacionamento,
+    bool Vip,
+    decimal LimiteFuturoEstimado,
+    List<ClientePortalPedidoDto> Pedidos,
+    List<ClientePortalDocumentoDto> Documentos,
+    List<string> Beneficios);
+
+public sealed record FornecedorRequest(string Nome, string? Documento, string? Email, string? Telefone, string? Categoria);
+
+public sealed record FornecedorDto(int Id, string Nome, string Documento, string Email, string Telefone, string Categoria, DateTime CreatedAt);
+
+public sealed record StatusUpdateRequest(
+    [property: JsonPropertyName("novo_status")] string NovoStatus,
+    [property: JsonPropertyName("responsavel_id")] int? ResponsavelId);
+
+public sealed record PedidoItemRequest(string ProdutoId, int Quantidade);
+
+public sealed record PedidoRequest(
+    [property: JsonPropertyName("cliente_id")] int ClienteId,
+    [property: JsonPropertyName("loja_id")] string LojaId,
+    [property: JsonPropertyName("itens")] List<PedidoItemRequest> Itens,
+    [property: JsonPropertyName("cupom_codigo")] string? CupomCodigo,
+    [property: JsonPropertyName("endereco_entrega")] object? EnderecoEntrega,
+    [property: JsonPropertyName("metodo_pagamento")] string? MetodoPagamento,
+    [property: JsonPropertyName("parcelas")] int? Parcelas,
+    [property: JsonPropertyName("gateway_pagamento")] string? GatewayPagamento,
+    [property: JsonPropertyName("frete_valor")] decimal? FreteValor,
+    [property: JsonPropertyName("frete_metodo")] string? FreteMetodo,
+    [property: JsonPropertyName("frete_transportadora")] string? FreteTransportadora,
+    [property: JsonPropertyName("frete_prazo_dias")] int? FretePrazoDias);
+
+public sealed record EnderecoEntregaRequest(
+    string? Cep,
+    string? Logradouro,
+    string? Numero,
+    string? Complemento,
+    string? Bairro,
+    string? Cidade,
+    string? Estado);
+
+public sealed record PedidoLojaDto(
+    int Id,
+    string NumeroPedido,
+    decimal Total,
+    string Status,
+    DateTime CreatedAt,
+    string StatusPagamento,
+    string? MeioPagamento,
+    string? GatewayPagamento,
+    string? GatewayTransacaoId,
+    decimal FreteValor,
+    string? FreteMetodo,
+    string? FreteTransportadora,
+    int FretePrazoDias,
+    string InstrucaoPagamento,
+    int Parcelas,
+    string? PixQrcode,
+    string? PaymentUrl);
+
+public sealed record IntegracaoStatusDto(
+    string Nome,
+    string Slug,
+    string Status,
+    string Detalhe,
+    bool Configurada = false,
+    string Ambiente = "Nao configurado");
+
+public sealed record IntegracaoDiagnosticoDto(
+    string Nome,
+    string Slug,
+    string Status,
+    bool Configurada,
+    bool Operacional,
+    string Detalhe,
+    List<string> Pendencias,
+    DateTime VerificadoEm,
+    string? Referencia);
+
+public sealed record IntegracaoCredencialDto(
+    string Provedor,
+    string Categoria,
+    string Chave,
+    string Uso,
+    bool Obrigatoria);
+
+public sealed record SiteConfiguracaoItemDto(
+    int Id,
+    string Chave,
+    string? Valor,
+    string Tipo,
+    string? Descricao,
+    string? Grupo,
+    bool Editavel,
+    DateTime UpdatedAt);
+
+public sealed record SiteConfiguracaoUpdateItemDto(
+    string Chave,
+    string? Valor,
+    string? Tipo,
+    string? Descricao,
+    string? Grupo,
+    bool? Editavel);
+
+public sealed record SiteConfiguracaoUpdateRequest(List<SiteConfiguracaoUpdateItemDto> Itens);
+
+public sealed record HeroSlideSiteDto(
+    string Id,
+    string Badge,
+    string Title,
+    string Highlight,
+    string Description,
+    string Image);
+
+public sealed record PartnerCardSiteDto(
+    string Title,
+    string Text,
+    string Cta,
+    string Href,
+    string Icon);
+
+public sealed record SiteConfiguracaoPublicaDto(
+    string SiteNome,
+    string SiteUrl,
+    string ContactEmail,
+    string PrimaryPhone,
+    string SecondaryPhone,
+    string PrimaryWhatsapp,
+    string SecondaryWhatsapp,
+    string YaraEmail,
+    string SiteLogo,
+    List<HeroSlideSiteDto> HeroSlides,
+    string IntroTitle,
+    string IntroText1,
+    string IntroText2,
+    string IntroBadge,
+    List<string> QualityItems,
+    List<PartnerCardSiteDto> PartnerCards,
+    string FooterText);
+
+public sealed record FreteCotacaoRequest(
+    [property: JsonPropertyName("cep_origem")]
+    string? CepOrigem,
+    [property: JsonPropertyName("cep_destino")]
+    string? CepDestino,
+    [property: JsonPropertyName("itens")]
+    List<FreteCotacaoItemRequest> Itens);
+
+public sealed record FreteCotacaoItemRequest(
+    [property: JsonPropertyName("sku")]
+    string? Sku,
+    [property: JsonPropertyName("quantidade")]
+    int Quantidade,
+    [property: JsonPropertyName("valor_unitario")]
+    decimal ValorUnitario,
+    [property: JsonPropertyName("peso_kg")]
+    decimal? PesoKg,
+    [property: JsonPropertyName("altura_cm")]
+    decimal? AlturaCm,
+    [property: JsonPropertyName("largura_cm")]
+    decimal? LarguraCm,
+    [property: JsonPropertyName("comprimento_cm")]
+    decimal? ComprimentoCm);
+
+public sealed record FreteCotacaoDto(
+    string Codigo,
+    string Nome,
+    string Transportadora,
+    decimal Valor,
+    int PrazoDias,
+    string Fonte);
+
+public sealed record GatewayPaymentStartResult(
+    bool Started,
+    string Gateway,
+    string? TransactionId,
+    string? PixQrcode,
+    string? PaymentUrl,
+    string? RawPayload)
+{
+    public static GatewayPaymentStartResult Success(string gateway, string? transactionId, string? pixQrcode, string? paymentUrl, string? rawPayload) =>
+        new(true, gateway, transactionId, pixQrcode, paymentUrl, rawPayload);
+
+    public static GatewayPaymentStartResult NotStarted(string? rawPayload = null) =>
+        new(false, "ConfiguracaoPendente", null, null, null, rawPayload);
+}
+
+public sealed record DashboardResumoDto(
+    int PedidosHoje,
+    int TotalClientes,
+    decimal FaturamentoMes,
+    int LeadsNovos,
+    int ProdutosEstoqueBaixo,
+    decimal Conversao,
+    decimal TicketMedio);
+
+public sealed record LeadLojaDto(
+    int Id,
+    string Nome,
+    string Email,
+    string Telefone,
+    string Status,
+    DateTime CreatedAt,
+    string? Empresa,
+    string? Origem,
+    string? Mensagem);
+
+public sealed class LeadRow
+{
+    public int Id { get; set; }
+    public string Nome { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string Telefone { get; set; } = string.Empty;
+    public string Empresa { get; set; } = string.Empty;
+    public string Origem { get; set; } = string.Empty;
+    public string Mensagem { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+}
+
+public sealed record LeadRequest(
+    string Nome,
+    string Email,
+    string? Telefone,
+    string? Status,
+    string? Origem,
+    string? Observacao,
+    string? Empresa,
+    string? Cnpj,
+    string? Segmento,
+    string? Mensagem,
+    string? Whatsapp,
+    string? Tipo);
+
+public sealed record EmpresaGrupoRequest(
+    string? TipoCadastro,
+    string RazaoSocial,
+    string? NomeFantasia,
+    string Cnpj,
+    string? InscricaoEstadual,
+    string? InscricaoMunicipal,
+    string? MatrizFilial,
+    string? CodigoEmpresa,
+    string? RegimeTributario,
+    string? Crt,
+    string? CnaePrincipal,
+    string? CnaesSecundarios,
+    string? CategoriaFiscal,
+    string? SubcategoriaFiscal,
+    string? NcmPadrao,
+    string? NaturezaOperacaoPadrao,
+    string? ResponsavelLegal,
+    string? ResponsavelFiscal,
+    string? EmailFiscal,
+    string? EmailComercial,
+    string? Telefone,
+    string? Whatsapp,
+    string? Cep,
+    string? Logradouro,
+    string? Numero,
+    string? Complemento,
+    string? Bairro,
+    string? Cidade,
+    string? Estado,
+    string? Pais,
+    string? AmbienteNfe,
+    string? SerieNfe,
+    string? SerieNfce,
+    string? ModeloDocumentoPdv,
+    string? AmbienteNfce,
+    int? ProximaNfceNumero,
+    string? NfceCsc,
+    string? NfceCscIdToken,
+    string? PdvSerieSat,
+    string? PdvImpressoraFiscal,
+    string? PdvNomeCaixaPadrao,
+    bool? PdvContingenciaOffline,
+    int? ProximaNfeNumero,
+    string? CfopPadraoInterno,
+    string? CfopPadraoInterestadual,
+    decimal? AliquotaIcmsInterna,
+    decimal? AliquotaIcmsInterestadual,
+    decimal? AliquotaPis,
+    decimal? AliquotaCofins,
+    decimal? AliquotaIss,
+    decimal? AliquotaIpi,
+    decimal? CargaTributariaPercentual,
+    string? PerfilTributacao,
+    bool? UsaStLegado,
+    bool? DestacaIcmsStSeparado,
+    decimal? CustoOperacionalPercentual,
+    decimal? MargemMinimaPercentual,
+    int? PrioridadeFiscal,
+    bool? PermiteNfeEntrada,
+    bool? PermiteNfeSaida,
+    bool? PermiteDropshipping,
+    bool? PermiteMarketplace,
+    bool? EmitentePreferencial,
+    bool? Ativa,
+    string? BeneficiosEstrategicos,
+    string? ContratoResumo,
+    string? Observacoes);
+
+public sealed record EmpresaGrupoDto(
+    int Id,
+    string TipoCadastro,
+    string RazaoSocial,
+    string? NomeFantasia,
+    string Cnpj,
+    string? InscricaoEstadual,
+    string? InscricaoMunicipal,
+    string? MatrizFilial,
+    string? CodigoEmpresa,
+    string? RegimeTributario,
+    string? Crt,
+    string? CnaePrincipal,
+    string? CnaesSecundarios,
+    string? CategoriaFiscal,
+    string? SubcategoriaFiscal,
+    string? NcmPadrao,
+    string? NaturezaOperacaoPadrao,
+    string? ResponsavelLegal,
+    string? ResponsavelFiscal,
+    string? EmailFiscal,
+    string? EmailComercial,
+    string? Telefone,
+    string? Whatsapp,
+    string? Cep,
+    string? Logradouro,
+    string? Numero,
+    string? Complemento,
+    string? Bairro,
+    string? Cidade,
+    string? Estado,
+    string? Pais,
+    string? AmbienteNfe,
+    string? SerieNfe,
+    string? SerieNfce,
+    string? ModeloDocumentoPdv,
+    string? AmbienteNfce,
+    int? ProximaNfceNumero,
+    string? NfceCsc,
+    string? NfceCscIdToken,
+    string? PdvSerieSat,
+    string? PdvImpressoraFiscal,
+    string? PdvNomeCaixaPadrao,
+    bool PdvContingenciaOffline,
+    int? ProximaNfeNumero,
+    string? CfopPadraoInterno,
+    string? CfopPadraoInterestadual,
+    decimal? AliquotaIcmsInterna,
+    decimal? AliquotaIcmsInterestadual,
+    decimal? AliquotaPis,
+    decimal? AliquotaCofins,
+    decimal? AliquotaIss,
+    decimal? AliquotaIpi,
+    decimal? CargaTributariaPercentual,
+    string? PerfilTributacao,
+    bool UsaStLegado,
+    bool DestacaIcmsStSeparado,
+    decimal? CustoOperacionalPercentual,
+    decimal? MargemMinimaPercentual,
+    int PrioridadeFiscal,
+    bool PermiteNfeEntrada,
+    bool PermiteNfeSaida,
+    bool PermiteDropshipping,
+    bool PermiteMarketplace,
+    bool EmitentePreferencial,
+    bool Ativa,
+    string? BeneficiosEstrategicos,
+    string? ContratoResumo,
+    string? Observacoes,
+    DateTime CreatedAt,
+    DateTime UpdatedAt);
+
+public sealed record PdvFiscalConfigDto(
+    int Id,
+    string? CodigoEmpresa,
+    string RazaoSocial,
+    string Cnpj,
+    string ModeloDocumentoPdv,
+    string? AmbienteNfce,
+    string? SerieNfce,
+    int? ProximaNfceNumero,
+    string? NfceCscIdToken,
+    bool PossuiCscConfigurado,
+    string? PdvSerieSat,
+    string? PdvImpressoraFiscal,
+    string? PdvNomeCaixaPadrao,
+    bool PdvContingenciaOffline,
+    bool EmitentePreferencial,
+    string? Estado);
+
+public sealed record FiscalPedidoDto(
+    int Id,
+    int PedidoId,
+    int? EmpresaGrupoId,
+    string? EmpresaEmitente,
+    string? CodigoEmpresaEmitente,
+    string? CnpjEmitente,
+    string? NumeroNfe,
+    string? Serie,
+    string StatusNfe,
+    string? StatusAutomacao,
+    string? ModeloDocumento,
+    string? AmbienteDocumento,
+    string? Cfop,
+    string? NaturezaOperacao,
+    decimal? ValorTotal,
+    string? ResumoRoteamento,
+    DateTime CreatedAt,
+    DateTime UpdatedAt);
+
+public sealed record FiscalRoutingSimulationRequest(
+    TipoOperacaoFiscal TipoOperacao,
+    decimal ValorProdutos,
+    decimal ValorFrete,
+    string EstadoOrigem,
+    string EstadoDestino,
+    string? CategoriaFiscal,
+    string? SubcategoriaFiscal,
+    string? NaturezaOperacao,
+    bool ExigeMarketplace,
+    bool ExigeDropshipping,
+    bool RequerSaidaNfe,
+    bool RequerEntradaNfe);
+
+public sealed record FiscalRoutingSimulationDto(
+    bool Sucesso,
+    string Resumo,
+    string? CodigoEmpresaSelecionada,
+    string? RazaoSocialSelecionada,
+    string? CnpjSelecionado,
+    string? EstadoSelecionado,
+    List<FiscalRoutingRankingDto> Ranking);
+
+public sealed record FiscalRoutingRankingDto(
+    string CodigoEmpresa,
+    string RazaoSocial,
+    string Cnpj,
+    string? RegimeTributario,
+    string? CategoriaFiscal,
+    string? SubcategoriaFiscal,
+    decimal CustoTributarioEstimado,
+    decimal CustoOperacionalEstimado,
+    decimal LucroEstimado,
+    decimal MargemEstimadaPercentual,
+    decimal Score,
+    List<string> Justificativas);
+
+public static class StoreData
+{
+    public static readonly List<CategoriaDto> Categorias =
+    [
+        new("automaticos", "Automaticos", "Movimento mecanico com presenca executiva", null, 1, "Automaticos", 1, true),
+        new("dress-watch", "Dress Watch", "Subcategoria para modelos executivos e sociais.", "automaticos", 2, "Automaticos / Dress Watch", 1, true),
+        new("skeleton", "Skeleton", "Subcategoria para mostradores abertos e mecÃ¢nica aparente.", "automaticos", 2, "Automaticos / Skeleton", 2, true),
+        new("cronografos", "Cronografos", "Performance, precisao e leitura esportiva", null, 1, "Cronografos", 2, true),
+        new("corrida", "Corrida", "Subcategoria para cronÃ³grafos de perfil esportivo.", "cronografos", 2, "Cronografos / Corrida", 1, true),
+        new("aventura", "Aventura", "Subcategoria para peÃ§as robustas e outdoor.", "cronografos", 2, "Cronografos / Aventura", 2, true),
+        new("classicos", "Classicos", "Pecas discretas para rotina premium", null, 1, "Classicos", 3, true),
+        new("social", "Social", "Subcategoria para linha formal e corporativa.", "classicos", 2, "Classicos / Social", 1, true),
+        new("minimalista", "Minimalista", "Subcategoria para peÃ§as leves e design limpo.", "classicos", 2, "Classicos / Minimalista", 2, true),
+        new("smart-luxo", "Smart Luxo", "Tecnologia conectada com acabamento refinado", null, 1, "Smart Luxo", 4, true),
+        new("fitness-premium", "Fitness Premium", "Subcategoria para wearables esportivos premium.", "smart-luxo", 2, "Smart Luxo / Fitness Premium", 1, true),
+        new("executivo-connect", "Executivo Connect", "Subcategoria para smartwatches de perfil executivo.", "smart-luxo", 2, "Smart Luxo / Executivo Connect", 2, true)
+    ];
+
+    public static readonly List<ProdutoLojaDto> Produtos =
+    [
+        new("na-atlas-chrono", "Atlas Chronograph Black", "Cronografo em aco escovado, safira antirrisco e pulseira intercambiavel para uso executivo.", "Cronografo executivo premium", 4890, 4290, "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85", 8, 2, 0, true, "NA-ATL-BLK", "cronografos", 4.9m, 3150, 0.450m, 4.5m, 11m, 25m, "Proprio", null, "Nexum Altivon", "cronografo,aco,premium", "Atlas Chronograph Black", "RelÃ³gio cronÃ³grafo premium Nexum Altivon", "relogio,cronografo,premium", null),
+        new("na-orion-gold", "Orion Gold Reserve", "Relogio automatico dourado com mostrador sunray, reserva de marcha e acabamento premium.", "AutomÃ¡tico dourado premium", 6990, 6490, "https://images.unsplash.com/photo-1547996160-81dfa63595aa?auto=format&fit=crop&w=900&q=85", 12, 2, 0, true, "NA-ORI-GLD", "automaticos", 4.8m, 4520, 0.520m, 5m, 12m, 26m, "Proprio", null, "Nexum Altivon", "automatico,dourado,reserva", "Orion Gold Reserve", "RelÃ³gio automÃ¡tico dourado com reserva de marcha", "automatico,dourado,relogio", null),
+        new("na-heritage-silver", "Heritage Silver 40mm", "Design classico em caixa fina, pulseira em couro italiano e resistencia a agua para o dia a dia.", "ClÃ¡ssico prata 40mm", 2990, null, "https://images.unsplash.com/photo-1539874754764-5a96559165b0?auto=format&fit=crop&w=900&q=85", 24, 4, 0, true, "NA-HER-SLV", "classicos", 4.7m, 1890, 0.380m, 4m, 10m, 24m, "Proprio", null, "Nexum Altivon", "classico,prata,couro", "Heritage Silver 40mm", "RelÃ³gio clÃ¡ssico prata com pulseira em couro italiano", "classico,prata,couro", null),
+        new("na-venture-carbon", "Venture Carbon Pro", "Caixa em carbono, pulseira esportiva premium e leitura de alta visibilidade para jornadas intensas.", "Carbono esportivo premium", 5290, 4990, "https://images.unsplash.com/photo-1434056886845-dac89ffe9b56?auto=format&fit=crop&w=900&q=85", 5, 2, 0, false, "NA-VEN-CBN", "cronografos", 4.6m, 3380, 0.490m, 5m, 12m, 27m, "Dropshipping", null, "Nexum Altivon", "carbono,esportivo,aventura", "Venture Carbon Pro", "RelÃ³gio em carbono com leitura esportiva premium", "carbono,esportivo,relogio", null),
+        new("na-lumina-smart", "Lumina Smart Luxe", "Tela AMOLED, monitoramento completo e corpo metalico com acabamento de relojoaria.", "Smartwatch luxo AMOLED", 3890, null, "https://images.unsplash.com/photo-1508685096489-7aacd43bd3b1?auto=format&fit=crop&w=900&q=85", 18, 3, 0, false, "NA-LUM-SMT", "smart-luxo", 4.8m, 2470, 0.310m, 4m, 10m, 23m, "Marketplace", null, "Nexum Altivon", "smartwatch,amoled,luxo", "Lumina Smart Luxe", "Smartwatch premium com acabamento de relojoaria", "smartwatch,amoled,luxo", null),
+        new("na-minimal-rose", "Minimal Rose Mesh", "Perfil ultrafino, malha milanesa rose e mostrador minimalista para composicoes sofisticadas.", "Rose mesh minimalista", 2590, 2290, "https://images.unsplash.com/photo-1524592094714-0f0654e20314?auto=format&fit=crop&w=900&q=85", 31, 5, 0, false, "NA-MIN-RSE", "classicos", 4.7m, 1620, 0.280m, 3.8m, 9m, 22m, "Afiliado", null, "Nexum Altivon", "rose,minimalista,mesh", "Minimal Rose Mesh", "RelÃ³gio ultrafino rose com malha milanesa", "rose,minimalista,mesh", null)
+    ];
+
+    public static readonly List<CupomDto> Cupons =
+    [
+        new("NEXUM10", 10, null, 500),
+        new("FRETEGRATIS", null, 89, 1000)
+    ];
+
+    public static readonly List<ClienteLojaDto> Clientes =
+    [
+        new(1, "Ana Carolina Silva", "ana.silva@email.com", "(14) 99876-5432"),
+        new(2, "Bruno Oliveira", "bruno.oliveira@email.com", "(14) 99765-4321"),
+        new(3, "Carla Mendes", "carla.mendes@email.com", "(14) 99654-3210")
+    ];
+
+    public static readonly List<FornecedorDto> Fornecedores =
+    [
+        new(1, "Chronos Imports", "12.345.678/0001-90", "comercial@chronosimports.com", "(11) 3030-1122", "Relogios", DateTime.UtcNow.AddDays(-9)),
+        new(2, "Luxury Cases Brasil", "98.765.432/0001-10", "vendas@luxurycases.com", "(21) 4040-2211", "Acessorios", DateTime.UtcNow.AddDays(-5)),
+        new(3, "Embalagens Prime", "45.111.222/0001-33", "atendimento@embalagensprime.com", "(31) 3333-9191", "Operacional", DateTime.UtcNow.AddDays(-2))
+    ];
+
+    public static readonly DashboardResumoDto Resumo = new(38, 1248, 286420, 64, 7, 7.8m, 3280);
+
+    public static readonly List<PedidoLojaDto> Pedidos =
+    [
+        new(1029, "NA-1029", 6490, "Processando", DateTime.UtcNow.AddHours(-2), "Aguardando pagamento", "pix", "ConfiguracaoPendente", null, 0, "Retirada / combinar entrega", "Nexum Altivon", 0, "Pedido reservado. Configure o gateway para cobranÃ§a real e confirmaÃ§Ã£o automÃ¡tica.", 1, "QR-CODE-PIX-DEMO", null),
+        new(1028, "NA-1028", 4290, "Enviado", DateTime.UtcNow.AddHours(-5), "Pagamento aprovado", "cartao", "MercadoPago", "demo-1028", 29.9m, "Entrega padrÃ£o", "Correios / Melhor Envio", 7, "Pagamento confirmado. Pedido pronto para separaÃ§Ã£o e logÃ­stica.", 6, null, "https://pagamento.nexumaltivon.com/demo-1028"),
+        new(1027, "NA-1027", 7580, "Entregue", DateTime.UtcNow.AddDays(-1), "Pagamento aprovado", "boleto", "MercadoPago", "demo-1027", 49.9m, "Entrega expressa", "Transportadora parceira", 3, "Pagamento confirmado. Pedido pronto para separaÃ§Ã£o e logÃ­stica.", 1, null, "https://pagamento.nexumaltivon.com/demo-1027")
+    ];
+
+    public static readonly List<LeadLojaDto> Leads =
+    [
+        new(210, "Marina Alves", "marina.alves@email.com", "(11) 98221-4400", "Qualificado", DateTime.UtcNow.AddHours(-3), "Marina Atelier", "Site", "Lead de demonstraÃ§Ã£o qualificado."),
+        new(209, "Rafael Monteiro", "rafael.m@email.com", "(21) 99774-1030", "Negociacao", DateTime.UtcNow.AddHours(-8), "RM DistribuiÃ§Ã£o", "WhatsApp", "Contato comercial em andamento."),
+        new(208, "Bianca Torres", "bianca.t@email.com", "(31) 98812-5511", "Novo", DateTime.UtcNow.AddDays(-1), "BT Boutique", "Site", "Solicitou retorno comercial.")
+    ];
+}
+
+public sealed record DashboardCompletoDto(
+    DashboardKpiDto Kpis,
+    List<FaturamentoPorPeriodoDto> FaturamentoSemanal,
+    List<FaturamentoPorPeriodoDto> FaturamentoMensal,
+    List<VendasPorLojaDto> VendasPorLoja,
+    List<ProdutosMaisVendidosDto> ProdutosMaisVendidos,
+    List<ClientesRecentesDto> ClientesRecentes,
+    List<PedidosRecentesDto> PedidosRecentes,
+    List<LeadsRecentesDto> LeadsRecentes)
+{
+    public static readonly List<LojaDto> Lojas =
+    [
+        new(1, "Geracao Top+", "geracao-top", "Tecnologia", "Eletronicos e acessorios", "#C9A227", "#0A0A0A", true, 1),
+        new(2, "Moda Mim", "moda-mim", "Moda", "Moda feminina e lifestyle", "#D81B60", "#0A0A0A", true, 2),
+        new(3, "Chronos", "chronos", "Relogios", "Relogios e presentes", "#C9A227", "#1E3A5F", true, 3),
+        new(4, "Grann-Tur", "grann-tur", "Viagens", "Turismo e malas", "#1E88E5", "#0A0A0A", true, 4),
+        new(5, "Estruturaline", "estruturaline", "Construcao", "Materiais e solucoes estruturais", "#546E7A", "#0A0A0A", true, 5),
+        new(6, "Gran-fest-festas", "gran-fest", "Festas", "Artigos para eventos", "#8E24AA", "#0A0A0A", true, 6)
+    ];
+
+    public static DashboardCompletoDto CreateSample()
+    {
+        var hoje = DateTime.Today;
+
+        return new DashboardCompletoDto(
+            new DashboardKpiDto(2847.50m, 45230.80m, 387450.00m, 12, 186, 23, 45, 892, 34, 1247, 3856, 243.50m, 3.2m, 1245, 18, 5, 12, 8, 15),
+            [
+                new("17/05", 1850.00m, 8),
+                new("18/05", 2340.50m, 10),
+                new("19/05", 1560.00m, 6),
+                new("20/05", 3120.80m, 13),
+                new("21/05", 2780.00m, 11),
+                new("22/05", 1950.00m, 8),
+                new("23/05", 2847.50m, 12)
+            ],
+            [
+                new("jun/25", 32450.00m, 142),
+                new("jul/25", 38920.50m, 168),
+                new("ago/25", 35670.00m, 154),
+                new("set/25", 42180.80m, 182),
+                new("out/25", 39850.00m, 172),
+                new("nov/25", 44560.00m, 195),
+                new("dez/25", 52340.00m, 228),
+                new("jan/26", 28950.00m, 126),
+                new("fev/26", 31240.00m, 138),
+                new("mar/26", 36780.00m, 162),
+                new("abr/26", 41250.00m, 178),
+                new("mai/26", 45230.80m, 186)
+            ],
+            [
+                new("Geracao Top+", "geracao-top", 98560.00m, 412, 239.22m, 25.4m),
+                new("Moda Mim", "moda-mim", 72340.00m, 298, 242.75m, 18.7m),
+                new("Chronos", "chronos", 67890.00m, 245, 277.10m, 17.5m),
+                new("Grann-Tur", "grann-tur", 54230.00m, 198, 273.89m, 14.0m),
+                new("Estruturaline", "estruturaline", 45670.00m, 156, 292.76m, 11.8m),
+                new("Gran-fest-festas", "gran-fest", 48760.00m, 187, 260.75m, 12.6m)
+            ],
+            [
+                new(1, "Smartphone Galaxy S24", null, "Geracao Top+", 142, 213400.00m),
+                new(2, "Relogio Chronos Elite", null, "Chronos", 98, 78400.00m),
+                new(3, "Mala de Viagem Premium", null, "Grann-Tur", 87, 43500.00m),
+                new(4, "Vestido Floral Verao", null, "Moda Mim", 76, 22800.00m),
+                new(5, "Kit Festa Premium", null, "Gran-fest-festas", 65, 19500.00m)
+            ],
+            [
+                new(1, "Ana Carolina Silva", "ana.silva@email.com", "(14) 99876-5432", hoje.AddDays(-1), 3, 1250.00m),
+                new(2, "Bruno Oliveira", "bruno.oliveira@email.com", "(14) 99765-4321", hoje.AddDays(-1), 1, 450.00m),
+                new(3, "Carla Mendes", "carla.mendes@email.com", "(14) 99654-3210", hoje.AddDays(-2), 5, 2340.00m)
+            ],
+            [
+                new(1, "NX2605230001", "Ana Carolina Silva", 450.00m, "Pago", "Aprovado", "Geracao Top+", hoje.AddHours(-2)),
+                new(2, "NX2605230002", "Bruno Oliveira", 890.00m, "EmSeparacao", "Aprovado", "Moda Mim", hoje.AddHours(-4)),
+                new(3, "NX2605230003", "Carla Mendes", 1250.00m, "Pendente", "Aguardando", "Chronos", hoje.AddHours(-6))
+            ],
+            [
+                new(1, "Fernando Lopes", "Fornecedor", "Novo", "Alta", "fernando@fornecedor.com", "(11) 98765-4321", hoje.AddHours(-3)),
+                new(2, "Gabriela Rocha", "Dropshipping", "EmAtendimento", "Media", "gabriela@dropship.com", "(21) 97654-3210", hoje.AddHours(-8)),
+                new(3, "Henrique Almeida", "Parceiro", "Qualificado", "Alta", "henrique@parceiro.com", "(31) 96543-2109", hoje.AddDays(-1))
+            ]);
+    }
 }
