@@ -1,14 +1,15 @@
 /*
- * Propriedade intelectual: Luís Rodrigo da Costa
+ * Propriedade intelectual: LuÃ­s Rodrigo da Costa
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
- * Sistema de gestão: GenesisGest.Net
- * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7190
+ * Sistema de gestÃ£o: GenesisGest.Net
+ * Ano InÃ­cio: 04/2024 Publicado e operacional: 05/2026
+ * VersÃ£o: 1.1.5.7190
  */
 import axios from 'axios';
 import { HTTP_UNAUTHORIZED, STORAGE_KEYS } from '../constants';
 
 const PUBLIC_API_URL = 'https://api.nexumaltivon.com.br';
+export const API_BASE_URL = PUBLIC_API_URL;
 const RUNTIME_API_CONFIG_URL = '/api-runtime.json';
 const RUNTIME_CACHE_KEY = 'nexum_api_runtime_url';
 const RUNTIME_URL_TTL_MS = 30 * 1000;
@@ -243,7 +244,7 @@ const refreshSession = async () => {
   const refreshToken = localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
   const accessTokenAtual = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
   if (!refreshToken || !accessTokenAtual) {
-    throw new Error('Sessão sem credenciais de renovação. Entre novamente.');
+    throw new Error('SessÃ£o sem credenciais de renovaÃ§Ã£o. Entre novamente.');
   }
 
   const runtimeApiBaseUrl = await getRuntimeApiBaseUrl();
@@ -258,7 +259,7 @@ const refreshSession = async () => {
   const accessToken = payload.access_token || payload.accessToken || payload.token || payload.Token;
   const nextRefreshToken = payload.refresh_token || payload.refreshToken || payload.RefreshToken;
   if (!accessToken || !nextRefreshToken) {
-    throw new Error('A API não retornou o par de tokens rotacionado.');
+    throw new Error('A API nÃ£o retornou o par de tokens rotacionado.');
   }
 
   localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
