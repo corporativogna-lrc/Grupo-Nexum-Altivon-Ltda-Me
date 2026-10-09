@@ -1,8 +1,8 @@
-# Propriedade intelectual: LuÃƒÂ­s Rodrigo da Costa
+# Propriedade intelectual: LuÃƒÆ’Ã‚Â­s Rodrigo da Costa
 # Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
-# Sistema de gestÃƒÂ£o: GenesisGest.Net
-# Ano InÃƒÂ­cio: 04/2024 Publicado e operacional: 05/2026
-# VersÃƒÂ£o: 1.1.5.7187
+# Sistema de gestÃƒÆ’Ã‚Â£o: GenesisGest.Net
+# Ano InÃƒÆ’Ã‚Â­cio: 04/2024 Publicado e operacional: 05/2026
+# VersÃƒÆ’Ã‚Â£o: 1.1.5.7187
 
 name: Nexum Altivon CI/CD
 
@@ -180,7 +180,7 @@ jobs:
 
       - name: Publish status
         if: steps.ghcr.outputs.enabled != 'true'
-        run: echo "GHCR_USERNAME/GHCR_TOKEN nÃƒÂ£o configurados. Build executado sem push para o registro."
+        run: echo "GHCR_USERNAME/GHCR_TOKEN nÃƒÆ’Ã‚Â£o configurados. Build executado sem push para o registro."
 
   docker-build-frontend:
     runs-on: ubuntu-latest
@@ -233,7 +233,7 @@ jobs:
 
       - name: Publish status
         if: steps.ghcr.outputs.enabled != 'true'
-        run: echo "GHCR_USERNAME/GHCR_TOKEN nÃƒÂ£o configurados. Build executado sem push para o registro."
+        run: echo "GHCR_USERNAME/GHCR_TOKEN nÃƒÆ’Ã‚Â£o configurados. Build executado sem push para o registro."
 
   deploy-staging:
     runs-on: ubuntu-latest
