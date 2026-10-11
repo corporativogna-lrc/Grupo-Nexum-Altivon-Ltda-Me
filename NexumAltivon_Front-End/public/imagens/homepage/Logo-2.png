@@ -1,0 +1,5 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60">
+  <rect width="200" height="60" fill="#1a1a2e"/>
+  <text x="100" y="38" font-family="Arial" font-size="22" font-weight="bold"
+        fill="#f0a500" text-anchor="middle">NEXUM</text>
+</svg>
