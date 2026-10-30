@@ -40,8 +40,19 @@ const getDefaultApiUrl = () => {
 
 export const resolvePublicAssetUrl = (value) => {
   const assetUrl = String(value || '').trim();
-  if (!assetUrl || /^(?:https?:|data:|blob:)/i.test(assetUrl)) return assetUrl;
-  return assetUrl.startsWith('/') ? `${API_BASE_URL}${assetUrl}` : assetUrl;
+  if (!assetUrl || /^(?:data:|blob:)/i.test(assetUrl)) return assetUrl;
+  const resolvedUrl = assetUrl.startsWith('/') ? `${API_BASE_URL}${assetUrl}` : assetUrl;
+
+  try {
+    const url = new URL(resolvedUrl, typeof window === 'undefined' ? PUBLIC_API_URL : window.location.origin);
+    if (url.pathname.startsWith('/imagens/catalogo/')) {
+      url.searchParams.set('v', '20261030');
+      return url.toString();
+    }
+    return resolvedUrl;
+  } catch {
+    return resolvedUrl;
+  }
 };
 
 const collectRuntimeApiUrls = (config) => {

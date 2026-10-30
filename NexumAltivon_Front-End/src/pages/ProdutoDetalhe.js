@@ -7,7 +7,7 @@
  */
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { produtoAPI } from '../services/api';
+import { produtoAPI, resolvePublicAssetUrl } from '../services/api';
 import { useCart } from '../context/CartContext';
 import { formatPrice } from '../utils/formatters';
 import { ArrowLeft, Check, Minus, Plus, RefreshCw, Shield, ShoppingBag, Star, Truck } from 'lucide-react';
@@ -83,7 +83,7 @@ export default function ProdutoDetalhe() {
 
   const finalPrice = produto.preco_promocional || produto.preco;
   const hasDiscount = produto.preco_promocional && produto.preco_promocional < produto.preco;
-  const image = produto.imagem_url || produto.imagem || '';
+  const image = resolvePublicAssetUrl(produto.imagem_url || produto.imagemUrl || produto.imagem || produto.imagemPrincipal || produto.imagem_principal || '');
   const dimensions = [
     produto.peso ? `${produto.peso} kg` : null,
     produto.altura ? `${produto.altura} cm de altura` : null,
@@ -220,7 +220,7 @@ export default function ProdutoDetalhe() {
                       >
                         <div className="aspect-[4/3] overflow-hidden rounded-xl bg-[#111111]">
                           <img
-                            src={item.imagem_url || item.imagem || ''}
+                            src={resolvePublicAssetUrl(item.imagem_url || item.imagemUrl || item.imagem || item.imagemPrincipal || item.imagem_principal || '')}
                             alt={item.nome}
                             className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
                           />

@@ -9,7 +9,7 @@ import { useCart } from '../context/CartContext';
 import { Link, useNavigate } from 'react-router-dom';
 import { Trash2, Plus, Minus, ShoppingBag } from 'lucide-react';
 import { useState } from 'react';
-import { cupomAPI, produtoAPI } from '../services/api';
+import { cupomAPI, produtoAPI, resolvePublicAssetUrl } from '../services/api';
 
 export default function Carrinho() {
   const { cart, removeFromCart, updateQuantity, getTotal, clearCart } = useCart();
@@ -131,7 +131,7 @@ export default function Carrinho() {
               const price = item.preco_promocional || item.preco;
               return (
                 <div key={item.id} className="flex items-center gap-4 rounded-2xl border border-[#2A2A2A] bg-[#111111] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.35)]" data-testid={`cart-item-${item.id}`}>
-                  <img src={item.imagem_url || item.imagem} alt={item.nome} className="h-24 w-24 rounded-xl object-cover" />
+                  <img src={resolvePublicAssetUrl(item.imagem_url || item.imagemUrl || item.imagem || item.imagemPrincipal || item.imagem_principal)} alt={item.nome} className="h-24 w-24 rounded-xl object-cover" />
                   <div className="flex-1">
                     <h3 className="text-lg font-black text-white">{item.nome}</h3>
                     <p className="font-bold text-[#C9A227]">{formatPrice(price)}</p>

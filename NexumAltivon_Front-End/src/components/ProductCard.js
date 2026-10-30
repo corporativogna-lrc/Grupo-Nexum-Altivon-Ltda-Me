@@ -8,6 +8,7 @@
 import { Link } from 'react-router-dom';
 import { Heart, ShoppingBag, Star } from 'lucide-react';
 import { useCart } from '../context/CartContext';
+import { resolvePublicAssetUrl } from '../services/api';
 import { formatPrice } from '../utils/formatters';
 
 export default function ProductCard({ product }) {
@@ -15,7 +16,7 @@ export default function ProductCard({ product }) {
   const finalPrice = product.preco_promocional || product.preco;
   const hasDiscount = product.preco_promocional && product.preco_promocional < product.preco;
   const discount = hasDiscount ? Math.round(((product.preco - product.preco_promocional) / product.preco) * 100) : 0;
-  const image = product.imagem_url || product.imagem || '';
+  const image = resolvePublicAssetUrl(product.imagem_url || product.imagemUrl || product.imagem || product.imagemPrincipal || product.imagem_principal || '');
   const isOut = Number(product.estoque) === 0;
 
   return (
