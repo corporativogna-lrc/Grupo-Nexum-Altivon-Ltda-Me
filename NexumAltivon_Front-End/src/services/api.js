@@ -221,6 +221,12 @@ export const unwrapApiData = (data) => {
   return normalizeData(data.dados ?? data.Dados ?? data.data ?? data.Data ?? data);
 };
 
+const getApiPagination = (payload) => ({
+  totalRegistros: Number(payload?.totalRegistros ?? payload?.total ?? payload?.TotalRegistros) || 0,
+  paginaAtual: Number(payload?.paginaAtual ?? payload?.pagina ?? payload?.PaginaAtual) || 1,
+  totalPaginas: Number(payload?.totalPaginas ?? payload?.TotalPaginas) || 1,
+});
+
 const api = axios.create({
   baseURL: API_URL,
   timeout: 30000,
@@ -271,6 +277,7 @@ const refreshSession = async () => {
 api.interceptors.response.use(
   (response) => ({
     ...response,
+    pagination: getApiPagination(response.data),
     data: unwrapApiData(response.data),
   }),
   async (error) => {

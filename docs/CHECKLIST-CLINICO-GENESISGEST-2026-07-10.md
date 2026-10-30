@@ -337,3 +337,14 @@ Estado apurado:
 ## Regra de continuidade
 
 Nao declarar item como concluido sem uma evidencia tecnica associada: build, teste, rota HTTP, consulta de banco, migracao aplicada, arquivo publicado, commit remoto ou validacao visual quando o item for de interface.
+
+## Catalogo e lojas para homologacao — 2026-10-30
+
+| Item | Status e evidencia |
+|---|---|
+| Seis lojas do grupo | Concluido no MySQL `nexum_altivon`: 6 lojas ativas; os perfis publicos foram criados a partir dos registros reais, sem CNPJ, dominio, imagem, e-mail ou telefone inventados. `/api/site/lojas` retorna 6 e a rota de detalhe `grann-tur` retorna HTTP 200. |
+| Categorias e subcategorias | Concluido: 72 registros (12 por loja), em 3 categorias principais e 9 subcategorias por loja. Seeds idempotentes corrigidas para a collation e timestamps do schema operacional. |
+| Produtos de homologacao | Concluido: 100 SKUs ativos, com imagem SVG ilustrativa 1000×1000, 5 unidades por SKU, categoria/loja e opcoes de variacao. `/api/produtos` retorna 100 registros em duas paginas (60 + 40). Precos sao referencias de homologacao, nao precos comerciais aprovados. |
+| Backup antes da importacao | Concluido em `D:\xampp\mysql\backup\nexum_catalogo_pre_import_20261030.sql` e `D:\xampp\mysql\backup\nexum_site_perfis_publicos_pre_import_20261030.sql`. |
+| Assets no GitHub Pages | Pendente ate concluir o workflow de publicacao e confirmar HTTP 200 das imagens ilustrativas e visualizacao no navegador. |
+| Fluxos de login, checkout e PDV | Pendentes de homologacao autenticada; a carga do catalogo nao representa aceite desses fluxos. |
