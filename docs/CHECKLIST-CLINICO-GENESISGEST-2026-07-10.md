@@ -512,3 +512,13 @@ Nao declarar item como concluido sem uma evidencia tecnica associada: build, tes
 | Aparência | Campos e grade do PDV usam a paleta/translucidez geral e a grade tornou-se somente leitura para impedir alteração manual de linhas do carrinho. |
 | Validação | WPF Release compilado sem avisos/erros; publicação self-contained win-x64 promovida com rollback em `runtime/desktop-rollback-20261101-2135`; aplicativo aberto responsivo, com título e handle válidos. GitHub Actions Desktop concluiu com sucesso para `8f2c14a`. |
 | Pendente | Login autenticado, confirmação de pagamento por provedor/adquirente, gravação transacional da venda, baixa real do estoque e reconciliação de contingência ainda exigem homologação ponta a ponta; o carregamento do catálogo não comprova esses fluxos. |
+
+## Integração autenticada e estoque no PDV — 2026-11-01
+
+| Item | Status e evidencia |
+|---|---|
+| Rota e conexão Genesis | API passou a registrar `POST /api/desktop/genesis/pdv/vendas` sob política Gerente e registrar `GenesisDbContext` com `ConnectionStrings:GenesisConnection`; `/health/db/genesis` valida `genesis_bd` e retorna 503 rastreável quando indisponível. |
+| Catálogo e estoque | Antes de gravar, a API relê cada SKU no banco Nexum e exige produto ativo, imagem publicada, preço vigente e quantidade disponível. O espelho Nexum usa transação serializável, baixa apenas estoque físico e preserva reservas online. Falha depois do commit Genesis retorna HTTP 202 parcial e registra a exceção; o PDV bloqueia reenvio automático. Empresa emissora deixou de alegar menor custo: usa explicitamente a matriz ativa do Genesis, e a API falha claramente se ela não existir. |
+| Reenvio e contingência | PDV envia JWT autenticado, valida saúde das dependências antes de escolher um único endpoint e não repete POST na API pública após resposta/timeout. Genesis rejeita código de venda já registrado dentro da transação serializável. Contingência local só recebe vendas quando nenhuma API/dependência respondeu antes do envio; resultado de envio indeterminado exige consulta pelo código da venda. |
+| Validação local | API e Desktop Release compilados sem avisos/erros; 37/37 testes API passaram; `git diff --check` limpo. O endpoint ainda requer homologação integrada com usuário Gerente e as duas bases Genesis/Nexum reais antes de aceitar venda como concluída. |
+| Publicação | Código local revisado; pendente commit/push deste lote e validação dos workflows. Publicação da API oficial exige o atualizador administrativo, gates de saúde e rollback; não foi executada nesta validação. |

@@ -944,7 +944,9 @@ public sealed class DesktopApiClient
     {
         var payload = new GenesisPdvVendaApiRequest(
             sale.CodigoVenda,
-            sale.EmpresaEmissora,
+            sale.EmpresaEmissora.StartsWith("Empresa matriz ativa", StringComparison.OrdinalIgnoreCase)
+                ? "MATRIZ_ATIVA"
+                : sale.EmpresaEmissora,
             null,
             sale.ClienteNome,
             sale.ClienteDocumento,
@@ -974,12 +976,41 @@ public sealed class DesktopApiClient
                 null,
                 null)).ToList());
 
+        var reachableEndpoints = new List<string>();
+        var healthFailures = new List<string>();
+        foreach (var endpoint in GetEndpoints(profile))
+        {
+            var health = await TryPdvHealthAsync(endpoint, cancellationToken);
+            if (health.Success)
+            {
+                reachableEndpoints.Add(endpoint);
+                break;
+            }
+
+            healthFailures.Add($"{endpoint}: {health.Detail}");
+        }
+
+        if (reachableEndpoints.Count == 0)
+        {
+            return new DesktopApiSubmitResult(
+                false,
+                false,
+                string.Empty,
+                $"Nenhuma API respondeu antes do envio. A venda não foi submetida. {string.Join(" | ", healthFailures)}",
+                null,
+                false,
+                false,
+                false);
+        }
+
         return await SubmitJsonWithFallbackAsync(
             profile,
             "/api/desktop/genesis/pdv/vendas",
             payload,
             "venda PDV",
-            cancellationToken);
+            cancellationToken,
+            requireJwt: true,
+            endpointOverride: reachableEndpoints.ToArray());
     }
 
     public async Task<DesktopApiSubmitResult> SubmitOperationAsync<TPayload>(
@@ -1011,9 +1042,11 @@ public sealed class DesktopApiClient
         string path,
         TPayload payload,
         string operationLabel,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool requireJwt = false,
+        string[]? endpointOverride = null)
     {
-        var endpoints = new[]
+        var endpoints = (endpointOverride ?? new[]
         {
             profile.ApiBaseUrl,
             profile.PublicApiUrl
@@ -1021,19 +1054,23 @@ public sealed class DesktopApiClient
         .Where(url => !string.IsNullOrWhiteSpace(url))
         .Select(url => url.TrimEnd('/'))
         .Distinct(StringComparer.OrdinalIgnoreCase)
-        .ToArray();
+        .ToArray());
 
         var failures = new List<string>();
 
         foreach (var endpoint in endpoints)
         {
-            var result = await TrySubmitAsync(profile, endpoint, path, payload, operationLabel, cancellationToken);
+            var result = await TrySubmitAsync(profile, endpoint, path, payload, operationLabel, cancellationToken, requireJwt);
             if (result.Success)
             {
                 return result;
             }
 
             failures.Add($"{endpoint}: {result.Detail}");
+            if (result.EndpointResponded || result.PersistedOnServer || result.StopRetry)
+            {
+                return result with { Detail = string.Join(" | ", failures) };
+            }
         }
 
         return new DesktopApiSubmitResult(
@@ -1214,8 +1251,10 @@ public sealed class DesktopApiClient
         string path,
         TPayload payload,
         string operationLabel,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool requireJwt)
     {
+        var requestMayHaveBeenProcessed = false;
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, $"{endpoint}{path}")
@@ -1225,11 +1264,23 @@ public sealed class DesktopApiClient
 
             request.Headers.TryAddWithoutValidation("X-Nexum-Terminal", profile.TerminalCode);
             request.Headers.TryAddWithoutValidation("X-Nexum-Store", profile.StoreCode);
+            if (requireJwt)
+            {
+                if (string.IsNullOrWhiteSpace(profile.DesktopAccessToken))
+                {
+                    return new DesktopApiSubmitResult(false, false, endpoint,
+                        "Sessão administrativa ausente. Autentique o operador antes de registrar a venda.", null,
+                        false, false, true);
+                }
+
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", profile.DesktopAccessToken.Trim());
+            }
             if (!string.IsNullOrWhiteSpace(profile.DesktopAccessToken))
             {
                 request.Headers.TryAddWithoutValidation("X-Nexum-Desktop-Token", profile.DesktopAccessToken.Trim());
             }
 
+            requestMayHaveBeenProcessed = true;
             using var response = await Http.SendAsync(request, cancellationToken);
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
             if (!response.IsSuccessStatusCode)
@@ -1239,7 +1290,22 @@ public sealed class DesktopApiClient
                     false,
                     endpoint,
                     $"{(int)response.StatusCode} {response.ReasonPhrase}: {TrimContent(content)}",
-                    null);
+                    null,
+                    true,
+                    false);
+            }
+
+            if (operationLabel.Equals("venda PDV", StringComparison.OrdinalIgnoreCase)
+                && HasPartialPdvPersistence(content))
+            {
+                return new DesktopApiSubmitResult(
+                    false,
+                    true,
+                    endpoint,
+                    "A venda foi gravada no Genesis, mas a API não confirmou o espelho Nexum. Não repita a venda; reconciliação é necessária.",
+                    ExtractServerReference(content),
+                    true,
+                    true);
             }
 
             return new DesktopApiSubmitResult(
@@ -1247,11 +1313,30 @@ public sealed class DesktopApiClient
                 true,
                 endpoint,
                 $"{operationLabel} gravada no servidor",
-                ExtractServerReference(content));
+                ExtractServerReference(content),
+                true,
+                false);
         }
         catch (Exception ex)
         {
-            return new DesktopApiSubmitResult(false, false, endpoint, ex.Message, null);
+            return new DesktopApiSubmitResult(false, false, endpoint, ex.Message, null, false, requestMayHaveBeenProcessed);
+        }
+    }
+
+    private static bool HasPartialPdvPersistence(string content)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(content);
+            var root = document.RootElement;
+            return root.TryGetProperty("gravadoNoServidor", out var persisted)
+                && persisted.ValueKind == JsonValueKind.True
+                && root.TryGetProperty("sincronizadoNexum", out var synchronized)
+                && synchronized.ValueKind == JsonValueKind.False;
+        }
+        catch (JsonException)
+        {
+            return false;
         }
     }
 
@@ -1268,6 +1353,28 @@ public sealed class DesktopApiClient
         {
             return (false, ex.Message);
         }
+    }
+
+    private static async Task<(bool Success, string Detail)> TryPdvHealthAsync(string baseUrl, CancellationToken cancellationToken)
+    {
+        foreach (var path in new[] { "/health", "/health/db", "/health/db/genesis" })
+        {
+            try
+            {
+                using var response = await Http.GetAsync($"{baseUrl.TrimEnd('/')}{path}", cancellationToken);
+                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    return (false, $"{path}: HTTP {(int)response.StatusCode} {ExtractErrorMessage(content, response.ReasonPhrase)}");
+                }
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            {
+                return (false, $"{path}: {ex.Message}");
+            }
+        }
+
+        return (true, "API, Nexum e Genesis respondem.");
     }
 
     private static string? ExtractServerReference(string content)
@@ -1317,7 +1424,10 @@ public sealed record DesktopApiSubmitResult(
     bool PersistedOnServer,
     string Endpoint,
     string Detail,
-    string? ServerReference);
+    string? ServerReference,
+    bool EndpointResponded = false,
+    bool RequestMayHaveBeenProcessed = false,
+    bool StopRetry = false);
 
 internal sealed record GenesisPdvVendaApiRequest(
     string? Numero,

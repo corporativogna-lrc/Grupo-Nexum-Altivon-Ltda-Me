@@ -101,11 +101,7 @@
                             <StackPanel Margin="0,0,12,0">
                                 <TextBlock Text="Empresa emissora" Foreground="{StaticResource TextSecondary}" />
                                 <ComboBox SelectedItem="{Binding EmpresaEmissora}">
-                                    <ComboBoxItem Content="Seleção automática - menor custo" />
-                                    <ComboBoxItem Content="Grupo Nexum Altivon" />
-                                    <ComboBoxItem Content="Geração Top Mais" />
-                                    <ComboBoxItem Content="Chronnus Relojoaria" />
-                                    <ComboBoxItem Content="Gran Festas" />
+                                    <ComboBoxItem Content="Empresa matriz ativa do Genesis" />
                                 </ComboBox>
                             </StackPanel>
                             <StackPanel>

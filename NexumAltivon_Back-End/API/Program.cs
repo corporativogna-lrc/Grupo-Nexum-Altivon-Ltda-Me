@@ -22,6 +22,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using NexumAltivon.API.Data;
 using NexumAltivon.API.ERP.FiscalRouting;
+using NexumAltivon.API.ERP.SharedData;
 using NexumAltivon.API.Models;
 using NexumAltivon.API.Services;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
@@ -54,6 +55,21 @@ if (!string.IsNullOrWhiteSpace(connectionString))
     var serverVersion = new MySqlServerVersion(new Version(8, 0, 0));
     builder.Services.AddDbContext<NexumDbContext>(options =>
         options.UseMySql(connectionString, serverVersion));
+}
+
+var genesisConnectionString = builder.Configuration.GetConnectionString("GenesisConnection");
+if (!string.IsNullOrWhiteSpace(genesisConnectionString))
+{
+    var genesisServerVersion = new MySqlServerVersion(new Version(8, 0, 0));
+    builder.Services.AddDbContext<GenesisDbContext>(options =>
+        options.UseMySql(genesisConnectionString, genesisServerVersion,
+            mySqlOptions => mySqlOptions.CommandTimeout(30)));
+}
+else
+{
+    builder.Services.AddScoped<GenesisDbContext>(_ =>
+        throw new InvalidOperationException(
+            "ConnectionStrings:GenesisConnection nao configurada. Configure genesis_bd por variavel de ambiente/cofre para habilitar o PDV."));
 }
 
 builder.Services.AddCors(options =>
@@ -207,6 +223,32 @@ app.MapGet("/health/db", async (IServiceProvider services, CancellationToken ct)
     catch (Exception ex)
     {
         return Results.Problem(ex.Message);
+    }
+});
+
+app.MapGet("/health/db/genesis", async (IServiceProvider services, ILoggerFactory loggerFactory, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(genesisConnectionString))
+    {
+        return Results.Problem(
+            "ConnectionStrings:GenesisConnection nao configurada.",
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
+    try
+    {
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<GenesisDbContext>();
+        return await db.Database.CanConnectAsync(ct)
+            ? Results.Ok(new { status = "Healthy", database = "genesis_bd" })
+            : Results.Problem("Banco Genesis configurado, mas sem conexao.", statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+    catch (Exception ex)
+    {
+        loggerFactory.CreateLogger("GenesisDatabaseHealth").LogError(ex, "Falha na verificacao de conexao com genesis_bd.");
+        return Results.Problem(
+            "Banco Genesis configurado, mas indisponivel. Consulte os logs operacionais.",
+            statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 });
 
@@ -3364,6 +3406,56 @@ app.MapGet("/api/fiscal/pdv/configuracoes", [Authorize(Policy = "Gerente")] asyn
     return Results.Ok(ApiResponse<List<PdvFiscalConfigDto>>.Ok(configuracoes));
 })
 .WithName("PdvFiscalConfiguracoes")
+;
+
+app.MapPost("/api/desktop/genesis/pdv/vendas", [Authorize(Policy = "Gerente")] async (
+    HttpRequest httpRequest,
+    ILogger<Program> logger,
+    GenesisPdvVendaRequest request,
+    GenesisDbContext genesisDb,
+    NexumDbContext nexumDb,
+    CancellationToken ct) =>
+{
+    var terminal = httpRequest.Headers["X-Nexum-Terminal"].ToString().Trim();
+    var store = httpRequest.Headers["X-Nexum-Store"].ToString().Trim();
+    if (terminal.Length is < 1 or > 100 || store.Length is < 1 or > 100)
+    {
+        return Results.BadRequest(new { erro = "Identificacao da loja e do terminal e obrigatoria." });
+    }
+
+    if (!string.Equals(request.Terminal?.Trim(), terminal, StringComparison.Ordinal)
+        || !string.Equals(request.CaixaCodigo?.Trim(), terminal, StringComparison.Ordinal))
+    {
+        return Results.BadRequest(new { erro = "A venda precisa corresponder ao terminal autenticado da requisicao." });
+    }
+
+    try
+    {
+        var venda = await GenesisPdvService.RegistrarVendaAsync(genesisDb, nexumDb, request, ct);
+        return Results.Created($"/api/desktop/genesis/pdv/vendas/{venda.Id}", new
+        {
+            gravadoNoServidor = true,
+            sincronizadoNexum = true,
+            venda
+        });
+    }
+    catch (GenesisPdvMirrorPendingException ex)
+    {
+        logger.LogError(ex.InnerException ?? ex, "Venda Genesis {VendaId} persistida, mas o espelho Nexum não foi confirmado.", ex.Venda.Id);
+        return Results.Json(new
+        {
+            gravadoNoServidor = true,
+            sincronizadoNexum = false,
+            mensagem = "A venda foi gravada no Genesis, mas a sincronização Nexum falhou. Não repita a venda; reconciliação é necessária.",
+            venda = ex.Venda
+        }, statusCode: StatusCodes.Status202Accepted);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { erro = ex.Message });
+    }
+})
+.WithName("RegistrarVendaPdvDesktop")
 ;
 
 app.MapGet("/api/fiscal/pedidos", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>

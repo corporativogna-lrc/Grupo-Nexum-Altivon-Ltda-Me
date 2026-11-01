@@ -25,7 +25,7 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
     private string _codigoVenda = string.Empty;
     private string _clienteNome = "Consumidor final";
     private string _clienteDocumento = string.Empty;
-    private string _empresaEmissora = "Seleção automática - menor custo";
+    private string _empresaEmissora = "Empresa matriz ativa do Genesis";
     private string _novoItemQuantidade = "1";
     private string _novoItemDesconto = "0,00";
     private string _novoItemOrigem = "ECOM";
@@ -165,8 +165,8 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
     public string FiscalLabel => $"Fiscal: {StatusFiscal}";
     public string FinanceiroLabel => $"Financeiro: {StatusFinanceiro}";
     public string LogisticaLabel => $"Logística: {StatusLogistico}";
-    private string StatusFiscal => EmpresaEmissora.Contains("automática", StringComparison.OrdinalIgnoreCase)
-        ? "emitente será definido pelo menor custo e maior margem"
+    private string StatusFiscal => EmpresaEmissora.StartsWith("Empresa matriz ativa", StringComparison.OrdinalIgnoreCase)
+        ? "emitente definido pela empresa matriz ativa do Genesis"
         : $"emitente selecionado: {EmpresaEmissora}";
     private string StatusFinanceiro => Pago >= Total && Total > 0m
         ? "pagamento suficiente para baixa e contas a receber"
@@ -361,7 +361,7 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
         CodigoVenda = $"PDV-{_terminal.StoreCode}-{DateTime.Now:yyyyMMdd-HHmmss}";
         ClienteNome = "Consumidor final";
         ClienteDocumento = string.Empty;
-        EmpresaEmissora = "Seleção automática - menor custo";
+        EmpresaEmissora = "Empresa matriz ativa do Genesis";
         StatusOperacional = "Venda em atendimento. Adicione itens para totalizar.";
         UltimoArquivoLocal = "Fila local ainda vazia.";
         AtualizarTotais();
@@ -421,6 +421,34 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
             StatusOperacional = finalizar
                 ? "Venda gravada no servidor Genesis/Nexum com reflexo em estoque, financeiro e fila fiscal."
                 : "Rascunho enviado ao servidor Genesis/Nexum para continuidade operacional.";
+            return;
+        }
+
+        if (submit.PersistedOnServer)
+        {
+            UltimoArquivoLocal = $"Servidor: {submit.Endpoint} | {submit.ServerReference ?? "gravação parcial confirmada"}";
+            StatusOperacional = $"{submit.Detail} O rascunho não foi colocado na contingência para evitar duplicidade.";
+            return;
+        }
+
+        if (submit.StopRetry)
+        {
+            UltimoArquivoLocal = "Venda não enviada: falta autenticação administrativa.";
+            StatusOperacional = submit.Detail;
+            return;
+        }
+
+        if (submit.RequestMayHaveBeenProcessed)
+        {
+            UltimoArquivoLocal = "Resposta perdida após iniciar o envio; estado da venda indeterminado.";
+            StatusOperacional = $"Não repita nem envie pela contingência até consultar o código {CodigoVenda} no servidor. Motivo: {submit.Detail}";
+            return;
+        }
+
+        if (submit.EndpointResponded)
+        {
+            UltimoArquivoLocal = "A API respondeu e recusou a operação.";
+            StatusOperacional = $"Venda não gravada: {submit.Detail} Corrija a causa indicada antes de tentar novamente.";
             return;
         }
 

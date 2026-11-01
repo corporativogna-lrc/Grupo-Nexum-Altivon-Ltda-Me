@@ -8,6 +8,17 @@
 
 namespace NexumAltivon.API.ERP.SharedData;
 
+public sealed class GenesisPdvMirrorPendingException : Exception
+{
+    public GenesisPdvMirrorPendingException(GenesisPdvVendaDto venda, Exception innerException)
+        : base($"Venda Genesis {venda.Id} gravada; o espelho Nexum requer reconciliacao.", innerException)
+    {
+        Venda = venda;
+    }
+
+    public GenesisPdvVendaDto Venda { get; }
+}
+
 public sealed record GenesisPdvVendaRequest(
     string? Numero,
     string? EmpresaCodigo,
