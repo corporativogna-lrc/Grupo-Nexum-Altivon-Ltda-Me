@@ -78,7 +78,7 @@ Este programa e criterio de aceite do Desktop e nao aumenta isoladamente o numer
 
 Regra de aceite: a cobertura WPF somente sera concluida quando a matriz tabela-endpoint-formulario-permissao atingir 100%, sem tabelas administrativas orfas e sem formulario que grave em dominio diferente daquele declarado.
 
-Evidencia atualizada em 2026-11-01: a matriz gerada em 2026-07-19 encontrou 257 tabelas base, 12 views e 17 janelas WPF. Nesta branch, `EmpresasGrupoWindow` substitui o fluxo genérico de empresas, `FiscalRoutingWindow` substitui heurísticas/submissão genérica por simulação autenticada da API e `PedidoConsultaWindow` lê pedidos e itens. A árvore local agora contém 20 janelas XAML (`App.xaml` é o arquivo adicional); a matriz integral precisa ser regenerada no checkout oficial depois de integrar/publicar. Permanecem dois chamadores de `SubmitOperationAsync`: `CorporateMasterDataWindow` para os demais cadastros e `ModuleWorkspaceWindow`.
+Evidencia atualizada em 2026-11-01: a matriz gerada em 2026-07-19 encontrou 257 tabelas base e 12 views. O checkout atual contém 22 janelas WPF (23 arquivos XAML contando `App.xaml`), incluindo telas específicas para empresas, roteamento fiscal, pedidos, produtos, categorias, códigos/QR e lojas. A matriz integral precisa ser regenerada com este estado. Permanecem chamadores de `SubmitOperationAsync` em `CorporateMasterDataWindow` para cadastros ainda não migrados e `ModuleWorkspaceWindow` para módulos sem contratos próprios.
 
 ## Frente Unica de Layout do Desktop WPF
 
@@ -86,11 +86,11 @@ Evidencia atualizada em 2026-11-01: a matriz gerada em 2026-07-19 encontrou 257 
 
 | ID | Criterio de aceite | Status real |
 |---|---|---|
-| WPF-VIS-01A Superficie | Manter identidade e cores; aplicar fundo fume translucido com efeito de cristal/acrylic, permitindo leitura controlada da Area de Trabalho sem reduzir contraste ou legibilidade | Pendente global |
-| WPF-VIS-01B Geometria | Padronizar bordas arredondadas discretas, hierarquia, densidade e espacos; eliminar paineis decorativos sem funcao operacional | Pendente global |
-| WPF-VIS-01C Contencao | Conter cada janela na area util do monitor, respeitar DPI/resolucao e remover `ScrollViewer` estrutural horizontal/vertical; rolagem interna permanece permitida apenas em grades e campos extensos | Parcial: `ProcurementWindow`, `SupplierManagementWindow` e `CustomerManagementWindow` usam layout fixo contido sem `ScrollViewer` externo |
-| WPF-VIS-01D Dashboard | Reduzir poluicao do dashboard, preservar navegacao lateral e menus suspensos e exibir um unico grafico central selecionavel sem sobreposicao | Pendente |
-| WPF-VIS-01E Consistencia | Aplicar o mesmo shell visual somente depois de homologar contraste, foco, teclado, redimensionamento e custo de renderizacao, sem alterar a identidade funcional de cada formulario | Pendente |
+| WPF-VIS-01A Superficie | Manter identidade e cores; aplicar fundo fume translucido com efeito de cristal/acrylic, permitindo leitura controlada da Area de Trabalho sem reduzir contraste ou legibilidade | Parcial: todas as janelas WPF usam paleta azul acinzentada e opacidade global 90%, preservando moldura nativa; efeito Acrylic e contraste em diferentes fundos ainda nao homologados |
+| WPF-VIS-01B Geometria | Padronizar bordas arredondadas discretas, hierarquia, densidade e espacos; eliminar paineis decorativos sem funcao operacional | Parcial: shell principal, cartoes e botoes globais usam cantos arredondados/estados visuais; geometria de todos os formularios ainda nao revisada |
+| WPF-VIS-01C Contencao | Conter cada janela na area util do monitor, respeitar DPI/resolucao e remover `ScrollViewer` estrutural horizontal/vertical; rolagem interna permanece permitida apenas em grades e campos extensos | Parcial: `MainWindow`, `ProcurementWindow`, `SupplierManagementWindow` e `CustomerManagementWindow` usam pagina/layout sem rolagem estrutural; demais janelas aguardam auditoria de DPI e contencao |
+| WPF-VIS-01D Dashboard | Reduzir poluicao do dashboard, preservar navegacao lateral e menus suspensos e exibir um unico grafico central selecionavel sem sobreposicao | Parcial: dashboard compacto e quatro grupos de navegação publicados; grafico central selecionável ainda nao existe e precisa de fonte de dados real |
+| WPF-VIS-01E Consistencia | Aplicar o mesmo shell visual somente depois de homologar contraste, foco, teclado, redimensionamento e custo de renderizacao, sem alterar a identidade funcional de cada formulario | Parcial: paleta/opacidade e botoes globais aplicados; falta homologar foco, teclado, contraste e redimensionamento nas 22 janelas |
 | WPF-VIS-01F Homologacao | Validar capturas e operacao real em resolucoes e escalas DPI representativas, sem corte de texto, controles fora da area util ou barras estruturais | Pendente |
 
 ## Bloqueadores B1 a B14
@@ -501,4 +501,4 @@ Nao declarar item como concluido sem uma evidencia tecnica associada: build, tes
 | Aparência | Barra de navegação recebeu contorno arredondado azul acinzentado, espaçamento uniforme e estados de destaque; submenus usam a paleta de leitura do sistema com foco dourado. |
 | Fluxos | Os itens mantiveram os handlers existentes; nenhuma rota foi substituída nessa reorganização. A árvore de acessibilidade confirma as quatro entradas e itens de cadastro/PDV. |
 | Validação | Build WPF Release sem avisos/erros; publicação local promovida com rollback; o aplicativo abriu responsivo, maximizado, com título e handle válidos. Captura de tela expirou no serviço de captura. |
-| Publicação | Commit anterior já enviado a `main`; esta revisão de navegação precisa de commit/push próprio para chegar ao repositório. |
+| Publicação | Revisão enviada ao GitHub em `main`; CI e Pages foram executados para o lote anterior. Alterações Desktop-only não acionam o workflow CI existente por seu filtro de caminhos, portanto um workflow econômico para empacotar a versão Windows foi adicionado nesta continuação. |

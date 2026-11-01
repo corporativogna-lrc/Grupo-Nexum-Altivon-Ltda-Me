@@ -1,0 +1,56 @@
+name: Build GenesisGest.Net Desktop
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'NexumAltivon.Desktop/**'
+      - 'Directory.Build.props'
+      - '.github/workflows/desktop-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish-windows-x64:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish self-contained Desktop
+        run: >-
+          dotnet publish NexumAltivon.Desktop/NexumAltivon.Desktop.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          -p:PublishSingleFile=false
+          --output publish-desktop
+
+      - name: Package and hash Desktop
+        shell: pwsh
+        run: |
+          Compress-Archive -Path 'publish-desktop/*' -DestinationPath 'GenesisGest.Net-Desktop-win-x64.zip' -CompressionLevel Optimal
+          $hash = (Get-FileHash -LiteralPath 'GenesisGest.Net-Desktop-win-x64.zip' -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  GenesisGest.Net-Desktop-win-x64.zip" | Set-Content -LiteralPath 'GenesisGest.Net-Desktop-win-x64.sha256' -Encoding ascii
+          "Desktop artifact: GenesisGest.Net-Desktop-win-x64.zip`nSHA-256: $hash" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload production Desktop package
+        uses: actions/upload-artifact@v7
+        with:
+          name: GenesisGest.Net-Desktop-win-x64-${{ github.sha }}
+          path: |
+            GenesisGest.Net-Desktop-win-x64.zip
+            GenesisGest.Net-Desktop-win-x64.sha256
+          if-no-files-found: error
+          retention-days: 7
