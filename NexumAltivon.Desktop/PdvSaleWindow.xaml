@@ -15,20 +15,21 @@
         MinHeight="640"
         WindowStartupLocation="CenterScreen"
         ResizeMode="CanResize"
+        Loaded="Window_Loaded"
         Background="{StaticResource ShellBackground}"
         FontFamily="Segoe UI">
     <Window.Resources>
         <Style TargetType="TextBox">
             <Setter Property="Padding" Value="11" />
-            <Setter Property="Background" Value="#0C1729" />
+            <Setter Property="Background" Value="{StaticResource PanelSurface}" />
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
             <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
             <Setter Property="BorderThickness" Value="1" />
         </Style>
         <Style TargetType="ComboBox">
             <Setter Property="Padding" Value="9" />
-            <Setter Property="Background" Value="#0C1729" />
-            <Setter Property="Foreground" Value="#0C1729" />
+            <Setter Property="Background" Value="{StaticResource PanelSurface}" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
             <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
         </Style>
         <Style x:Key="PanelCard" TargetType="Border">
@@ -124,29 +125,34 @@
                     <DockPanel>
                         <StackPanel DockPanel.Dock="Top">
                             <TextBlock Text="Itens da venda" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
-                            <UniformGrid Columns="7" Margin="0,14,0,14">
-                                <StackPanel Margin="0,0,8,0">
-                                    <TextBlock Text="Código/SKU" Foreground="{StaticResource TextSecondary}" />
-                                    <TextBox Text="{Binding NovoItemCodigo, UpdateSourceTrigger=PropertyChanged}" />
+                            <UniformGrid Columns="4" Margin="0,14,0,14">
+                                <StackPanel Margin="0,0,10,0">
+                                    <TextBlock Text="Produto do catálogo publicado" Foreground="{StaticResource TextSecondary}" />
+                                    <ComboBox ItemsSource="{Binding CatalogoProdutos}"
+                                              SelectedItem="{Binding ProdutoSelecionado}"
+                                              MaxDropDownHeight="360">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Margin="3,2">
+                                                    <TextBlock Text="{Binding Nome}" Foreground="{StaticResource TextPrimary}" FontWeight="SemiBold" />
+                                                    <TextBlock Foreground="{StaticResource TextSecondary}" FontSize="11">
+                                                        <Run Text="{Binding Sku}" />
+                                                        <Run Text=" · R$ " />
+                                                        <Run Text="{Binding Preco}" />
+                                                        <Run Text=" · disponível " />
+                                                        <Run Text="{Binding Estoque}" />
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
                                 </StackPanel>
-                                <StackPanel Margin="0,0,8,0">
-                                    <TextBlock Text="Descrição" Foreground="{StaticResource TextSecondary}" />
-                                    <TextBox Text="{Binding NovoItemDescricao, UpdateSourceTrigger=PropertyChanged}" />
-                                </StackPanel>
-                                <StackPanel Margin="0,0,8,0">
-                                    <TextBlock Text="Qtd." Foreground="{StaticResource TextSecondary}" />
+                                <StackPanel Margin="0,0,10,0">
+                                    <TextBlock Text="Quantidade" Foreground="{StaticResource TextSecondary}" />
                                     <TextBox Text="{Binding NovoItemQuantidade, UpdateSourceTrigger=PropertyChanged}" />
                                 </StackPanel>
-                                <StackPanel Margin="0,0,8,0">
-                                    <TextBlock Text="Unitário" Foreground="{StaticResource TextSecondary}" />
-                                    <TextBox Text="{Binding NovoItemValorUnitario, UpdateSourceTrigger=PropertyChanged}" />
-                                </StackPanel>
-                                <StackPanel Margin="0,0,8,0">
-                                    <TextBlock Text="Custo" Foreground="{StaticResource TextSecondary}" />
-                                    <TextBox Text="{Binding NovoItemCustoEstimado, UpdateSourceTrigger=PropertyChanged}" />
-                                </StackPanel>
-                                <StackPanel Margin="0,0,8,0">
-                                    <TextBlock Text="Desconto" Foreground="{StaticResource TextSecondary}" />
+                                <StackPanel Margin="0,0,10,0">
+                                    <TextBlock Text="Desconto no item (R$)" Foreground="{StaticResource TextSecondary}" />
                                     <TextBox Text="{Binding NovoItemDesconto, UpdateSourceTrigger=PropertyChanged}" />
                                 </StackPanel>
                                 <StackPanel>
@@ -159,13 +165,14 @@
                                     </ComboBox>
                                 </StackPanel>
                             </UniformGrid>
+                            <TextBlock Text="{Binding CatalogoStatus}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,0,0,10" />
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
                                 <Button Content="Adicionar item" Padding="16,9" Margin="0,0,10,0" Click="AdicionarItem_Click" />
                                 <Button Content="Remover selecionado" Padding="16,9" Click="RemoverItem_Click" />
                             </StackPanel>
                         </StackPanel>
 
-                        <DataGrid ItemsSource="{Binding Itens}" SelectedItem="{Binding ItemSelecionado}" AutoGenerateColumns="False" CanUserAddRows="False" Background="#0C1729" Foreground="{StaticResource TextPrimary}" RowBackground="#0C1729" AlternatingRowBackground="#101B30" GridLinesVisibility="Horizontal" BorderBrush="{StaticResource PanelBorder}">
+                        <DataGrid ItemsSource="{Binding Itens}" SelectedItem="{Binding ItemSelecionado}" AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True" Background="{StaticResource PanelSurface}" Foreground="{StaticResource TextPrimary}" RowBackground="{StaticResource PanelSurface}" AlternatingRowBackground="{StaticResource PanelBackground}" GridLinesVisibility="Horizontal" BorderBrush="{StaticResource PanelBorder}">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Código" Binding="{Binding Codigo}" Width="120" />
                                 <DataGridTextColumn Header="Descrição" Binding="{Binding Descricao}" Width="*" />

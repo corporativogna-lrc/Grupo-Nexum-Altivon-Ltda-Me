@@ -37,11 +37,26 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
     private string _formaPagamento = "PIX";
     private string _valorPagamento = "0,00";
     private string _autorizacaoPagamento = string.Empty;
+    private DesktopProdutoLoja? _produtoSelecionado;
+    private string _catalogoStatus = "Carregando catálogo publicado da API…";
     private string _statusOperacional = "Venda em atendimento. Nenhum item registrado.";
     private string _ultimoArquivoLocal = "Fila local ainda vazia.";
 
     public ObservableCollection<PdvCartItem> Itens { get; } = new();
     public ObservableCollection<PdvPaymentLine> Pagamentos { get; } = new();
+    public ObservableCollection<DesktopProdutoLoja> CatalogoProdutos { get; } = new();
+
+    public DesktopProdutoLoja? ProdutoSelecionado
+    {
+        get => _produtoSelecionado;
+        set => SetField(ref _produtoSelecionado, value);
+    }
+
+    public string CatalogoStatus
+    {
+        get => _catalogoStatus;
+        set => SetField(ref _catalogoStatus, value);
+    }
 
     public string CodigoVenda
     {
@@ -210,6 +225,43 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
         NovaVenda();
     }
 
+    private async void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var result = await _api.GetPublicProductsAsync(_terminal);
+            if (!result.Success || result.Data is null)
+            {
+                CatalogoStatus = $"Catálogo indisponível: {result.Detail}";
+                StatusOperacional = "Não é possível iniciar vendas sem carregar o catálogo da API.";
+                return;
+            }
+
+            var products = result.Data
+                .Where(product => !string.IsNullOrWhiteSpace(product.Sku)
+                    && !string.IsNullOrWhiteSpace(product.Nome)
+                    && (product.PrecoPromocional ?? product.Preco) > 0m)
+                .OrderBy(product => product.Nome, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            CatalogoProdutos.Clear();
+            foreach (var product in products)
+            {
+                CatalogoProdutos.Add(product);
+            }
+
+            CatalogoStatus = $"{products.Count} produtos carregados. Disponibilidade atualizada pela API; o servidor confirma o estoque ao registrar a venda.";
+            StatusOperacional = products.Count == 0
+                ? "A API respondeu, mas não há produtos válidos para venda no catálogo."
+                : "Catálogo da API carregado. Selecione um produto para iniciar a venda.";
+        }
+        catch (Exception ex)
+        {
+            CatalogoStatus = $"Falha ao carregar catálogo: {ex.Message}";
+            StatusOperacional = "Não é possível iniciar vendas sem carregar o catálogo da API.";
+        }
+    }
+
     private void NovaVenda_Click(object sender, RoutedEventArgs e)
     {
         NovaVenda();
@@ -217,24 +269,52 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
 
     private void AdicionarItem_Click(object sender, RoutedEventArgs e)
     {
-        var codigo = string.IsNullOrWhiteSpace(NovoItemCodigo)
-            ? GerarCodigoTemporario()
-            : NovoItemCodigo.Trim();
+        var product = ProdutoSelecionado;
+        if (product is null)
+        {
+            StatusOperacional = "Selecione um produto do catálogo carregado pela API.";
+            return;
+        }
 
-        var descricao = string.IsNullOrWhiteSpace(NovoItemDescricao)
-            ? "Item de balcão informado no terminal"
-            : NovoItemDescricao.Trim();
+        if (!TryParseDecimal(NovoItemQuantidade, out var quantity) || quantity <= 0m || quantity != decimal.Truncate(quantity))
+        {
+            StatusOperacional = "Informe uma quantidade inteira maior que zero.";
+            return;
+        }
+
+        if (!TryParseDecimal(NovoItemDesconto, out var discount) || discount < 0m)
+        {
+            StatusOperacional = "Informe um desconto válido, igual ou maior que zero.";
+            return;
+        }
+
+        var alreadyInCart = Itens
+            .Where(item => string.Equals(item.Codigo, product.Sku, StringComparison.OrdinalIgnoreCase))
+            .Sum(item => item.Quantidade);
+        var available = Math.Max(0, product.Estoque - product.EstoqueReservado - (int)alreadyInCart);
+        if (quantity > available)
+        {
+            StatusOperacional = $"Estoque insuficiente para {product.Nome}. Disponível: {available}.";
+            return;
+        }
+
+        var unitPrice = product.PrecoPromocional ?? product.Preco;
+        if (discount > unitPrice * quantity)
+        {
+            StatusOperacional = "O desconto não pode superar o valor bruto do item.";
+            return;
+        }
 
         var item = new PdvCartItem
         {
-            Codigo = codigo,
-            Descricao = descricao,
+            Codigo = product.Sku.Trim(),
+            Descricao = product.Nome.Trim(),
             EmpresaDestino = _terminal.StoreCode,
             OrigemAquisicao = NovoItemOrigem,
-            Quantidade = ParseDecimal(NovoItemQuantidade, 1m),
-            ValorUnitario = ParseDecimal(NovoItemValorUnitario, 0m),
-            CustoEstimado = ParseDecimal(NovoItemCustoEstimado, 0m),
-            Desconto = ParseDecimal(NovoItemDesconto, 0m)
+            Quantidade = quantity,
+            ValorUnitario = unitPrice,
+            CustoEstimado = product.Custo,
+            Desconto = discount
         };
 
         item.PropertyChanged += (_, _) => AtualizarTotais();
@@ -242,11 +322,8 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
         ItemSelecionado = item;
         StatusOperacional = $"Item {item.Codigo} incluído. Total atual R$ {Total:N2}.";
 
-        NovoItemCodigo = string.Empty;
-        NovoItemDescricao = string.Empty;
+        ProdutoSelecionado = null;
         NovoItemQuantidade = "1";
-        NovoItemValorUnitario = "0,00";
-        NovoItemCustoEstimado = "0,00";
         NovoItemDesconto = "0,00";
         AtualizarTotais();
     }
@@ -393,8 +470,6 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
         CustoEstimado = item.CustoEstimado
     };
 
-    private static string GerarCodigoTemporario() => $"BALCAO-{DateTime.Now:HHmmss}";
-
     private static string NormalizeComboValue(object? value)
     {
         if (value is System.Windows.Controls.ComboBoxItem item)
@@ -426,6 +501,13 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
         }
 
         return fallback;
+    }
+
+    private static bool TryParseDecimal(string? value, out decimal result)
+    {
+        var normalized = (value ?? string.Empty).Trim().Replace("R$", "", StringComparison.OrdinalIgnoreCase).Trim();
+        return decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.GetCultureInfo("pt-BR"), out result)
+            || decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.InvariantCulture, out result);
     }
 
     private void AtualizarTotais()

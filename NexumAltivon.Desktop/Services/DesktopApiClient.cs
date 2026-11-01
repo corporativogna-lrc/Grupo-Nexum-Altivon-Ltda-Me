@@ -175,6 +175,69 @@ public sealed class DesktopApiClient
             profile, token, HttpMethod.Get, $"/api/admin/produtos{query}", null, cancellationToken);
     }
 
+    public async Task<DesktopApiDataResult<List<DesktopProdutoLoja>>> GetPublicProductsAsync(
+        TerminalProfile profile,
+        CancellationToken cancellationToken = default)
+    {
+        const int pageSize = 60;
+        var failures = new List<string>();
+
+        foreach (var endpoint in GetEndpoints(profile))
+        {
+            var products = new List<DesktopProdutoLoja>();
+            var endpointFailed = false;
+
+            for (var page = 1; page <= 100; page++)
+            {
+                try
+                {
+                    var path = $"/api/produtos?pagina={page}&itensPorPagina={pageSize}";
+                    using var response = await Http.GetAsync($"{endpoint}{path}", cancellationToken);
+                    var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        failures.Add($"{endpoint}: {(int)response.StatusCode} {ExtractErrorMessage(content, response.ReasonPhrase)}");
+                        endpointFailed = true;
+                        break;
+                    }
+
+                    var envelope = JsonSerializer.Deserialize<DesktopApiEnvelope<List<DesktopProdutoLoja>>>(content, JsonOptions);
+                    if (envelope is null || !envelope.Sucesso || envelope.Dados is null)
+                    {
+                        failures.Add($"{endpoint}: {envelope?.Mensagem ?? "A API não confirmou o catálogo público."}");
+                        endpointFailed = true;
+                        break;
+                    }
+
+                    products.AddRange(envelope.Dados);
+                    if (envelope.Dados.Count < pageSize)
+                    {
+                        return new DesktopApiDataResult<List<DesktopProdutoLoja>>(
+                            true,
+                            products,
+                            $"Catálogo carregado da API com {products.Count} produtos.");
+                    }
+                }
+                catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+                {
+                    failures.Add($"{endpoint}: {ex.Message}");
+                    endpointFailed = true;
+                    break;
+                }
+            }
+
+            if (!endpointFailed)
+            {
+                failures.Add($"{endpoint}: o catálogo excedeu o limite seguro de 100 páginas.");
+            }
+        }
+
+        return new DesktopApiDataResult<List<DesktopProdutoLoja>>(
+            false,
+            null,
+            string.Join(" | ", failures));
+    }
+
     public Task<DesktopApiDataResult<DesktopProdutoLoja>> UpdateProductAsync(
         TerminalProfile profile, string token, string slug, DesktopProdutoUpdateRequest request,
         CancellationToken cancellationToken = default) =>
