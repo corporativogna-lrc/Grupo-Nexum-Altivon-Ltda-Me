@@ -492,3 +492,13 @@ Nao declarar item como concluido sem uma evidencia tecnica associada: build, tes
 | Inicialização | `MainWindow.xaml` mantém `WindowState="Maximized"`; a publicação runtime foi promovida com backup e o processo abriu responsivo com título e handle de janela válidos. Atalho do usuário aponta ao executável publicado. |
 | Validação | WPF Release sem avisos/erros; API Release e 37/37 testes aprovados; front-end compilado em produção; `git diff --check` limpo. A captura visual detalhada não foi obtida. |
 | Limite | A opacidade de 90% deixa o conteúdo da janela ligeiramente translúcido. O efeito não é o Acrylic/Mica do Windows 11; mantém compatibilidade com o Windows 10 deste ambiente e preserva leitura por meio da paleta opaca azul acinzentada. |
+
+## Navegacao principal do Desktop — 2026-11-01
+
+| Item | Status e evidencia |
+|---|---|
+| Hierarquia | As onze áreas principais foram agrupadas em quatro entradas: Operação, Suprimentos, Gestão e Sistema; cadastros e rotinas de cada domínio permanecem acessíveis em submenus. |
+| Aparência | Barra de navegação recebeu contorno arredondado azul acinzentado, espaçamento uniforme e estados de destaque; submenus usam a paleta de leitura do sistema com foco dourado. |
+| Fluxos | Os itens mantiveram os handlers existentes; nenhuma rota foi substituída nessa reorganização. A árvore de acessibilidade confirma as quatro entradas e itens de cadastro/PDV. |
+| Validação | Build WPF Release sem avisos/erros; publicação local promovida com rollback; o aplicativo abriu responsivo, maximizado, com título e handle válidos. Captura de tela expirou no serviço de captura. |
+| Publicação | Commit anterior já enviado a `main`; esta revisão de navegação precisa de commit/push próprio para chegar ao repositório. |

@@ -73,17 +73,30 @@
         <Style TargetType="MenuItem">
             <Setter Property="Background" Value="{StaticResource PanelBackground}" />
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
-            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Padding" Value="12,7" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Padding" Value="14,9" />
+            <Setter Property="Margin" Value="2" />
             <Style.Triggers>
+                <Trigger Property="Role" Value="TopLevelHeader">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+                    <Setter Property="Padding" Value="14,10" />
+                    <Setter Property="Margin" Value="3,1" />
+                </Trigger>
                 <Trigger Property="Role" Value="SubmenuItem">
-                    <Setter Property="Foreground" Value="#080704" />
-                    <Setter Property="Background" Value="#F4E7B8" />
+                    <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+                    <Setter Property="Background" Value="{StaticResource PanelBackground}" />
                 </Trigger>
                 <Trigger Property="Role" Value="SubmenuHeader">
-                    <Setter Property="Foreground" Value="#080704" />
-                    <Setter Property="Background" Value="#F4E7B8" />
+                    <Setter Property="Foreground" Value="{StaticResource AccentGold}" />
+                    <Setter Property="Background" Value="{StaticResource PanelBackground}" />
+                </Trigger>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter Property="Background" Value="{StaticResource PanelElevated}" />
+                    <Setter Property="Foreground" Value="{StaticResource AccentGold}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource AccentGoldDark}" />
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -150,111 +163,120 @@
     </Window.Resources>
 
     <DockPanel Margin="20">
-        <Menu DockPanel.Dock="Top"
-              Background="{StaticResource PanelBackground}"
-              Foreground="{StaticResource TextPrimary}"
-              BorderBrush="{StaticResource PanelBorder}"
-              BorderThickness="1"
-              Padding="8"
-              Margin="0,0,0,14">
-            <MenuItem Header="_Operação">
-                <MenuItem Header="Abrir PDV / Venda de balcão" Click="OpenPdvSale_Click" />
-                <MenuItem Header="Abrir caixa" Click="OpenPdvSale_Click" />
-                <MenuItem Header="Fechar caixa" Click="OpenPdvSale_Click" />
-                <Separator />
-                <MenuItem Header="Troca e devolução" Click="OpenPdvSale_Click" />
-                <MenuItem Header="Consulta de pedido" Click="OpenWorkspace_Click" />
-            </MenuItem>
-            <MenuItem Header="_Cadastros">
-                <MenuItem Header="Clientes" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Fornecedores" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Produtos e serviços" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Categorias e subcategorias" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Empresas do grupo" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Centros de custo" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Usuários, perfis e permissões" Click="OpenAccessManagement_Click" />
-            </MenuItem>
-            <MenuItem Header="_Compras">
-                <MenuItem Header="Solicitação de compra" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Cotação com fornecedores" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Pedido de compra" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Entrada de mercadoria" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Dropshipping e parcerias" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Devolução a fornecedor" Click="OpenWorkspace_Click" />
-            </MenuItem>
-            <MenuItem Header="_Estoque">
-                <MenuItem Header="Saldo físico" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Saldo fiscal" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Transferência entre lojas" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Inventário" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Código de barras e QR Code" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Rastreabilidade por origem" Click="OpenWorkspace_Click" />
-            </MenuItem>
-            <MenuItem Header="_Retaguarda">
-                <MenuItem Header="Painel Genesis local" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Cockpit executivo" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Comercial e CRM" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Relatórios gerenciais" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Auditoria operacional" Click="OpenWorkspace_Click" />
-            </MenuItem>
-            <MenuItem Header="_Financeiro">
-                <MenuItem Header="Contas a receber" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Contas a pagar" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Caixa e conciliação" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Tesouraria" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Alçadas de aprovação" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Conciliação bancária" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Ativo imobilizado" Click="OpenWorkspace_Click" />
-                <MenuItem Header="DRE e indicadores" Click="OpenWorkspace_Click" />
-            </MenuItem>
-            <MenuItem Header="_Fiscal">
-                <MenuItem Header="Emissão fiscal manual" Click="OpenManualNfe_Click" />
-                <MenuItem Header="Contingência fiscal" Click="OpenManualNfe_Click" />
-                <MenuItem Header="Empresa emissora automática" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Regras fiscais do grupo" Click="OpenWorkspace_Click" />
-                <MenuItem Header="NF-e / NFC-e / SAT" Click="OpenManualNfe_Click" />
-                <MenuItem Header="SPED / EFD / REINF" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Tributos e retenções" Click="OpenWorkspace_Click" />
-            </MenuItem>
-            <MenuItem Header="_Logística">
-                <MenuItem Header="Coleta" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Entrega" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Rastreamento" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Transportadoras" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Status do pedido" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Comunicação ao cliente" Click="OpenWorkspace_Click" />
-            </MenuItem>
-            <MenuItem Header="_Integrações">
-                <MenuItem Header="API local do servidor" Click="RefreshStatus_Click" />
-                <MenuItem Header="API pública Cloudflare" Click="RefreshStatus_Click" />
-                <MenuItem Header="E-commerce e dropshipping" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Logística e rastreio" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Marketplaces" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Open Finance / bancos" Click="OpenWorkspace_Click" />
-                <MenuItem Header="WhatsApp e e-mail" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Chaves OpenAI - Yara e Sophia" Click="OpenNetworkSettings_Click" />
-            </MenuItem>
-            <MenuItem Header="_Governança">
-                <MenuItem Header="RBAC e perfis" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Trilha de auditoria" Click="OpenWorkspace_Click" />
-                <MenuItem Header="LGPD" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Workflow e aprovações" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Multiempresa e tenant" Click="OpenWorkspace_Click" />
-            </MenuItem>
-            <MenuItem Header="_HCM / RH">
-                <MenuItem Header="Colaboradores / RH / folha" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Contratações" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Demissões" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Cargos e departamentos" Click="OpenWorkspace_Click" />
-                <MenuItem Header="Ponto e jornada" Click="OpenWorkspace_Click" />
-            </MenuItem>
-            <MenuItem Header="_Sistema">
-                <MenuItem Header="Atualizar conexões" Click="RefreshStatus_Click" />
-                <MenuItem Header="Grade de rede e endpoints" Click="OpenNetworkSettings_Click" />
-                <MenuItem Header="Configurar terminal" Click="FocusTerminal_Click" />
-                <MenuItem Header="Abrir pasta de contingência" Click="OpenOutboxFolder_Click" />
-            </MenuItem>
-        </Menu>
+        <Border DockPanel.Dock="Top"
+                Background="{StaticResource PanelBackground}"
+                BorderBrush="{StaticResource PanelBorder}"
+                BorderThickness="1"
+                CornerRadius="14"
+                Padding="5"
+                Margin="0,0,0,14">
+            <Menu Background="Transparent" Foreground="{StaticResource TextPrimary}" BorderThickness="0">
+                <MenuItem Header="◉  _Operação">
+                    <MenuItem Header="Venda e PDV">
+                        <MenuItem Header="Abrir PDV / Venda de balcão" Click="OpenPdvSale_Click" />
+                        <MenuItem Header="Abrir caixa" Click="OpenPdvSale_Click" />
+                        <MenuItem Header="Fechar caixa" Click="OpenPdvSale_Click" />
+                        <Separator />
+                        <MenuItem Header="Troca e devolução" Click="OpenPdvSale_Click" />
+                        <MenuItem Header="Consulta de pedido" Click="OpenWorkspace_Click" />
+                    </MenuItem>
+                    <MenuItem Header="Cadastros">
+                        <MenuItem Header="Clientes" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Fornecedores" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Produtos e serviços" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Categorias e subcategorias" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Empresas do grupo" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Centros de custo" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Usuários, perfis e permissões" Click="OpenAccessManagement_Click" />
+                    </MenuItem>
+                </MenuItem>
+                <MenuItem Header="▦  _Suprimentos">
+                    <MenuItem Header="Compras">
+                        <MenuItem Header="Solicitação de compra" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Cotação com fornecedores" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Pedido de compra" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Entrada de mercadoria" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Dropshipping e parcerias" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Devolução a fornecedor" Click="OpenWorkspace_Click" />
+                    </MenuItem>
+                    <MenuItem Header="Estoque">
+                        <MenuItem Header="Saldo físico" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Saldo fiscal" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Transferência entre lojas" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Inventário" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Código de barras e QR Code" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Rastreabilidade por origem" Click="OpenWorkspace_Click" />
+                    </MenuItem>
+                </MenuItem>
+                <MenuItem Header="▣  _Gestão">
+                    <MenuItem Header="Retaguarda">
+                        <MenuItem Header="Painel Genesis local" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Cockpit executivo" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Comercial e CRM" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Relatórios gerenciais" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Auditoria operacional" Click="OpenWorkspace_Click" />
+                    </MenuItem>
+                    <MenuItem Header="Financeiro">
+                        <MenuItem Header="Contas a receber" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Contas a pagar" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Caixa e conciliação" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Tesouraria" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Alçadas de aprovação" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Conciliação bancária" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Ativo imobilizado" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="DRE e indicadores" Click="OpenWorkspace_Click" />
+                    </MenuItem>
+                    <MenuItem Header="Fiscal">
+                        <MenuItem Header="Emissão fiscal manual" Click="OpenManualNfe_Click" />
+                        <MenuItem Header="Contingência fiscal" Click="OpenManualNfe_Click" />
+                        <MenuItem Header="Empresa emissora automática" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Regras fiscais do grupo" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="NF-e / NFC-e / SAT" Click="OpenManualNfe_Click" />
+                        <MenuItem Header="SPED / EFD / REINF" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Tributos e retenções" Click="OpenWorkspace_Click" />
+                    </MenuItem>
+                    <MenuItem Header="Logística">
+                        <MenuItem Header="Coleta" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Entrega" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Rastreamento" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Transportadoras" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Status do pedido" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Comunicação ao cliente" Click="OpenWorkspace_Click" />
+                    </MenuItem>
+                </MenuItem>
+                <MenuItem Header="⚙  _Sistema">
+                    <MenuItem Header="Integrações">
+                        <MenuItem Header="API local do servidor" Click="RefreshStatus_Click" />
+                        <MenuItem Header="API pública Cloudflare" Click="RefreshStatus_Click" />
+                        <MenuItem Header="E-commerce e dropshipping" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Logística e rastreio" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Marketplaces" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Open Finance / bancos" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="WhatsApp e e-mail" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Chaves OpenAI - Yara e Sophia" Click="OpenNetworkSettings_Click" />
+                    </MenuItem>
+                    <MenuItem Header="Governança">
+                        <MenuItem Header="RBAC e perfis" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Trilha de auditoria" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="LGPD" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Workflow e aprovações" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Multiempresa e tenant" Click="OpenWorkspace_Click" />
+                    </MenuItem>
+                    <MenuItem Header="Pessoas / HCM">
+                        <MenuItem Header="Colaboradores / RH / folha" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Contratações" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Demissões" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Cargos e departamentos" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Ponto e jornada" Click="OpenWorkspace_Click" />
+                    </MenuItem>
+                    <Separator />
+                    <MenuItem Header="Atualizar conexões" Click="RefreshStatus_Click" />
+                    <MenuItem Header="Grade de rede e endpoints" Click="OpenNetworkSettings_Click" />
+                    <MenuItem Header="Configurar terminal" Click="FocusTerminal_Click" />
+                    <MenuItem Header="Abrir pasta de contingência" Click="OpenOutboxFolder_Click" />
+                </MenuItem>
+            </Menu>
+        </Border>
 
         <Grid Margin="0,0,0,0">
             <Grid.ColumnDefinitions>
