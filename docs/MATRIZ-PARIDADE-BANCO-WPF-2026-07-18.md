@@ -8,6 +8,8 @@ Versão: 1.1.5.7187
 
 # Matriz de Paridade Banco-WPF
 
+> Esta matriz e uma fotografia gerada em 2026-07-19 do checkout oficial; os totais abaixo nao descrevem a branch local de continuidade. Em 2026-11-01, a branch `codex/product-identifiers-mainline` adicionou `EmpresasGrupoWindow` e `PedidoConsultaWindow`, além de substituir o fluxo de `FiscalRoutingWindow` por consulta e simulação autenticadas na API. A matriz deve ser regenerada no checkout oficial após integrar/publicar esses arquivos.
+
 Gerado em: 2026-07-19T00:14:29-03:00
 
 Fonte de banco: `information_schema.TABLES` dos schemas oficiais em `127.0.0.1:3309`. Fonte de codigo: arquivos `.cs` da API e arquivos `.cs`/`.xaml` do Desktop no checkout oficial. Nenhuma credencial e gravada neste relatorio.
@@ -41,16 +43,16 @@ A classificacao desta primeira etapa e preliminar e baseada em regras de nome de
 
 ## Achados Impeditivos do Desktop
 
-As janelas abaixo chamam `SubmitOperationAsync`. O servico associado comprova gravacao em `genesis_bd.sys_operacoes_desktop`; esse registro generico de payload nao comprova persistencia nas tabelas de dominio declaradas pela tela e nao pode sustentar mensagem de conclusao funcional:
+Na fotografia gerada em 2026-07-19, as janelas abaixo chamavam `SubmitOperationAsync`. O serviço associado comprovava gravação em `genesis_bd.sys_operacoes_desktop`; isso não prova persistência nas tabelas do domínio. Atualização da branch local em 2026-11-01: `FiscalRoutingWindow` deixou de submeter payload genérico e agora consulta empresas ativas e simula o roteamento por `/api/fiscal/simular-roteamento`; o resultado é somente uma simulação e não uma regra fiscal persistida. `EmpresasGrupoWindow` implementa cadastro/vínculo real via API.
 
 - `NexumAltivon.Desktop/CorporateMasterDataWindow.xaml.cs`
-- `NexumAltivon.Desktop/FiscalRoutingWindow.xaml.cs`
 - `NexumAltivon.Desktop/ModuleWorkspaceWindow.xaml.cs`
 
-As janelas abaixo gravam contingencia por `SaveOperationAsync` ou `SaveSaleAsync`. A homologacao WPFDB-08 exige inventariar e provar reprocessamento, idempotencia, confirmacao no servidor e remocao segura do arquivo antes de considerar o fluxo offline concluido:
+Restam dois chamadores na branch local: `CorporateMasterDataWindow` para cadastros não cobertos por telas tipadas e `ModuleWorkspaceWindow`.
+
+Na fotografia original, as janelas abaixo gravavam contingência por `SaveOperationAsync` ou `SaveSaleAsync`. Na branch local, a tela fiscal deixou de usar contingência porque sua operação é consulta/simulação. Para concluir WPFDB-08, permanece necessário provar reprocessamento, idempotência, confirmação no servidor e remoção segura dos arquivos de contingência:
 
 - `NexumAltivon.Desktop/CorporateMasterDataWindow.xaml.cs`
-- `NexumAltivon.Desktop/FiscalRoutingWindow.xaml.cs`
 - `NexumAltivon.Desktop/ModuleWorkspaceWindow.xaml.cs`
 - `NexumAltivon.Desktop/PdvSaleWindow.xaml.cs`
 

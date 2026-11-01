@@ -122,7 +122,7 @@ export default function ProdutoDetalhe() {
               )}
 
               <h1 className="mt-5 text-4xl font-black leading-tight text-white" data-testid="produto-nome">{produto.nome}</h1>
-              <p className="mt-2 text-sm font-bold text-[#A0A0A0]">SKU: {produto.sku || 'NA-PREMIUM'}</p>
+              <p className="mt-2 text-sm font-bold text-[#A0A0A0]">SKU: {produto.sku || 'SKU não informado'}</p>
 
               <div className="my-7">
                 {hasDiscount && (
@@ -134,7 +134,6 @@ export default function ProdutoDetalhe() {
                     Economize {formatPrice(produto.preco - produto.preco_promocional)}!
                   </p>
                 )}
-                <p className="mt-2 text-sm font-semibold text-[#A0A0A0]">Em até 10x sem juros ou com condição especial no PIX.</p>
               </div>
 
               <p className="mb-7 max-w-2xl leading-7 text-[#C8C8C8]">{produto.descricao}</p>

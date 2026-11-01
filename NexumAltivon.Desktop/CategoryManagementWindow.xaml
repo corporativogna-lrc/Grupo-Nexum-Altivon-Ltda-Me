@@ -1,0 +1,58 @@
+<Window x:Class="NexumAltivon.Desktop.CategoryManagementWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Categorias e subcategorias" Width="1120" Height="740" MinWidth="960" MinHeight="600"
+        WindowStartupLocation="CenterOwner" Background="{StaticResource ShellBackground}" FontFamily="Segoe UI">
+    <Grid Margin="18">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="12"/><RowDefinition Height="2*"/><RowDefinition Height="12"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <Border Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="16" Padding="16">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Content="Pesquisar" Click="Pesquisar_Click" Margin="5,0" Padding="14,8"/>
+                    <Button Content="Atualizar" Click="Atualizar_Click" Margin="5,0" Padding="14,8"/>
+                    <Button Content="Novo" Click="Novo_Click" Margin="5,0" Padding="14,8"/>
+                </StackPanel>
+                <StackPanel>
+                    <TextBlock Text="CATÁLOGO / TAXONOMIA" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold"/>
+                    <TextBlock Text="Categorias e subcategorias" Foreground="{StaticResource TextPrimary}" FontSize="25" FontWeight="Bold"/>
+                    <TextBox x:Name="BuscaBox" Width="340" HorizontalAlignment="Left" Margin="0,7,0,0" ToolTip="Nome, slug ou loja" KeyDown="BuscaBox_KeyDown"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="1.15*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="0.85*"/></Grid.ColumnDefinitions>
+            <Border Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="16" Padding="10">
+                <DataGrid x:Name="CategoriasGrid" ItemsSource="{Binding Categorias}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" SelectionChanged="CategoriasGrid_SelectionChanged">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Loja" Binding="{Binding LojaNome}" Width="125"/>
+                        <DataGridTextColumn Header="Slug" Binding="{Binding Slug}" Width="140"/>
+                        <DataGridTextColumn Header="Nome" Binding="{Binding Nome}" Width="*"/>
+                        <DataGridTextColumn Header="Pai" Binding="{Binding CategoriaPaiSlug}" Width="120"/>
+                        <DataGridCheckBoxColumn Header="Ativa" Binding="{Binding Ativa}" Width="62"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Border>
+            <Border Grid.Column="2" Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="16" Padding="16">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock x:Name="FormTitle" Text="Nova categoria" Foreground="{StaticResource TextPrimary}" FontSize="19" FontWeight="Bold"/>
+                        <TextBlock Text="Loja" Foreground="{StaticResource TextSecondary}" Margin="0,12,0,0"/>
+                        <ComboBox x:Name="LojaCombo" DisplayMemberPath="NomeLoja" SelectedValuePath="LojaId" SelectionChanged="LojaCombo_SelectionChanged"/>
+                        <TextBlock Text="Slug / código" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,0"/><TextBox x:Name="SlugBox"/>
+                        <TextBlock Text="Nome" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,0"/><TextBox x:Name="NomeBox"/>
+                        <TextBlock Text="Descrição" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,0"/><TextBox x:Name="DescricaoBox" Height="75" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+                        <TextBlock Text="Categoria principal" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,0"/>
+                        <ComboBox x:Name="PaiCombo" DisplayMemberPath="Nome" SelectedValuePath="Id"/>
+                        <TextBlock Text="Ordem" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,0"/><TextBox x:Name="OrdemBox" Text="0"/>
+                        <CheckBox x:Name="AtivaCheck" Content="Categoria ativa" IsChecked="True" Foreground="{StaticResource TextPrimary}" Margin="0,12,0,0"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                            <Button x:Name="SalvarButton" Content="Criar categoria" Click="Salvar_Click" Padding="16,8" Background="{StaticResource AccentGold}" Foreground="#080704" FontWeight="Bold"/>
+                            <Button Content="Cancelar edição" Click="Novo_Click" Margin="8,0,0,0" Padding="14,8"/>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+        <TextBlock Grid.Row="4" x:Name="StatusText" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap"/>
+    </Grid>
+</Window>

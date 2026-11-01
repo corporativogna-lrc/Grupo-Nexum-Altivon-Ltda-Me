@@ -1,0 +1,76 @@
+<!--
+  Propriedade intelectual: Luís Rodrigo da Costa
+  Com apoio: IA ChatGPT/Codex Sophia
+  Sistema de gestão: GenesisGest.Net
+  Versão: 1.1.5.7195
+-->
+<Window x:Class="NexumAltivon.Desktop.CodigoBarrasQrWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GenesisGest.Net - Código de barras e QR Code"
+        Width="1180" Height="760" MinWidth="960" MinHeight="600"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource ShellBackground}" FontFamily="Segoe UI">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Border Padding="16" Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12">
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="ESTOQUE / IDENTIFICADORES" Foreground="{StaticResource AccentGold}" FontSize="12" FontWeight="SemiBold" />
+                    <TextBlock Text="Código de barras e QR Code" Foreground="{StaticResource TextPrimary}" FontSize="24" FontWeight="Bold" Margin="0,4,0,0" />
+                    <TextBlock Text="Pesquisa e gravação no banco do tenant autenticado, com controle de concorrência." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right">
+                    <TextBlock Text="{Binding Status}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" MaxWidth="420" HorizontalAlignment="Right" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                        <Button Content="Recarregar" Click="Recarregar_Click" Margin="0,0,8,0" />
+                        <Button Content="Salvar" Click="Salvar_Click" Background="{StaticResource AccentGold}" Foreground="#080704" />
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Border>
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="1.35*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="1*"/></Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Padding="14" Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12">
+                <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="10"/><RowDefinition Height="*"/><RowDefinition Height="10"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <DockPanel Grid.Row="0">
+                        <Button DockPanel.Dock="Right" Content="Buscar" Click="Buscar_Click" Margin="8,0,0,0" />
+                        <TextBox x:Name="PesquisaBox" ToolTip="SKU, produto, código ou QR Code" />
+                    </DockPanel>
+                    <DataGrid x:Name="ProdutosGrid" Grid.Row="2" ItemsSource="{Binding Produtos}" SelectionChanged="ProdutosGrid_SelectionChanged"
+                              AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False"
+                              HeadersVisibility="Column" Background="Transparent" BorderBrush="{StaticResource PanelBorder}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Loja" Binding="{Binding LojaId}" Width="55" />
+                            <DataGridTextColumn Header="SKU" Binding="{Binding Sku}" Width="120" />
+                            <DataGridTextColumn Header="Produto" Binding="{Binding Nome}" Width="*" />
+                            <DataGridCheckBoxColumn Header="Ativo" Binding="{Binding Ativo}" Width="55" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <DockPanel Grid.Row="4">
+                        <Button x:Name="AnteriorButton" DockPanel.Dock="Left" Content="Anterior" Click="Anterior_Click" />
+                        <Button x:Name="ProximaButton" DockPanel.Dock="Right" Content="Próxima" Click="Proxima_Click" />
+                        <TextBlock x:Name="PaginaText" Text="Página 1 de 1" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" HorizontalAlignment="Center" />
+                    </DockPanel>
+                </Grid>
+            </Border>
+            <Border Grid.Column="2" Padding="16" Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12">
+                <StackPanel>
+                    <TextBlock Text="Identificadores" FontSize="19" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" />
+                    <TextBlock x:Name="ProdutoText" Text="Selecione um produto." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,8,0,18" />
+                    <TextBlock Text="Código de barras (até 64 caracteres)" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,5" />
+                    <TextBox x:Name="CodigoBarrasBox" MaxLength="64" Margin="0,0,0,14" />
+                    <TextBlock Text="Conteúdo do QR Code (até 500 caracteres)" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,5" />
+                    <TextBox x:Name="QrCodeBox" MaxLength="500" MinHeight="100" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                    <TextBlock Text="Os campos podem ficar vazios para remover os identificadores. A gravação salva o conteúdo; não cria imagem ou etiqueta." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,12,0,0" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

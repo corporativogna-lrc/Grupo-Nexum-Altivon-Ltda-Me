@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7190
+ * Versão: 1.1.5.7195
  */
 
 using System.Globalization;
@@ -86,6 +86,100 @@ public sealed class DesktopApiClient
         CancellationToken cancellationToken = default) =>
         SendAuthorizedAsync<DesktopComprasPainel>(
             profile, token, HttpMethod.Get, "/api/compras/painel", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<List<DesktopFiscalEmpresa>>> GetFiscalCompaniesAsync(
+        TerminalProfile profile, string token, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<List<DesktopFiscalEmpresa>>(
+            profile, token, HttpMethod.Get, "/api/erp/empresas", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopFiscalRoutingResult>> SimulateFiscalRoutingAsync(
+        TerminalProfile profile, string token, DesktopFiscalRoutingRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopFiscalRoutingResult>(
+            profile, token, HttpMethod.Post, "/api/fiscal/simular-roteamento", request, cancellationToken);
+
+    public Task<DesktopApiDataResult<List<DesktopPedidoConsulta>>> GetOrdersAsync(
+        TerminalProfile profile, string token, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<List<DesktopPedidoConsulta>>(
+            profile, token, HttpMethod.Get, "/api/pedidos", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<List<DesktopEmpresaLojaVinculo>>> GetEmpresasGrupoLojasAsync(
+        TerminalProfile profile, string token, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<List<DesktopEmpresaLojaVinculo>>(
+            profile, token, HttpMethod.Get, "/api/erp/empresas/lojas", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<List<DesktopCategoriaAdmin>>> GetAdminCategoriesAsync(
+        TerminalProfile profile, string token, string? search, CancellationToken cancellationToken = default)
+    {
+        var query = string.IsNullOrWhiteSpace(search) ? string.Empty : $"?termo={Uri.EscapeDataString(search.Trim())}";
+        return SendAuthorizedAsync<List<DesktopCategoriaAdmin>>(
+            profile, token, HttpMethod.Get, $"/api/admin/categorias{query}", null, cancellationToken);
+    }
+
+    public Task<DesktopApiDataResult<DesktopCategoriaAdmin>> CreateAdminCategoryAsync(
+        TerminalProfile profile, string token, DesktopCategoriaCreateRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopCategoriaAdmin>(
+            profile, token, HttpMethod.Post, "/api/admin/categorias", request, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopCategoriaAdmin>> UpdateAdminCategoryAsync(
+        TerminalProfile profile, string token, int id, DesktopCategoriaUpdateRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopCategoriaAdmin>(
+            profile, token, HttpMethod.Put, $"/api/admin/categorias/{id}", request, cancellationToken);
+
+    public Task<DesktopApiDataResult<int>> CreateEmpresaGrupoDraftAsync(
+        TerminalProfile profile, string token, int lojaId, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<int>(
+            profile, token, HttpMethod.Post, $"/api/erp/empresas/lojas/{lojaId}/rascunho", new { }, cancellationToken);
+
+    public Task<DesktopApiDataResult<string>> UpdateEmpresaGrupoLegalDataAsync(
+        TerminalProfile profile, string token, int empresaId, DesktopEmpresaDadosLegaisRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<string>(
+            profile, token, HttpMethod.Put, $"/api/erp/empresas/{empresaId}/dados-legais", request, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopProdutoIdentificadorPagina>> GetProductIdentifiersAsync(
+        TerminalProfile profile,
+        string token,
+        string? search,
+        int page,
+        CancellationToken cancellationToken = default)
+    {
+        var query = $"?pagina={Math.Max(1, page)}";
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query += $"&termo={Uri.EscapeDataString(search.Trim())}";
+        }
+
+        return SendAuthorizedAsync<DesktopProdutoIdentificadorPagina>(
+            profile, token, HttpMethod.Get, $"/api/admin/produtos/identificadores{query}", null, cancellationToken);
+    }
+
+    public Task<DesktopApiDataResult<DesktopProdutoIdentificador>> UpdateProductIdentifiersAsync(
+        TerminalProfile profile,
+        string token,
+        int productId,
+        DesktopProdutoIdentificadorUpdateRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopProdutoIdentificador>(
+            profile, token, HttpMethod.Put, $"/api/admin/produtos/{productId}/identificadores", request, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopProdutoAdminPagina>> GetAdminProductsAsync(
+        TerminalProfile profile, string token, string? search, int page = 1,
+        CancellationToken cancellationToken = default)
+    {
+        var query = $"?pagina={Math.Max(1, page)}";
+        if (!string.IsNullOrWhiteSpace(search)) query += $"&termo={Uri.EscapeDataString(search.Trim())}";
+        return SendAuthorizedAsync<DesktopProdutoAdminPagina>(
+            profile, token, HttpMethod.Get, $"/api/admin/produtos{query}", null, cancellationToken);
+    }
+
+    public Task<DesktopApiDataResult<DesktopProdutoLoja>> UpdateProductAsync(
+        TerminalProfile profile, string token, string slug, DesktopProdutoUpdateRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopProdutoLoja>(
+            profile, token, HttpMethod.Put, $"/api/produtos/{Uri.EscapeDataString(slug)}", request, cancellationToken);
 
     public Task<DesktopApiDataResult<DesktopComprasPainel>> CreateCompraSolicitacaoAsync(
         TerminalProfile profile,
@@ -215,9 +309,12 @@ public sealed class DesktopApiClient
     public Task<DesktopApiDataResult<List<DesktopCliente>>> GetClientesAsync(
         TerminalProfile profile,
         string token,
+        string? busca = null,
         CancellationToken cancellationToken = default) =>
         SendAuthorizedAsync<List<DesktopCliente>>(
-            profile, token, HttpMethod.Get, "/api/clientes", null, cancellationToken);
+            profile, token, HttpMethod.Get,
+            string.IsNullOrWhiteSpace(busca) ? "/api/clientes" : $"/api/clientes?busca={Uri.EscapeDataString(busca.Trim())}",
+            null, cancellationToken);
 
     public Task<DesktopApiDataResult<DesktopCliente>> GetClienteAsync(
         TerminalProfile profile,
@@ -1210,6 +1307,93 @@ public sealed record DesktopLoginResponse(string Token, string RefreshToken, Dat
 public sealed record DesktopUser(int Id, string Nome, string Email, string Perfil);
 public sealed record DesktopApiEnvelope<T>(bool Sucesso, string Mensagem, T? Dados, List<string>? Erros);
 public sealed record DesktopApiDataResult<T>(bool Success, T? Data, string Detail);
+public sealed record DesktopFiscalEmpresa(
+    int Id, string? CodigoEmpresa, string? RazaoSocial, string? Cnpj, string? Estado,
+    bool Ativa, string? CategoriaFiscal, string? SubcategoriaFiscal, string? NaturezaOperacaoPadrao);
+public sealed record DesktopFiscalRoutingRequest(
+    int TipoOperacao, decimal ValorProdutos, decimal ValorFrete, string EstadoOrigem,
+    string EstadoDestino, string? CategoriaFiscal, string? SubcategoriaFiscal,
+    string? NaturezaOperacao, bool ExigeMarketplace, bool ExigeDropshipping,
+    bool RequerSaidaNfe, bool RequerEntradaNfe);
+public sealed record DesktopFiscalRoutingResult(
+    bool Sucesso, string Resumo, string? CodigoEmpresaSelecionada,
+    string? RazaoSocialSelecionada, string? CnpjSelecionado, string? EstadoSelecionado,
+    List<DesktopFiscalRoutingRank> Ranking);
+public sealed record DesktopFiscalRoutingRank(
+    string CodigoEmpresa, string RazaoSocial, string Cnpj, string? RegimeTributario,
+    string? CategoriaFiscal, string? SubcategoriaFiscal, decimal CustoTributarioEstimado,
+    decimal CustoOperacionalEstimado, decimal LucroEstimado,
+    decimal MargemEstimadaPercentual, decimal Score, List<string> Justificativas);
+public sealed record DesktopPedidoConsulta(
+    int Id, string NumeroPedido, decimal Total, string Status, DateTime CreatedAt,
+    string StatusPagamento, string? MeioPagamento, decimal FreteValor, string? FreteMetodo,
+    string? ClienteNome = null, int? LojaId = null, string? LojaNome = null,
+    List<DesktopPedidoItemResumo>? Itens = null);
+public sealed record DesktopPedidoItemResumo(
+    int? ProdutoId, string NomeProduto, string? SkuProduto,
+    int Quantidade, decimal PrecoUnitario, decimal PrecoTotal);
+public sealed record DesktopEmpresaLojaVinculo(
+    int LojaId, string NomeLoja, string Slug, string? Segmento, bool LojaAtiva,
+    int? EmpresaId, string? NomeFantasia, string? RazaoSocial, string? Cnpj,
+    bool? EmpresaAtiva, string? RowVersion);
+public sealed record DesktopLoja(int Id, string Nome, string Slug, string Segmento,
+    string? Descricao, string CorPrimaria, string CorSecundaria, bool Ativa, int OrdemExibicao);
+public sealed record DesktopCategoriaAdmin(int Id, int LojaId, string LojaNome, string Slug,
+    string Nome, string? Descricao, int? CategoriaPaiId, string? CategoriaPaiSlug,
+    int Ordem, bool Ativa, DateTime UpdatedAt, string RowVersion);
+public sealed record DesktopCategoriaCreateRequest(int LojaId, string? Slug, string Nome,
+    string? Descricao, int? CategoriaPaiId, int Ordem);
+public sealed record DesktopCategoriaUpdateRequest(string Nome, string? Descricao,
+    int? CategoriaPaiId, int Ordem, bool Ativa, string RowVersion);
+public sealed record DesktopEmpresaDadosLegaisRequest(
+    string? RazaoSocial, string? NomeFantasia, string? Cnpj,
+    string? ResponsavelLegal, string? ResponsavelFiscal,
+    string? EmailFiscal, string? EmailComercial, string? Telefone, string? Whatsapp,
+    string? Cep, string? Logradouro, string? Numero, string? Complemento,
+    string? Bairro, string? Cidade, string? Estado, string? RegimeTributario,
+    bool Ativa, string? RowVersion);
+public sealed record DesktopProdutoIdentificador(
+    int Id,
+    int LojaId,
+    string Nome,
+    string Sku,
+    string? CodigoBarras,
+    string? QrCode,
+    bool Ativo,
+    string RowVersion);
+public sealed record DesktopProdutoIdentificadorPagina(
+    List<DesktopProdutoIdentificador> Itens,
+    int Total,
+    int Pagina,
+    int TotalPaginas);
+public sealed record DesktopProdutoIdentificadorUpdateRequest(
+    string? CodigoBarras,
+    string? QrCode,
+    string RowVersion);
+public sealed record DesktopProdutoAdminPagina(
+    List<DesktopProdutoAdmin> Itens, int Total, int Pagina, int TotalPaginas);
+public sealed record DesktopProdutoAdmin(
+    int Id, string Slug, string Nome, string Sku, string? DescricaoCurta, string? Descricao,
+    decimal Preco, decimal? PrecoPromocional, decimal Custo, int Estoque, int EstoqueMinimo,
+    int EstoqueReservado, string? ImagemUrl, string? CategoriaId, bool Destaque, bool Ativo,
+    string? Marca, string? Tags, decimal Peso, decimal Altura, decimal Largura, decimal Comprimento,
+    string TipoProduto, int? FornecedorId, string? SeoTitulo, string? SeoDescricao,
+    string? SeoKeywords, string? ImagensGaleria);
+public sealed record DesktopProdutoLoja(
+    string Id, string Nome, string Descricao, string? DescricaoCurta, decimal Preco,
+    decimal? PrecoPromocional, string ImagemUrl, int Estoque, int EstoqueMinimo,
+    int EstoqueReservado, bool Destaque, string Sku, string CategoriaId, decimal? Avaliacao,
+    decimal Custo, decimal Peso, decimal Altura, decimal Largura, decimal Comprimento,
+    string TipoProduto, int? FornecedorId, string? Marca, string? Tags, string? SeoTitulo,
+    string? SeoDescricao, string? SeoKeywords, string? ImagensGaleria);
+public sealed record DesktopProdutoUpdateRequest(
+    string? Id, string Nome, string? Descricao, string? DescricaoCurta, decimal Preco,
+    decimal? PrecoPromocional, string? ImagemUrl, int Estoque, int? EstoqueMinimo,
+    int? EstoqueReservado, bool Destaque, string? Sku, string? CategoriaId,
+    string? SubcategoriaId, decimal? Avaliacao, decimal? Custo, decimal? Peso,
+    decimal? Altura, decimal? Largura, decimal? Comprimento, string? TipoProduto,
+    int? FornecedorId, string? Marca, string? Tags, string? SeoTitulo,
+    string? SeoDescricao, string? SeoKeywords, string? ImagensGaleria);
 public sealed record DesktopFileDownloadResult(
     bool Success,
     byte[]? Content,

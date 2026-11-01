@@ -371,6 +371,7 @@ export const siteAPI = {
 
 export const produtoAPI = {
   ...buildResourceApi('/produtos'),
+  listarAdministracao: (params) => api.get('/admin/produtos', { params }),
   destaques: (limite = 5) => api.get('/produtos/destaques', { params: { limite } }),
   getDestaques: (limite = 5) => api.get('/produtos/destaques', { params: { limite } }),
   porCategoria: (categoriaId) => api.get('/produtos', { params: { categoriaId } }),
@@ -392,6 +393,8 @@ export const pedidoAPI = {
 
 export const clienteAPI = {
   ...buildResourceApi('/clientes'),
+  listarAdministracao: (params) => api.get('/admin/clientes', { params }),
+  createAdmin: (data) => api.post('/clientes/admin', data),
   verificarCadastro: (params) => api.get('/clientes/verificar', { params }),
   cadastrar: (data) => api.post('/clientes', data),
   confirmarEmail: (token) => api.get('/clientes/confirmar', { params: { token } }),
@@ -454,6 +457,7 @@ export const comprasAPI = {
 export const empresaGrupoAPI = {
   getAll: () => api.get('/erp/empresas'),
   create: (data) => api.post('/erp/empresas', data),
+  updateDadosLegais: (id, data) => api.put(`/erp/empresas/${id}/dados-legais`, data),
 };
 
 export const fiscalAPI = {

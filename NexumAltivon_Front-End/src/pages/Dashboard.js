@@ -538,11 +538,19 @@ const buildSiteConfigFormFromItems = (items, baseForm = emptySiteConfigForm) =>
   }, { ...baseForm });
 const getFiscalDraftSavedAt = (draft) =>
   draft?.updatedAt || draft?.UpdatedAt || draft?.salvoEm || draft?.SalvoEm || draft?.salvo_em || '';
-const galleryToArray = (value) =>
-  String(value ?? '')
-    .split(/\r?\n/)
-    .map((item) => item.trim())
-    .filter(Boolean);
+const galleryToArray = (value) => {
+  const text = String(value ?? '').trim();
+  if (!text) return [];
+  if (text.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) return parsed.map((item) => String(item ?? '').trim()).filter(Boolean);
+    } catch {
+      // A string not encoded as a valid gallery array is handled as line-separated URLs below.
+    }
+  }
+  return text.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+};
 const galleryToText = (items) => items.filter(Boolean).join('\n');
 
 const getDashboardRouteState = (path = '') => {
@@ -587,40 +595,44 @@ const fileToDataUrl = (file) =>
     reader.readAsDataURL(file);
   });
 
-const getProdutoDuplicateMessage = (form, produtos) => {
+const getProdutoDuplicateMessage = (form, produtos, ignoreId = null) => {
   const sku = normalizeText(form.sku);
   const id = normalizeText(form.id);
   const nome = normalizeText(form.nome);
+  const available = produtos.filter((produto) => String(produto.id) !== String(ignoreId));
+
+  if (!sku) return 'Informe o SKU do produto. A API não gera códigos automáticos.';
 
   if (sku) {
-    const duplicate = produtos.find((produto) => normalizeText(produto.sku) === sku);
+    const duplicate = available.find((produto) => normalizeText(produto.sku) === sku);
     if (duplicate) return `SKU já usado em ${duplicate.nome || 'outro produto'}.`;
   }
 
   if (id) {
-    const duplicate = produtos.find((produto) => normalizeText(produto.id) === id);
+    const duplicate = available.find((produto) => normalizeText(produto.id) === id);
     if (duplicate) return `Identificador público já usado em ${duplicate.nome || 'outro produto'}.`;
   }
 
   if (nome) {
-    const duplicate = produtos.find((produto) => normalizeText(produto.nome) === nome);
+    const duplicate = available.find((produto) => normalizeText(produto.nome) === nome);
     if (duplicate) return 'Produto com este nome já existe no catálogo.';
   }
 
   return '';
 };
 
-const getClienteDuplicateMessage = (form, clientes) => {
+const getClienteDuplicateMessage = (form, clientes, ignoreId = null) => {
   const email = normalizeText(form.email);
   const documento = normalizeDocument(form.cpf);
+  const available = clientes.filter((cliente) => String(cliente.id) !== String(ignoreId));
 
   if (email) {
-    const duplicate = clientes.find((cliente) => normalizeText(cliente.email) === email);
+    const duplicate = available.find((cliente) => normalizeText(cliente.email) === email);
     if (duplicate) return `Cliente já cadastrado com este e-mail: ${duplicate.nome || duplicate.email}.`;
   }
 
   if (documento) {
-    const duplicate = clientes.find((cliente) => normalizeDocument(cliente.cpf) === documento || normalizeDocument(cliente.cpfCnpj) === documento);
+    const duplicate = available.find((cliente) => normalizeDocument(cliente.cpf) === documento || normalizeDocument(cliente.cpfCnpj) === documento);
     if (duplicate) return `Cliente já cadastrado com este CPF/CNPJ: ${duplicate.nome || duplicate.email}.`;
   }
 
@@ -734,8 +746,19 @@ export default function Dashboard() {
   const [activeIntegration, setActiveIntegration] = useState(routeState.activeIntegration);
   const [query, setQuery] = useState('');
   const [produtoForm, setProdutoForm] = useState(emptyProduto);
+  const [editingProdutoId, setEditingProdutoId] = useState(null);
+  const [produtoSearch, setProdutoSearch] = useState('');
+  const [adminProdutos, setAdminProdutos] = useState([]);
+  const [adminClientes, setAdminClientes] = useState([]);
+  const [adminProdutoPagina, setAdminProdutoPagina] = useState({ atual: 1, total: 1, registros: 0 });
+  const [adminClientePagina, setAdminClientePagina] = useState({ atual: 1, total: 1, registros: 0 });
+  const [adminCadastroLoading, setAdminCadastroLoading] = useState(false);
+  const [adminCadastroError, setAdminCadastroError] = useState('');
   const [categoriaForm, setCategoriaForm] = useState(emptyCategoria);
   const [clienteForm, setClienteForm] = useState(emptyCliente);
+  const [editingClienteId, setEditingClienteId] = useState(null);
+  const [editingClienteRecord, setEditingClienteRecord] = useState(null);
+  const [clienteSearch, setClienteSearch] = useState('');
   const [fornecedorForm, setFornecedorForm] = useState(emptyFornecedor);
   const [leadForm, setLeadForm] = useState(emptyLead);
   const [empresaGrupoForm, setEmpresaGrupoForm] = useState(emptyEmpresaGrupo);
@@ -777,6 +800,7 @@ export default function Dashboard() {
       setProdutos(Array.isArray(produtosRes.data) ? produtosRes.data : []);
       setCategorias(Array.isArray(categoriasRes.data) ? categoriasRes.data : []);
       setClientes(Array.isArray(clientesRes.data) ? clientesRes.data : []);
+      setAdminClientes(Array.isArray(clientesRes.data) ? clientesRes.data : []);
       setFornecedores(Array.isArray(fornecedoresRes.data) ? fornecedoresRes.data : []);
       setEmpresasGrupo(Array.isArray(empresasGrupoRes.data) ? empresasGrupoRes.data : []);
       setFiscalPedidos(Array.isArray(fiscalPedidosRes.data) ? fiscalPedidosRes.data : []);
@@ -856,6 +880,65 @@ export default function Dashboard() {
     setFormStatus('');
   }, [routeState.activeCadastroTab, routeState.activeIntegration, routeState.activeTab]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !['produtos', 'clientes'].includes(activeCadastroTab)) return undefined;
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setAdminCadastroLoading(true);
+      setAdminCadastroError('');
+      try {
+        if (activeCadastroTab === 'produtos') {
+          const response = await produtoAPI.listarAdministracao({ termo: produtoSearch.trim() || undefined, pagina: adminProdutoPagina.atual });
+          const page = response.data;
+          if (!page || !Array.isArray(page.itens)) throw new Error('A API administrativa não retornou a lista paginada de produtos.');
+          if (!cancelled) setAdminProdutoPagina({ atual: page.pagina, total: page.totalPaginas, registros: page.total });
+          const rows = page.itens.map((item) => ({
+            ...item,
+            id: item.slug || item.Slug,
+            nome: item.nome || item.Nome,
+            sku: item.sku || item.Sku,
+            descricaoCurta: item.descricaoCurta || item.DescricaoCurta || '',
+            descricao: item.descricao || item.Descricao || '',
+            preco: item.preco ?? item.Preco,
+            precoPromocional: item.precoPromocional ?? item.PrecoPromocional,
+            custo: item.custo ?? item.Custo,
+            estoque: item.estoque ?? item.Estoque ?? 0,
+            estoqueMinimo: item.estoqueMinimo ?? item.EstoqueMinimo ?? 0,
+            estoqueReservado: item.estoqueReservado ?? item.EstoqueReservado ?? 0,
+            imagemUrl: item.imagemUrl || item.ImagemUrl || '',
+            categoriaId: item.categoriaId || item.CategoriaId || '',
+            destaque: Boolean(item.destaque ?? item.Destaque),
+            ativo: Boolean(item.ativo ?? item.Ativo),
+            peso: item.peso ?? item.Peso ?? 0,
+            altura: item.altura ?? item.Altura ?? 0,
+            largura: item.largura ?? item.Largura ?? 0,
+            comprimento: item.comprimento ?? item.Comprimento ?? 0,
+            tipoProduto: item.tipoProduto || item.TipoProduto || 'Proprio',
+            fornecedorId: item.fornecedorId ?? item.FornecedorId ?? null,
+            imagensGaleria: item.imagensGaleria || item.ImagensGaleria || '',
+          }));
+          if (!cancelled) setAdminProdutos(rows);
+        } else {
+          const response = await clienteAPI.listarAdministracao({ termo: clienteSearch.trim() || undefined, pagina: adminClientePagina.atual });
+          const page = response.data;
+          if (!page || !Array.isArray(page.itens)) throw new Error('A API administrativa não retornou a lista paginada de clientes.');
+          if (!cancelled) {
+            setAdminClientes(page.itens);
+            setAdminClientePagina({ atual: page.pagina, total: page.totalPaginas, registros: page.total });
+          }
+        }
+      } catch (error) {
+        if (!cancelled) setAdminCadastroError(getApiErrorMessage(error, 'Falha na pesquisa administrativa.'));
+      } finally {
+        if (!cancelled) setAdminCadastroLoading(false);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [isAuthenticated, activeCadastroTab, produtoSearch, clienteSearch, adminProdutoPagina.atual, adminClientePagina.atual]);
+
   const categoriasRaiz = useMemo(
     () => categorias.filter((categoria) => !(categoria.categoria_pai_id || categoria.categoriaPaiId)),
     [categorias],
@@ -904,7 +987,7 @@ export default function Dashboard() {
   const submitProduto = async (event) => {
     event.preventDefault();
     setFormStatus('');
-    const produtoDuplicateMessage = getProdutoDuplicateMessage(produtoForm, produtos);
+    const produtoDuplicateMessage = getProdutoDuplicateMessage(produtoForm, produtos, editingProdutoId);
     if (produtoDuplicateMessage) {
       setFormStatus(produtoDuplicateMessage);
       return;
@@ -927,10 +1010,78 @@ export default function Dashboard() {
       fornecedorId: produtoForm.fornecedorId ? Number(produtoForm.fornecedorId) : null,
     };
 
-    const response = await produtoAPI.create(payload);
-    setProdutos((current) => [response.data, ...current]);
+    if (!String(payload.imagemUrl || '').trim()) {
+      setFormStatus('A imagem principal é obrigatória. O produto não será publicado sem imagem.');
+      return;
+    }
+    if (galleryToArray(payload.imagensGaleria).length > 4) {
+      setFormStatus('A galeria aceita no máximo quatro imagens opcionais além da imagem principal.');
+      return;
+    }
+
+    const response = editingProdutoId
+      ? await produtoAPI.update(editingProdutoId, payload)
+      : await produtoAPI.create(payload);
+    const savedProduct = response.data?.dados || response.data?.data || response.data;
+    if (!savedProduct?.id) throw new Error('A API não confirmou o identificador do produto salvo.');
+    const readResponse = await produtoAPI.getById(savedProduct.id);
+    const persistedProduct = readResponse.data?.dados || readResponse.data?.data || readResponse.data;
+    if (!persistedProduct?.id
+      || String(persistedProduct.sku || '') !== String(payload.sku || '')
+      || String(persistedProduct.imagemUrl || persistedProduct.imagem_url || '') !== String(payload.imagemUrl || '')) {
+      throw new Error('A releitura da API não confirmou SKU e imagem persistidos; o formulário foi mantido para conferência.');
+    }
+    setProdutos((current) => editingProdutoId
+      ? current.map((item) => String(item.id) === String(editingProdutoId) ? persistedProduct : item)
+      : [persistedProduct, ...current]);
+    setAdminProdutos((current) => editingProdutoId
+      ? current.map((item) => String(item.id) === String(editingProdutoId) ? { ...item, ...persistedProduct, id: editingProdutoId } : item)
+      : [{ ...persistedProduct }, ...current]);
+    setEditingProdutoId(null);
     setProdutoForm(emptyProduto);
-    setFormStatus('Produto cadastrado e disponível no catálogo.');
+    setFormStatus(editingProdutoId ? 'Produto atualizado e relido pela API.' : 'Produto cadastrado e disponível no catálogo.');
+  };
+
+  const editarProduto = (produto) => {
+    setEditingProdutoId(produto.id);
+    setProdutoForm({
+      ...emptyProduto,
+      id: produto.id || '',
+      nome: produto.nome || '',
+      descricaoCurta: produto.descricaoCurta || '',
+      descricao: produto.descricao || '',
+      preco: String(produto.preco ?? ''),
+      precoPromocional: produto.precoPromocional == null ? '' : String(produto.precoPromocional),
+      custo: String(produto.custo ?? ''),
+      peso: String(produto.peso ?? ''),
+      altura: String(produto.altura ?? ''),
+      largura: String(produto.largura ?? ''),
+      comprimento: String(produto.comprimento ?? ''),
+      imagemUrl: produto.imagemUrl || produto.imagem_url || '',
+      imagensGaleria: produto.imagensGaleria || produto.imagens_galeria || '',
+      estoque: String(produto.estoque ?? 0),
+      estoqueMinimo: String(produto.estoqueMinimo ?? produto.estoque_minimo ?? 0),
+      estoqueReservado: String(produto.estoqueReservado ?? produto.estoque_reservado ?? 0),
+      destaque: Boolean(produto.destaque),
+      ativo: produto.ativo !== false,
+      sku: produto.sku || '',
+      categoriaId: produto.categoriaId || produto.categoria_id || '',
+      subcategoriaId: produto.subcategoriaId || produto.subcategoria_id || '',
+      tipoProduto: produto.tipoProduto || produto.tipo_produto || 'Proprio',
+      fornecedorId: produto.fornecedorId == null ? '' : String(produto.fornecedorId),
+      marca: produto.marca || '',
+      tags: produto.tags || '',
+      seoTitulo: produto.seoTitulo || produto.seo_titulo || '',
+      seoDescricao: produto.seoDescricao || produto.seo_descricao || '',
+      seoKeywords: produto.seoKeywords || produto.seo_keywords || '',
+    });
+    setFormStatus(`Produto ${produto.sku || produto.nome} carregado para edição.`);
+  };
+
+  const novoProduto = () => {
+    setEditingProdutoId(null);
+    setProdutoForm(emptyProduto);
+    setFormStatus('Novo produto. A imagem principal será exigida antes de salvar.');
   };
 
   const uploadProdutoImagem = async (file) => {
@@ -968,6 +1119,11 @@ export default function Dashboard() {
     if (!files?.length) return;
 
     const selectedFiles = Array.from(files);
+    const remainingSlots = 4 - galleryToArray(produtoForm.imagensGaleria).length;
+    if (selectedFiles.length > remainingSlots) {
+      setFormStatus(`A galeria aceita no máximo quatro imagens opcionais; há ${Math.max(remainingSlots, 0)} vaga(s) disponível(is).`);
+      return;
+    }
     const invalidFile = selectedFiles.find((file) => !file.type.startsWith('image/'));
     if (invalidFile) {
       setFormStatus(`Arquivo inválido na galeria: ${invalidFile.name}.`);
@@ -1017,19 +1173,62 @@ export default function Dashboard() {
   const submitCliente = async (event) => {
     event.preventDefault();
     setFormStatus('');
-    const clienteDuplicateMessage = getClienteDuplicateMessage(clienteForm, clientes);
+    const clienteDuplicateMessage = getClienteDuplicateMessage(clienteForm, clientes, editingClienteId);
     if (clienteDuplicateMessage) {
       setFormStatus(clienteDuplicateMessage);
       return;
     }
 
-    const response = await clienteAPI.create(clienteForm);
-    setClientes((current) => {
-      const semDuplicidade = current.filter((cliente) => cliente.id !== response.data.id);
-      return [response.data, ...semDuplicidade];
-    });
+    const clienteSelecionado = editingClienteRecord || clientes.find((cliente) => String(cliente.id) === String(editingClienteId));
+    const payload = {
+      ...clienteForm,
+      cpfCnpj: clienteForm.cpf || null,
+      tipo: normalizeDocument(clienteForm.cpf).length === 14 ? 'PJ' : 'PF',
+      status: clienteSelecionado?.status || 'Pendente',
+      newsletter: clienteSelecionado?.newsletter ?? false,
+      vip: clienteSelecionado?.vip ?? false,
+      pontosFidelidade: clienteSelecionado?.pontosFidelidade ?? 0,
+      rowVersion: editingClienteId ? clienteSelecionado?.rowVersion : null,
+    };
+    const response = editingClienteId
+      ? await clienteAPI.update(editingClienteId, payload)
+      : await clienteAPI.createAdmin(payload);
+    const savedCustomer = response.data?.dados || response.data?.data || response.data;
+    if (!savedCustomer?.id) throw new Error('A API não confirmou o identificador do cliente.');
+    const readResponse = await clienteAPI.getById(savedCustomer.id);
+    const persistedCustomer = readResponse.data?.dados || readResponse.data?.data || readResponse.data;
+    if (!persistedCustomer?.id || persistedCustomer.email !== payload.email) {
+      throw new Error('A releitura da API não confirmou o cliente persistido.');
+    }
+    setClientes((current) => editingClienteId
+      ? current.map((cliente) => String(cliente.id) === String(editingClienteId) ? persistedCustomer : cliente)
+      : [persistedCustomer, ...current]);
+    setAdminClientes((current) => editingClienteId
+      ? current.map((cliente) => String(cliente.id) === String(editingClienteId) ? persistedCustomer : cliente)
+      : [persistedCustomer, ...current]);
+    setEditingClienteId(null);
+    setEditingClienteRecord(null);
     setClienteForm(emptyCliente);
-    setFormStatus('Cliente cadastrado no painel.');
+    setFormStatus(editingClienteId ? 'Cliente atualizado e relido pela API.' : 'Cliente cadastrado no ERP.');
+  };
+
+  const editarCliente = (cliente) => {
+    setEditingClienteId(cliente.id);
+    setEditingClienteRecord(cliente);
+    setClienteForm({
+      nome: cliente.nome || '',
+      email: cliente.email || '',
+      telefone: cliente.telefone || cliente.whatsapp || '',
+      cpf: cliente.cpf || cliente.cpfCnpj || '',
+    });
+    setFormStatus(`Cliente ${cliente.nome || cliente.email} carregado para edição.`);
+  };
+
+  const novoCliente = () => {
+    setEditingClienteId(null);
+    setEditingClienteRecord(null);
+    setClienteForm(emptyCliente);
+    setFormStatus('Novo cliente. O cadastro administrativo começa pendente até validação dos dados.');
   };
 
   const submitFornecedor = async (event) => {
@@ -1266,8 +1465,10 @@ export default function Dashboard() {
     );
   }, [leads, query]);
 
-  const produtoDuplicateMessage = useMemo(() => getProdutoDuplicateMessage(produtoForm, produtos), [produtoForm, produtos]);
-  const clienteDuplicateMessage = useMemo(() => getClienteDuplicateMessage(clienteForm, clientes), [clienteForm, clientes]);
+  const produtoDuplicateMessage = useMemo(() => getProdutoDuplicateMessage(produtoForm, produtos, editingProdutoId), [produtoForm, produtos, editingProdutoId]);
+  const clienteDuplicateMessage = useMemo(() => getClienteDuplicateMessage(clienteForm, clientes, editingClienteId), [clienteForm, clientes, editingClienteId]);
+  const filteredAdminProducts = adminProdutos;
+  const filteredAdminClients = adminClientes;
   const fornecedorDuplicateMessage = useMemo(() => getFornecedorDuplicateMessage(fornecedorForm, fornecedores), [fornecedorForm, fornecedores]);
   const empresaGrupoDuplicateMessage = useMemo(() => getEmpresaGrupoDuplicateMessage(empresaGrupoForm, empresasGrupo), [empresaGrupoForm, empresasGrupo]);
   const selectedCadastro = cadastroTabs.find((item) => item.id === activeCadastroTab) || cadastroTabs[0];
@@ -1635,13 +1836,13 @@ export default function Dashboard() {
                   {activeCadastroTab === 'produtos' && (
                     <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
                       <form onSubmit={submitProduto} className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-                        <h3 className="text-lg font-black text-slate-950">Cadastro detalhado de produto</h3>
+                        <h3 className="text-lg font-black text-slate-950">{editingProdutoId ? 'Editar produto' : 'Cadastro detalhado de produto'}</h3>
                         <p className="mt-1 text-sm font-semibold text-slate-500">Informações principais para catálogo, estoque e vitrine pública.</p>
                         {produtoDuplicateMessage && <DuplicateAlert message={produtoDuplicateMessage} />}
                         <div className="mt-5 grid gap-4 md:grid-cols-2">
                           <Field label="Slug público / ID do produto" value={produtoForm.id} onChange={(value) => setProdutoForm((form) => ({ ...form, id: value }))} />
                           <Field label="Nome" value={produtoForm.nome} onChange={(value) => setProdutoForm((form) => ({ ...form, nome: value }))} required />
-                          <Field label="SKU / Código interno" value={produtoForm.sku} onChange={(value) => setProdutoForm((form) => ({ ...form, sku: value }))} />
+                          <Field label="SKU / Código interno" value={produtoForm.sku} onChange={(value) => setProdutoForm((form) => ({ ...form, sku: value }))} required />
                           <SelectField label="Tipo do produto" value={produtoForm.tipoProduto} onChange={(value) => setProdutoForm((form) => ({ ...form, tipoProduto: value }))} options={['Proprio', 'Dropshipping', 'Marketplace', 'Afiliado']} />
                           <Field label="Preço" type="number" value={produtoForm.preco} onChange={(value) => setProdutoForm((form) => ({ ...form, preco: value }))} required />
                           <Field label="Preço promocional" type="number" value={produtoForm.precoPromocional} onChange={(value) => setProdutoForm((form) => ({ ...form, precoPromocional: value }))} />
@@ -1711,7 +1912,13 @@ export default function Dashboard() {
                           />
                           <ImageGalleryField
                             value={produtoForm.imagensGaleria}
-                            onChange={(value) => setProdutoForm((form) => ({ ...form, imagensGaleria: value }))}
+                            onChange={(value) => {
+                              if (galleryToArray(value).length > 4) {
+                                setFormStatus('A galeria aceita no máximo quatro imagens opcionais além da imagem principal.');
+                                return;
+                              }
+                              setProdutoForm((form) => ({ ...form, imagensGaleria: value }));
+                            }}
                             onUpload={uploadProdutoGaleria}
                             uploading={uploadingImage}
                             className="md:col-span-2"
@@ -1738,11 +1945,37 @@ export default function Dashboard() {
                         </div>
                         <button disabled={Boolean(produtoDuplicateMessage)} className="mt-5 inline-flex h-11 items-center gap-2 rounded-lg bg-slate-950 px-5 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300">
                           <Save size={17} />
-                          Salvar produto
+                          {editingProdutoId ? 'Salvar alterações' : 'Cadastrar produto'}
                         </button>
                       </form>
                       <div className="space-y-6">
                         <ProductPreview produto={produtoForm} categorias={categorias} />
+                        {formStatus && <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-bold text-amber-950">{formStatus}</p>}
+                        <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <h4 className="text-base font-black text-slate-950">Pesquisar e editar produtos</h4>
+                            <button type="button" onClick={novoProduto} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-black text-white">Novo produto</button>
+                          </div>
+                          <input value={produtoSearch} onChange={(event) => { setProdutoSearch(event.target.value); setAdminProdutoPagina((page) => ({ ...page, atual: 1 })); }} placeholder="Nome, SKU ou identificador" className="mt-4 h-11 w-full rounded-lg border border-slate-200 px-3 text-sm" />
+                          {adminCadastroLoading && <p role="status" className="mt-2 text-xs font-semibold text-slate-500">Consultando produtos no cadastro administrativo…</p>}
+                          {adminCadastroError && <p role="alert" className="mt-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-800">{adminCadastroError}</p>}
+                          <div className="mt-3 max-h-80 space-y-2 overflow-y-auto">
+                            {filteredAdminProducts.slice(0, 100).map((item) => (
+                              <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 p-3">
+                                <div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{item.nome}</p><p className="truncate text-xs font-semibold text-slate-500">{item.sku} · {item.estoque} un.</p></div>
+                                <button type="button" onClick={() => editarProduto(item)} className="shrink-0 rounded-md border border-slate-300 px-3 py-2 text-xs font-black">Editar</button>
+                              </div>
+                            ))}
+                            {filteredAdminProducts.length === 0 && <p className="p-3 text-sm text-slate-500">Nenhum produto corresponde à pesquisa.</p>}
+                          </div>
+                          <div className="mt-3 flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
+                            <span>{adminProdutoPagina.registros} produto(s) · página {adminProdutoPagina.atual} de {adminProdutoPagina.total}</span>
+                            <div className="flex gap-2">
+                              <button type="button" disabled={adminProdutoPagina.atual <= 1 || adminCadastroLoading} onClick={() => setAdminProdutoPagina((page) => ({ ...page, atual: page.atual - 1 }))} className="rounded border border-slate-300 px-3 py-2 disabled:opacity-40">Anterior</button>
+                              <button type="button" disabled={adminProdutoPagina.atual >= adminProdutoPagina.total || adminCadastroLoading} onClick={() => setAdminProdutoPagina((page) => ({ ...page, atual: page.atual + 1 }))} className="rounded border border-slate-300 px-3 py-2 disabled:opacity-40">Próxima</button>
+                            </div>
+                          </div>
+                        </section>
                         <form onSubmit={submitCategoria} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
                           <h4 className="text-base font-black text-slate-950">Categorias e subcategorias</h4>
                           <p className="mt-1 text-sm font-semibold text-slate-500">Monte a hierarquia do catálogo antes de liberar o cadastro em massa.</p>
@@ -1771,22 +2004,45 @@ export default function Dashboard() {
                           </button>
                         </form>
                         <CompactList title="Hierarquia do catálogo" items={categoriasHierarquicas} fields={['label', 'descricao']} />
-                        <CompactList title="Produtos cadastrados" items={produtos} fields={['nome', 'sku', 'estoque']} />
                       </div>
                     </div>
                   )}
 
                   {activeCadastroTab === 'clientes' && (
                     <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-                      <SimpleForm title="Cadastro detalhado de cliente" subtitle="Evita duplicidade por e-mail/CPF e reaproveita registros existentes." onSubmit={submitCliente} buttonLabel="Salvar cliente" alertMessage={clienteDuplicateMessage} disabled={Boolean(clienteDuplicateMessage)}>
+                      <SimpleForm title={editingClienteId ? 'Editar cliente' : 'Cadastro detalhado de cliente'} subtitle="Pesquisa e edição usam os registros persistidos na API; o cadastro administrativo não confirma e-mail em nome do cliente." onSubmit={submitCliente} buttonLabel={editingClienteId ? 'Salvar alterações' : 'Cadastrar cliente'} alertMessage={formStatus || clienteDuplicateMessage} disabled={Boolean(clienteDuplicateMessage)}>
                         <Field label="Nome completo / Razão social" value={clienteForm.nome} onChange={(value) => setClienteForm((form) => ({ ...form, nome: value }))} required />
                         <Field label="Email principal" type="email" value={clienteForm.email} onChange={(value) => setClienteForm((form) => ({ ...form, email: value }))} required />
                         <Field label="Telefone / WhatsApp" value={clienteForm.telefone} onChange={(value) => setClienteForm((form) => ({ ...form, telefone: value }))} />
                         <Field label="CPF/CNPJ" value={clienteForm.cpf} onChange={(value) => setClienteForm((form) => ({ ...form, cpf: value }))} />
                       </SimpleForm>
-                      <div className="space-y-6">
+                      <div className="space-y-4">
                         <CadastroInsightPanel title="Controle de clientes" checks={cadastroHighlights.clientes} />
-                        <CompactList title="Clientes cadastrados" items={clientes} fields={['nome', 'email', 'telefone', 'cpf']} />
+                        <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <h3 className="text-base font-black text-slate-950">Pesquisar e editar clientes</h3>
+                            <button type="button" onClick={novoCliente} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-black text-white">Novo cliente</button>
+                          </div>
+                          <input value={clienteSearch} onChange={(event) => { setClienteSearch(event.target.value); setAdminClientePagina((page) => ({ ...page, atual: 1 })); }} placeholder="Nome, e-mail, documento ou telefone" className="mt-4 h-11 w-full rounded-lg border border-slate-200 px-3 text-sm" />
+                          {adminCadastroLoading && <p role="status" className="mt-2 text-xs font-semibold text-slate-500">Consultando clientes no cadastro administrativo…</p>}
+                          {adminCadastroError && <p role="alert" className="mt-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-800">{adminCadastroError}</p>}
+                          <div className="mt-3 max-h-80 space-y-2 overflow-y-auto">
+                            {filteredAdminClients.slice(0, 100).map((item) => (
+                              <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 p-3">
+                                <div className="min-w-0"><p className="truncate text-sm font-black text-slate-900">{item.nome}</p><p className="truncate text-xs font-semibold text-slate-500">{item.email} · {item.cpf || item.cpfCnpj || 'Documento pendente'}</p></div>
+                                <button type="button" onClick={() => editarCliente(item)} className="shrink-0 rounded-md border border-slate-300 px-3 py-2 text-xs font-black">Editar</button>
+                              </div>
+                            ))}
+                            {filteredAdminClients.length === 0 && <p className="p-3 text-sm text-slate-500">Nenhum cliente corresponde à pesquisa.</p>}
+                          </div>
+                          <div className="mt-3 flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
+                            <span>{adminClientePagina.registros} cliente(s) · página {adminClientePagina.atual} de {adminClientePagina.total}</span>
+                            <div className="flex gap-2">
+                              <button type="button" disabled={adminClientePagina.atual <= 1 || adminCadastroLoading} onClick={() => setAdminClientePagina((page) => ({ ...page, atual: page.atual - 1 }))} className="rounded border border-slate-300 px-3 py-2 disabled:opacity-40">Anterior</button>
+                              <button type="button" disabled={adminClientePagina.atual >= adminClientePagina.total || adminCadastroLoading} onClick={() => setAdminClientePagina((page) => ({ ...page, atual: page.atual + 1 }))} className="rounded border border-slate-300 px-3 py-2 disabled:opacity-40">Próxima</button>
+                            </div>
+                          </div>
+                        </section>
                       </div>
                     </div>
                   )}
@@ -2055,7 +2311,7 @@ export default function Dashboard() {
 
                     <div className="space-y-6">
                       <CadastroInsightPanel title="Proteções do cadastro fiscal" checks={empresaGrupoHighlights} />
-                      <CompactList title="Empresas já mapeadas" items={empresasGrupo} fields={['razaoSocial', 'cnpj', 'regimeTributario', 'cidade']} />
+                      <EmpresasGrupoAdmin items={empresasGrupo} onItemsChange={setEmpresasGrupo} onStatus={setFormStatus} />
                     </div>
                   </div>
                 </section>
@@ -2672,6 +2928,116 @@ export default function Dashboard() {
   );
 }
 
+function EmpresasGrupoAdmin({ items, onItemsChange, onStatus }) {
+  const [search, setSearch] = useState('');
+  const [editing, setEditing] = useState(null);
+  const [draft, setDraft] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState('');
+  const normalizedSearch = normalizeText(search);
+  const filtered = items.filter((item) => !normalizedSearch || [item.razaoSocial, item.nomeFantasia, item.cnpj, item.codigoEmpresa, item.cidade, item.estado]
+    .some((value) => normalizeText(value).includes(normalizedSearch)));
+
+  const edit = (item) => {
+    setEditing(item);
+    setDraft({
+      razaoSocial: item.razaoSocial || '', nomeFantasia: item.nomeFantasia || '', cnpj: item.cnpj || '',
+      responsavelLegal: item.responsavelLegal || '', responsavelFiscal: item.responsavelFiscal || '',
+      emailFiscal: item.emailFiscal || '', emailComercial: item.emailComercial || '',
+      telefone: item.telefone || '', whatsapp: item.whatsapp || '', cep: item.cep || '',
+      logradouro: item.logradouro || '', numero: item.numero || '', complemento: item.complemento || '',
+      bairro: item.bairro || '', cidade: item.cidade || '', estado: item.estado || '',
+      regimeTributario: item.regimeTributario || '', ativa: Boolean(item.ativa), rowVersion: item.rowVersion || '',
+    });
+    setStatus('');
+  };
+
+  const update = (field, value) => setDraft((current) => ({ ...current, [field]: value }));
+
+  const save = async (event) => {
+    event.preventDefault();
+    if (!editing || !draft || busy) return;
+    if (!draft.rowVersion) {
+      setStatus('A API não forneceu a versão de concorrência. Recarregue a lista antes de editar.');
+      return;
+    }
+    setBusy(true);
+    setStatus('Salvando dados legais e relendo o registro…');
+    try {
+      const payload = { ...draft };
+      await empresaGrupoAPI.updateDadosLegais(editing.id, payload);
+      const response = await empresaGrupoAPI.getAll();
+      const persisted = (Array.isArray(response.data) ? response.data : []).find((company) => company.id === editing.id);
+      if (!persisted || persisted.razaoSocial !== draft.razaoSocial.trim()
+        || String(persisted.cnpj || '').replace(/\D/g, '') !== String(draft.cnpj || '').replace(/\D/g, '')
+        || Boolean(persisted.ativa) !== Boolean(draft.ativa)) {
+        throw new Error('A API respondeu à atualização, mas a releitura não confirmou razão social, CNPJ e situação.');
+      }
+      onItemsChange(response.data);
+      setEditing(null);
+      setDraft(null);
+      setStatus(`Empresa #${persisted.id} relida e confirmada.`);
+      onStatus(`Dados legais da empresa #${persisted.id} atualizados e confirmados pela API.`);
+    } catch (error) {
+      const detail = error.response?.data?.detail || error.response?.data?.mensagem || error.message;
+      setStatus(detail || 'Falha ao atualizar os dados legais.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <h3 className="text-base font-black text-slate-950">Pesquisar e editar empresas</h3>
+      <p className="mt-1 text-xs font-semibold text-slate-500">A edição salva apenas os dados legais disponíveis neste formulário e respeita a versão concorrente.</p>
+      <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Razão social, fantasia, CNPJ, cidade ou código" className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+      <div className="mt-3 max-h-72 space-y-2 overflow-auto">
+        {filtered.map((item) => (
+          <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-black text-slate-900">{item.razaoSocial || item.nomeFantasia || `Empresa #${item.id}`}</p>
+              <p className="truncate text-xs text-slate-500">{item.cnpj || 'CNPJ pendente'} · {item.cidade || 'Cidade pendente'} · {item.ativa ? 'Ativa' : 'Inativa'}</p>
+            </div>
+            <button type="button" onClick={() => edit(item)} className="shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-800 hover:border-slate-900">Editar</button>
+          </div>
+        ))}
+        {filtered.length === 0 && <p className="py-4 text-sm text-slate-500">Nenhuma empresa corresponde à pesquisa.</p>}
+      </div>
+      {editing && draft && (
+        <form onSubmit={save} className="mt-4 space-y-3 border-t border-slate-200 pt-4">
+          <div className="flex items-center justify-between gap-2">
+            <h4 className="text-sm font-black text-slate-900">Dados legais · empresa #{editing.id}</h4>
+            <button type="button" onClick={() => { setEditing(null); setDraft(null); }} className="text-xs font-bold text-slate-500">Cancelar</button>
+          </div>
+          <Field label="Razão social" value={draft.razaoSocial} onChange={(value) => update('razaoSocial', value)} required />
+          <Field label="Nome fantasia" value={draft.nomeFantasia} onChange={(value) => update('nomeFantasia', value)} />
+          <Field label="CNPJ" value={draft.cnpj} onChange={(value) => update('cnpj', value)} />
+          <Field label="Responsável legal" value={draft.responsavelLegal} onChange={(value) => update('responsavelLegal', value)} />
+          <Field label="Responsável fiscal" value={draft.responsavelFiscal} onChange={(value) => update('responsavelFiscal', value)} />
+          <Field label="E-mail fiscal" type="email" value={draft.emailFiscal} onChange={(value) => update('emailFiscal', value)} />
+          <Field label="E-mail comercial" type="email" value={draft.emailComercial} onChange={(value) => update('emailComercial', value)} />
+          <Field label="Telefone" value={draft.telefone} onChange={(value) => update('telefone', value)} />
+          <Field label="WhatsApp" value={draft.whatsapp} onChange={(value) => update('whatsapp', value)} />
+          <Field label="CEP" value={draft.cep} onChange={(value) => update('cep', value)} />
+          <Field label="Logradouro" value={draft.logradouro} onChange={(value) => update('logradouro', value)} />
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Número" value={draft.numero} onChange={(value) => update('numero', value)} />
+            <Field label="Complemento" value={draft.complemento} onChange={(value) => update('complemento', value)} />
+            <Field label="Bairro" value={draft.bairro} onChange={(value) => update('bairro', value)} />
+            <Field label="Cidade" value={draft.cidade} onChange={(value) => update('cidade', value)} />
+            <Field label="UF" value={draft.estado} onChange={(value) => update('estado', value)} />
+            <Field label="Regime tributário" value={draft.regimeTributario} onChange={(value) => update('regimeTributario', value)} />
+          </div>
+          <ToggleField label="Empresa ativa" checked={draft.ativa} onChange={(value) => update('ativa', value)} />
+          {status && <p className="rounded-lg bg-slate-100 p-3 text-xs font-semibold text-slate-700">{status}</p>}
+          <button type="submit" disabled={busy} className="w-full rounded-lg bg-slate-950 px-4 py-3 text-sm font-black text-white disabled:opacity-60">{busy ? 'Salvando…' : 'Salvar dados legais'}</button>
+        </form>
+      )}
+      {!editing && status && <p className="mt-3 rounded-lg bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">{status}</p>}
+    </section>
+  );
+}
+
 function CadastroWorkspaceHeader({ cadastro, count, highlights = [] }) {
   const Icon = cadastro.icon;
 
@@ -2792,14 +3158,18 @@ function ProductPreview({ produto, categorias }) {
     || categorias.find((item) => item.id === categoriaSelecionada)?.nome
     || categorias.find((item) => item.id === produto.categoriaId)?.nome
     || 'Sem categoria';
-  const image = produto.imagemUrl || 'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=900&q=85';
+  const image = produto.imagemUrl || '';
   const price = Number(produto.preco || 0);
   const promotional = Number(produto.precoPromocional || 0);
 
   return (
     <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="aspect-[16/10] bg-slate-100">
-        <img src={image} alt={produto.nome || 'Prévia do produto'} className="h-full w-full object-cover" />
+        {image ? (
+          <img src={image} alt={produto.nome || 'Prévia do produto'} className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full items-center justify-center px-6 text-center text-sm font-black text-slate-400">A imagem principal obrigatória aparecerá aqui.</div>
+        )}
       </div>
       <div className="p-5">
         <p className="text-xs font-black uppercase tracking-[0.2em] text-[#C9A227]">Prévia da vitrine</p>
@@ -3277,7 +3647,7 @@ function ImageGalleryField({ value, onChange, onUpload, uploading, className = '
         <div className="flex-1">
           <p className="text-sm font-bold text-slate-700">Galeria de imagens</p>
           <p className="mt-2 text-xs font-semibold text-slate-500">
-            Você pode colar URLs ou enviar várias imagens de uma vez. O sistema monta a galeria automaticamente.
+            Até quatro imagens opcionais, além da imagem principal obrigatória. Use somente imagens autorizadas para o cadastro do produto.
           </p>
         </div>
         <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-black text-slate-800 hover:border-[#C9A227]">
@@ -3288,7 +3658,7 @@ function ImageGalleryField({ value, onChange, onUpload, uploading, className = '
             accept="image/png,image/jpeg,image/webp,image/gif"
             multiple
             className="hidden"
-            disabled={uploading}
+            disabled={uploading || items.length >= 4}
             onChange={(event) => onUpload(event.target.files)}
           />
         </label>
@@ -3296,8 +3666,13 @@ function ImageGalleryField({ value, onChange, onUpload, uploading, className = '
 
       <textarea
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => {
+          const nextValue = event.target.value;
+          if (galleryToArray(nextValue).length <= 4) onChange(nextValue);
+        }}
         aria-label="URLs da galeria, uma por linha"
+        placeholder="Até quatro URLs autorizadas, uma por linha"
+        maxLength={8192}
         className="mt-4 min-h-24 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-semibold outline-none transition focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
       />
 

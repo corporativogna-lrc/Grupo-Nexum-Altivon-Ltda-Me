@@ -1,0 +1,61 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Sistema de gestão: GenesisGest.Net
+ * Versão: 1.1.5.7195
+-->
+<Window x:Class="NexumAltivon.Desktop.PedidoConsultaWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GenesisGest.Net - Consulta de pedidos"
+        Width="1120" Height="740" MinWidth="900" MinHeight="600"
+        WindowStartupLocation="CenterOwner" Background="{StaticResource ShellBackground}" FontFamily="Segoe UI">
+    <Grid Margin="20">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="12"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <Border Padding="16" Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12">
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="OPERAÇÃO / PEDIDOS" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold"/>
+                    <TextBlock Text="Consulta de pedido" Foreground="{StaticResource TextPrimary}" FontSize="24" FontWeight="Bold" Margin="0,4,0,0"/>
+                    <TextBlock Text="Consulta autenticada dos 500 pedidos mais recentes. Esta tela não altera pedidos nem mostra credenciais/links de pagamento." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right">
+                    <TextBlock Text="{Binding Status}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" MaxWidth="360" HorizontalAlignment="Right"/>
+                    <Button Content="Recarregar pedidos" Click="Recarregar_Click" HorizontalAlignment="Right" Margin="0,8,0,0"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="1.35*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="0.8*"/></Grid.ColumnDefinitions>
+            <Border Padding="14" Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12">
+                <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="10"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="Buscar" Click="Buscar_Click" Margin="8,0,0,0"/>
+                        <TextBox x:Name="PesquisaBox" ToolTip="Número do pedido ou status"/>
+                    </DockPanel>
+                    <DataGrid x:Name="PedidosGrid" Grid.Row="2" ItemsSource="{Binding Pedidos}" SelectionChanged="PedidosGrid_SelectionChanged"
+                              AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False"
+                              HeadersVisibility="Column" Background="Transparent" BorderBrush="{StaticResource PanelBorder}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Pedido" Binding="{Binding NumeroPedido}" Width="130"/>
+                            <DataGridTextColumn Header="Cliente" Binding="{Binding ClienteNome}" Width="*"/>
+                            <DataGridTextColumn Header="Data UTC" Binding="{Binding CreatedAt, StringFormat={}{0:dd/MM/yyyy HH:mm}}" Width="125"/>
+                            <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="110"/>
+                            <DataGridTextColumn Header="Pagamento" Binding="{Binding StatusPagamento}" Width="110"/>
+                            <DataGridTextColumn Header="Total (R$)" Binding="{Binding Total, StringFormat=N2}" Width="95"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
+            <Border Grid.Column="2" Padding="16" Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12">
+                <StackPanel>
+                    <TextBlock Text="Resumo do pedido selecionado" Foreground="{StaticResource TextPrimary}" FontSize="19" FontWeight="Bold"/>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,12,0,0">
+                        <TextBlock x:Name="DetalheText" Text="Selecione um pedido." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap"/>
+                    </ScrollViewer>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

@@ -14,6 +14,7 @@
         Height="720"
         MinWidth="980"
         MinHeight="640"
+        WindowState="Maximized"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource ShellBackground}"
         FontFamily="Segoe UI">
@@ -255,387 +256,115 @@
             </MenuItem>
         </Menu>
 
-        <ScrollViewer VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Auto"
-                      Padding="0,0,0,18">
-        <Grid MinWidth="1040">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="300" />
-            <ColumnDefinition Width="14" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
+        <Grid Margin="0,0,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="270" />
+                <ColumnDefinition Width="14" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
 
-        <Border Style="{StaticResource CardBorder}">
-            <DockPanel LastChildFill="True">
-                <StackPanel DockPanel.Dock="Top">
-                    <StackPanel Orientation="Horizontal">
-                        <Border Width="58" Height="58" CornerRadius="12" Background="{StaticResource AccentGold}" Margin="0,0,14,0">
-                            <TextBlock Text="NA" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#070604" FontSize="20" FontWeight="Black" />
-                        </Border>
-                        <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="Grupo Nexum Altivon" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
-                            <TextBlock Text="PARTICIPAÇÕES SOCIETÁRIAS" Foreground="{StaticResource TextSecondary}" FontSize="11" FontWeight="SemiBold" />
+            <Border Grid.Column="0" Style="{StaticResource CardBorder}" Padding="14">
+                <DockPanel LastChildFill="True">
+                    <StackPanel DockPanel.Dock="Top">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Border Width="48" Height="48" CornerRadius="10" Background="{StaticResource AccentGold}" Margin="0,0,10,0">
+                                <TextBlock Text="NA" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#070604" FontSize="18" FontWeight="Black" />
+                            </Border>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="Grupo Nexum Altivon" Foreground="{StaticResource TextPrimary}" FontSize="16" FontWeight="Bold" />
+                                <TextBlock Text="GENESISGEST.NET" Foreground="{StaticResource AccentGold}" FontSize="10" FontWeight="SemiBold" />
+                            </StackPanel>
                         </StackPanel>
+                        <TextBlock Text="Terminal operacional" Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,14,0,10" />
+                        <Button Content="Abrir painel Genesis local" Style="{StaticResource PrimaryButton}" Height="38" Padding="10,6" Click="OpenWorkspace_Click" Margin="0,0,0,7" />
+                        <Button Content="Atualizar conexões" Style="{StaticResource GhostButton}" Height="38" Padding="10,6" Click="RefreshStatus_Click" Margin="0,0,0,7" />
+                        <Button Content="Grade de rede e endpoints" Style="{StaticResource GhostButton}" Height="38" Padding="10,6" Click="OpenNetworkSettings_Click" Margin="0,0,0,7" />
+                        <Button Content="Emissão fiscal manual" Style="{StaticResource GhostButton}" Height="38" Padding="10,6" Click="OpenManualNfe_Click" />
                     </StackPanel>
 
-                    <Border Background="{StaticResource PanelSurface}" CornerRadius="14" Padding="14" Margin="0,22,0,0">
+                    <Border DockPanel.Dock="Bottom" Background="{StaticResource PanelSurface}" CornerRadius="12" Padding="12" Margin="0,12,0,0">
                         <StackPanel>
-                            <TextBlock Text="GENESISGEST.NET" Style="{StaticResource SectionKicker}" />
-                            <TextBlock Text="Central desktop ERP/PDV" Foreground="{StaticResource TextPrimary}" FontSize="22" FontWeight="Bold" Margin="0,8,0,0" />
-                            <TextBlock Text="Operação local para lojas físicas, caixa, fiscal, estoque e retaguarda corporativa." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                            <TextBlock Text="CONEXÃO DO TERMINAL" Foreground="{StaticResource AccentGold}" FontSize="10" FontWeight="Bold" />
+                            <TextBlock Text="{Binding EnvironmentStatus}" Foreground="{StaticResource TextPrimary}" FontSize="15" FontWeight="Bold" Margin="0,5,0,0" />
+                            <TextBlock Text="{Binding EnvironmentDetail}" Foreground="{StaticResource TextSecondary}" FontSize="11" TextWrapping="Wrap" MaxHeight="42" Margin="0,3,0,0" />
+                            <TextBlock Text="{Binding Terminal.StoreName}" Foreground="{StaticResource TextPrimary}" FontSize="12" FontWeight="SemiBold" Margin="0,8,0,0" />
+                            <TextBlock Text="{Binding Terminal.TerminalCode}" Foreground="{StaticResource TextSecondary}" FontSize="11" Margin="0,2,0,0" />
                         </StackPanel>
                     </Border>
-                </StackPanel>
+                </DockPanel>
+            </Border>
 
-                <StackPanel DockPanel.Dock="Bottom" Margin="0,16,0,0">
-                    <Button Content="Abrir painel Genesis local" Style="{StaticResource PrimaryButton}" Click="OpenWorkspace_Click" Margin="0,0,0,10" />
-                    <Button Content="Atualizar conexões" Style="{StaticResource GhostButton}" Click="RefreshStatus_Click" Margin="0,0,0,10" />
-                    <Button Content="Grade de rede e endpoints" Style="{StaticResource GhostButton}" Click="OpenNetworkSettings_Click" Margin="0,0,0,10" />
-                    <Button Content="Emissão fiscal manual" Style="{StaticResource GhostButton}" Click="OpenManualNfe_Click" />
-                </StackPanel>
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
 
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,18,0,0">
-                    <StackPanel>
-                        <Border Background="{StaticResource PanelSurface}" CornerRadius="14" Padding="14" Margin="0,0,0,12">
-                            <StackPanel>
-                                <TextBlock Text="Status do terminal" Foreground="{StaticResource TextSecondary}" FontSize="12" />
-                                <TextBlock Text="{Binding EnvironmentStatus}" Foreground="{StaticResource TextPrimary}" FontSize="17" FontWeight="Bold" Margin="0,4,0,0" />
-                                <TextBlock Text="{Binding EnvironmentDetail}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,6,0,0" />
-                            </StackPanel>
-                        </Border>
-
-                        <Border Background="{StaticResource PanelSurface}" CornerRadius="14" Padding="14" Margin="0,0,0,12">
-                            <StackPanel>
-                                <TextBlock Text="Terminal" Foreground="{StaticResource TextSecondary}" FontSize="12" />
-                                <TextBlock Text="{Binding Terminal.StoreName}" Foreground="{StaticResource TextPrimary}" FontSize="17" FontWeight="Bold" Margin="0,4,0,0" />
-                                <TextBlock Text="{Binding Terminal.StoreCode}" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold" Margin="0,4,0,0" />
-                                <TextBlock Text="{Binding Terminal.TerminalCode}" Foreground="{StaticResource TextSecondary}" Margin="0,4,0,0" />
-                                <TextBlock Text="{Binding Terminal.WorkMode}" Foreground="{StaticResource AccentGreen}" FontWeight="SemiBold" Margin="0,4,0,0" />
-                            </StackPanel>
-                        </Border>
-
-                        <Border Background="{StaticResource PanelSurface}" CornerRadius="14" Padding="14">
-                            <StackPanel>
-                                <TextBlock Text="Seleção atual" Foreground="{StaticResource TextSecondary}" FontSize="12" />
-                                <TextBlock Text="{Binding SelectedModuleTitle}" Foreground="{StaticResource TextPrimary}" FontSize="17" FontWeight="Bold" Margin="0,4,0,0" />
-                                <TextBlock Text="{Binding SelectedModuleDetail}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,6,0,0" />
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </ScrollViewer>
-            </DockPanel>
-        </Border>
-
-        <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
-            <StackPanel>
-                <Border Style="{StaticResource CardBorder}">
+                <Border Grid.Row="0" Style="{StaticResource CardBorder}" Padding="14">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-
-                        <StackPanel>
+                        <StackPanel VerticalAlignment="Center">
                             <TextBlock Text="CENTRAL OPERACIONAL" Style="{StaticResource SectionKicker}" />
-                            <TextBlock Text="Gestão local das lojas físicas, PDV e retaguarda" Foreground="{StaticResource TextPrimary}" FontSize="30" FontWeight="Bold" Margin="0,8,0,0" />
-                            <TextBlock Text="A estrutura fica separada por função real de empresa: atendimento e caixa, retaguarda administrativa, fiscal/contingência, estrutura societária e parametrização do terminal." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,10,0,0" MaxWidth="930" />
+                            <TextBlock Text="ERP e PDV · visão geral" Foreground="{StaticResource TextPrimary}" FontSize="24" FontWeight="Bold" Margin="0,3,0,0" />
+                            <TextBlock Text="Operação de lojas, caixa, retaguarda e integrações." Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,3,0,0" />
                         </StackPanel>
-
-                        <Border Grid.Column="1" Background="{StaticResource PanelSurface}" CornerRadius="14" Padding="14" VerticalAlignment="Center">
-                            <StackPanel>
-                                <TextBlock Text="{Binding ConnectionModeLabel}" Foreground="{StaticResource AccentGreen}" FontWeight="SemiBold" HorizontalAlignment="Right" />
-                                <TextBlock Text="{Binding ServerDatabaseLabel}" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" Margin="0,4,0,0" HorizontalAlignment="Right" />
-                                <TextBlock Text="{Binding LastUpdatedLabel}" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Right" Margin="0,4,0,0" />
-                            </StackPanel>
-                        </Border>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="12,0,0,0">
+                            <TextBlock Text="{Binding ConnectionModeLabel}" Foreground="{StaticResource AccentGreen}" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Right" />
+                            <TextBlock Text="{Binding ServerDatabaseLabel}" Foreground="{StaticResource TextPrimary}" FontSize="14" FontWeight="Bold" Margin="0,3,0,0" HorizontalAlignment="Right" />
+                            <TextBlock Text="{Binding LastUpdatedLabel}" Foreground="{StaticResource TextSecondary}" FontSize="11" Margin="0,2,0,0" HorizontalAlignment="Right" />
+                        </StackPanel>
                     </Grid>
                 </Border>
 
-                <UniformGrid Columns="4" Rows="1" Margin="0,18,0,18">
-                    <Border Style="{StaticResource CardBorder}" Margin="0,0,12,0">
-                        <StackPanel>
-                            <TextBlock Text="{Binding SalesMetricValue}" Style="{StaticResource MetricValue}" />
-                            <TextBlock Text="Atendimento e caixa" Style="{StaticResource MetricLabel}" />
-                        </StackPanel>
+                <UniformGrid Grid.Row="1" Columns="4" Rows="1" Margin="0,10,0,10">
+                    <Border Style="{StaticResource CardBorder}" Padding="12" Margin="0,0,8,0">
+                        <StackPanel><TextBlock Text="{Binding SalesMetricValue}" Style="{StaticResource MetricValue}" FontSize="22" /><TextBlock Text="Atendimento e caixa" Style="{StaticResource MetricLabel}" /></StackPanel>
                     </Border>
-                    <Border Style="{StaticResource CardBorder}" Margin="0,0,12,0">
-                        <StackPanel>
-                            <TextBlock Text="{Binding FiscalMetricValue}" Style="{StaticResource MetricValue}" />
-                            <TextBlock Text="Fiscal e contingência" Style="{StaticResource MetricLabel}" />
-                        </StackPanel>
+                    <Border Style="{StaticResource CardBorder}" Padding="12" Margin="0,0,8,0">
+                        <StackPanel><TextBlock Text="{Binding FiscalMetricValue}" Style="{StaticResource MetricValue}" FontSize="22" /><TextBlock Text="Fiscal e contingência" Style="{StaticResource MetricLabel}" /></StackPanel>
                     </Border>
-                    <Border Style="{StaticResource CardBorder}" Margin="0,0,12,0">
-                        <StackPanel>
-                            <TextBlock Text="{Binding GroupMetricValue}" Style="{StaticResource MetricValue}" />
-                            <TextBlock Text="Empresa e filial" Style="{StaticResource MetricLabel}" />
-                        </StackPanel>
+                    <Border Style="{StaticResource CardBorder}" Padding="12" Margin="0,0,8,0">
+                        <StackPanel><TextBlock Text="{Binding GroupMetricValue}" Style="{StaticResource MetricValue}" FontSize="22" /><TextBlock Text="Empresa e filial" Style="{StaticResource MetricLabel}" /></StackPanel>
                     </Border>
-                    <Border Style="{StaticResource CardBorder}">
-                        <StackPanel>
-                            <TextBlock Text="{Binding IntegrationMetricValue}" Style="{StaticResource MetricValue}" />
-                            <TextBlock Text="Servidor e integrações" Style="{StaticResource MetricLabel}" />
-                        </StackPanel>
+                    <Border Style="{StaticResource CardBorder}" Padding="12">
+                        <StackPanel><TextBlock Text="{Binding IntegrationMetricValue}" Style="{StaticResource MetricValue}" FontSize="22" /><TextBlock Text="Servidor e integrações" Style="{StaticResource MetricLabel}" /></StackPanel>
                     </Border>
                 </UniformGrid>
 
-                <Border Style="{StaticResource CardBorder}">
-                    <StackPanel>
-                        <Grid Margin="0,0,0,16">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="DASHBOARD OPERACIONAL" Style="{StaticResource SectionKicker}" />
-                                <TextBlock Text="Painel de gestão selecionável" Style="{StaticResource SectionTitle}" Margin="0,6,0,0" />
-                                <TextBlock Text="Use as flags para visualizar somente os indicadores necessários no momento. As telas detalhadas ficam nos menus superiores." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,6,0,0" />
-                            </StackPanel>
-                            <WrapPanel Grid.Column="1" VerticalAlignment="Center" Margin="18,0,0,0">
-                                <CheckBox Content="Vendas" IsChecked="{Binding ShowSalesDashboard}" Foreground="{StaticResource TextPrimary}" Margin="0,0,12,8" />
-                                <CheckBox Content="Financeiro" IsChecked="{Binding ShowFinanceDashboard}" Foreground="{StaticResource TextPrimary}" Margin="0,0,12,8" />
-                                <CheckBox Content="Compras" IsChecked="{Binding ShowPurchaseDashboard}" Foreground="{StaticResource TextPrimary}" Margin="0,0,12,8" />
-                                <CheckBox Content="Fiscal" IsChecked="{Binding ShowFiscalDashboard}" Foreground="{StaticResource TextPrimary}" Margin="0,0,12,8" />
-                                <CheckBox Content="Logística" IsChecked="{Binding ShowLogisticsDashboard}" Foreground="{StaticResource TextPrimary}" Margin="0,0,0,8" />
-                            </WrapPanel>
-                        </Grid>
-
-                        <UniformGrid Columns="2">
-                            <Border Background="{StaticResource PanelSurface}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="16" Padding="16" Margin="0,0,12,12" Visibility="{Binding ShowSalesDashboard, Converter={StaticResource BoolToVisibility}}">
-                                <StackPanel>
-                                    <TextBlock Text="Vendas e PDV" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
-                                    <TextBlock Text="Fluxo loja física + e-commerce" Foreground="{StaticResource TextSecondary}" Margin="0,4,0,12" />
-                                    <Grid Height="126">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <Border Grid.Column="0" Background="{StaticResource AccentGold}" Height="82" VerticalAlignment="Bottom" CornerRadius="8,8,0,0" Margin="5,0" />
-                                        <Border Grid.Column="1" Background="{StaticResource AccentBlue}" Height="106" VerticalAlignment="Bottom" CornerRadius="8,8,0,0" Margin="5,0" />
-                                        <Border Grid.Column="2" Background="{StaticResource AccentGreen}" Height="64" VerticalAlignment="Bottom" CornerRadius="8,8,0,0" Margin="5,0" />
-                                        <Border Grid.Column="3" Background="{StaticResource AccentAmber}" Height="118" VerticalAlignment="Bottom" CornerRadius="8,8,0,0" Margin="5,0" />
-                                    </Grid>
-                                    <TextBlock Text="Visão rápida: pedidos, carrinho, PDV, checkout e sincronização." Foreground="{StaticResource AccentGold}" TextWrapping="Wrap" FontWeight="SemiBold" />
-                                </StackPanel>
+                <Border Grid.Row="2" Style="{StaticResource CardBorder}" Padding="14">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="Áreas de trabalho" Style="{StaticResource SectionTitle}" FontSize="18" Margin="0,0,0,10" />
+                        <UniformGrid Grid.Row="1" Columns="3" Rows="2">
+                            <Border Background="{StaticResource PanelSurface}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12" Padding="12" Margin="0,0,8,8">
+                                <StackPanel><TextBlock Text="Vendas e PDV" Foreground="{StaticResource TextPrimary}" FontSize="15" FontWeight="Bold" /><TextBlock Text="Venda de balcão, caixa e pedidos." Foreground="{StaticResource TextSecondary}" FontSize="11" TextWrapping="Wrap" Margin="0,5,0,0" /></StackPanel>
                             </Border>
-
-                            <Border Background="{StaticResource PanelSurface}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="16" Padding="16" Margin="0,0,0,12" Visibility="{Binding ShowFinanceDashboard, Converter={StaticResource BoolToVisibility}}">
-                                <StackPanel>
-                                    <TextBlock Text="Financeiro" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
-                                    <TextBlock Text="Receber, pagar, caixa e aprovação" Foreground="{StaticResource TextSecondary}" Margin="0,4,0,12" />
-                                    <Grid Height="126">
-                                        <Ellipse Width="120" Height="120" Stroke="{StaticResource AccentGold}" StrokeThickness="16" HorizontalAlignment="Left" />
-                                        <Ellipse Width="82" Height="82" Fill="{StaticResource PanelBackground}" HorizontalAlignment="Left" Margin="19,0,0,0" />
-                                        <StackPanel HorizontalAlignment="Left" VerticalAlignment="Center" Margin="26,0,0,0">
-                                            <TextBlock Text="FMS" Foreground="{StaticResource TextPrimary}" FontSize="22" FontWeight="Bold" HorizontalAlignment="Center" />
-                                            <TextBlock Text="ativo" Foreground="{StaticResource AccentGreen}" HorizontalAlignment="Center" />
-                                        </StackPanel>
-                                        <StackPanel Margin="150,10,0,0">
-                                            <TextBlock Text="Contas a receber" Foreground="{StaticResource TextPrimary}" />
-                                            <TextBlock Text="Contas a pagar" Foreground="{StaticResource TextPrimary}" Margin="0,8,0,0" />
-                                            <TextBlock Text="Alçadas e caixa" Foreground="{StaticResource TextPrimary}" Margin="0,8,0,0" />
-                                        </StackPanel>
-                                    </Grid>
-                                    <TextBlock Text="Acesso detalhado pelo menu Financeiro." Foreground="{StaticResource AccentGold}" FontWeight="SemiBold" />
-                                </StackPanel>
+                            <Border Background="{StaticResource PanelSurface}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12" Padding="12" Margin="0,0,8,8">
+                                <StackPanel><TextBlock Text="Financeiro" Foreground="{StaticResource TextPrimary}" FontSize="15" FontWeight="Bold" /><TextBlock Text="Contas, tesouraria e conciliação." Foreground="{StaticResource TextSecondary}" FontSize="11" TextWrapping="Wrap" Margin="0,5,0,0" /></StackPanel>
                             </Border>
-
-                            <Border Background="{StaticResource PanelSurface}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="16" Padding="16" Margin="0,0,12,12" Visibility="{Binding ShowPurchaseDashboard, Converter={StaticResource BoolToVisibility}}">
-                                <StackPanel>
-                                    <TextBlock Text="Compras e Estoque" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
-                                    <TextBlock Text="Cotação, pedido, entrada e saldo" Foreground="{StaticResource TextSecondary}" Margin="0,4,0,12" />
-                                    <UniformGrid Columns="3" Height="126">
-                                        <Border Background="#10213A" CornerRadius="14" Padding="12" Margin="0,0,8,0">
-                                            <StackPanel VerticalAlignment="Center">
-                                                <TextBlock Text="1" Foreground="{StaticResource AccentGold}" FontSize="26" FontWeight="Bold" HorizontalAlignment="Center" />
-                                                <TextBlock Text="Solicitar" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
-                                            </StackPanel>
-                                        </Border>
-                                        <Border Background="#10213A" CornerRadius="14" Padding="12" Margin="0,0,8,0">
-                                            <StackPanel VerticalAlignment="Center">
-                                                <TextBlock Text="2" Foreground="{StaticResource AccentBlue}" FontSize="26" FontWeight="Bold" HorizontalAlignment="Center" />
-                                                <TextBlock Text="Comprar" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
-                                            </StackPanel>
-                                        </Border>
-                                        <Border Background="#10213A" CornerRadius="14" Padding="12">
-                                            <StackPanel VerticalAlignment="Center">
-                                                <TextBlock Text="3" Foreground="{StaticResource AccentGreen}" FontSize="26" FontWeight="Bold" HorizontalAlignment="Center" />
-                                                <TextBlock Text="Entrar" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
-                                            </StackPanel>
-                                        </Border>
-                                    </UniformGrid>
-                                    <TextBlock Text="Código, QR Code, origem e custo ficam amarrados no cadastro do item." Foreground="{StaticResource AccentGold}" TextWrapping="Wrap" FontWeight="SemiBold" />
-                                </StackPanel>
+                            <Border Background="{StaticResource PanelSurface}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12" Padding="12" Margin="0,0,0,8">
+                                <StackPanel><TextBlock Text="Compras e estoque" Foreground="{StaticResource TextPrimary}" FontSize="15" FontWeight="Bold" /><TextBlock Text="Cotações, entradas e saldos." Foreground="{StaticResource TextSecondary}" FontSize="11" TextWrapping="Wrap" Margin="0,5,0,0" /></StackPanel>
                             </Border>
-
-                            <Border Background="{StaticResource PanelSurface}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="16" Padding="16" Margin="0,0,0,12" Visibility="{Binding ShowFiscalDashboard, Converter={StaticResource BoolToVisibility}}">
-                                <StackPanel>
-                                    <TextBlock Text="Fiscal" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
-                                    <TextBlock Text="Emitente automático e contingência" Foreground="{StaticResource TextSecondary}" Margin="0,4,0,12" />
-                                    <Grid Height="126">
-                                        <Border Background="#10213A" CornerRadius="14" Padding="14">
-                                            <StackPanel VerticalAlignment="Center">
-                                                <TextBlock Text="Menor custo / maior margem" Foreground="{StaticResource AccentGold}" FontSize="18" FontWeight="Bold" />
-                                                <TextBlock Text="Regra fiscal por empresa do grupo, regime, CFOP, logística e custo operacional." Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap" Margin="0,8,0,0" />
-                                            </StackPanel>
-                                        </Border>
-                                    </Grid>
-                                    <TextBlock Text="Emissão manual continua disponível para contingência." Foreground="{StaticResource AccentGold}" FontWeight="SemiBold" />
-                                </StackPanel>
+                            <Border Background="{StaticResource PanelSurface}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12" Padding="12" Margin="0,0,8,0">
+                                <StackPanel><TextBlock Text="Fiscal" Foreground="{StaticResource TextPrimary}" FontSize="15" FontWeight="Bold" /><TextBlock Text="Empresas emitentes e contingência." Foreground="{StaticResource TextSecondary}" FontSize="11" TextWrapping="Wrap" Margin="0,5,0,0" /></StackPanel>
                             </Border>
-
-                            <Border Background="{StaticResource PanelSurface}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="16" Padding="16" Margin="0,0,12,0" Visibility="{Binding ShowLogisticsDashboard, Converter={StaticResource BoolToVisibility}}">
-                                <StackPanel>
-                                    <TextBlock Text="Logística" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
-                                    <TextBlock Text="Coleta, entrega e rastreio" Foreground="{StaticResource TextSecondary}" Margin="0,4,0,12" />
-                                    <ProgressBar Minimum="0" Maximum="100" Value="70" Height="18" Foreground="{StaticResource AccentGreen}" Background="#10213A" />
-                                    <ProgressBar Minimum="0" Maximum="100" Value="42" Height="18" Foreground="{StaticResource AccentGold}" Background="#10213A" Margin="0,12,0,0" />
-                                    <ProgressBar Minimum="0" Maximum="100" Value="88" Height="18" Foreground="{StaticResource AccentBlue}" Background="#10213A" Margin="0,12,0,0" />
-                                    <TextBlock Text="Acompanhamento por status com comunicação ao cliente." Foreground="{StaticResource AccentGold}" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,14,0,0" />
-                                </StackPanel>
+                            <Border Background="{StaticResource PanelSurface}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12" Padding="12" Margin="0,0,8,0">
+                                <StackPanel><TextBlock Text="Logística" Foreground="{StaticResource TextPrimary}" FontSize="15" FontWeight="Bold" /><TextBlock Text="Coletas, entregas e rastreamento." Foreground="{StaticResource TextSecondary}" FontSize="11" TextWrapping="Wrap" Margin="0,5,0,0" /></StackPanel>
+                            </Border>
+                            <Border Background="{StaticResource PanelSurface}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12" Padding="12">
+                                <StackPanel><TextBlock Text="Integrações" Foreground="{StaticResource TextPrimary}" FontSize="15" FontWeight="Bold" /><TextBlock Text="API local, nuvem e serviços conectados." Foreground="{StaticResource TextSecondary}" FontSize="11" TextWrapping="Wrap" Margin="0,5,0,0" /></StackPanel>
                             </Border>
                         </UniformGrid>
-                    </StackPanel>
+                    </Grid>
                 </Border>
-
-                <Grid Visibility="Collapsed">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="1.15*" />
-                        <ColumnDefinition Width="18" />
-                        <ColumnDefinition Width="0.85*" />
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel>
-                        <Border Style="{StaticResource CardBorder}" Margin="0,0,0,18">
-                            <StackPanel>
-                                <StackPanel Margin="0,0,0,14">
-                                    <TextBlock Text="LOJA FÍSICA / PDV" Style="{StaticResource SectionKicker}" />
-                                    <TextBlock Text="Operação de balcão e caixa" Style="{StaticResource SectionTitle}" Margin="0,6,0,0" />
-                                    <TextBlock Text="A operação de loja fica separada por janelas próprias: venda de balcão, abertura/fechamento de caixa, pagamento e devolução. O acesso fica no menu Operação." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,6,0,0" />
-                                </StackPanel>
-                                <ListBox ItemsSource="{Binding PdvActions}" Background="Transparent" BorderThickness="0" IsHitTestVisible="False">
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border Background="{StaticResource PanelSurface}" CornerRadius="12" Padding="12" Margin="0,0,0,8" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <StackPanel>
-                                                        <TextBlock Text="{Binding Title}" Foreground="{StaticResource TextPrimary}" FontWeight="SemiBold" />
-                                                        <TextBlock Text="{Binding Detail}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,4,0,0" />
-                                                    </StackPanel>
-                                                    <TextBlock Grid.Column="1" Text="{Binding Status}" Foreground="{StaticResource AccentGold}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" Margin="12,0,0,0" />
-                                                </Grid>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Style="{StaticResource CardBorder}">
-                            <StackPanel>
-                                <StackPanel Margin="0,0,0,14">
-                                    <TextBlock Text="BACKOFFICE EMPRESARIAL" Style="{StaticResource SectionKicker}" />
-                                    <TextBlock Text="Módulos corporativos" Style="{StaticResource SectionTitle}" Margin="0,6,0,0" />
-                                    <TextBlock Text="As áreas corporativas não devem disputar espaço com o PDV. Cada módulo entra por menu suspenso e será expandido em janela, página ou painel dedicado." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,6,0,0" />
-                                </StackPanel>
-                                <ListBox ItemsSource="{Binding Modules}" Background="Transparent" BorderThickness="0" IsHitTestVisible="False">
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border Background="{StaticResource PanelSurface}" CornerRadius="12" Padding="12" Margin="0,0,0,8" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <StackPanel>
-                                                        <TextBlock Text="{Binding Title}" Foreground="{StaticResource TextPrimary}" FontWeight="SemiBold" />
-                                                        <TextBlock Text="{Binding Detail}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,4,0,0" />
-                                                    </StackPanel>
-                                                    <TextBlock Grid.Column="1" Text="{Binding Status}" Foreground="{StaticResource AccentGreen}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" Margin="12,0,0,0" />
-                                                </Grid>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-
-                    <StackPanel Grid.Column="2">
-                        <Border Style="{StaticResource CardBorder}" Margin="0,0,0,18">
-                            <StackPanel>
-                                <TextBlock Text="FISCAL E CONTINGÊNCIA" Style="{StaticResource SectionKicker}" />
-                                <TextBlock Text="Emissão e retaguarda fiscal" Style="{StaticResource SectionTitle}" Margin="0,6,0,0" />
-                                <TextBlock Text="Separado do PDV para manter a loja vendendo mesmo quando a emissão automática depender de certificado, regra fiscal ou conexão externa." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,8,0,0" />
-                                <Border Background="{StaticResource PanelSurface}" CornerRadius="14" Padding="14" Margin="0,16,0,14">
-                                    <TextBlock Text="{Binding PdvOperationalNote}" Foreground="{StaticResource AccentAmber}" TextWrapping="Wrap" FontWeight="SemiBold" />
-                                </Border>
-                                <Button Content="Abrir emissão manual" Style="{StaticResource PrimaryButton}" Click="OpenManualNfe_Click" Margin="0,0,0,10" />
-                                <Button Content="Revalidar servidor e API" Style="{StaticResource GhostButton}" Click="RefreshStatus_Click" />
-                            </StackPanel>
-                        </Border>
-
-                        <Border Style="{StaticResource CardBorder}" Margin="0,0,0,18">
-                            <DockPanel>
-                                <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
-                                    <TextBlock Text="ESTRUTURA SOCIETÁRIA" Style="{StaticResource SectionKicker}" />
-                                    <TextBlock Text="Grupo e lojas" Style="{StaticResource SectionTitle}" Margin="0,6,0,0" />
-                                    <TextBlock Text="Base visual para seleção de empresa, filial, loja física, fiscal e domínio operacional." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,6,0,0" />
-                                </StackPanel>
-
-                                <TreeView ItemsSource="{Binding OrganizationUnits}" Background="Transparent" BorderThickness="0">
-                                    <TreeView.Resources>
-                                        <HierarchicalDataTemplate DataType="{x:Type models:OrganizationNode}" ItemsSource="{Binding Children}">
-                                            <Border Background="{StaticResource PanelSurface}" CornerRadius="12" Padding="11" Margin="0,0,0,8" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1">
-                                                <StackPanel>
-                                                    <TextBlock Text="{Binding Name}" Foreground="{StaticResource TextPrimary}" FontWeight="SemiBold" />
-                                                    <TextBlock Text="{Binding Role}" Foreground="{StaticResource AccentGold}" FontSize="12" Margin="0,4,0,0" />
-                                                    <TextBlock Text="{Binding TaxSituation}" Foreground="{StaticResource AccentAmber}" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap" />
-                                                    <TextBlock Text="{Binding Domain}" Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,4,0,0" />
-                                                </StackPanel>
-                                            </Border>
-                                        </HierarchicalDataTemplate>
-                                    </TreeView.Resources>
-                                </TreeView>
-                            </DockPanel>
-                        </Border>
-
-                        <Border Style="{StaticResource CardBorder}">
-                            <StackPanel>
-                                <TextBlock Text="TERMINAL E CONEXÕES" Style="{StaticResource SectionKicker}" />
-                                <TextBlock Text="Parâmetros locais" Style="{StaticResource SectionTitle}" Margin="0,6,0,0" />
-                                <TextBlock Text="Loja" Foreground="{StaticResource TextSecondary}" Margin="0,14,0,5" />
-                                <TextBox Text="{Binding Terminal.StoreName, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="Código da loja" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,5" />
-                                <TextBox Text="{Binding Terminal.StoreCode, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="Terminal" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,5" />
-                                <TextBox Text="{Binding Terminal.TerminalCode, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="Operador" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,5" />
-                                <TextBox Text="{Binding Terminal.OperatorName, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="API local do servidor" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,5" />
-                                <TextBox Text="{Binding Terminal.ApiBaseUrl, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="API pública" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,5" />
-                                <TextBox Text="{Binding Terminal.PublicApiUrl, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="Banco interno" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,5" />
-                                <UniformGrid Columns="2">
-                                    <TextBox Text="{Binding Terminal.ServerAddress, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0" />
-                                    <TextBox Text="{Binding Terminal.DatabasePort, UpdateSourceTrigger=PropertyChanged}" />
-                                </UniformGrid>
-                                <TextBlock Text="Impressora fiscal/comprovante" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,5" />
-                                <TextBox Text="{Binding Terminal.LocalPrinter, UpdateSourceTrigger=PropertyChanged}" />
-                                <CheckBox Content="Contingência local habilitada" IsChecked="{Binding Terminal.OfflineContingencyEnabled}" Foreground="{StaticResource TextPrimary}" Margin="0,14,0,0" />
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </Grid>
-            </StackPanel>
-        </ScrollViewer>
+            </Grid>
         </Grid>
-        </ScrollViewer>
     </DockPanel>
 </Window>

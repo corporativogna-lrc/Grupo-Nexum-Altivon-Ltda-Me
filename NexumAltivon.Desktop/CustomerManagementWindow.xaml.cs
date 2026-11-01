@@ -50,6 +50,7 @@ public partial class CustomerManagementWindow : Window, INotifyPropertyChanged
     private string _enderecoCidade = string.Empty;
     private string _enderecoEstado = string.Empty;
     private string _enderecoPais = "Brasil";
+    private string _buscaCliente = string.Empty;
     private bool _enderecoPadrao;
 
     public CustomerManagementWindow(TerminalProfile terminal)
@@ -116,6 +117,7 @@ public partial class CustomerManagementWindow : Window, INotifyPropertyChanged
 
     public int SelectedTabIndex { get => _selectedTabIndex; set => SetField(ref _selectedTabIndex, value); }
     public string Status { get => _status; private set => SetField(ref _status, value); }
+    public string BuscaCliente { get => _buscaCliente; set => SetField(ref _buscaCliente, value); }
     public string ClienteNome { get => _clienteNome; set { if (SetField(ref _clienteNome, value)) OnPropertyChanged(nameof(CadastroValidation)); } }
     public string ClienteEmail { get => _clienteEmail; set { if (SetField(ref _clienteEmail, value)) OnPropertyChanged(nameof(CadastroValidation)); } }
     public string ClienteDocumento { get => _clienteDocumento; set { if (SetField(ref _clienteDocumento, value)) OnPropertyChanged(nameof(CadastroValidation)); } }
@@ -155,7 +157,22 @@ public partial class CustomerManagementWindow : Window, INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    private async void Atualizar_Click(object sender, RoutedEventArgs e) => await RefreshClientesAsync();
+    private async void Atualizar_Click(object sender, RoutedEventArgs e) => await RefreshClientesAsync(busca: BuscaCliente);
+
+    private async void PesquisarClientes_Click(object sender, RoutedEventArgs e) => await RefreshClientesAsync(busca: BuscaCliente);
+
+    private void EditarClienteSelecionado_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedCliente is null)
+        {
+            Status = "Selecione um cliente persistido para carregar os campos de edição.";
+            return;
+        }
+
+        LoadClienteForm(SelectedCliente);
+        SelectedTabIndex = 0;
+        Status = $"Cliente #{SelectedCliente.Id} carregado para edição. Salve para persistir as alterações.";
+    }
 
     private void NovoCliente_Click(object sender, RoutedEventArgs e)
     {
@@ -212,7 +229,7 @@ public partial class CustomerManagementWindow : Window, INotifyPropertyChanged
             }
 
             var persistedId = persisted.Data.Id;
-            await RefreshClientesAsync(persistedId, allowBusy: true);
+            await RefreshClientesAsync(persistedId, allowBusy: true, busca: BuscaCliente);
             Status = $"Cliente #{persistedId} gravado e relido no banco oficial.";
         }
         finally
@@ -348,7 +365,7 @@ public partial class CustomerManagementWindow : Window, INotifyPropertyChanged
 
     private void Fechar_Click(object sender, RoutedEventArgs e) => Close();
 
-    private async Task RefreshClientesAsync(int? selectId = null, bool allowBusy = false)
+    private async Task RefreshClientesAsync(int? selectId = null, bool allowBusy = false, string? busca = null)
     {
         if (!EnsureSession() || (_isBusy && !allowBusy))
         {
@@ -359,7 +376,7 @@ public partial class CustomerManagementWindow : Window, INotifyPropertyChanged
         SetBusy(true);
         try
         {
-            var result = await _api.GetClientesAsync(_terminal, _terminal.DesktopAccessToken);
+            var result = await _api.GetClientesAsync(_terminal, _terminal.DesktopAccessToken, busca);
             if (!result.Success || result.Data is null)
             {
                 Status = $"Falha ao carregar clientes: {result.Detail}";

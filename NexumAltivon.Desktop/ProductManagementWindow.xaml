@@ -1,0 +1,68 @@
+<Window x:Class="NexumAltivon.Desktop.ProductManagementWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Produtos e serviços" Width="1180" Height="760" MinWidth="980" MinHeight="620"
+        WindowStartupLocation="CenterOwner" Background="{StaticResource ShellBackground}" FontFamily="Segoe UI">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/><RowDefinition Height="12"/><RowDefinition Height="2*"/>
+            <RowDefinition Height="12"/><RowDefinition Height="3*"/><RowDefinition Height="12"/><RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Border Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="16" Padding="16">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Content="Pesquisar" Click="Pesquisar_Click" Margin="6,0" Padding="16,8"/>
+                    <Button Content="Atualizar lista" Click="Atualizar_Click" Margin="6,0" Padding="16,8"/>
+                </StackPanel>
+                <StackPanel>
+                    <TextBlock Text="CATÁLOGO ADMINISTRATIVO" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold"/>
+                    <TextBlock Text="Produtos e serviços" Foreground="{StaticResource TextPrimary}" FontSize="26" FontWeight="Bold"/>
+                    <TextBox x:Name="BuscaBox" Width="360" HorizontalAlignment="Left" Margin="0,8,0,0" ToolTip="Nome, SKU ou identificador" KeyDown="BuscaBox_KeyDown"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+        <Border Grid.Row="2" Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="16" Padding="10">
+            <DataGrid x:Name="ProdutosGrid" ItemsSource="{Binding Produtos}" SelectedItem="{Binding ProdutoSelecionado, Mode=TwoWay}" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" CanUserAddRows="False" SelectionChanged="ProdutosGrid_SelectionChanged">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="SKU" Binding="{Binding Sku}" Width="130"/>
+                    <DataGridTextColumn Header="Produto" Binding="{Binding Nome}" Width="*"/>
+                    <DataGridTextColumn Header="Preço" Binding="{Binding Preco, StringFormat={}{0:C2}}" Width="110"/>
+                    <DataGridTextColumn Header="Estoque" Binding="{Binding Estoque}" Width="90"/>
+                    <DataGridCheckBoxColumn Header="Ativo" Binding="{Binding Ativo}" Width="70"/>
+                    <DataGridTextColumn Header="Categoria" Binding="{Binding CategoriaId}" Width="150"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+        <Border Grid.Row="4" Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="16" Padding="16">
+            <Grid>
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="Salvar edição" Click="Salvar_Click" Padding="18,8" Background="{StaticResource AccentGold}" Foreground="#080704" FontWeight="Bold"/>
+                    <TextBlock Text="Selecione um produto para editar os dados comerciais" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" VerticalAlignment="Center"/>
+                </DockPanel>
+                <UniformGrid Grid.Row="1" Columns="4" Margin="0,14,0,0">
+                    <StackPanel Margin="0,0,12,10"><TextBlock Text="Nome" Foreground="{StaticResource TextSecondary}"/><TextBox x:Name="NomeBox"/></StackPanel>
+                    <StackPanel Margin="0,0,12,10"><TextBlock Text="SKU" Foreground="{StaticResource TextSecondary}"/><TextBox x:Name="SkuBox"/></StackPanel>
+                    <StackPanel Margin="0,0,12,10"><TextBlock Text="Preço" Foreground="{StaticResource TextSecondary}"/><TextBox x:Name="PrecoBox"/></StackPanel>
+                    <StackPanel Margin="0,0,12,10"><TextBlock Text="Preço promocional" Foreground="{StaticResource TextSecondary}"/><TextBox x:Name="PrecoPromocionalBox"/></StackPanel>
+                    <StackPanel Margin="0,0,12,10"><TextBlock Text="Estoque" Foreground="{StaticResource TextSecondary}"/><TextBox x:Name="EstoqueBox"/></StackPanel>
+                    <StackPanel Margin="0,0,12,10"><TextBlock Text="Estoque mínimo" Foreground="{StaticResource TextSecondary}"/><TextBox x:Name="EstoqueMinimoBox"/></StackPanel>
+                    <StackPanel Margin="0,0,12,10"><TextBlock Text="Custo" Foreground="{StaticResource TextSecondary}"/><TextBox x:Name="CustoBox"/></StackPanel>
+                    <StackPanel Margin="0,0,12,10"><TextBlock Text="Categoria (slug)" Foreground="{StaticResource TextSecondary}"/><TextBox x:Name="CategoriaBox"/></StackPanel>
+                    <StackPanel Margin="0,0,12,10"><TextBlock Text="Marca" Foreground="{StaticResource TextSecondary}"/><TextBox x:Name="MarcaBox"/></StackPanel>
+                    <StackPanel Margin="0,0,12,10"><TextBlock Text="Tags" Foreground="{StaticResource TextSecondary}"/><TextBox x:Name="TagsBox"/></StackPanel>
+                    <CheckBox x:Name="DestaqueCheck" Content="Produto em destaque" Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
+                    <StackPanel Margin="0,0,12,10"><TextBlock Text="Imagem principal atual (preservada)" Foreground="{StaticResource TextSecondary}"/><TextBlock x:Name="ImagemAtualText" Foreground="{StaticResource TextPrimary}" TextTrimming="CharacterEllipsis" ToolTip="Imagem autorizada já cadastrada"/></StackPanel>
+                    <StackPanel Grid.ColumnSpan="4" Margin="0,0,12,0"><TextBlock Text="Descrição" Foreground="{StaticResource TextSecondary}"/><TextBox x:Name="DescricaoBox" Height="58" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/></StackPanel>
+                </UniformGrid>
+            </Grid>
+        </Border>
+        <DockPanel Grid.Row="6">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Content="Anterior" Click="Anterior_Click" Margin="4,0" Padding="12,6"/>
+                <Button Content="Próxima" Click="Proxima_Click" Margin="4,0" Padding="12,6"/>
+            </StackPanel>
+            <TextBlock x:Name="StatusText" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+        </DockPanel>
+    </Grid>
+</Window>

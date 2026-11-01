@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7190
+ * Versão: 1.1.5.7195
 -->
 
 # Checklist Clinico GenesisGest.Net v1.1.5
@@ -68,17 +68,17 @@ Este programa e criterio de aceite do Desktop e nao aumenta isoladamente o numer
 | WPFDB-01 Inventario | Catalogar as tabelas de `nexum_altivon` e `genesis_bd` como administrativa, transacional, filha de agregado, integracao, auditoria ou tecnica | Parcial avancado: auditor reproduzivel inventariou 269 objetos; a classificacao automatica integral ainda exige confirmacao clinica |
 | WPFDB-02 Linhagem | Vincular cada tabela administrativa a modulo, entidade, endpoint Minimal API, permissao, formulario WPF e operacoes permitidas | Em andamento: 102 objetos possuem referencia literal na API e 34 no Desktop; a correspondencia EF/DTO sem nome fisico ainda precisa ser reconciliada |
 | WPFDB-03 Contrato oficial | Proibir acesso MySQL direto no Desktop; toda leitura/escrita deve passar pela API oficial com DTO validado e `CancellationToken` | Concluido para o acesso administrativo ao banco: `ManualNfeWindow` migrou para `DesktopApiClient`, nenhuma janela WPF instancia `HttpClient` para a API e nao existe referencia MySQL direta no Desktop. `DesktopAutoUpdateService` permanece isolado para consultar releases externas do GitHub |
-| WPFDB-04 Formulario individual | Entregar formulario profissional especifico para cada processo administrativo, sem tela generica usada como conclusao funcional | Parcial avancado: `ProcurementWindow` opera solicitacao, cotacao, pedido, aprovacao e entrada; `SupplierManagementWindow` opera fornecedores/contatos; `CustomerManagementWindow` opera clientes/enderecos. As tres usam contratos tipados da API oficial. Os demais cadastros corporativos, roteamento fiscal e workspace modular ainda usam submissao generica e bloqueiam o aceite integral |
+| WPFDB-04 Formulario individual | Entregar formulario profissional especifico para cada processo administrativo, sem tela generica usada como conclusao funcional | Parcial avancado: `ProcurementWindow`, `SupplierManagementWindow`, `CustomerManagementWindow` e `EmpresasGrupoWindow` usam contratos tipados da API. `FiscalRoutingWindow` consulta empresas reais e simula na API; `PedidoConsultaWindow` lê pedidos e itens reais. Outros cadastros corporativos, módulos e operações fiscais/documentais seguem pendentes |
 | WPFDB-05 Separacao de dominios | Contas a pagar, contas a receber, conciliacao, tesouraria, fiscal, estoque e demais dominios devem possuir comandos, validacoes e persistencia separados | Parcial avancado: contas a pagar, contas a receber e conciliacao bancaria possuem janelas, DTOs, comandos, validacoes e persistencia separados; contas a pagar/receber exportam PDFs proprios; tesouraria e demais dominios permanecem pendentes |
 | WPFDB-06 Padrao transacional | Cada formulario deve conter contexto, codigo, tenant, status, acoes, cabecalho, itens/servicos, financeiro, anexos, auditoria, totalizadores e validacao em tempo real quando aplicavel | Parcial |
 | WPFDB-07 Seguranca | Aplicar JWT em memoria, RBAC, tenant, reautenticacao para acao sensivel e mascaramento de segredos | Parcial |
-| WPFDB-08 Integridade | Aplicar concorrencia, idempotencia, tratamento de erro HTTP, releitura persistida e nenhuma confirmacao apenas visual | Parcial avancado: contas a pagar/receber e Compras rejeitam duplicidade/excesso e releem o registro persistido. Fornecedores/contatos e clientes/enderecos exigem `RowVersion`, rejeitam versao antiga com HTTP 409 e so confirmam no WPF depois de nova leitura. Tres janelas ainda chamam `SubmitOperationAsync`; quatro arquivos WPF ainda referenciam `LocalOutboxService`, incluindo o PDV cuja contingencia precisa ser homologada separadamente antes de qualquer remocao |
+| WPFDB-08 Integridade | Aplicar concorrencia, idempotencia, tratamento de erro HTTP, releitura persistida e nenhuma confirmacao apenas visual | Parcial avancado: contas a pagar/receber, Compras, empresas e fornecedores/clientes usam comandos tipados, validação/concorrência conforme aplicável e respostas reais da API. Restam duas janelas com `SubmitOperationAsync` (`CorporateMasterDataWindow` para outros cadastros e `ModuleWorkspaceWindow`). `LocalOutboxService` é consumido por essas duas telas e pelo PDV; homologar reprocessamento/idempotência da contingência do PDV antes de remover |
 | WPFDB-09 Relacionamentos | Exibir e operar relacoes pai-filho no agregado correto sem gravacao cruzada ambigua entre dominios | Parcial avancado: contatos sao filhos do fornecedor selecionado e enderecos sao filhos do cliente selecionado; ambos aplicam tenant, concorrencia, soft-delete e auditoria. Os demais agregados administrativos ainda precisam ser reconciliados |
 | WPFDB-10 Homologacao | Provar formulario por formulario com API, banco, auditoria, permissao, erro controlado, build WPF e limpeza de dados de validacao | Parcial avancado: contas a pagar/receber, conciliacao, Compras, fornecedores e clientes foram provados na API e banco. Clientes/enderecos confirmou criacao, atualizacao, conflitos 409, soft-delete, seis eventos de auditoria e `ResidualRows = 0` nos percursos local e publico. Os demais formularios permanecem pendentes |
 
 Regra de aceite: a cobertura WPF somente sera concluida quando a matriz tabela-endpoint-formulario-permissao atingir 100%, sem tabelas administrativas orfas e sem formulario que grave em dominio diferente daquele declarado.
 
-Evidencia atualizada em 2026-07-19: `scripts/server/auditar-paridade-banco-wpf.ps1` consulta os dois schemas oficiais e gera `docs/MATRIZ-PARIDADE-BANCO-WPF-2026-07-18.md`. A execucao posterior ao formulario de clientes encontrou 257 tabelas base, 12 views e 17 janelas WPF; 102 objetos possuem referencia literal na API e 35 no Desktop. Restam tres janelas que chamam o endpoint generico e registram payload em `genesis_bd.sys_operacoes_desktop`: `CorporateMasterDataWindow`, `FiscalRoutingWindow` e `ModuleWorkspaceWindow`. Esse registro nao equivale a gravacao nas tabelas do dominio declarado e bloqueia o aceite funcional dessas telas.
+Evidencia atualizada em 2026-11-01: a matriz gerada em 2026-07-19 encontrou 257 tabelas base, 12 views e 17 janelas WPF. Nesta branch, `EmpresasGrupoWindow` substitui o fluxo genérico de empresas, `FiscalRoutingWindow` substitui heurísticas/submissão genérica por simulação autenticada da API e `PedidoConsultaWindow` lê pedidos e itens. A árvore local agora contém 20 janelas XAML (`App.xaml` é o arquivo adicional); a matriz integral precisa ser regenerada no checkout oficial depois de integrar/publicar. Permanecem dois chamadores de `SubmitOperationAsync`: `CorporateMasterDataWindow` para os demais cadastros e `ModuleWorkspaceWindow`.
 
 ## Frente Unica de Layout do Desktop WPF
 
@@ -338,6 +338,52 @@ Estado apurado:
 
 Nao declarar item como concluido sem uma evidencia tecnica associada: build, teste, rota HTTP, consulta de banco, migracao aplicada, arquivo publicado, commit remoto ou validacao visual quando o item for de interface.
 
+## Identificadores de produtos no Desktop — 2026-11-01 — 1.1.5.7194
+
+| Item | Status e evidencia |
+|---|---|
+| Leitura paginada de codigo de barras e QR por tenant | Implementado no endpoint administrativo `/api/admin/produtos/identificadores`, com busca, paginação e DTO de concorrência. |
+| Atualização de identificadores por API | Implementada em `/api/admin/produtos/{id}/identificadores`, permite gravar e limpar identificadores e valida formato/tamanho e RowVersion. Índices únicos por tenant/loja são preparados no schema operacional; a API rejeita conflitos de banco com HTTP 409. Se houver duplicidade anterior, a criação do respectivo índice é bloqueada com erro explícito no log para saneamento. |
+| Persistência de colunas no schema e inicialização | Colunas `codigo_barras` e `qr_code` adicionadas ao schema SQL e ao provisionamento operacional idempotente. Aplicação em produção ainda pendente. |
+| Tela WPF e ligação ao menu | Janela de pesquisa, edição e gravação via API real adicionada e vinculada ao workspace Código de barras e QR Code. |
+| Build da API | Concluído localmente em Release. Revisão final após a correção Shopify registrada abaixo. |
+| Build do Desktop WPF | Concluído localmente em Release, sem warnings ou erros antes da atualização final de versão. Revisão final ainda necessária. |
+| Homologação autenticada e banco real | Pendente: publicar a API atualizada e ensaiar listagem, gravação, remoção, duplicidade e conflito de RowVersion com usuário Gerente em tenant real; confirmar no MariaDB a criação dos dois índices. |
+| Publicação | Pendente: esta alteração está em branch local; não foi feito commit, push ou deploy. |
+| Build API/Desktop e testes | API Release e Desktop Release concluídos na versão 1.1.5.7195, ambos sem avisos/erros; suíte API com 37 aprovados. A compilação da solution inteira com `--no-restore` não passou porque os dois projetos ERP não possuem `obj/project.assets.json` neste worktree. O banco oficial ainda não recebeu as alterações desta branch. |
+
+## Cadastro de empresas das lojas — 2026-11-01 — 1.1.5.7194
+
+| Item | Status e evidência |
+|---|---|
+| Vínculo das seis lojas | Implementado endpoint administrativo autenticado que lista as lojas reais e seu vínculo, sem preencher CNPJ ou dados legais inventados. |
+| Rascunho da empresa | Implementado endpoint idempotente que cria rascunho inativo para a loja real, com nome fantasia existente, sem permissões fiscais. CNPJ e razão social permanecem nulos até preenchimento. |
+| Atualização legal e concorrência | Implementado endpoint PUT com validação de CNPJ normalizado, exigência de razão social/CNPJ para ativar, verificação de RowVersion e conflito explícito de duplicidade/concorrência. |
+| Persistência existente | Provisionamento operacional torna razão social/CNPJ anuláveis e adiciona `loja_id` e índice único idempotente, detectando vínculos duplicados antes da criação. Aplicação ainda depende de publicar e reiniciar a API oficial. |
+| Desktop | Menu Empresas do grupo agora abre tela conectada aos endpoints reais para visualizar as seis lojas, criar rascunhos e salvar dados legais; não usa o submit genérico/outbox. |
+| Validação local | API e Desktop Release compilados; 37 testes API aprovados. Homologação autenticada com banco oficial e a execução do fluxo WPF continuam pendentes. |
+| Publicação | Pendente: código está em branch local sem commit, push ou deploy; produção continua executando a versão publicada anterior. |
+
+## Roteamento fiscal no Desktop — 2026-11-01 — 1.1.5.7194
+
+| Item | Status e evidência |
+|---|---|
+| Empresas e parâmetros fiscais | `FiscalRoutingWindow` carrega somente empresas ativas com razão social, CNPJ e UF da API autenticada. Removeu a lista de empresas, regimes e alíquotas fixas embutidas na tela. |
+| Simulação | A ação envia os valores, tipo de operação, origem e destino ao endpoint `/api/fiscal/simular-roteamento`; ranking, tributos e margem vêm do motor fiscal do servidor. A tela informa claramente que não emite documento nem grava regra. |
+| Validação da API | Operação enum definida, valor de produto positivo, frete não negativo e UFs brasileiras são validados antes do cálculo. Empresas fiscais sem razão social/CNPJ são excluídas do conjunto de candidatos. |
+| Estado de homologação | API/Desktop Release compilaram sem avisos nem erros; 37 testes API passaram. A sessão autenticada, cálculo contra banco oficial e validação visual WPF ainda não foram executados. |
+| Publicação | Pendente: branch local sem commit, push ou deploy. |
+
+## Consulta de pedidos no Desktop — 2026-11-01 — 1.1.5.7195
+
+| Item | Status e evidência |
+|---|---|
+| Consulta autenticada | Menu `Consulta de pedido` abre uma tela própria que consome `GET /api/pedidos` com o JWT do Desktop; a API retorna no máximo 500 pedidos recentes. |
+| Dados do pedido | A resposta administrativa foi ampliada aditivamente com nome do cliente, loja e itens (produto/SKU, quantidade e valores); a tela permite busca local por número/status e consulta somente leitura. |
+| Dados sensíveis e ações | A UI não mostra identificadores, QR Code ou URL de pagamento e não altera status; mudanças de estoque/financeiro permanecem fora deste fluxo de consulta. |
+| Validação local | API e Desktop Release compilados sem avisos/erros e 37 testes API aprovados. Acesso com usuário Gerente e conferência de linhas no banco oficial pendem de publicação/homologação. |
+| Publicação | Pendente: branch local sem commit, push ou deploy. |
+
 ## Catalogo e lojas para homologacao — 2026-10-30
 
 | Item | Status e evidencia |
@@ -348,3 +394,101 @@ Nao declarar item como concluido sem uma evidencia tecnica associada: build, tes
 | Backup antes da importacao | Concluido em `D:\xampp\mysql\backup\nexum_catalogo_pre_import_20261030.sql` e `D:\xampp\mysql\backup\nexum_site_perfis_publicos_pre_import_20261030.sql`. |
 | Assets no GitHub Pages | Pendente ate concluir o workflow de publicacao e confirmar HTTP 200 das imagens ilustrativas e visualizacao no navegador. |
 | Fluxos de login, checkout e PDV | Pendentes de homologacao autenticada; a carga do catalogo nao representa aceite desses fluxos. |
+
+## Disponibilidade do servidor — 2026-11-01
+
+| Item | Status e evidencia |
+|---|---|
+| MySQL oficial e `my.ini` | Confirmado: servico `NexumAltivonMySQL` `Running/Automatic`, executavel e configuracao em `D:\xampp`, porta 3309, datadir `D:\xampp\mysql\data`. A API privada aponta `127.0.0.1:3309` para `nexum_altivon` e `genesis_bd`; os dois health checks local e publico responderam HTTP 200. |
+| Instancia antiga C: | O servico `mysql` de `C:\xampp` esta `Stopped/Disabled`, mas existe uma instancia manual `mysqld.exe` em `C:\xampp` escutando na porta 3306. Nao conflita com a porta 3309 da API. Permanece ativa para nao interromper possiveis outros consumidores locais sem inventario. |
+| Tarefa de boot da API | Restaurada em 2026-11-01 pelo instalador oficial: `NexumAltivonApi24h`, `SYSTEM/ServiceAccount`, nivel Highest, um gatilho de boot, nenhum de logon, 999 reinicios com intervalo de 1 minuto e limite de execucao ilimitado. O resultado `267009` corresponde a tarefa em execucao; a API voltou a responder HTTP 200 localmente. |
+| Recuperacao de servicos | Confirmada pela configuracao SCM: MySQL e Cloudflared `Running/Automatic`, cada um com tres acoes de reinicio apos falha. |
+| Túnel, API e site | Health local e publico da API, bancos `nexum_altivon` e `genesis_bd` e homepage publica responderam HTTP 200 apos o registro da tarefa. |
+| Reboot real | Pendente: a maquina nao foi reiniciada nesta validacao para preservar a disponibilidade atual. O gatilho foi confirmado na tarefa registrada, mas ainda nao observado apos reboot. |
+| Código e segurança | API Release compilada com 0 avisos/erros; MySqlConnector 2.4.0 foi atualizado para 2.6.2 e System.Security.Cryptography.Pkcs 8.0.1 para 8.0.2. A auditoria transitiva de pacotes não encontrou vulnerabilidades. O runtime instalado no servidor é .NET 8.0.31; atualizar para o patch .NET 8.0.33 requer publicar/reiniciar o processo oficial e continua pendente. |
+
+## Correcoes de catalogo, clientes e cadastros administrativos — 2026-11-01
+
+| Item | Status e evidencia |
+|---|---|
+| Imagens autorizadas | Mantidas as imagens já presentes nos cadastros. Nenhuma imagem adicional foi criada ou atribuída; produtos sem imagem principal deixam de ser publicados na vitrine. |
+| Integridade da vitrine | Removidos fallbacks de catálogo, URLs externas, SKU/avaliações/condições de pagamento fabricadas. Produto ativo sem imagem não é exposto nem pode ser salvo como ativo sem imagem. |
+| Cadastro e confirmação de cliente | Implementadas rotas reais de cadastro pendente, confirmação por token e reenvio. Falha de e-mail não simula sucesso; retorna erro rastreável e permite reenvio. |
+| Administração de clientes | Rotas autenticadas de busca, consulta, criação/edição e endereços; Desktop ganhou pesquisa e ação explícita de editar cliente selecionado. |
+| Administração de produtos | Dashboard ganhou pesquisa e edição, com leitura posterior da API para verificar persistência; exige imagem principal. |
+| Empresas | Tela Desktop do grupo ganhou busca e edição dos dados legais das lojas vinculadas, sem inventar CNPJ ou outros dados individuais. |
+| Validação local | Front-end compilado em modo produção; `git diff --check` limpo; API/Desktop e 37 testes API já haviam compilado/passado nesta sequência. A experiência visual autenticada e os fluxos contra banco oficial ainda não foram homologados. |
+| Publicação | Pendente: alterações estão apenas no worktree local; sem commit, push ou deploy. |
+
+## Cadastro administrativo de produtos no Desktop — 2026-11-01
+
+| Item | Status e evidencia |
+|---|---|
+| Consulta de produtos | Endpoint autenticado `GET /api/admin/produtos` pesquisa nome, SKU e slug, lista ativos e inativos com paginação e campos completos para edição; respeita o escopo de tenant do `NexumDbContext`. |
+| Edição | Janela WPF própria vinculada ao menu Produtos e serviços atualiza nome, SKU, descrições, preço, estoque, categoria, marca, tags e destaque via `PUT /api/produtos/{slug}`. Após salvar, relê o produto pela API e compara os valores persistidos. |
+| Imagens | A edição envia e mantém a imagem já cadastrada; a tela não oferece upload nem substituição de imagem. |
+| Validação local | API Release e Desktop Release compilados sem avisos/erros; 37 testes API passaram; `git diff --check` será revalidado ao fechar a edição. Os testes existentes não exercitam a tela WPF nem a rota nova contra banco real. |
+| Homologação e publicação | Pendente: conferir sessão Gerente, busca/paginação/edição contra API e banco de homologação; alterações seguem locais, sem commit, push ou deploy. |
+
+## Recuperacao de cadastro pendente no front-end — 2026-11-01
+
+| Item | Status e evidencia |
+|---|---|
+| Reenvio após falha de e-mail | Ajustada a resposta de cadastro duplicado: não diz mais que um registro pendente pode ser usado como conta ativa e oferece link direto para a tela existente de reenvio, preenchendo o e-mail digitado. |
+| Contrato de reenvio | `ConfirmarCadastro` consome `POST /api/clientes/reenviar-confirmacao`; a rota responde sem revelar se o endereço existe e tenta enviar somente para cadastro pendente. |
+| Validação | Build de produção do front-end concluído após a alteração; `git diff --check` limpo. O envio real segue dependente de configuração SendGrid válida e resposta do provedor; não foi disparado e-mail de cliente nesta validação. |
+| Publicação | Pendente: mudança local, sem commit, push ou deploy. |
+
+## Pesquisa e edicao de empresas no Dashboard — 2026-11-01
+
+| Item | Status e evidencia |
+|---|---|
+| Pesquisa administrativa | Lista de empresas agora filtra razao social, nome fantasia, CNPJ, codigo interno, cidade e UF. |
+| Edicao legal | A tela edita os dados aceitos pelo contrato `/api/erp/empresas/{id}/dados-legais`, envia RowVersion, explica que o escopo é somente legal e não altera opções fiscais/PDV que o endpoint não persiste. |
+| Concorrencia e releitura | Conflitos são exibidos da API; após salvar, a lista completa é relida e razão social, CNPJ e situação são comparados antes de confirmar sucesso. |
+| Validação local | `npm run build` concluiu com sucesso; `git diff --check` limpo. Falta operação autenticada Gerente na API e validação do CNPJ/RowVersion em banco de homologação. |
+| Publicação | Pendente: branch local, sem commit/push/deploy. |
+
+## Pesquisa administrativa, limite de imagens e cadastro de clientes — 2026-11-01
+
+| Item | Status e evidencia |
+|---|---|
+| Imagens autorizadas | Cadastro de produto exige imagem principal e aceita até quatro imagens opcionais. Front-end e API validam o limite e o formato das URLs; não foram criadas nem atribuídas imagens a outros cadastros. A API pública mantém produtos sem imagem fora da vitrine. |
+| Pesquisa de produtos | Dashboard consulta `GET /api/admin/produtos` com autenticação Gerente, busca no servidor e paginação; inclui produtos inativos, ausentes da rota pública. A lista informa contagem/página e oferece ações Anterior/Próxima e Editar. |
+| Pesquisa de clientes | Adicionada `GET /api/admin/clientes` autenticada, com busca e paginação; Dashboard usa os resultados e oferece ações de navegação e edição sem limitar a pesquisa aos 500 registros da carga geral. |
+| Cadastro web de cliente | A validação de senha no formulário acompanha o contrato da API (8 a 128 caracteres). Reenvio/confirmação permanecem conectados às rotas existentes. O envio real depende de credenciais e disponibilidade do provedor SendGrid; nenhum e-mail foi enviado nesta validação. |
+| Empresas | Dashboard local contém pesquisa e ação Editar para dados legais; a edição utiliza RowVersion e relê o cadastro. O CRUD fiscal completo não é oferecido por esse endpoint; validar a sessão Gerente e persistência em banco continua pendente. |
+| Acesso ao Desktop | WPF Release compilado e publicado em `D:\Nexum Altivon\NexumAltivon.com\runtime\desktop`; atalho `C:\Users\Rodrigo Costa\Desktop\GenesisGest.Net.lnk` criado/apontado para essa publicação. Após promoção, `NexumAltivon.Desktop.exe` permaneceu ativo e responsivo com janela “GenesisGest.Net - Central Desktop ERP/PDV” e handle válido. Login e fluxos reais do PDV continuam pendentes. |
+| Menu principal maximizado | `MainWindow.xaml` inicia com `WindowState="Maximized"`, removeu os `ScrollViewer` da página e reorganizou a central em status/atalhos, indicadores e seis áreas de trabalho compactas. Build WPF Release passou sem avisos/erros; publicação promovida com rollback local. O lançamento verificado usou `WindowStyle=Maximized`; inspeção visual detalhada não foi possível nesta sessão. |
+| Validação local | API Release compilou sem avisos/erros; 37 testes API passaram; build de produção do front-end compilou; `git diff --check` limpo. Não houve homologação autenticada com banco nesta etapa. |
+| Publicação do lote de cadastros/administração | Front-end, API e Desktop estão compilados e a suíte API passou; envio ao GitHub será feito neste lote. Homologação autenticada com MariaDB, confirmação real de e-mail e fluxos completos de PDV permanecem pendentes. |
+
+## Validacao de integridade do cadastro de produtos — 2026-11-01
+
+| Item | Status e evidencia |
+|---|---|
+| SKU | API exige SKU explícito e único ao criar/atualizar; removidos código derivado de `HashCode` e sufixo aleatório, que podiam gerar identificadores instáveis. Dashboard sinaliza e bloqueia cadastro sem SKU. |
+| Campos comerciais | API valida nome/tamanhos, faixa de preço/custo, preço promocional não superior ao normal, estoque não negativo e reserva não superior ao saldo, dimensões e tipo de produto. |
+| Integridade de loja/categoria | Criação com categoria válida atribui o produto à loja daquela categoria. Atualização rejeita categoria inexistente/inativa ou pertencente a outra loja, em vez de limpar o vínculo silenciosamente. |
+| Validação local | API Release compilada sem avisos/erros; 37 testes existentes passaram; front-end compilado em produção; `git diff --check` limpo. A suíte não contém teste integrado da nova validação contra o MariaDB. |
+| Homologação/publicação | Pendente: enviar SKU duplicado, valores inválidos e categoria de outra loja a uma instância de homologação; alterações permanecem locais, sem commit/push/deploy. |
+
+## Cadastro de categorias no Desktop — 2026-11-01
+
+| Item | Status e evidencia |
+|---|---|
+| API administrativa | Implementadas rotas autenticadas para listar/pesquisar, criar e editar categorias por loja. Criação valida loja ativa, slug exclusivo por loja e categoria pai principal da mesma loja; edição usa RowVersion calculada sobre o estado persistido e impede desativar categorias com produtos/subcategorias ativos. |
+| Janela WPF | `CategoryManagementWindow` substitui a rota genérica do menu Categorias e subcategorias; lista lojas/categorias reais, pesquisa, cria raiz/subcategoria e edita nome, descrição, pai, ordem e situação pela API. Confirma após reler a lista. |
+| Segurança e hierarquia | Operações exigem política Gerente; slug permanece estável após criação para preservar referências de produtos; não há exclusão física de categoria. |
+| Validação local | API Release compilada sem avisos/erros; Desktop Release compilado sem avisos/erros; 37 testes API passaram; `git diff --check` revalidado ao encerrar. Os testes existentes não exercitam as novas rotas com banco MariaDB. |
+| Homologação e publicação | Pendente: sessão Gerente, concorrência RowVersion, categoria pai de outra loja e proteção de desativação precisam ser ensaiadas em banco de homologação; sem commit/push/deploy. |
+
+## Aparencia global e inicializacao maximizada do Desktop — 2026-11-01
+
+| Item | Status e evidencia |
+|---|---|
+| Todas as janelas WPF | Estilo implícito em `App.xaml` aplica paleta azul acinzentada e opacidade global de 90% a todas as janelas, sem substituir a moldura nativa do Windows. Não há sobrescritas locais de Opacity nem estilos locais de Window no inventário XAML. |
+| Botões | Estilo global aplica cantos arredondados, contraste, foco dourado e estados de hover, pressionado e desabilitado; templates específicos já definidos por telas permanecem proprietários. |
+| Inicialização | `MainWindow.xaml` mantém `WindowState="Maximized"`; a publicação runtime foi promovida com backup e o processo abriu responsivo com título e handle de janela válidos. Atalho do usuário aponta ao executável publicado. |
+| Validação | WPF Release sem avisos/erros; API Release e 37/37 testes aprovados; front-end compilado em produção; `git diff --check` limpo. A captura visual detalhada não foi obtida. |
+| Limite | A opacidade de 90% deixa o conteúdo da janela ligeiramente translúcido. O efeito não é o Acrylic/Mica do Windows 11; mantém compatibilidade com o Windows 10 deste ambiente e preserva leitura por meio da paleta opaca azul acinzentada. |

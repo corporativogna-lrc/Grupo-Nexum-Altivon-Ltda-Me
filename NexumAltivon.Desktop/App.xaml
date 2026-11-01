@@ -10,14 +10,20 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-        <SolidColorBrush x:Key="ShellBackground" Color="#050505" />
-        <SolidColorBrush x:Key="PanelBackground" Color="#11100D" />
-        <SolidColorBrush x:Key="PanelSurface" Color="#17150F" />
-        <SolidColorBrush x:Key="PanelElevated" Color="#211D12" />
-        <SolidColorBrush x:Key="PanelBorder" Color="#3A311C" />
+        <!-- Shared desktop glass tone: a restrained blue-gray palette with slight
+             whole-window translucency, keeping native Windows window chrome. -->
+        <Style TargetType="{x:Type Window}">
+            <Setter Property="Opacity" Value="0.90" />
+        </Style>
+
+        <SolidColorBrush x:Key="ShellBackground" Color="#27313D" />
+        <SolidColorBrush x:Key="PanelBackground" Color="#354454" />
+        <SolidColorBrush x:Key="PanelSurface" Color="#405369" />
+        <SolidColorBrush x:Key="PanelElevated" Color="#4B6076" />
+        <SolidColorBrush x:Key="PanelBorder" Color="#64778A" />
         <SolidColorBrush x:Key="TextPrimary" Color="#FFF7DE" />
-        <SolidColorBrush x:Key="TextSecondary" Color="#C7BA92" />
-        <SolidColorBrush x:Key="TextMuted" Color="#887C5B" />
+        <SolidColorBrush x:Key="TextSecondary" Color="#D6E0EA" />
+        <SolidColorBrush x:Key="TextMuted" Color="#AAB8C6" />
         <SolidColorBrush x:Key="AccentBlue" Color="#D7B528" />
         <SolidColorBrush x:Key="AccentGold" Color="#D7B528" />
         <SolidColorBrush x:Key="AccentGoldDark" Color="#9A7413" />
@@ -60,6 +66,37 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonSurface"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="9"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              RecognizesAccessKey="True" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonSurface" Property="BorderBrush" Value="{StaticResource AccentGold}" />
+                                <Setter TargetName="ButtonSurface" Property="Background" Value="{StaticResource PanelBackground}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonSurface" Property="Opacity" Value="0.78" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonSurface" Property="Opacity" Value="0.52" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="ButtonSurface" Property="BorderBrush" Value="{StaticResource AccentGold}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style TargetType="TabItem">

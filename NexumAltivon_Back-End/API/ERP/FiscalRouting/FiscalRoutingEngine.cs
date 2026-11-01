@@ -49,8 +49,8 @@ public sealed class FiscalRoutingEngine : IFiscalRoutingEngine
         new(
             empresa.Id,
             empresa.CodigoEmpresa ?? $"EMP-{empresa.Id}",
-            empresa.RazaoSocial,
-            empresa.Cnpj,
+            empresa.RazaoSocial!,
+            empresa.Cnpj!,
             empresa.Estado ?? string.Empty,
             empresa.RegimeTributario,
             empresa.CategoriaFiscal,

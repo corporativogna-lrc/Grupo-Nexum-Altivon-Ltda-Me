@@ -118,6 +118,8 @@ CREATE TABLE IF NOT EXISTS produtos (
     seo_titulo VARCHAR(200),
     seo_descricao VARCHAR(500),
     seo_keywords VARCHAR(255),
+    codigo_barras VARCHAR(64) NULL,
+    qr_code VARCHAR(500) NULL,
     destaque TINYINT(1) DEFAULT 0,
     ativo TINYINT(1) DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

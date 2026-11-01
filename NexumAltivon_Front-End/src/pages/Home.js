@@ -321,6 +321,10 @@ export default function Home() {
         setCadastroStatus({ tone: 'error', message: 'Preencha nome, e-mail e uma senha para concluir o auto cadastro e liberar a área do cliente.' });
         return;
       }
+      if (payload.senha.length < 8 || payload.senha.length > 128) {
+        setCadastroStatus({ tone: 'error', message: 'A senha deve conter entre 8 e 128 caracteres.' });
+        return;
+      }
 
     if (payload.cpf && !isValidCpfCnpj(payload.cpf)) {
       setCadastroStatus({ tone: 'error', message: 'CPF/CNPJ inválido. Corrija o documento antes de continuar.' });
@@ -340,7 +344,7 @@ export default function Home() {
           const nomeExistente = verificacao.data?.cliente?.nome || payload.nome;
           setCadastroStatus({
             tone: 'info',
-            message: `Já existe um cadastro para ${nomeExistente}. Não vamos duplicar seus dados; você pode seguir comprando com esse mesmo registro.`,
+            message: `Já existe um cadastro para ${nomeExistente}. Não vamos duplicar seus dados. Se ainda não confirmou o e-mail, solicite um novo link de confirmação.`,
           });
           return;
         }
@@ -700,6 +704,8 @@ export default function Home() {
                   type="password"
                   value={cadastroForm.senha}
                   onChange={(event) => handleCadastroChange('senha', event.target.value)}
+                      minLength={8}
+                      maxLength={128}
                   className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-white outline-none transition focus:border-[#C9A227]"
                   placeholder="Crie uma senha para sua área do cliente"
                   required
@@ -727,6 +733,14 @@ export default function Home() {
                   }`}
                 >
                   {cadastroStatus.message}
+                  {cadastroStatus.tone === 'info' && (
+                    <Link
+                      to={`/confirmar-cadastro?email=${encodeURIComponent(cadastroForm.email.trim())}`}
+                      className="mt-3 inline-flex rounded-full border border-amber-200/40 px-4 py-2 font-black text-amber-100 transition hover:bg-amber-100/10"
+                    >
+                      Solicitar novo e-mail de confirmação
+                    </Link>
+                  )}
                 </div>
               )}
 

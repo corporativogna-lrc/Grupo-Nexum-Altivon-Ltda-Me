@@ -15,19 +15,20 @@ public class EmpresaGrupo
     [MaxLength(40)]
     public string TipoCadastro { get; set; } = "GrupoSocietario";
 
-    [Required]
     [Column("razao_social")]
     [MaxLength(200)]
-    public string RazaoSocial { get; set; } = string.Empty;
+    public string? RazaoSocial { get; set; }
+
+    [Column("loja_id")]
+    public int? LojaId { get; set; }
 
     [Column("nome_fantasia")]
     [MaxLength(200)]
     public string? NomeFantasia { get; set; }
 
-    [Required]
     [Column("cnpj")]
     [MaxLength(18)]
-    public string Cnpj { get; set; } = string.Empty;
+    public string? Cnpj { get; set; }
 
     [Column("inscricao_estadual")]
     [MaxLength(30)]

@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7187
+ * Versão: 1.1.5.7195
  */
 
 using System.Collections.ObjectModel;
@@ -326,6 +326,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SelectedModuleTitle = title;
         SelectedModuleDetail = detail;
 
+        if (string.Equals(title, "Consulta de pedido", StringComparison.OrdinalIgnoreCase))
+        {
+            var ordersWindow = new PedidoConsultaWindow(Terminal) { Owner = this };
+            ordersWindow.ShowDialog();
+            return;
+        }
+
+        if (string.Equals(title, "Código de barras e QR Code", StringComparison.OrdinalIgnoreCase))
+        {
+            var identifiersWindow = new CodigoBarrasQrWindow(Terminal) { Owner = this };
+            identifiersWindow.ShowDialog();
+            return;
+        }
+
         if (title == "Fornecedores")
         {
             var supplierWindow = new SupplierManagementWindow(Terminal)
@@ -343,6 +357,27 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 Owner = this
             };
             customerWindow.ShowDialog();
+            return;
+        }
+
+        if (title == "Empresas do grupo")
+        {
+            var companyWindow = new EmpresasGrupoWindow(Terminal) { Owner = this };
+            companyWindow.ShowDialog();
+            return;
+        }
+
+        if (title == "Produtos e serviços")
+        {
+            var productWindow = new ProductManagementWindow(Terminal) { Owner = this };
+            productWindow.ShowDialog();
+            return;
+        }
+
+        if (title == "Categorias e subcategorias")
+        {
+            var categoryWindow = new CategoryManagementWindow(Terminal) { Owner = this };
+            categoryWindow.ShowDialog();
             return;
         }
 
@@ -436,7 +471,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (IsFiscalWorkspace(title))
         {
-            var fiscalWindow = new FiscalRoutingWindow(title);
+            var fiscalWindow = new FiscalRoutingWindow(title, Terminal) { Owner = this };
             fiscalWindow.ShowDialog();
             return;
         }
@@ -513,7 +548,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (action.Route is "pdv-fiscal")
         {
-            var fiscalWindow = new FiscalRoutingWindow("Empresa emissora automática")
+            var fiscalWindow = new FiscalRoutingWindow("Empresa emissora automática", Terminal)
             {
                 Owner = this
             };
@@ -625,7 +660,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         return title is "Produtos e serviços"
             or "Categorias e subcategorias"
-            or "Empresas do grupo"
             or "Centros de custo"
             or "Colaboradores / RH / folha"
             or "Contratações"

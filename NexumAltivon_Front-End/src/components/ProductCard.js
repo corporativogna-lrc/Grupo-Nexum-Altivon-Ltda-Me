@@ -6,7 +6,7 @@
  * Versão: 1.1.5
  */
 import { Link } from 'react-router-dom';
-import { Heart, ShoppingBag, Star } from 'lucide-react';
+import { Heart, ShoppingBag } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { resolvePublicAssetUrl } from '../services/api';
 import { formatPrice } from '../utils/formatters';
@@ -65,11 +65,7 @@ export default function ProductCard({ product }) {
 
       <div className="space-y-3 p-3 sm:space-y-4 sm:p-4">
         <div className="flex items-center justify-between gap-3 text-xs font-semibold text-[#A0A0A0]">
-          <span>{product.sku || 'NA Premium'}</span>
-          <span className="inline-flex items-center gap-1 text-[#C9A227]">
-            <Star size={14} fill="currentColor" />
-            {product.avaliacao || '4.8'}
-          </span>
+          <span>{product.sku || 'SKU não informado'}</span>
         </div>
 
         <div>
@@ -85,7 +81,6 @@ export default function ProductCard({ product }) {
           <div>
             {hasDiscount && <p className="text-sm font-semibold text-[#777] line-through">{formatPrice(product.preco)}</p>}
             <p className="text-xl font-black text-[#C9A227] sm:text-2xl" data-testid="product-price">{formatPrice(finalPrice)}</p>
-            <p className="text-xs font-semibold text-emerald-400">ou 10x sem juros</p>
           </div>
           <button
             onClick={() => addToCart(product)}
