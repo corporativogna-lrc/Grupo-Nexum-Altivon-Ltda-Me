@@ -502,3 +502,13 @@ Nao declarar item como concluido sem uma evidencia tecnica associada: build, tes
 | Fluxos | Os itens mantiveram os handlers existentes; nenhuma rota foi substituída nessa reorganização. A árvore de acessibilidade confirma as quatro entradas e itens de cadastro/PDV. |
 | Validação | Build WPF Release sem avisos/erros; publicação local promovida com rollback; o aplicativo abriu responsivo, maximizado, com título e handle válidos. Captura de tela expirou no serviço de captura. |
 | Publicação | Revisão enviada ao GitHub em `main`; CI e Pages foram executados para o lote anterior. Alterações Desktop-only não acionam o workflow CI existente por seu filtro de caminhos, portanto um workflow econômico para empacotar a versão Windows foi adicionado nesta continuação. |
+
+## Catálogo real no PDV Desktop — 2026-11-01
+
+| Item | Status e evidencia |
+|---|---|
+| Catálogo | PDV consulta `/api/produtos` paginado, lê SKU, descrição, preço, custo e disponibilidade publicados; a API pública confirmou 100 produtos. SKU, descrição, preço e custo não podem ser digitados como itens livres. |
+| Integridade local | Quantidade precisa ser inteira, positiva e não exceder estoque menos reservas e quantidade já no carrinho. Descontos e valores pagos exigem entrada válida; pagamento não permite sobrevalor, exceto dinheiro para troco. A API continua sendo a autoridade final de estoque. |
+| Aparência | Campos e grade do PDV usam a paleta/translucidez geral e a grade tornou-se somente leitura para impedir alteração manual de linhas do carrinho. |
+| Validação | WPF Release compilado sem avisos/erros; publicação self-contained win-x64 promovida com rollback em `runtime/desktop-rollback-20261101-2135`; aplicativo aberto responsivo, com título e handle válidos. GitHub Actions Desktop concluiu com sucesso para `8f2c14a`. |
+| Pendente | Login autenticado, confirmação de pagamento por provedor/adquirente, gravação transacional da venda, baixa real do estoque e reconciliação de contingência ainda exigem homologação ponta a ponta; o carregamento do catálogo não comprova esses fluxos. |

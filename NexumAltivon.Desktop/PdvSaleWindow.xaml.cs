@@ -26,11 +26,7 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
     private string _clienteNome = "Consumidor final";
     private string _clienteDocumento = string.Empty;
     private string _empresaEmissora = "Seleção automática - menor custo";
-    private string _novoItemCodigo = string.Empty;
-    private string _novoItemDescricao = string.Empty;
     private string _novoItemQuantidade = "1";
-    private string _novoItemValorUnitario = "0,00";
-    private string _novoItemCustoEstimado = "0,00";
     private string _novoItemDesconto = "0,00";
     private string _novoItemOrigem = "ECOM";
     private string _tipoEntrega = "Retirada na loja";
@@ -92,34 +88,10 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
         }
     }
 
-    public string NovoItemCodigo
-    {
-        get => _novoItemCodigo;
-        set => SetField(ref _novoItemCodigo, value);
-    }
-
-    public string NovoItemDescricao
-    {
-        get => _novoItemDescricao;
-        set => SetField(ref _novoItemDescricao, value);
-    }
-
     public string NovoItemQuantidade
     {
         get => _novoItemQuantidade;
         set => SetField(ref _novoItemQuantidade, value);
-    }
-
-    public string NovoItemValorUnitario
-    {
-        get => _novoItemValorUnitario;
-        set => SetField(ref _novoItemValorUnitario, value);
-    }
-
-    public string NovoItemCustoEstimado
-    {
-        get => _novoItemCustoEstimado;
-        set => SetField(ref _novoItemCustoEstimado, value);
     }
 
     public string NovoItemDesconto
@@ -344,10 +316,16 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
 
     private void RegistrarPagamento_Click(object sender, RoutedEventArgs e)
     {
-        var valor = ParseDecimal(ValorPagamento, Total - Pago);
-        if (valor <= 0)
+        if (!TryParseDecimal(ValorPagamento, out var valor) || valor <= 0m)
         {
-            StatusOperacional = "Informe um valor de pagamento maior que zero.";
+            StatusOperacional = "Informe explicitamente um valor de pagamento válido maior que zero.";
+            return;
+        }
+
+        if (!string.Equals(FormaPagamento, "Dinheiro", StringComparison.OrdinalIgnoreCase)
+            && valor > Math.Max(0m, Total - Pago))
+        {
+            StatusOperacional = "O pagamento não pode superar o saldo devido; somente dinheiro permite troco.";
             return;
         }
 
@@ -478,29 +456,6 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
         }
 
         return value?.ToString() ?? string.Empty;
-    }
-
-    private static decimal ParseDecimal(string? value, decimal fallback)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return fallback;
-        }
-
-        var normalized = value.Trim().Replace("R$", "", StringComparison.OrdinalIgnoreCase).Trim();
-        var culture = CultureInfo.GetCultureInfo("pt-BR");
-
-        if (decimal.TryParse(normalized, NumberStyles.Any, culture, out var result))
-        {
-            return result;
-        }
-
-        if (decimal.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out result))
-        {
-            return result;
-        }
-
-        return fallback;
     }
 
     private static bool TryParseDecimal(string? value, out decimal result)
