@@ -263,7 +263,7 @@
                         <MenuItem Header="Multiempresa e tenant" Click="OpenWorkspace_Click" />
                     </MenuItem>
                     <MenuItem Header="Pessoas / HCM">
-                        <MenuItem Header="Colaboradores / RH / folha" Click="OpenWorkspace_Click" />
+                        <MenuItem Header="Colaboradores" Click="OpenWorkspace_Click" />
                         <MenuItem Header="Contratações" Click="OpenWorkspace_Click" />
                         <MenuItem Header="Demissões" Click="OpenWorkspace_Click" />
                         <MenuItem Header="Cargos e departamentos" Click="OpenWorkspace_Click" />

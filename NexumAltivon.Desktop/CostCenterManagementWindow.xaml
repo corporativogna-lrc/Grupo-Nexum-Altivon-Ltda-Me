@@ -1,0 +1,40 @@
+<Window x:Class="NexumAltivon.Desktop.CostCenterManagementWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GenesisGest.Net - Centros de custo"
+        Width="1020" Height="660" MinWidth="860" MinHeight="560"
+        WindowStartupLocation="CenterOwner" Background="{StaticResource ShellBackground}"
+        FontFamily="Segoe UI">
+    <Grid Margin="16">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="12"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <Border Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12" Padding="14">
+            <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left"><TextBlock Text="FINANCEIRO · GENESIS" Foreground="{StaticResource AccentGold}" FontSize="12" FontWeight="SemiBold"/><TextBlock Text="Centros de custo" Foreground="{StaticResource TextPrimary}" FontSize="24" FontWeight="Bold" Margin="0,3,0,0"/></StackPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="Atualizar" Click="Atualizar_Click" Margin="6,0" Padding="14,8"/><Button Content="Novo" Click="Novo_Click" Margin="6,0" Padding="14,8"/>
+                    <Button Content="Salvar" Click="Salvar_Click" Margin="6,0" Padding="14,8" Background="{StaticResource AccentGold}" Foreground="#080704" FontWeight="Bold"/><Button Content="Fechar" Click="Fechar_Click" Margin="6,0" Padding="14,8"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="1.1*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="0.9*"/></Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12" Padding="12">
+                <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="8"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <DockPanel><TextBlock Text="Referências financeiras" Foreground="{StaticResource TextPrimary}" FontWeight="Bold" VerticalAlignment="Center"/><Button DockPanel.Dock="Right" Content="Pesquisar" Click="Pesquisar_Click" Padding="12,6"/><TextBox x:Name="BuscaBox" Margin="10,0" Padding="8,5" VerticalContentAlignment="Center" KeyDown="BuscaBox_KeyDown"/></DockPanel>
+                    <DataGrid x:Name="CentrosGrid" Grid.Row="2" ItemsSource="{Binding Centros}" SelectedItem="{Binding SelectedCentro, Mode=TwoWay}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False">
+                        <DataGrid.Columns><DataGridTextColumn Header="Código" Binding="{Binding Codigo}" Width="Auto"/><DataGridTextColumn Header="Descrição" Binding="{Binding Descricao}" Width="*"/><DataGridTextColumn Header="Ordem" Binding="{Binding Ordem}" Width="Auto"/></DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
+            <Border Grid.Column="2" Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12" Padding="16">
+                <StackPanel><TextBlock x:Name="FormTitle" Text="Novo centro de custo" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" Margin="0,0,0,14"/>
+                    <TextBlock Text="Código" Foreground="{StaticResource TextSecondary}" Margin="0,4"/><TextBox x:Name="CodigoBox" Padding="8" MaxLength="50"/>
+                    <TextBlock Text="Descrição" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,4"/><TextBox x:Name="DescricaoBox" Padding="8" MaxLength="150"/>
+                    <TextBlock Text="Ordem de exibição" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,4"/><TextBox x:Name="OrdemBox" Padding="8" Text="0"/>
+                    <TextBlock Text="Código identifica a referência. Salvar com o mesmo código atualiza a descrição e a ordem." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,14,0,0"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+        <TextBlock x:Name="StatusText" Grid.Row="3" Foreground="{StaticResource TextSecondary}" Margin="2,10,2,0" TextWrapping="Wrap"/>
+    </Grid>
+</Window>

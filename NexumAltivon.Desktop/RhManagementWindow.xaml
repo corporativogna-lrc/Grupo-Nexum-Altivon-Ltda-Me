@@ -1,0 +1,67 @@
+<Window x:Class="NexumAltivon.Desktop.RhManagementWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GenesisGest.Net - Recursos Humanos"
+        Width="1120" Height="700" MinWidth="900" MinHeight="600"
+        WindowStartupLocation="CenterOwner" Background="{StaticResource ShellBackground}"
+        FontFamily="Segoe UI">
+    <Grid Margin="16">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="12"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <Border Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12" Padding="14">
+            <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left">
+                    <TextBlock Text="GESTÃO DE PESSOAS · GENESIS" Foreground="{StaticResource AccentGold}" FontSize="12" FontWeight="SemiBold"/>
+                    <TextBlock Text="Colaboradores" Foreground="{StaticResource TextPrimary}" FontSize="24" FontWeight="Bold" Margin="0,3,0,0"/>
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="Atualizar" Click="Atualizar_Click" Margin="6,0" Padding="14,8"/>
+                    <Button Content="Novo" Click="Novo_Click" Margin="6,0" Padding="14,8"/>
+                    <Button Content="Salvar" Click="Salvar_Click" Margin="6,0" Padding="14,8" Background="{StaticResource AccentGold}" Foreground="#080704" FontWeight="Bold"/>
+                    <Button Content="Fechar" Click="Fechar_Click" Margin="6,0" Padding="14,8"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="1.15*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="0.85*"/></Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12" Padding="12">
+                <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="8"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <DockPanel>
+                        <TextBlock Text="Registros ativos" Foreground="{StaticResource TextPrimary}" FontWeight="Bold" VerticalAlignment="Center"/>
+                        <Button DockPanel.Dock="Right" Content="Pesquisar" Click="Pesquisar_Click" Padding="12,6"/>
+                        <TextBox x:Name="BuscaBox" Margin="10,0" Padding="8,5" VerticalContentAlignment="Center" KeyDown="BuscaBox_KeyDown"/>
+                    </DockPanel>
+                    <DataGrid x:Name="ColaboradoresGrid" Grid.Row="2" ItemsSource="{Binding Colaboradores}" SelectedItem="{Binding SelectedColaborador, Mode=TwoWay}"
+                              AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" CanUserAddRows="False">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Nome" Binding="{Binding Nome}" Width="2*"/>
+                            <DataGridTextColumn Header="Cargo" Binding="{Binding Cargo}" Width="*"/>
+                            <DataGridTextColumn Header="Departamento" Binding="{Binding Departamento}" Width="*"/>
+                            <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="*"/>
+                            <DataGridTextColumn Header="Admissão" Binding="{Binding DataAdmissao, StringFormat=dd/MM/yyyy}" Width="Auto"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
+            <Border Grid.Column="2" Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12" Padding="16">
+                <StackPanel>
+                    <TextBlock x:Name="FormTitle" Text="Novo colaborador" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" Margin="0,0,0,14"/>
+                    <TextBlock Text="Nome completo" Foreground="{StaticResource TextSecondary}" Margin="0,4"/>
+                    <TextBox x:Name="NomeBox" Padding="8" MaxLength="150"/>
+                    <TextBlock Text="Cargo" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,4"/>
+                    <TextBox x:Name="CargoBox" Padding="8" MaxLength="120"/>
+                    <TextBlock Text="Departamento" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,4"/>
+                    <TextBox x:Name="DepartamentoBox" Padding="8" MaxLength="120"/>
+                    <TextBlock Text="Status" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,4"/>
+                    <ComboBox x:Name="StatusCombo" Padding="7" SelectedIndex="0">
+                        <ComboBoxItem Content="ATIVO"/><ComboBoxItem Content="AFASTADO"/><ComboBoxItem Content="FERIAS_PROGRAMADAS"/><ComboBoxItem Content="FERIAS"/><ComboBoxItem Content="DESLIGADO"/><ComboBoxItem Content="INATIVO"/>
+                    </ComboBox>
+                    <TextBlock Text="Data de admissão" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,4"/>
+                    <DatePicker x:Name="DataAdmissaoPicker"/>
+                    <TextBlock Text="A edição altera os dados operacionais disponíveis no cadastro Genesis." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,14,0,0"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+        <TextBlock x:Name="StatusText" Grid.Row="3" Foreground="{StaticResource TextSecondary}" Margin="2,10,2,0" TextWrapping="Wrap"/>
+    </Grid>
+</Window>

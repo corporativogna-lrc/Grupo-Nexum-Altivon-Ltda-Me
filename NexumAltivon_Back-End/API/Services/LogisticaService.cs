@@ -8,6 +8,8 @@
 
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using NexumAltivon.API.Data;
@@ -204,12 +206,36 @@ public class LogisticaService : ILogisticaService
         }
 
         var eventos = ExtractEventos(body);
+        var consultaEm = DateTime.UtcNow;
         envio.EventosRastreamento = body;
         envio.UpdatedAt = DateTime.UtcNow;
+        var consulta = new LogisticaRastreamentoConsulta
+        {
+            PedidoId = envio.PedidoId,
+            CodigoRastreio = codigoRastreio,
+            Provedor = envio.Transportadora?.Nome ?? "Provedor configurado",
+            Configurada = true,
+            Operacional = true,
+            HttpStatusCode = (int)response.StatusCode,
+            StatusExterno = ExtractFirstString(body, "status", "status_name", "situacao", "state"),
+            QuantidadeEventos = eventos.Count,
+            EventosJson = JsonSerializer.Serialize(eventos),
+            PendenciasJson = "[]",
+            RespostaSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(body))).ToLowerInvariant(),
+            ConsultadoAt = consultaEm
+        };
+        _context.LogisticaRastreamentoConsultas.Add(consulta);
         await _context.SaveChangesAsync();
 
         return new RastreamentoDto
         {
+            ConsultaId = consulta.Id,
+            PedidoId = envio.PedidoId,
+            NumeroPedido = envio.Pedido?.NumeroPedido ?? string.Empty,
+            MetodoFrete = envio.Pedido?.FreteMetodo,
+            StatusInterno = envio.Pedido?.Status.ToString() ?? string.Empty,
+            DataEnvio = envio.Pedido?.DataEnvio,
+            DataEntrega = envio.Pedido?.DataEntrega,
             CodigoRastreio = codigoRastreio,
             Transportadora = envio.Transportadora?.Nome ?? envio.Pedido?.FreteTransportadora ?? string.Empty,
             StatusAtual = ExtractFirstString(body, "status", "status_name", "situacao", "state") ?? envio.StatusEnvio.ToString(),

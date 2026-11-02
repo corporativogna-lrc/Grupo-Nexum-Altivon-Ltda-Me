@@ -522,3 +522,19 @@ Nao declarar item como concluido sem uma evidencia tecnica associada: build, tes
 | Reenvio e contingência | PDV envia JWT autenticado, valida saúde das dependências antes de escolher um único endpoint e não repete POST na API pública após resposta/timeout. Genesis rejeita código de venda já registrado dentro da transação serializável. Contingência local só recebe vendas quando nenhuma API/dependência respondeu antes do envio; resultado de envio indeterminado exige consulta pelo código da venda. |
 | Validação local | API e Desktop Release compilados sem avisos/erros; 37/37 testes API passaram; `git diff --check` limpo. O endpoint ainda requer homologação integrada com usuário Gerente e as duas bases Genesis/Nexum reais antes de aceitar venda como concluída. |
 | Publicação | Código local revisado; pendente commit/push deste lote e validação dos workflows. Publicação da API oficial exige o atualizador administrativo, gates de saúde e rollback; não foi executada nesta validação. |
+
+## RH, financeiro, logística e auditoria no Desktop — 2026-11-02
+
+| Item | Status e evidencia |
+|---|---|
+| API de RH | Rotas GET de colaboradores, resumo, POST, PUT e PATCH de status reativadas na API ativa com política `Gerente`; entradas com status ausente/inválido retornam 400 e não são convertidas silenciosamente para `ATIVO`. |
+| Formulario WPF de RH | `RhManagementWindow` conectado à API autenticada; permite pesquisar, listar, criar e editar os campos suportados no schema Genesis. Confirma gravação após resposta persistida e releitura da lista. |
+| API de referências financeiras | GET/POST de referências reativados com política `Gerente`; Centro de custo usa o tipo explícito `CENTRO_CUSTO` e upsert pelo código no serviço existente. |
+| Formulário WPF de centros de custo | `CostCenterManagementWindow` conectado à API autenticada; lista, pesquisa, cria e atualiza a referência por código e verifica resposta/releitura. |
+| Referências de RH | A mesma API de referência oferece busca e gravação por código para departamentos e cargos, com o tenant atual e releitura. |
+| Logística | Rotas autenticadas listam expedições, registram transportadora/método/rastreio sob `RowVersion`, avançam estado operacional permitido e consultam o provedor configurado com persistência da resposta de rastreamento. |
+| Auditoria | `AuditManagementWindow` permite consultar e filtrar trilhas retornadas pela API; leitura somente, sem alterar registros. |
+| Rotas do menu | `MainWindow` direciona RH, Centros de custo, Logística e Trilha de auditoria às janelas específicas; retirados do encaminhamento genérico. |
+| Validação local | Desktop Release e API Release compilados sem avisos/erros; API xUnit passou 43/43. `git diff --check` sem erros. As compilações comprovam integração de código, não a conectividade com o servidor real. |
+| Homologação operacional | Pendente: sessão Gerente, permissões, conexão às bases Genesis/Nexum reais, consulta ao provedor logístico e persistência real não foram exercitadas nesta validação; não houve gravações de dados do usuário. |
+| Publicação | Cinco janelas do lote implementadas/corrigidas. A publicação local do Desktop e o push de código serão registrados após validação do pacote e atalho; implantação da API oficial permanece dependente do atualizador administrativo e seus gates. |

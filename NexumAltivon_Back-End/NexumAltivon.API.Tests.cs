@@ -841,3 +841,94 @@ internal sealed record RecordedHttpRequest(
     string Uri,
     string? Authorization,
     string Body);
+
+public sealed class GenesisRhServiceTests
+{
+    [Fact]
+    public async Task CriarEAtualizarColaborador_DevePersistirEPermitirPesquisa()
+    {
+        var options = new DbContextOptionsBuilder<GenesisDbContext>()
+            .UseInMemoryDatabase($"genesis-rh-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new GenesisDbContext(options, new TenantContext());
+
+        var created = await GenesisRhService.CriarColaboradorAsync(db,
+            new GenesisRhColaboradorUpsertRequest("Ana Souza", "Analista", "Administrativo", "ATIVO", new DateTime(2026, 1, 12)),
+            CancellationToken.None);
+        var updated = await GenesisRhService.AtualizarColaboradorAsync(db, created.Id,
+            new GenesisRhColaboradorUpsertRequest("Ana Souza", "Coordenadora", "Financeiro", "FERIAS", created.DataAdmissao),
+            CancellationToken.None);
+        var rows = await GenesisRhService.GetColaboradoresAsync(db, CancellationToken.None);
+
+        updated.Should().NotBeNull();
+        updated!.Cargo.Should().Be("Coordenadora");
+        rows.Should().ContainSingle(item => item.Id == created.Id && item.Status == "FERIAS");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("ATIVO_FALSO")]
+    public void NormalizarStatus_DeveRecusarValorAusenteOuDesconhecido(string status)
+    {
+        var action = () => GenesisRhService.NormalizarStatus(status);
+        action.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
+    public async Task CriarColaborador_DeveRecusarCamposAcimaDoSchema()
+    {
+        var options = new DbContextOptionsBuilder<GenesisDbContext>()
+            .UseInMemoryDatabase($"genesis-rh-limits-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new GenesisDbContext(options, new TenantContext());
+
+        var action = () => GenesisRhService.CriarColaboradorAsync(db,
+            new GenesisRhColaboradorUpsertRequest(new string('A', 151), "Cargo", "RH", "ATIVO", null),
+            CancellationToken.None);
+
+        await action.Should().ThrowAsync<ArgumentException>().WithMessage("*150 caracteres*");
+        (await db.RhColaboradores.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task CriarReferenciaFinanceira_DeveAtualizarPorCodigoSemDuplicar()
+    {
+        var options = new DbContextOptionsBuilder<GenesisDbContext>()
+            .UseInMemoryDatabase($"genesis-finance-reference-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new GenesisDbContext(options, new TenantContext());
+
+        var created = await GenesisFinanceService.CriarReferenciaAsync(db,
+            new GenesisFinanceReferenciaCreateRequest("CENTRO_CUSTO", "ADM", "Administrativo", 1),
+            CancellationToken.None);
+        var updated = await GenesisFinanceService.CriarReferenciaAsync(db,
+            new GenesisFinanceReferenciaCreateRequest("centro_custo", "adm", "Administração", 2),
+            CancellationToken.None);
+
+        updated.Id.Should().Be(created.Id);
+        updated.Descricao.Should().Be("Administração");
+        (await db.FinanceiroReferencias.CountAsync()).Should().Be(1);
+        (await GenesisFinanceService.ListarReferenciasAsync(db, "centro_custo", CancellationToken.None))
+            .Should().ContainSingle(item => item.Codigo == "ADM" && item.Ordem == 2);
+    }
+
+    [Fact]
+    public async Task CriarReferenciaRh_DeveAtualizarPorTipoECodigoSemDuplicar()
+    {
+        var options = new DbContextOptionsBuilder<GenesisDbContext>()
+            .UseInMemoryDatabase($"genesis-rh-reference-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new GenesisDbContext(options, new TenantContext());
+
+        var created = await GenesisRhService.CriarReferenciaAsync(db,
+            new GenesisRhReferenciaCreateRequest("CARGO", "ANALISTA", "Analista", 1), CancellationToken.None);
+        var updated = await GenesisRhService.CriarReferenciaAsync(db,
+            new GenesisRhReferenciaCreateRequest("cargo", "analista", "Analista de operações", 2), CancellationToken.None);
+
+        updated.Id.Should().Be(created.Id);
+        updated.Descricao.Should().Be("Analista de operações");
+        (await db.RhReferencias.CountAsync()).Should().Be(1);
+        (await GenesisRhService.ListarReferenciasAsync(db, "CARGO", CancellationToken.None))
+            .Should().ContainSingle(item => item.Codigo == "ANALISTA" && item.Ordem == 2);
+    }
+}

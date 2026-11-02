@@ -46,4 +46,7 @@ public class LogAuditoriaService : ILogAuditoriaService
             // Silenciar falhas de auditoria para não quebrar o fluxo principal
         }
     }
+
+    public Task RegistrarAsync(string tabela, string descricao, int? registroId) =>
+        RegistrarAsync(tabela, registroId ?? 0, "API", null, "Sistema", null, null, null, descricao, "desktop/logistica");
 }

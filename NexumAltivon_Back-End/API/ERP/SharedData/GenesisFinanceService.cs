@@ -342,6 +342,11 @@ public static class GenesisFinanceService
             throw new ArgumentException("Descricao de referencia obrigatoria.");
         }
 
+        if (tipo.Length > 40 || codigo.Length > 50 || descricao.Length > 150 || request.Ordem < 0)
+        {
+            throw new ArgumentException("Tipo, código, descrição ou ordem da referência financeira fora dos limites permitidos.");
+        }
+
         var entity = await genesisDb.FinanceiroReferencias
             .FirstOrDefaultAsync(item => item.Tipo == tipo && item.Codigo == codigo, ct);
 

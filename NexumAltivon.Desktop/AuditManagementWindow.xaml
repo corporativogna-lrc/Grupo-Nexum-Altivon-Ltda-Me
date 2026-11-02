@@ -1,0 +1,37 @@
+<Window x:Class="NexumAltivon.Desktop.AuditManagementWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GenesisGest.Net - Trilha de auditoria"
+        Width="1180" Height="720" MinWidth="900" MinHeight="580"
+        WindowStartupLocation="CenterOwner" Background="{StaticResource ShellBackground}" FontFamily="Segoe UI">
+    <Grid Margin="16">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="12"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <Border Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12" Padding="14">
+            <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left"><TextBlock Text="GOVERNANÇA · GERENTE" Foreground="{StaticResource AccentGold}" FontSize="12" FontWeight="SemiBold"/><TextBlock Text="Trilha de auditoria" Foreground="{StaticResource TextPrimary}" FontSize="24" FontWeight="Bold" Margin="0,3,0,0"/></StackPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <ComboBox x:Name="TabelaCombo" Width="250" SelectedIndex="0" Padding="7" SelectionChanged="TabelaCombo_SelectionChanged">
+                        <ComboBoxItem Content="pedidos"/><ComboBoxItem Content="clientes"/><ComboBoxItem Content="fornecedores"/><ComboBoxItem Content="produtos"/><ComboBoxItem Content="lojas"/><ComboBoxItem Content="LOGISTICA"/><ComboBoxItem Content="CHECKOUT"/><ComboBoxItem Content="PDV"/>
+                    </ComboBox>
+                    <TextBox x:Name="BuscaBox" Width="210" Margin="8,0" Padding="8,5" VerticalContentAlignment="Center" ToolTip="Filtrar ação, usuário, endpoint ou ID" KeyDown="BuscaBox_KeyDown"/>
+                    <Button Content="Consultar" Click="Consultar_Click" Padding="14,8" Background="{StaticResource AccentGold}" Foreground="#080704" FontWeight="Bold"/>
+                    <Button Content="Fechar" Click="Fechar_Click" Margin="8,0,0,0" Padding="14,8"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+        <Border Grid.Row="2" Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12" Padding="12">
+            <DataGrid x:Name="AuditoriaGrid" ItemsSource="{Binding Registros}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Data/hora UTC" Binding="{Binding CreatedAt, StringFormat={}{0:dd/MM/yyyy HH:mm:ss}}" Width="155"/>
+                    <DataGridTextColumn Header="Tabela" Binding="{Binding Tabela}" Width="170"/>
+                    <DataGridTextColumn Header="ID" Binding="{Binding RegistroId}" Width="75"/>
+                    <DataGridTextColumn Header="Ação" Binding="{Binding Acao}" Width="130"/>
+                    <DataGridTextColumn Header="Tipo de usuário" Binding="{Binding UsuarioTipo}" Width="130"/>
+                    <DataGridTextColumn Header="Usuário" Binding="{Binding UsuarioId}" Width="*"/>
+                    <DataGridTextColumn Header="Endpoint" Binding="{Binding Endpoint}" Width="2*"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+        <TextBlock x:Name="StatusText" Grid.Row="3" Foreground="{StaticResource TextSecondary}" Margin="2,10,2,0" TextWrapping="Wrap"/>
+    </Grid>
+</Window>

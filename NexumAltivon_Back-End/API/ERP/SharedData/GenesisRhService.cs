@@ -26,15 +26,29 @@ public static class GenesisRhService
     {
         if (string.IsNullOrWhiteSpace(status))
         {
-            return "ATIVO";
+            throw new ArgumentException("Status do colaborador é obrigatório.", nameof(status));
         }
 
         var normalized = status.Trim().ToUpperInvariant();
-        return StatusPermitidos.Contains(normalized) ? normalized : "ATIVO";
+        return StatusPermitidos.Contains(normalized)
+            ? normalized
+            : throw new ArgumentException("Status do colaborador inválido.", nameof(status));
     }
 
     private static string NormalizarTipoReferencia(string? tipo) =>
         string.IsNullOrWhiteSpace(tipo) ? string.Empty : tipo.Trim().ToUpperInvariant();
+
+    private static void ValidarTexto(string value, int maxLength, string field)
+    {
+        if (value.Length > maxLength)
+            throw new ArgumentException($"{field} deve ter no máximo {maxLength} caracteres.");
+    }
+
+    private static void ValidarTextoOpcional(string? value, int maxLength, string field)
+    {
+        if (value is not null && value.Trim().Length > maxLength)
+            throw new ArgumentException($"{field} deve ter no máximo {maxLength} caracteres.");
+    }
 
     public static async Task<GenesisRhSummaryDto> GetResumoAsync(GenesisDbContext genesisDb, CancellationToken ct)
     {
@@ -80,6 +94,10 @@ public static class GenesisRhService
             throw new InvalidOperationException("Nome do colaborador é obrigatório.");
         }
 
+        ValidarTexto(nome, 150, "Nome");
+        ValidarTextoOpcional(request.Cargo, 120, "Cargo");
+        ValidarTextoOpcional(request.Departamento, 120, "Departamento");
+
         var entity = new GenesisRhColaborador
         {
             Nome = nome,
@@ -108,6 +126,10 @@ public static class GenesisRhService
         {
             throw new InvalidOperationException("Nome do colaborador é obrigatório.");
         }
+
+        ValidarTexto(nome, 150, "Nome");
+        ValidarTextoOpcional(request.Cargo, 120, "Cargo");
+        ValidarTextoOpcional(request.Departamento, 120, "Departamento");
 
         entity.Nome = nome;
         entity.Cargo = request.Cargo?.Trim();
@@ -178,6 +200,11 @@ public static class GenesisRhService
         if (string.IsNullOrWhiteSpace(descricao))
         {
             throw new ArgumentException("Descricao de referencia RH obrigatoria.");
+        }
+
+        if (tipo.Length > 40 || codigo.Length > 50 || descricao.Length > 120 || request.Ordem < 0)
+        {
+            throw new ArgumentException("Tipo, código, descrição ou ordem da referência RH fora dos limites permitidos.");
         }
 
         var entity = await genesisDb.RhReferencias

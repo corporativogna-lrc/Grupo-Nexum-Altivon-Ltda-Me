@@ -381,6 +381,27 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        if (title == "Centros de custo")
+        {
+            var costCenterWindow = new CostCenterManagementWindow(Terminal) { Owner = this };
+            costCenterWindow.ShowDialog();
+            return;
+        }
+
+        if (title is "Colaboradores" or "Contratações" or "Demissões")
+        {
+            var rhWindow = new RhManagementWindow(Terminal, title == "Colaboradores" ? null : title) { Owner = this };
+            rhWindow.ShowDialog();
+            return;
+        }
+
+        if (title == "Cargos e departamentos")
+        {
+            var referencesWindow = new RhReferenceManagementWindow(Terminal) { Owner = this };
+            referencesWindow.ShowDialog();
+            return;
+        }
+
         if (title == "Usuários, perfis e permissões")
         {
             var accessWindow = new AccessManagementWindow(Terminal)
@@ -388,6 +409,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 Owner = this
             };
             accessWindow.ShowDialog();
+            return;
+        }
+
+        if (title == "Trilha de auditoria")
+        {
+            var auditWindow = new AuditManagementWindow(Terminal) { Owner = this };
+            auditWindow.ShowDialog();
             return;
         }
 
@@ -658,14 +686,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private static bool IsMasterDataWorkspace(string title)
     {
-        return title is "Produtos e serviços"
-            or "Categorias e subcategorias"
-            or "Centros de custo"
-            or "Colaboradores / RH / folha"
-            or "Contratações"
-            or "Demissões"
-            or "Cargos e departamentos"
-            or "Ponto e jornada";
+        return title is "Ponto e jornada";
     }
 
     private static bool IsProcurementWorkspace(string title)

@@ -126,6 +126,10 @@ public partial class LogisticsWindow : Window, INotifyPropertyChanged
             await CarregarAsync(false, selectedId);
             Status = $"Logística do pedido {result.Data.NumeroPedido} confirmada no banco oficial.";
         }
+        catch (Exception ex)
+        {
+            Status = $"Falha ao gravar logística: {ex.Message}";
+        }
         finally
         {
             SetBusy(false);
@@ -154,6 +158,10 @@ public partial class LogisticsWindow : Window, INotifyPropertyChanged
             await CarregarAsync(false, selectedId);
             Status = $"Pedido {result.Data.NumeroPedido} avançado para {result.Data.Status} com persistência operacional.";
         }
+        catch (Exception ex)
+        {
+            Status = $"Fluxo não confirmado: {ex.Message}";
+        }
         finally
         {
             SetBusy(false);
@@ -179,7 +187,7 @@ public partial class LogisticsWindow : Window, INotifyPropertyChanged
             if (!result.Success || result.Data is null)
             {
                 await CarregarAsync(false, SelectedExpedicao.PedidoId);
-                Status = $"Consulta externa não confirmada; a tentativa foi auditada pela API. {result.Detail}";
+                Status = $"Consulta externa não confirmada; nenhum evento foi apresentado como sucesso. {result.Detail}";
                 return;
             }
 
@@ -191,6 +199,10 @@ public partial class LogisticsWindow : Window, INotifyPropertyChanged
             }
 
             Status = $"Consulta {result.Data.ConsultaId} confirmada em {result.Data.FonteExterna}; status {result.Data.StatusExterno ?? "sem status textual"}.";
+        }
+        catch (Exception ex)
+        {
+            Status = $"Rastreamento não confirmado: {ex.Message}";
         }
         finally
         {

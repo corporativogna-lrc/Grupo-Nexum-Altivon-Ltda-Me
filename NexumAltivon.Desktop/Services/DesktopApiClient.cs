@@ -602,6 +602,41 @@ public sealed class DesktopApiClient
         => SendAuthorizedAsync<DesktopContaReceber>(
             profile, token, HttpMethod.Post, $"/api/erp/genesis/financeiro/contas-receber/{id}/baixa", payload, cancellationToken);
 
+    public Task<DesktopApiDataResult<List<DesktopGenesisRhColaborador>>> GetGenesisRhColaboradoresAsync(
+        TerminalProfile profile, string token, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<List<DesktopGenesisRhColaborador>>(
+            profile, token, HttpMethod.Get, "/api/erp/genesis/rh/colaboradores", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopGenesisRhColaborador>> CreateGenesisRhColaboradorAsync(
+        TerminalProfile profile, string token, DesktopGenesisRhColaboradorRequest request, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopGenesisRhColaborador>(
+            profile, token, HttpMethod.Post, "/api/erp/genesis/rh/colaboradores", request, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopGenesisRhColaborador>> UpdateGenesisRhColaboradorAsync(
+        TerminalProfile profile, string token, int id, DesktopGenesisRhColaboradorRequest request, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopGenesisRhColaborador>(
+            profile, token, HttpMethod.Put, $"/api/erp/genesis/rh/colaboradores/{id}", request, cancellationToken);
+
+    public Task<DesktopApiDataResult<List<DesktopGenesisRhReference>>> GetGenesisRhReferencesAsync(
+        TerminalProfile profile, string token, string type, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<List<DesktopGenesisRhReference>>(
+            profile, token, HttpMethod.Get, $"/api/erp/genesis/rh/referencias?tipo={Uri.EscapeDataString(type)}", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopGenesisRhReference>> CreateGenesisRhReferenceAsync(
+        TerminalProfile profile, string token, DesktopGenesisRhReferenceRequest request, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopGenesisRhReference>(
+            profile, token, HttpMethod.Post, "/api/erp/genesis/rh/referencias", request, cancellationToken);
+
+    public Task<DesktopApiDataResult<List<DesktopGenesisFinanceReference>>> GetGenesisFinanceReferencesAsync(
+        TerminalProfile profile, string token, string type, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<List<DesktopGenesisFinanceReference>>(
+            profile, token, HttpMethod.Get, $"/api/erp/genesis/financeiro/referencias?tipo={Uri.EscapeDataString(type)}", null, cancellationToken);
+
+    public Task<DesktopApiDataResult<DesktopGenesisFinanceReference>> CreateGenesisFinanceReferenceAsync(
+        TerminalProfile profile, string token, DesktopGenesisFinanceReferenceRequest request, CancellationToken cancellationToken = default) =>
+        SendAuthorizedAsync<DesktopGenesisFinanceReference>(
+            profile, token, HttpMethod.Post, "/api/erp/genesis/financeiro/referencias", request, cancellationToken);
+
     public Task<DesktopApiDataResult<List<DesktopAuditoriaOperacional>>> GetAuditoriaAsync(
         TerminalProfile profile,
         string token,
@@ -1480,6 +1515,24 @@ public sealed record DesktopLoginResponse(string Token, string RefreshToken, Dat
 public sealed record DesktopUser(int Id, string Nome, string Email, string Perfil);
 public sealed record DesktopApiEnvelope<T>(bool Sucesso, string Mensagem, T? Dados, List<string>? Erros);
 public sealed record DesktopApiDataResult<T>(bool Success, T? Data, string Detail);
+
+public sealed record DesktopGenesisRhColaborador(
+    int Id, string Nome, string? Cargo, string? Departamento, string? Status, DateTime? DataAdmissao);
+
+public sealed record DesktopGenesisRhColaboradorRequest(
+    string Nome, string? Cargo, string? Departamento, string? Status, DateTime? DataAdmissao);
+
+public sealed record DesktopGenesisRhReference(
+    int Id, string Tipo, string Codigo, string Descricao, int Ordem);
+
+public sealed record DesktopGenesisRhReferenceRequest(
+    string Tipo, string Codigo, string Descricao, int Ordem);
+
+public sealed record DesktopGenesisFinanceReference(
+    int Id, string Tipo, string Codigo, string Descricao, int Ordem);
+
+public sealed record DesktopGenesisFinanceReferenceRequest(
+    string Tipo, string Codigo, string Descricao, int Ordem);
 public sealed record DesktopFiscalEmpresa(
     int Id, string? CodigoEmpresa, string? RazaoSocial, string? Cnpj, string? Estado,
     bool Ativa, string? CategoriaFiscal, string? SubcategoriaFiscal, string? NaturezaOperacaoPadrao);
