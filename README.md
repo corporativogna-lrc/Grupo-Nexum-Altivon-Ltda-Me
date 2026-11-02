@@ -42,8 +42,9 @@ NexumAltivon.com
     |-- Controllers/
     |-- Models/
     |-- Services/
-```
+
 GenesisGest.Net - Central Desktop ERP/PDV
+|
 |-- Operacao
 |   |-- Abrir PDV / Venda de balcao -> PdvSaleWindow
 |   |-- Abrir caixa -> PdvSaleWindow / contrato de caixa a homologar
@@ -141,7 +142,7 @@ GenesisGest.Net - Central Desktop ERP/PDV
     |-- Mapa de desenvolvimento WPF/PDV -> MapaDesenvolvimentoWindow
     |-- Atualizacao do Desktop -> AtualizacaoDesktopWindow (consulta Releases; download; instalacao confirmada)
     +-- Abrir pasta de contingencia -> LocalOutboxService
-~~~
+
 ---
 
 
