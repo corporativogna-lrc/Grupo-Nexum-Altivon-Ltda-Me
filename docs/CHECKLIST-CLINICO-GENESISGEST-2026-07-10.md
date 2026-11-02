@@ -527,14 +527,14 @@ Nao declarar item como concluido sem uma evidencia tecnica associada: build, tes
 
 | Item | Status e evidencia |
 |---|---|
-| API de RH | Rotas GET de colaboradores, resumo, POST, PUT e PATCH de status reativadas na API ativa com política `Gerente`; entradas com status ausente/inválido retornam 400 e não são convertidas silenciosamente para `ATIVO`. |
+| API de RH | Rotas GET, POST, PUT de colaboradores, PATCH de status e GET/POST de referências agora estão mapeadas no código da API com política `Gerente`; entradas com status ausente/inválido retornam 400. A versão oficial ainda precisa receber este commit. |
 | Formulario WPF de RH | `RhManagementWindow` conectado à API autenticada; permite pesquisar, listar, criar e editar os campos suportados no schema Genesis. Confirma gravação após resposta persistida e releitura da lista. |
-| API de referências financeiras | GET/POST de referências reativados com política `Gerente`; Centro de custo usa o tipo explícito `CENTRO_CUSTO` e upsert pelo código no serviço existente. |
+| API de referências financeiras | GET/POST de referências mapeados no código com política `Gerente`; Centro de custo usa `CENTRO_CUSTO` e upsert pelo código. A versão oficial ainda precisa receber este commit. |
 | Formulário WPF de centros de custo | `CostCenterManagementWindow` conectado à API autenticada; lista, pesquisa, cria e atualiza a referência por código e verifica resposta/releitura. |
 | Referências de RH | A mesma API de referência oferece busca e gravação por código para departamentos e cargos, com o tenant atual e releitura. |
 | Logística | Rotas autenticadas listam expedições, registram transportadora/método/rastreio sob `RowVersion`, avançam estado operacional permitido e consultam o provedor configurado com persistência da resposta de rastreamento. |
 | Auditoria | `AuditManagementWindow` permite consultar e filtrar trilhas retornadas pela API; leitura somente, sem alterar registros. |
 | Rotas do menu | `MainWindow` direciona RH, Centros de custo, Logística e Trilha de auditoria às janelas específicas; retirados do encaminhamento genérico. |
-| Validação local | Desktop Release e API Release compilados sem avisos/erros; API xUnit passou 43/43. `git diff --check` sem erros. As compilações comprovam integração de código, não a conectividade com o servidor real. |
+| Validação local | Desktop Release e API Release compilados sem avisos/erros; API xUnit passou 43/43. Rotas de RH e referências foram adicionadas após identificar que a revisão anterior do `Program.cs` não as mapeava. `git diff --check` sem erros. As compilações comprovam integração de código, não a conectividade com o servidor real. |
 | Homologação operacional | Pendente: sessão Gerente, permissões, conexão às bases Genesis/Nexum reais, consulta ao provedor logístico e persistência real não foram exercitadas nesta validação; não houve gravações de dados do usuário. |
-| Publicação | Cinco janelas do lote implementadas/corrigidas. A publicação local do Desktop e o push de código serão registrados após validação do pacote e atalho; implantação da API oficial permanece dependente do atualizador administrativo e seus gates. |
+| Publicação | Cinco janelas foram publicadas localmente no Desktop e o código foi enviado à branch `main` no commit `38a6cb8`; dois workflows iniciaram. A correção de rotas de RH/referências deste passo está pendente de novo commit. Implantação da API oficial segue pelo atualizador administrativo e gates de saúde. |

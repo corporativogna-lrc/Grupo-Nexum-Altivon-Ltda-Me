@@ -6,6 +6,7 @@
  */
 using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
+using System.Data.Common;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
@@ -2900,6 +2901,101 @@ app.MapPut("/api/crm/leads/{id}/status", [Authorize(Policy = "Gerente")] async (
     return Results.Ok(ApiResponse<LeadLojaDto>.Ok(dto, "Status do lead atualizado."));
 })
 .WithName("AtualizarStatusLead")
+;
+
+app.MapGet("/api/erp/genesis/rh/colaboradores", [Authorize(Policy = "Gerente")] async (GenesisDbContext db, CancellationToken ct) =>
+{
+    try
+    {
+        return Results.Ok(await GenesisRhService.GetColaboradoresAsync(db, ct));
+    }
+    catch (Exception ex) when (ex is InvalidOperationException or DbException)
+    {
+        return Results.Problem("Não foi possível consultar colaboradores no Genesis.", statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+})
+.WithName("ListarColaboradoresGenesis")
+;
+
+app.MapPost("/api/erp/genesis/rh/colaboradores", [Authorize(Policy = "Gerente")] async (
+    GenesisRhColaboradorUpsertRequest request, GenesisDbContext db, CancellationToken ct) =>
+{
+    try
+    {
+        var created = await GenesisRhService.CriarColaboradorAsync(db, request, ct);
+        return Results.Created($"/api/erp/genesis/rh/colaboradores/{created.Id}", created);
+    }
+    catch (ArgumentException ex) { return Results.BadRequest(new { erro = ex.Message }); }
+    catch (InvalidOperationException ex) { return Results.BadRequest(new { erro = ex.Message }); }
+})
+.WithName("CriarColaboradorGenesis")
+;
+
+app.MapPut("/api/erp/genesis/rh/colaboradores/{id:int}", [Authorize(Policy = "Gerente")] async (
+    int id, GenesisRhColaboradorUpsertRequest request, GenesisDbContext db, CancellationToken ct) =>
+{
+    if (id <= 0) return Results.BadRequest(new { erro = "ID do colaborador inválido." });
+    try
+    {
+        var updated = await GenesisRhService.AtualizarColaboradorAsync(db, id, request, ct);
+        return updated is null ? Results.NotFound() : Results.Ok(updated);
+    }
+    catch (ArgumentException ex) { return Results.BadRequest(new { erro = ex.Message }); }
+    catch (InvalidOperationException ex) { return Results.BadRequest(new { erro = ex.Message }); }
+})
+.WithName("AtualizarColaboradorGenesis")
+;
+
+app.MapPatch("/api/erp/genesis/rh/colaboradores/{id:int}/status", [Authorize(Policy = "Gerente")] async (
+    int id, GenesisRhStatusUpdateRequest request, GenesisDbContext db, CancellationToken ct) =>
+{
+    if (id <= 0) return Results.BadRequest(new { erro = "ID do colaborador inválido." });
+    try
+    {
+        var updated = await GenesisRhService.AtualizarStatusAsync(db, id, request.Status, ct);
+        return updated is null ? Results.NotFound() : Results.Ok(updated);
+    }
+    catch (ArgumentException ex) { return Results.BadRequest(new { erro = ex.Message }); }
+})
+.WithName("AtualizarStatusColaboradorGenesis")
+;
+
+app.MapGet("/api/erp/genesis/rh/referencias", [Authorize(Policy = "Gerente")] async (
+    string? tipo, GenesisDbContext db, CancellationToken ct) =>
+    Results.Ok(await GenesisRhService.ListarReferenciasAsync(db, tipo, ct)))
+.WithName("ListarReferenciasGenesisRh")
+;
+
+app.MapPost("/api/erp/genesis/rh/referencias", [Authorize(Policy = "Gerente")] async (
+    GenesisRhReferenciaCreateRequest request, GenesisDbContext db, CancellationToken ct) =>
+{
+    try
+    {
+        var created = await GenesisRhService.CriarReferenciaAsync(db, request, ct);
+        return Results.Created($"/api/erp/genesis/rh/referencias/{created.Id}", created);
+    }
+    catch (ArgumentException ex) { return Results.BadRequest(new { erro = ex.Message }); }
+})
+.WithName("CriarReferenciaGenesisRh")
+;
+
+app.MapGet("/api/erp/genesis/financeiro/referencias", [Authorize(Policy = "Gerente")] async (
+    string? tipo, GenesisDbContext db, CancellationToken ct) =>
+    Results.Ok(await GenesisFinanceService.ListarReferenciasAsync(db, tipo, ct)))
+.WithName("ListarReferenciasFinanceirasGenesis")
+;
+
+app.MapPost("/api/erp/genesis/financeiro/referencias", [Authorize(Policy = "Gerente")] async (
+    GenesisFinanceReferenciaCreateRequest request, GenesisDbContext db, CancellationToken ct) =>
+{
+    try
+    {
+        var created = await GenesisFinanceService.CriarReferenciaAsync(db, request, ct);
+        return Results.Created($"/api/erp/genesis/financeiro/referencias/{created.Id}", created);
+    }
+    catch (ArgumentException ex) { return Results.BadRequest(new { erro = ex.Message }); }
+})
+.WithName("CriarReferenciaFinanceiraGenesis")
 ;
 
 app.MapGet("/api/erp/empresas", [Authorize(Policy = "Gerente")] async (NexumDbContext db, CancellationToken ct) =>
