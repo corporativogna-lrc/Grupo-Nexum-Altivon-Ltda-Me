@@ -27,10 +27,6 @@
     <Compile Include="API\Models\**\*.cs" />
     <Compile Include="API\Services\AssistenteIaService.cs" />
     <Compile Include="API\Services\NotificacaoService.cs" />
-    <Compile Include="API\Services\LogisticaService.cs" />
-    <Compile Include="API\Services\LogAuditoriaService.cs" />
-    <Compile Include="API\Services\DesktopLogisticaContracts.cs" />
-    <Compile Include="API\DTOs\LogisticaDtos.cs" />
     <Compile Include="API\DTOs\DesktopLogisticaDtos.cs" />
     <EmbeddedResource Include="API\Infrastructure\DejaVuSans.ttf" />
   </ItemGroup>

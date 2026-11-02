@@ -20,11 +20,14 @@ public sealed record DesktopLogisticaExpedicaoDto(
     DateTime UpdatedAt);
 
 public sealed record DesktopLogisticaAtualizacaoRequest(
-    string FreteMetodo,
-    string FreteTransportadora,
-    int FretePrazoDias,
-    string FreteCodigoRastreio,
-    string RowVersion);
+    [property: System.Text.Json.Serialization.JsonPropertyName("frete_metodo")] string FreteMetodo,
+    [property: System.Text.Json.Serialization.JsonPropertyName("frete_transportadora")] string FreteTransportadora,
+    [property: System.Text.Json.Serialization.JsonPropertyName("frete_prazo_dias")] int FretePrazoDias,
+    [property: System.Text.Json.Serialization.JsonPropertyName("frete_codigo_rastreio")] string FreteCodigoRastreio,
+    [property: System.Text.Json.Serialization.JsonPropertyName("row_version")] string RowVersion);
+
+public sealed record DesktopPedidoFluxoRequest(
+    [property: System.Text.Json.Serialization.JsonPropertyName("row_version")] string RowVersion);
 
 public sealed record DesktopLogisticaPedidoAtualizadoDto(
     int Id,

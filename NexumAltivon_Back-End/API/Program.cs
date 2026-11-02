@@ -24,6 +24,7 @@ using Microsoft.OpenApi.Models;
 using NexumAltivon.API.Data;
 using NexumAltivon.API.ERP.FiscalRouting;
 using NexumAltivon.API.ERP.SharedData;
+using NexumAltivon.API.Infrastructure.Logistics;
 using NexumAltivon.API.Models;
 using NexumAltivon.API.Services;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
@@ -178,6 +179,7 @@ builder.Services.AddHttpClient("Notificacoes", client =>
 {
     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 });
+builder.Services.AddScoped<LogisticaTrackingService>();
 builder.Services.AddScoped<INotificacaoService, NotificacaoService>();
 
 builder.Services
@@ -185,6 +187,7 @@ builder.Services
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(Path.GetTempPath(), "nexum-altivon-api-keys")));
 
 var app = builder.Build();
+app.MapDesktopLogisticsEndpoints();
 
 await EnsureOperationalSchemaAsync(app.Services, app.Logger);
 

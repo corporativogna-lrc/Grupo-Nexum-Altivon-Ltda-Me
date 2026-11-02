@@ -148,7 +148,8 @@ public partial class LogisticsWindow : Window, INotifyPropertyChanged
         SetBusy(true);
         try
         {
-            var result = await _api.AdvancePedidoFluxoAsync(_terminal, _terminal.DesktopAccessToken, selectedId);
+            var result = await _api.AdvancePedidoFluxoAsync(
+                _terminal, _terminal.DesktopAccessToken, selectedId, SelectedExpedicao.RowVersion);
             if (!result.Success || result.Data is null)
             {
                 Status = $"Fluxo não avançado. {result.Detail}";

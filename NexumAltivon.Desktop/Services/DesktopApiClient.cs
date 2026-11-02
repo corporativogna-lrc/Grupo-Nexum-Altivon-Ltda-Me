@@ -480,13 +480,14 @@ public sealed class DesktopApiClient
         TerminalProfile profile,
         string token,
         int pedidoId,
+        string rowVersion,
         CancellationToken cancellationToken = default) =>
         SendAuthorizedAsync<DesktopPedidoLogisticaAtualizada>(
             profile,
             token,
             HttpMethod.Post,
             $"/api/pedidos/{pedidoId}/fluxo-operacional",
-            null,
+            new DesktopPedidoFluxoRequest(rowVersion),
             cancellationToken);
 
     public Task<DesktopApiDataResult<DesktopLogisticaRastreamento>> GetLogisticaRastreamentoAsync(
@@ -1805,6 +1806,9 @@ public sealed record DesktopPedidoLogisticaRequest(
     [property: JsonPropertyName("frete_transportadora")] string FreteTransportadora,
     [property: JsonPropertyName("frete_prazo_dias")] int FretePrazoDias,
     [property: JsonPropertyName("frete_codigo_rastreio")] string FreteCodigoRastreio,
+    [property: JsonPropertyName("row_version")] string RowVersion);
+
+public sealed record DesktopPedidoFluxoRequest(
     [property: JsonPropertyName("row_version")] string RowVersion);
 
 public sealed record DesktopPedidoLogisticaAtualizada(
