@@ -537,4 +537,11 @@ Nao declarar item como concluido sem uma evidencia tecnica associada: build, tes
 | Rotas do menu | `MainWindow` direciona RH, Centros de custo, Logística e Trilha de auditoria às janelas específicas; retirados do encaminhamento genérico. |
 | Validação local | API Release e Desktop Release compilados sem avisos/erros; API xUnit passou 43/43. O gate Coverlet de 70% não passou localmente: Coverlet reportou 0% mesmo com os testes aprovados, portanto CI continua sendo o critério de cobertura. `git diff --check` sem erros. As compilações comprovam integração de código, não a conectividade com o servidor real. |
 | Homologação operacional | Pendente: sessão Gerente, permissões, conexão às bases Genesis/Nexum reais, consulta ao provedor logístico e persistência real não foram exercitadas nesta validação; não houve gravações de dados do usuário. |
-| Publicação | Cinco janelas foram publicadas localmente no Desktop e a base de código foi enviada à branch `main` nos commits `38a6cb8` e `48ede0d`. Este lote implementa os handlers logísticos antes ausentes. Ainda pendentes: CI deste lote, publicar a API pelo atualizador administrativo oficial e homologar os fluxos com sessão Gerente e bancos reais. |
+| Publicação | Cinco janelas foram publicadas localmente no Desktop e a base de código está na branch `main` nos commits `38a6cb8`, `48ede0d` e `de54494`. Os workflows `Nexum Altivon CI/CD` e `Build GenesisGest.Net Desktop` passaram para `de54494`; a API e o Desktop também compilaram localmente e os 43 testes passaram. Ainda pendentes: promover a API pelo atualizador administrativo oficial e homologar logística com sessão Gerente e bancos reais. |
+
+## Próximo lote priorizado no menu Desktop — 2026-11-02
+
+| Prioridade | Telas do menu | Estado técnico e critério |
+|---|---|---|
+| 1 | Saldo físico, saldo fiscal, transferência entre lojas, inventário, rastreabilidade por origem | Ainda encaminhadas à janela operacional genérica. `Produto` tem saldo e reservas, mas o schema Nexum ativo não possui razão de movimentações/transferências. Primeiro lote será leitura real de saldos; mutações ficam pendentes até modelar/auditar o ledger, sem alterar estoque por tela genérica. |
+| Escopo inventariado | XAML WPF deste checkout | 27 arquivos `.xaml` fonte no checkout, sem contar `bin/obj`. A referência anterior a 256 telas não corresponde a este checkout atual; classificação será guiada pela árvore de menu e continuará em lotes de cinco telas. |
