@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7256 Data: 30/10/2026
  */
 
 using System.Collections.ObjectModel;
@@ -11,6 +11,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Windows;
+using System.Windows.Input;
 using NexumAltivon.Desktop.Models;
 using NexumAltivon.Desktop.Services;
 
@@ -22,11 +23,15 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
     private readonly LocalOutboxService _outbox = new();
     private readonly TerminalProfile _terminal;
     private PdvCartItem? _itemSelecionado;
+    private DesktopPdvCatalogProduct? _produtoCatalogoSelecionado;
+    private DesktopCliente? _clientePdvSelecionado;
     private string _codigoVenda = string.Empty;
-    private string _clienteNome = "Consumidor final";
+    private string _clienteNome = string.Empty;
     private string _clienteDocumento = string.Empty;
-    private string _empresaEmissora = "Seleção automática - menor custo";
+    private string _buscaCliente = string.Empty;
+    private string _empresaEmissora = string.Empty;
     private string _novoItemCodigo = string.Empty;
+    private string _buscaCatalogo = string.Empty;
     private string _novoItemDescricao = string.Empty;
     private string _novoItemQuantidade = "1";
     private string _novoItemValorUnitario = "0,00";
@@ -42,6 +47,57 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
 
     public ObservableCollection<PdvCartItem> Itens { get; } = new();
     public ObservableCollection<PdvPaymentLine> Pagamentos { get; } = new();
+    public ObservableCollection<DesktopPdvCatalogProduct> ProdutosCatalogo { get; } = new();
+    public ObservableCollection<DesktopCliente> ClientesPdv { get; } = new();
+
+    public string BuscaCliente
+    {
+        get => _buscaCliente;
+        set => SetField(ref _buscaCliente, value);
+    }
+
+    public DesktopCliente? ClientePdvSelecionado
+    {
+        get => _clientePdvSelecionado;
+        set
+        {
+            SetField(ref _clientePdvSelecionado, value);
+            if (value is null)
+            {
+                ClienteNome = string.Empty;
+                ClienteDocumento = string.Empty;
+                AtualizarStatusCiclo();
+                return;
+            }
+            ClienteNome = value.Nome;
+            ClienteDocumento = value.Cpf ?? string.Empty;
+            AtualizarStatusCiclo();
+            StatusOperacional = string.IsNullOrWhiteSpace(ClienteDocumento)
+                ? "O cliente selecionado não possui CPF/CNPJ cadastrado; não poderá finalizar uma venda PDV."
+                : $"Cliente {value.Nome} selecionado. A API validará o documento e o vínculo ativo no Genesis ao finalizar.";
+        }
+    }
+
+    public string BuscaCatalogo
+    {
+        get => _buscaCatalogo;
+        set => SetField(ref _buscaCatalogo, value);
+    }
+
+    public DesktopPdvCatalogProduct? ProdutoCatalogoSelecionado
+    {
+        get => _produtoCatalogoSelecionado;
+        set
+        {
+            SetField(ref _produtoCatalogoSelecionado, value);
+            if (value is null) return;
+            NovoItemCodigo = value.Sku;
+            NovoItemDescricao = value.Nome;
+            NovoItemValorUnitario = value.PrecoAtual.ToString("N2", CultureInfo.GetCultureInfo("pt-BR"));
+            NovoItemCustoEstimado = value.Custo.ToString("N2", CultureInfo.GetCultureInfo("pt-BR"));
+            StatusOperacional = $"{value.Nome}: {value.Estoque} unidade(s) disponível(is) no catálogo consultado.";
+        }
+    }
 
     public string CodigoVenda
     {
@@ -178,9 +234,9 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
     public string FiscalLabel => $"Fiscal: {StatusFiscal}";
     public string FinanceiroLabel => $"Financeiro: {StatusFinanceiro}";
     public string LogisticaLabel => $"Logística: {StatusLogistico}";
-    private string StatusFiscal => EmpresaEmissora.Contains("automática", StringComparison.OrdinalIgnoreCase)
-        ? "emitente será definido pelo menor custo e maior margem"
-        : $"emitente selecionado: {EmpresaEmissora}";
+    private string StatusFiscal => string.IsNullOrWhiteSpace(EmpresaEmissora)
+        ? "codigo/CNPJ/nome da empresa emissora obrigatorio"
+        : $"empresa emissora explicitamente informada: {EmpresaEmissora}";
     private string StatusFinanceiro => Pago >= Total && Total > 0m
         ? "pagamento suficiente para baixa e contas a receber"
         : $"aguardando pagamento de R$ {Math.Max(0m, Total - Pago):N2}";
@@ -207,6 +263,7 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
         _terminal = terminal;
         InitializeComponent();
         DataContext = this;
+        EmpresaEmissora = terminal.CompanyCode;
         NovaVenda();
     }
 
@@ -215,15 +272,132 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
         NovaVenda();
     }
 
+    private async void BuscarCatalogo_Click(object sender, RoutedEventArgs e) => await BuscarCatalogoAsync();
+
+    private async void BuscaCatalogo_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        e.Handled = true;
+        await BuscarCatalogoAsync();
+    }
+
+    private async Task BuscarCatalogoAsync()
+    {
+        ProdutoCatalogoSelecionado = null;
+        StatusOperacional = "Consultando nome, SKU, código de barras ou QR no catálogo oficial...";
+        var result = await _api.SearchPdvCatalogAsync(_terminal, BuscaCatalogo);
+        ProdutosCatalogo.Clear();
+        if (!result.Success || result.Data is null)
+        {
+            ProdutoCatalogoSelecionado = null;
+            StatusOperacional = $"Catálogo não consultado: {result.Detail}";
+            return;
+        }
+
+        foreach (var product in result.Data.Where(product => !string.IsNullOrWhiteSpace(product.Sku)))
+            ProdutosCatalogo.Add(product);
+
+        var term = BuscaCatalogo.Trim();
+        var termDigits = NormalizeIdentifierDigits(term);
+        var exactMatches = ProdutosCatalogo.Where(product =>
+                string.Equals(product.Sku, term, StringComparison.OrdinalIgnoreCase)
+                || (!string.IsNullOrWhiteSpace(product.QrCode)
+                    && string.Equals(product.QrCode.Trim(), term, StringComparison.OrdinalIgnoreCase))
+                || (termDigits.Length > 0
+                    && NormalizeIdentifierDigits(product.CodigoBarras) == termDigits))
+            .Take(2)
+            .ToArray();
+        if (exactMatches.Length == 1)
+        {
+            ProdutoCatalogoSelecionado = exactMatches[0];
+            StatusOperacional = "Identificador exato localizado. Confirme o produto e adicione-o à venda.";
+            return;
+        }
+        if (exactMatches.Length > 1)
+        {
+            StatusOperacional = "O identificador corresponde a mais de um produto. Selecione manualmente o item correto e corrija a duplicidade do cadastro.";
+            return;
+        }
+
+        StatusOperacional = ProdutosCatalogo.Count == 0
+            ? "Nenhum produto publicado encontrado. Confira o termo e a disponibilidade no catálogo."
+            : $"{ProdutosCatalogo.Count} produto(s) retornado(s) pela API. Selecione o item correto.";
+    }
+
+    private async void CarregarClientes_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_terminal.DesktopAccessToken))
+        {
+            StatusOperacional = "Sessão de gerente ausente. Autentique o Desktop antes de carregar clientes.";
+            return;
+        }
+
+        StatusOperacional = "Consultando clientes cadastrados na API oficial...";
+        var result = await _api.SearchClientesAsync(_terminal, _terminal.DesktopAccessToken, BuscaCliente);
+        ClientesPdv.Clear();
+        ClientePdvSelecionado = null;
+        if (!result.Success || result.Data is null)
+        {
+            StatusOperacional = $"Clientes não carregados: {result.Detail}";
+            return;
+        }
+
+        var term = BuscaCliente.Trim();
+        if (!string.IsNullOrEmpty(term)
+            && !string.Equals(result.Detail, "Clientes filtrados no banco oficial.", StringComparison.Ordinal))
+        {
+            StatusOperacional = "A API conectada não confirmou a busca completa por clientes. Atualize a API oficial antes de usar um filtro; nenhum resultado parcial será apresentado.";
+            return;
+        }
+
+        var matches = result.Data.Where(cliente =>
+                string.Equals(cliente.Status, "Ativo", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(cliente.Cpf)
+                && (string.IsNullOrWhiteSpace(term)
+                    || cliente.Nome.Contains(term, StringComparison.OrdinalIgnoreCase)
+                    || cliente.Email.Contains(term, StringComparison.OrdinalIgnoreCase)
+                    || (cliente.Cpf?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)))
+            .ToList();
+
+        foreach (var customer in matches)
+            ClientesPdv.Add(customer);
+
+        StatusOperacional = ClientesPdv.Count == 0
+            ? string.IsNullOrEmpty(term)
+                ? "Nenhum cliente ativo com documento foi encontrado entre os 500 registros recentes retornados pela API. Confira o cadastro e a situação do cliente."
+                : "Nenhum cliente ativo com documento corresponde ao filtro consultado no banco oficial. Confira o cadastro e a situação do cliente."
+            : $"{ClientesPdv.Count} cliente(s) ativo(s) com documento no retorno oficial. Selecione o comprador cadastrado.";
+    }
+
     private void AdicionarItem_Click(object sender, RoutedEventArgs e)
     {
-        var codigo = string.IsNullOrWhiteSpace(NovoItemCodigo)
-            ? GerarCodigoTemporario()
-            : NovoItemCodigo.Trim();
+        if (ProdutoCatalogoSelecionado is null
+            || string.IsNullOrWhiteSpace(NovoItemCodigo) || string.IsNullOrWhiteSpace(NovoItemDescricao))
+        {
+            StatusOperacional = "Pesquise e selecione um produto publicado no catálogo oficial antes de adicioná-lo.";
+            return;
+        }
 
-        var descricao = string.IsNullOrWhiteSpace(NovoItemDescricao)
-            ? "Item de balcão informado no terminal"
-            : NovoItemDescricao.Trim();
+        if (!TryParseDecimal(NovoItemQuantidade, out var quantidade) || quantidade <= 0m
+            || !TryParseDecimal(NovoItemValorUnitario, out var valorUnitario) || valorUnitario < 0m
+            || !TryParseDecimal(NovoItemCustoEstimado, out var custoEstimado) || custoEstimado < 0m
+            || !TryParseDecimal(NovoItemDesconto, out var desconto) || desconto < 0m)
+        {
+            StatusOperacional = "Quantidade, preço, custo e desconto devem ser valores numéricos válidos; quantidade deve ser maior que zero.";
+            return;
+        }
+
+        var codigo = NovoItemCodigo.Trim();
+        var descricao = NovoItemDescricao.Trim();
+        var quantidadeNoCarrinho = Itens
+            .Where(item => string.Equals(item.Codigo, ProdutoCatalogoSelecionado.Sku, StringComparison.OrdinalIgnoreCase))
+            .Sum(item => item.Quantidade);
+        if (quantidade + quantidadeNoCarrinho > ProdutoCatalogoSelecionado.Estoque)
+        {
+            var disponivel = Math.Max(0m, ProdutoCatalogoSelecionado.Estoque - quantidadeNoCarrinho);
+            StatusOperacional = $"Estoque insuficiente no catálogo: {disponivel} unidade(s) restante(s) para este SKU. A API fará a validação final.";
+            return;
+        }
 
         var item = new PdvCartItem
         {
@@ -231,10 +405,10 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
             Descricao = descricao,
             EmpresaDestino = _terminal.StoreCode,
             OrigemAquisicao = NovoItemOrigem,
-            Quantidade = ParseDecimal(NovoItemQuantidade, 1m),
-            ValorUnitario = ParseDecimal(NovoItemValorUnitario, 0m),
-            CustoEstimado = ParseDecimal(NovoItemCustoEstimado, 0m),
-            Desconto = ParseDecimal(NovoItemDesconto, 0m)
+            Quantidade = quantidade,
+            ValorUnitario = valorUnitario,
+            CustoEstimado = custoEstimado,
+            Desconto = desconto
         };
 
         item.PropertyChanged += (_, _) => AtualizarTotais();
@@ -244,6 +418,7 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
 
         NovoItemCodigo = string.Empty;
         NovoItemDescricao = string.Empty;
+        ProdutoCatalogoSelecionado = null;
         NovoItemQuantidade = "1";
         NovoItemValorUnitario = "0,00";
         NovoItemCustoEstimado = "0,00";
@@ -291,44 +466,121 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
 
     private async void SalvarLocal_Click(object sender, RoutedEventArgs e)
     {
-        await SalvarVendaLocalAsync(false);
+        await SalvarRascunhoLocalAsync();
     }
 
     private async void FinalizarVenda_Click(object sender, RoutedEventArgs e)
     {
-        await SalvarVendaLocalAsync(true);
+        if (!FinalizarVendaButton.IsEnabled) return;
+        if (Itens.Count == 0)
+        {
+            StatusOperacional = "Adicione ao menos um produto cadastrado no catálogo antes de finalizar.";
+            return;
+        }
+        if (ClientePdvSelecionado is null
+            || string.IsNullOrWhiteSpace(ClienteNome) || string.IsNullOrWhiteSpace(ClienteDocumento)
+            || !DocumentoClienteValido)
+        {
+            StatusOperacional = "Informe nome e CPF/CNPJ válido de um cliente previamente cadastrado.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(EmpresaEmissora))
+        {
+            StatusOperacional = "Configure NEXUM_DESKTOP_COMPANY_CODE com o CNPJ ou nome exato da empresa emissora.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_terminal.DesktopAccessToken))
+        {
+            StatusOperacional = "Sessão de gerente ausente. Autentique o Desktop antes de finalizar a venda.";
+            return;
+        }
+        if (Total <= 0m || Pago < Total)
+        {
+            StatusOperacional = $"Pagamento insuficiente. Falta R$ {Math.Max(0m, Total - Pago):N2}.";
+            return;
+        }
+
+        FinalizarVendaButton.IsEnabled = false;
+        StatusOperacional = "Validando produtos, cliente, empresa, estoque e gravação nos sistemas Genesis/Nexum...";
+        try
+        {
+            var request = new DesktopPdvSaleRequest(
+                CodigoVenda,
+                EmpresaEmissora.Trim(),
+                null,
+                ClienteNome.Trim(),
+                ClienteDocumento.Trim(),
+                ClientePdvSelecionado.Email,
+                ClientePdvSelecionado.Id,
+                _terminal.TerminalCode,
+                _terminal.TerminalCode,
+                _terminal.OperatorName,
+                Desconto,
+                0m,
+                $"Origem=PDV; Entrega={TipoEntrega}; PerfilLoja={_terminal.StoreCode}.",
+                Itens.Select(item => new DesktopPdvSaleItemRequest(
+                    null,
+                    item.Codigo,
+                    item.Codigo,
+                    item.Descricao,
+                    item.Quantidade,
+                    item.ValorUnitario,
+                    item.CustoEstimado,
+                    0m,
+                    item.OrigemAquisicao)).ToList(),
+                Pagamentos.Select(payment => new DesktopPdvPaymentRequest(
+                    payment.Forma,
+                    payment.Valor,
+                    1,
+                    payment.Autorizacao,
+                    null,
+                    null)).ToList());
+
+            var result = await _api.RegisterPdvSaleAsync(_terminal, _terminal.DesktopAccessToken, request);
+            if (!result.Success || result.Data is null)
+            {
+                StatusOperacional = $"Venda não confirmada pela API: {result.Detail}";
+                return;
+            }
+
+            UltimoArquivoLocal = $"Venda {result.Data.Numero} | Genesis {result.Data.Id}";
+            if (result.Data.StatusSincronizacao.StartsWith("ERRO_NEXUM:", StringComparison.OrdinalIgnoreCase))
+            {
+                StatusOperacional = $"Venda {result.Data.Numero} gravada no Genesis, mas o espelho Nexum falhou: {result.Data.StatusSincronizacao[11..]}. Não repita a venda; encaminhe para conciliação.";
+                return;
+            }
+
+            StatusOperacional = $"Venda {result.Data.Numero} gravada e sincronizada. Total recebido: R$ {result.Data.ValorPago:N2}.";
+        }
+        catch (Exception ex)
+        {
+            StatusOperacional = $"Venda não confirmada. Consulte a API pelo número {CodigoVenda} antes de tentar novamente. Detalhe: {ex.Message}";
+        }
+        finally
+        {
+            FinalizarVendaButton.IsEnabled = true;
+        }
     }
 
     private void NovaVenda()
     {
         Itens.Clear();
         Pagamentos.Clear();
-        CodigoVenda = $"PDV-{_terminal.StoreCode}-{DateTime.Now:yyyyMMdd-HHmmss}";
-        ClienteNome = "Consumidor final";
+        CodigoVenda = $"PDV-{_terminal.StoreCode}-{DateTime.Now:yyyyMMdd-HHmmss-fff}";
+        ClienteNome = string.Empty;
         ClienteDocumento = string.Empty;
-        EmpresaEmissora = "Seleção automática - menor custo";
+        ClientePdvSelecionado = null;
+        EmpresaEmissora = _terminal.CompanyCode;
         StatusOperacional = "Venda em atendimento. Adicione itens para totalizar.";
         UltimoArquivoLocal = "Fila local ainda vazia.";
         AtualizarTotais();
     }
 
-    private async Task SalvarVendaLocalAsync(bool finalizar)
+    private async Task SalvarRascunhoLocalAsync()
     {
         if (Itens.Count == 0)
         {
             StatusOperacional = "Não é possível salvar venda sem itens.";
-            return;
-        }
-
-        if (finalizar && Pago < Total)
-        {
-            StatusOperacional = $"Pagamento insuficiente. Falta R$ {Total - Pago:N2}.";
-            return;
-        }
-
-        if (finalizar && !DocumentoClienteValido)
-        {
-            StatusOperacional = "CPF/CNPJ inválido. Corrija o documento do cliente antes de finalizar.";
             return;
         }
 
@@ -342,9 +594,9 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
             ClienteDocumento = ClienteDocumento,
             ClienteDocumentoValido = DocumentoClienteValido,
             EmpresaEmissora = EmpresaEmissora,
-            Status = finalizar ? "Finalizada no PDV" : "Rascunho em atendimento",
+            Status = "Rascunho local em atendimento",
             TipoEntrega = TipoEntrega,
-            StatusPedido = finalizar ? "Finalizado no PDV local" : "Rascunho em atendimento",
+            StatusPedido = "Rascunho local em atendimento",
             StatusFiscal = StatusFiscal,
             StatusFinanceiro = StatusFinanceiro,
             StatusLogistico = StatusLogistico,
@@ -359,26 +611,16 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
             Pagamentos = Pagamentos.ToList()
         };
 
-        var submit = await _api.SubmitSaleAsync(_terminal, sale);
-        if (submit.Success)
-        {
-            UltimoArquivoLocal = $"Servidor: {submit.Endpoint} | {submit.ServerReference ?? submit.Detail}";
-            StatusOperacional = finalizar
-                ? "Venda gravada no servidor Genesis/Nexum com reflexo em estoque, financeiro e fila fiscal."
-                : "Rascunho enviado ao servidor Genesis/Nexum para continuidade operacional.";
-            return;
-        }
-
         if (!_terminal.OfflineContingencyEnabled)
         {
             UltimoArquivoLocal = "Contingência local desativada.";
-            StatusOperacional = $"API indisponível e contingência desativada. Venda não foi gravada. Motivo: {submit.Detail}";
+            StatusOperacional = "Rascunho não salvo: contingência local desativada. Nenhum dado foi enviado ao servidor.";
             return;
         }
 
         var filePath = await _outbox.SaveSaleAsync(sale);
         UltimoArquivoLocal = $"Contingência local: {filePath}";
-        StatusOperacional = $"API indisponível. Venda salva em contingência local e pendente de sincronização. Motivo: {submit.Detail}";
+        StatusOperacional = "Rascunho salvo localmente. Não é uma venda finalizada nem será sincronizado automaticamente.";
     }
 
     private static PdvCartItem CloneItem(PdvCartItem item) => new()
@@ -393,8 +635,6 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
         CustoEstimado = item.CustoEstimado
     };
 
-    private static string GerarCodigoTemporario() => $"BALCAO-{DateTime.Now:HHmmss}";
-
     private static string NormalizeComboValue(object? value)
     {
         if (value is System.Windows.Controls.ComboBoxItem item)
@@ -404,6 +644,9 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
 
         return value?.ToString() ?? string.Empty;
     }
+
+    private static string NormalizeIdentifierDigits(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? string.Empty : new string(value.Where(char.IsDigit).ToArray());
 
     private static decimal ParseDecimal(string? value, decimal fallback)
     {
@@ -426,6 +669,19 @@ public partial class PdvSaleWindow : Window, INotifyPropertyChanged
         }
 
         return fallback;
+    }
+
+    private static bool TryParseDecimal(string? value, out decimal result)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            result = 0m;
+            return false;
+        }
+
+        var normalized = value.Trim().Replace("R$", "", StringComparison.OrdinalIgnoreCase).Trim();
+        return decimal.TryParse(normalized, NumberStyles.Any, CultureInfo.GetCultureInfo("pt-BR"), out result)
+            || decimal.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out result);
     }
 
     private void AtualizarTotais()

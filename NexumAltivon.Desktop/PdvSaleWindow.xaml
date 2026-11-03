@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7256 Data: 30/10/2026
  -->
 <Window x:Class="NexumAltivon.Desktop.PdvSaleWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -65,7 +65,7 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button Content="Nova venda" Padding="18,10" Margin="0,0,10,0" Click="NovaVenda_Click" />
                     <Button Content="Salvar local" Padding="18,10" Margin="0,0,10,0" Click="SalvarLocal_Click" />
-                    <Button Content="Finalizar venda" Padding="18,10" Background="{StaticResource AccentGreen}" Foreground="#08111F" FontWeight="SemiBold" BorderThickness="0" Click="FinalizarVenda_Click" />
+                    <Button x:Name="FinalizarVendaButton" Content="Finalizar venda" Padding="18,10" Background="{StaticResource AccentGreen}" Foreground="#08111F" FontWeight="SemiBold" BorderThickness="0" Click="FinalizarVenda_Click" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -90,26 +90,31 @@
                         <UniformGrid Columns="4" Margin="0,14,0,0">
                             <StackPanel Margin="0,0,12,0">
                                 <TextBlock Text="Cliente" Foreground="{StaticResource TextSecondary}" />
-                                <TextBox Text="{Binding ClienteNome, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox Text="{Binding BuscaCliente, UpdateSourceTrigger=PropertyChanged}" ToolTip="Filtre os 500 clientes mais recentes por nome, e-mail ou CPF/CNPJ." />
+                                <Button Content="Carregar clientes ativos" Click="CarregarClientes_Click" Padding="8,5" Margin="0,4,0,4" />
+                                <ComboBox ItemsSource="{Binding ClientesPdv}" SelectedItem="{Binding ClientePdvSelecionado}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Nome}" />
+                                                <TextBlock Text="{Binding Cpf}" Foreground="{StaticResource TextSecondary}" FontSize="11" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
                             </StackPanel>
                             <StackPanel Margin="0,0,12,0">
                                 <TextBlock Text="CPF/CNPJ" Foreground="{StaticResource TextSecondary}" />
-                                <TextBox Text="{Binding ClienteDocumento, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox Text="{Binding ClienteDocumento}" IsReadOnly="True" />
                                 <TextBlock Text="{Binding DocumentoClienteLabel}" Foreground="{StaticResource AccentAmber}" TextWrapping="Wrap" Margin="0,4,0,0" />
                             </StackPanel>
                             <StackPanel Margin="0,0,12,0">
-                                <TextBlock Text="Empresa emissora" Foreground="{StaticResource TextSecondary}" />
-                                <ComboBox SelectedItem="{Binding EmpresaEmissora}">
-                                    <ComboBoxItem Content="Seleção automática - menor custo" />
-                                    <ComboBoxItem Content="Grupo Nexum Altivon" />
-                                    <ComboBoxItem Content="Geração Top Mais" />
-                                    <ComboBoxItem Content="Chronnus Relojoaria" />
-                                    <ComboBoxItem Content="Gran Festas" />
-                                </ComboBox>
+                                <TextBlock Text="Código, CNPJ ou nome exato da empresa no Genesis" Foreground="{StaticResource TextSecondary}" />
+                                <TextBox Text="{Binding EmpresaEmissora, UpdateSourceTrigger=PropertyChanged}" />
                             </StackPanel>
                             <StackPanel>
                                 <TextBlock Text="Entrega" Foreground="{StaticResource TextSecondary}" />
-                                <ComboBox SelectedItem="{Binding TipoEntrega}">
+                                <ComboBox SelectedValuePath="Content" SelectedValue="{Binding TipoEntrega}">
                                     <ComboBoxItem Content="Retirada na loja" />
                                     <ComboBoxItem Content="Entrega local" />
                                     <ComboBoxItem Content="Transportadora" />
@@ -126,12 +131,14 @@
                             <TextBlock Text="Itens da venda" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
                             <UniformGrid Columns="7" Margin="0,14,0,14">
                                 <StackPanel Margin="0,0,8,0">
-                                    <TextBlock Text="Código/SKU" Foreground="{StaticResource TextSecondary}" />
-                                    <TextBox Text="{Binding NovoItemCodigo, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="Código, SKU ou código de barras/QR" Foreground="{StaticResource TextSecondary}" />
+                                    <TextBox Text="{Binding BuscaCatalogo, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="Informe nome, SKU, código de barras ou conteúdo do QR Code. Leitores que enviam Enter iniciam a busca."
+                                             KeyDown="BuscaCatalogo_KeyDown" />
                                 </StackPanel>
                                 <StackPanel Margin="0,0,8,0">
                                     <TextBlock Text="Descrição" Foreground="{StaticResource TextSecondary}" />
-                                    <TextBox Text="{Binding NovoItemDescricao, UpdateSourceTrigger=PropertyChanged}" />
+                                    <ComboBox ItemsSource="{Binding ProdutosCatalogo}" SelectedItem="{Binding ProdutoCatalogoSelecionado}" DisplayMemberPath="Rotulo" />
                                 </StackPanel>
                                 <StackPanel Margin="0,0,8,0">
                                     <TextBlock Text="Qtd." Foreground="{StaticResource TextSecondary}" />
@@ -139,11 +146,11 @@
                                 </StackPanel>
                                 <StackPanel Margin="0,0,8,0">
                                     <TextBlock Text="Unitário" Foreground="{StaticResource TextSecondary}" />
-                                    <TextBox Text="{Binding NovoItemValorUnitario, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBox Text="{Binding NovoItemValorUnitario}" IsReadOnly="True" />
                                 </StackPanel>
                                 <StackPanel Margin="0,0,8,0">
                                     <TextBlock Text="Custo" Foreground="{StaticResource TextSecondary}" />
-                                    <TextBox Text="{Binding NovoItemCustoEstimado, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBox Text="{Binding NovoItemCustoEstimado}" IsReadOnly="True" />
                                 </StackPanel>
                                 <StackPanel Margin="0,0,8,0">
                                     <TextBlock Text="Desconto" Foreground="{StaticResource TextSecondary}" />
@@ -151,7 +158,7 @@
                                 </StackPanel>
                                 <StackPanel>
                                     <TextBlock Text="Origem" Foreground="{StaticResource TextSecondary}" />
-                                    <ComboBox SelectedItem="{Binding NovoItemOrigem}">
+                                    <ComboBox SelectedValuePath="Content" SelectedValue="{Binding NovoItemOrigem}">
                                         <ComboBoxItem Content="ECOM" />
                                         <ComboBoxItem Content="DROP" />
                                         <ComboBoxItem Content="DIST" />
@@ -160,12 +167,13 @@
                                 </StackPanel>
                             </UniformGrid>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                <Button Content="Buscar catálogo" Padding="16,9" Margin="0,0,10,0" Click="BuscarCatalogo_Click" />
                                 <Button Content="Adicionar item" Padding="16,9" Margin="0,0,10,0" Click="AdicionarItem_Click" />
                                 <Button Content="Remover selecionado" Padding="16,9" Click="RemoverItem_Click" />
                             </StackPanel>
                         </StackPanel>
 
-                        <DataGrid ItemsSource="{Binding Itens}" SelectedItem="{Binding ItemSelecionado}" AutoGenerateColumns="False" CanUserAddRows="False" Background="#0C1729" Foreground="{StaticResource TextPrimary}" RowBackground="#0C1729" AlternatingRowBackground="#101B30" GridLinesVisibility="Horizontal" BorderBrush="{StaticResource PanelBorder}">
+                        <DataGrid ItemsSource="{Binding Itens}" SelectedItem="{Binding ItemSelecionado}" AutoGenerateColumns="False" CanUserAddRows="False" Background="#CC0C1729" Foreground="{StaticResource TextPrimary}" RowBackground="#CC0C1729" AlternatingRowBackground="#CC101B30" GridLinesVisibility="Horizontal" BorderBrush="{StaticResource PanelBorder}">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Código" Binding="{Binding Codigo}" Width="120" />
                                 <DataGridTextColumn Header="Descrição" Binding="{Binding Descricao}" Width="*" />
@@ -194,7 +202,7 @@
                         <UniformGrid Columns="3" Margin="0,14,0,12">
                             <StackPanel Margin="0,0,8,0">
                                 <TextBlock Text="Forma" Foreground="{StaticResource TextSecondary}" />
-                                <ComboBox SelectedItem="{Binding FormaPagamento}">
+                                <ComboBox SelectedValuePath="Content" SelectedValue="{Binding FormaPagamento}">
                                     <ComboBoxItem Content="PIX" />
                                     <ComboBoxItem Content="Dinheiro" />
                                     <ComboBoxItem Content="Cartão crédito" />
@@ -237,7 +245,7 @@
                             <ItemsControl ItemsSource="{Binding Pagamentos}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border Background="#0C1729" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12" Padding="10" Margin="0,0,0,8">
+                                        <Border Background="#CC0C1729" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="12" Padding="10" Margin="0,0,0,8">
                                             <TextBlock Foreground="{StaticResource TextPrimary}">
                                                 <Run Text="{Binding Forma}" />
                                                 <Run Text=" - R$ " />
@@ -254,7 +262,7 @@
         </Grid>
 
         <Border Grid.Row="4" Style="{StaticResource PanelCard}">
-            <TextBlock Text="Ao finalizar, a venda fica gravada localmente em fila real de sincronização. Quando os endpoints de venda/fiscal estiverem fechados, o mesmo registro será enviado ao servidor principal, abatendo estoque, gerando financeiro e acionando emissão fiscal." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" />
+            <TextBlock Text="Finalizar venda envia a operação à API oficial, que valida cadastro, empresa, cliente, preço, estoque e pagamentos antes de confirmar. ‘Salvar local’ registra somente um rascunho de contingência e não o sincroniza automaticamente. Emissão fiscal e abertura/fechamento de caixa exigem fluxos próprios homologados." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" />
         </Border>
     </Grid>
     </ScrollViewer>

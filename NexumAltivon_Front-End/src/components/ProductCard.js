@@ -3,11 +3,12 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7252 Data: 30/10/2026
  */
 import { Link } from 'react-router-dom';
 import { Heart, ShoppingBag, Star } from 'lucide-react';
 import { useCart } from '../context/CartContext';
+import { resolvePublicAssetUrl } from '../services/api';
 import { formatPrice } from '../utils/formatters';
 
 export default function ProductCard({ product }) {
@@ -15,7 +16,9 @@ export default function ProductCard({ product }) {
   const finalPrice = product.preco_promocional || product.preco;
   const hasDiscount = product.preco_promocional && product.preco_promocional < product.preco;
   const discount = hasDiscount ? Math.round(((product.preco - product.preco_promocional) / product.preco) * 100) : 0;
-  const image = product.imagem_url || product.imagem || '';
+  const image = resolvePublicAssetUrl(
+    product.imagem_url || product.imagemUrl || product.imagem || product.imagemPrincipal || product.imagem_principal || '',
+  );
   const isOut = Number(product.estoque) === 0;
 
   return (

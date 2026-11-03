@@ -37,57 +37,57 @@
                     <UniformGrid Columns="2">
                         <StackPanel Margin="0,0,14,14">
                             <TextBlock Text="Empresa emissora" Foreground="{StaticResource TextSecondary}" />
-                            <TextBox Text="{Binding EmpresaEmissora}" Padding="12" Background="#0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
+                            <TextBox Text="{Binding EmpresaEmissora}" Padding="12" Background="#CC0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
                         </StackPanel>
                         <StackPanel Margin="0,0,0,14">
                             <TextBlock Text="CNPJ emissor" Foreground="{StaticResource TextSecondary}" />
-                            <TextBox Text="{Binding CnpjEmissor}" Padding="12" Background="#0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
+                            <TextBox Text="{Binding CnpjEmissor}" Padding="12" Background="#CC0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
                         </StackPanel>
                         <StackPanel Margin="0,0,14,14">
                             <TextBlock Text="Cliente destinatário" Foreground="{StaticResource TextSecondary}" />
-                            <TextBox Text="{Binding ClienteDestinatario}" Padding="12" Background="#0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
+                            <TextBox Text="{Binding ClienteDestinatario}" Padding="12" Background="#CC0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
                         </StackPanel>
                         <StackPanel Margin="0,0,0,14">
                             <TextBlock Text="CPF/CNPJ destinatário" Foreground="{StaticResource TextSecondary}" />
-                            <TextBox Text="{Binding DocumentoDestinatario}" Padding="12" Background="#0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
+                            <TextBox Text="{Binding DocumentoDestinatario}" Padding="12" Background="#CC0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
                         </StackPanel>
                         <StackPanel Margin="0,0,14,14">
                             <TextBlock Text="Natureza da operação" Foreground="{StaticResource TextSecondary}" />
-                            <TextBox Text="{Binding NaturezaOperacao}" Padding="12" Background="#0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
+                            <TextBox Text="{Binding NaturezaOperacao}" Padding="12" Background="#CC0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
                         </StackPanel>
                         <StackPanel Margin="0,0,0,14">
                             <TextBlock Text="CFOP sugerido" Foreground="{StaticResource TextSecondary}" />
-                            <TextBox Text="{Binding Cfop}" Padding="12" Background="#0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
+                            <TextBox Text="{Binding Cfop}" Padding="12" Background="#CC0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
                         </StackPanel>
                         <StackPanel Margin="0,0,14,14">
                             <TextBlock Text="UF de origem" Foreground="{StaticResource TextSecondary}" />
-                            <TextBox Text="{Binding EstadoOrigem}" MaxLength="2" Padding="12" Background="#0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
+                            <TextBox Text="{Binding EstadoOrigem}" MaxLength="2" Padding="12" Background="#CC0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
                         </StackPanel>
                         <StackPanel Margin="0,0,0,14">
                             <TextBlock Text="UF de destino" Foreground="{StaticResource TextSecondary}" />
-                            <TextBox Text="{Binding EstadoDestino}" MaxLength="2" Padding="12" Background="#0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
+                            <TextBox Text="{Binding EstadoDestino}" MaxLength="2" Padding="12" Background="#CC0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
                         </StackPanel>
                         <StackPanel Margin="0,0,14,14">
                             <TextBlock Text="Subtotal" Foreground="{StaticResource TextSecondary}" />
-                            <TextBox Text="{Binding Subtotal}" Padding="12" Background="#0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
+                            <TextBox Text="{Binding Subtotal}" Padding="12" Background="#CC0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
                         </StackPanel>
                         <StackPanel Margin="0,0,0,14">
                             <TextBlock Text="Frete" Foreground="{StaticResource TextSecondary}" />
-                            <TextBox Text="{Binding Frete}" Padding="12" Background="#0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
+                            <TextBox Text="{Binding Frete}" Padding="12" Background="#CC0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
                         </StackPanel>
                         <StackPanel Margin="0,0,14,14">
                             <TextBlock Text="Impostos estimados" Foreground="{StaticResource TextSecondary}" />
-                            <TextBox Text="{Binding ImpostosEstimados}" Padding="12" Background="#0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
+                            <TextBox Text="{Binding ImpostosEstimados}" Padding="12" Background="#CC0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
                         </StackPanel>
                         <StackPanel Margin="0,0,0,14">
                             <TextBlock Text="Margem mínima" Foreground="{StaticResource TextSecondary}" />
-                            <TextBox Text="{Binding MargemMinima}" Padding="12" Background="#0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
+                            <TextBox Text="{Binding MargemMinima}" Padding="12" Background="#CC0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" />
                         </StackPanel>
                     </UniformGrid>
 
                     <StackPanel Margin="0,0,0,14">
                         <TextBlock Text="Observações fiscais" Foreground="{StaticResource TextSecondary}" />
-                        <TextBox Text="{Binding Observacoes}" AcceptsReturn="True" Height="110" Padding="12" Background="#0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                        <TextBox Text="{Binding Observacoes}" AcceptsReturn="True" Height="110" Padding="12" Background="#CC0C1729" Foreground="{StaticResource TextPrimary}" BorderBrush="{StaticResource PanelBorder}" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
                     </StackPanel>
 
                     <StackPanel Orientation="Horizontal">
@@ -103,35 +103,35 @@
                 <TextBlock Text="Prévia executiva" Foreground="{StaticResource TextPrimary}" FontSize="20" FontWeight="Bold" />
                 <TextBlock Text="O resumo abaixo ajuda a decidir antes de emitir." Foreground="{StaticResource TextSecondary}" Margin="0,6,0,18" />
 
-                <Border Background="#0C1729" CornerRadius="16" Padding="16" Margin="0,0,0,12">
+                <Border Background="#CC0C1729" CornerRadius="16" Padding="16" Margin="0,0,0,12">
                     <StackPanel>
                         <TextBlock Text="Situação da emissão" Foreground="{StaticResource AccentAmber}" FontWeight="SemiBold" />
                         <TextBlock Text="Rascunho persistido e preparação fiscal" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" Margin="0,4,0,0" TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
 
-                <Border Background="#0C1729" CornerRadius="16" Padding="16" Margin="0,0,0,12">
+                <Border Background="#CC0C1729" CornerRadius="16" Padding="16" Margin="0,0,0,12">
                     <StackPanel>
                         <TextBlock Text="Critério fiscal" Foreground="{StaticResource AccentBlue}" FontWeight="SemiBold" />
                         <TextBlock Text="A tela força conferência de custo, margem, CFOP e regime antes da transmissão." Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap" Margin="0,4,0,0" />
                     </StackPanel>
                 </Border>
 
-                <Border Background="#0C1729" CornerRadius="16" Padding="16" Margin="0,0,0,12">
+                <Border Background="#CC0C1729" CornerRadius="16" Padding="16" Margin="0,0,0,12">
                     <StackPanel>
                         <TextBlock Text="Dependência restante" Foreground="{StaticResource AccentGreen}" FontWeight="SemiBold" />
                         <TextBlock Text="Certificado digital e autorização SEFAZ continuam obrigatórios para emissão real." Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap" Margin="0,4,0,0" />
                     </StackPanel>
                 </Border>
 
-                <Border Background="#0C1729" CornerRadius="16" Padding="16">
+                <Border Background="#CC0C1729" CornerRadius="16" Padding="16">
                     <StackPanel>
                         <TextBlock Text="Ação recomendada" Foreground="{StaticResource AccentRose}" FontWeight="SemiBold" />
                         <TextBlock Text="Salvar o rascunho e executar a preparação antes de qualquer transmissão fiscal manual." Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap" Margin="0,4,0,0" />
                     </StackPanel>
                 </Border>
 
-                <Border Background="#0C1729" CornerRadius="16" Padding="16" Margin="0,12,0,0">
+                <Border Background="#CC0C1729" CornerRadius="16" Padding="16" Margin="0,12,0,0">
                     <StackPanel>
                         <TextBlock Text="Resumo da API" Foreground="{StaticResource AccentGreen}" FontWeight="SemiBold" />
                         <TextBlock Text="{Binding PreviewResumo}" Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap" Margin="0,4,0,0" />

@@ -3,7 +3,7 @@
 # Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
 # Sistema de gestão: GenesisGest.Net
 # Ano Início: 04/2024 Publicado e operacional: 05/2026
-# Versão: 1.1.5
+# Versão: 1.1.5.7241
 #
 
 [CmdletBinding()]
@@ -11,8 +11,10 @@ param(
     [string]$ProjectRoot = "D:\Nexum Altivon\NexumAltivon.com",
     [string]$TaskName = "NexumAltivonApi24h",
     [string]$ApiUrl = "http://127.0.0.1:5010",
+    [string]$PublicApiUrl = "https://api.nexumaltivon.com.br",
     [string]$DatabaseServiceName = "NexumAltivonMySQL",
-    [string]$TunnelServiceName = "Cloudflared"
+    [string]$TunnelServiceName = "Cloudflared",
+    [switch]$LocalOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -168,10 +170,14 @@ Write-Step "Inicio da atualizacao oficial da API em $ApiUrl."
 
 Ensure-IntegrationEncryptionKey
 
-Stop-OfficialRuntime
+$publishParent = Split-Path -Parent $publishDir
+$publishStamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$stagingDir = Join-Path $publishParent "api-publish-staging-$publishStamp"
+$rollbackDir = Join-Path $publishParent "api-rollback-$publishStamp"
+New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
 
-Write-Step "Publicando API oficial em $publishDir sem repetir restore ja validado."
-& dotnet publish $apiProject -c Release -o $publishDir --self-contained false --no-restore 2>&1 |
+Write-Step "Publicando API oficial em diretorio limpo de staging: $stagingDir."
+& dotnet publish $apiProject -c Release -o $stagingDir --self-contained false --no-restore -p:CopyToPublishDirectory=Always 2>&1 |
     ForEach-Object {
         $line = [string]$_
         Write-Output $line
@@ -182,8 +188,54 @@ if ($publishExitCode -ne 0) {
     throw "dotnet publish da API oficial falhou com codigo $publishExitCode. Consulte $logPath."
 }
 
+$stagedApiDll = Join-Path $stagingDir 'NexumAltivon.API.dll'
+$stagedDepsJson = Join-Path $stagingDir 'NexumAltivon.API.deps.json'
+$stagedEfCoreDll = Join-Path $stagingDir 'Microsoft.EntityFrameworkCore.dll'
+foreach ($requiredArtifact in @($stagedApiDll, $stagedDepsJson, $stagedEfCoreDll)) {
+    if (-not (Test-Path -LiteralPath $requiredArtifact -PathType Leaf)) {
+        throw "Artefato obrigatorio ausente no publish staging: $requiredArtifact. A API anterior permanece preservada em $publishDir."
+    }
+}
+
+$apiPackageAssets = Get-Content -LiteralPath $apiAssets -Raw | ConvertFrom-Json
+$efCoreTarget = $apiPackageAssets.targets.PSObject.Properties |
+    ForEach-Object { $_.Value.PSObject.Properties } |
+    Where-Object { $_.Name -match '^Microsoft\.EntityFrameworkCore/[0-9]+\.' } |
+    Select-Object -First 1
+if (-not $efCoreTarget) {
+    throw "Microsoft.EntityFrameworkCore nao consta nos assets restaurados em $apiAssets."
+}
+
+$expectedEfCoreVersion = [Version]($efCoreTarget.Name -replace '^Microsoft\.EntityFrameworkCore/', '')
+$publishedEfCoreVersion = [Reflection.AssemblyName]::GetAssemblyName($stagedEfCoreDll).Version
+if ($publishedEfCoreVersion.Major -ne $expectedEfCoreVersion.Major -or $publishedEfCoreVersion.Minor -ne $expectedEfCoreVersion.Minor) {
+    throw "Versao EF Core do publish staging ($publishedEfCoreVersion) difere dos assets restaurados ($expectedEfCoreVersion). A API anterior permanece preservada em $publishDir."
+}
+
+# So interrompe a API depois de o novo publish estar completo e validado.
+Stop-OfficialRuntime
+
+if (Test-Path -LiteralPath $publishDir -PathType Container) {
+    Move-Item -LiteralPath $publishDir -Destination $rollbackDir
+}
+
+try {
+    Move-Item -LiteralPath $stagingDir -Destination $publishDir
+} catch {
+    if (-not (Test-Path -LiteralPath $publishDir -PathType Container) -and
+        (Test-Path -LiteralPath $rollbackDir -PathType Container)) {
+        Move-Item -LiteralPath $rollbackDir -Destination $publishDir
+    }
+
+    throw
+}
+
+Write-Step "Publish validado e promovido; versao EF Core $publishedEfCoreVersion. Rollback preservado em $rollbackDir."
+
 Write-Step "Registrando e iniciando tarefa oficial $TaskName."
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installTaskScript -ProjectRoot $resolvedProjectRoot -TaskName $TaskName -ApiUrl $ApiUrl -DatabaseServiceName $DatabaseServiceName -TunnelServiceName $TunnelServiceName 2>&1 |
+$installArguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $installTaskScript, '-ProjectRoot', $resolvedProjectRoot, '-TaskName', $TaskName, '-ApiUrl', $ApiUrl, '-DatabaseServiceName', $DatabaseServiceName, '-TunnelServiceName', $TunnelServiceName)
+if ($LocalOnly) { $installArguments += '-LocalOnly' }
+& powershell.exe @installArguments 2>&1 |
     ForEach-Object {
         $line = [string]$_
         Write-Output $line
@@ -195,7 +247,9 @@ if ($installExitCode -ne 0) {
 }
 
 Write-Step "Validando tarefa oficial $TaskName."
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $validationScript -ProjectRoot $resolvedProjectRoot -TaskName $TaskName -ApiUrl $ApiUrl -DatabaseServiceName $DatabaseServiceName -TunnelServiceName $TunnelServiceName 2>&1 |
+$validationArguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $validationScript, '-ProjectRoot', $resolvedProjectRoot, '-TaskName', $TaskName, '-ApiUrl', $ApiUrl, '-PublicApiUrl', $PublicApiUrl, '-DatabaseServiceName', $DatabaseServiceName, '-TunnelServiceName', $TunnelServiceName)
+if ($LocalOnly) { $validationArguments += '-LocalOnly' }
+& powershell.exe @validationArguments 2>&1 |
     ForEach-Object {
         $line = [string]$_
         Write-Output $line
@@ -212,6 +266,9 @@ $endpoints = @(
     "$ApiUrl/health/db/genesis",
     "$ApiUrl/api/site/configuracoes/publico"
 )
+if (-not $LocalOnly) {
+    $endpoints += "$($PublicApiUrl.TrimEnd('/'))/health"
+}
 
 foreach ($endpoint in $endpoints) {
     Invoke-OfficialEndpointValidation -Endpoint $endpoint
@@ -224,6 +281,8 @@ $result = [pscustomobject]@{
     UpdatedAt = (Get-Date).ToString("s")
     ProjectRoot = $resolvedProjectRoot
     ApiUrl = $ApiUrl
+    LocalOnly = $LocalOnly.IsPresent
+    PublicValidationSkipped = $LocalOnly.IsPresent
     TaskName = $TaskName
     ListenerPid = $listener.OwningProcess
     ListenerCommand = $process.CommandLine

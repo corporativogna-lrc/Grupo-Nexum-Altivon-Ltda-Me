@@ -1,0 +1,87 @@
+warning: in the working copy of '.vscode/extensions.json', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of '.vscode/settings.json', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'AGENTS.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'Directory.Build.props', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'NexumAltivon.Desktop/Services/DesktopApiClient.cs', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'NexumAltivon.ERP.csproj', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'NexumAltivon_Back-End/NexumAltivon.API.csproj', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'NexumAltivon_Front-End/package-lock.json', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'NexumAltivon_Front-End/package.json', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'NexumAltivon_Front-End/src/context/CartContext.js', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'PRODUCAO_STATUS_ATUAL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'PROD_SAFE_UPDATE_CHECKLIST.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/ARVORE-REAL-E-META-GENESISGEST-2026-07-18.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/CHECKLIST-CLINICO-GENESISGEST-2026-07-10.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/server/atualizar-api-oficial-5010.ps1', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/server/instalar-api-oficial-24h-task.ps1', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/server/reparar-banco-xampp-servico.ps1', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/server/validar-api-oficial-24h-task.ps1', LF will be replaced by CRLF the next time Git touches it
+ .vscode/extensions.json                            |    8 [32m+[m[31m-[m
+ .vscode/settings.json                              |    4 [32m+[m[31m-[m
+ AGENTS.md                                          |   58 [32m+[m[31m-[m
+ Directory.Build.props                              |   12 [32m+[m[31m-[m
+ NexumAltivon.Desktop/App.xaml                      |   14 [32m+[m[31m-[m
+ NexumAltivon.Desktop/App.xaml.cs                   |   30 [32m+[m[31m-[m
+ NexumAltivon.Desktop/ContasPagarWindow.xaml        |   34 [32m+[m[31m-[m
+ NexumAltivon.Desktop/ContasPagarWindow.xaml.cs     |   69 [32m+[m[31m-[m
+ NexumAltivon.Desktop/ContasReceberWindow.xaml      |   34 [32m+[m[31m-[m
+ NexumAltivon.Desktop/ContasReceberWindow.xaml.cs   |   69 [32m+[m[31m-[m
+ .../CorporateMasterDataWindow.xaml                 |    6 [32m+[m[31m-[m
+ .../CorporateMasterDataWindow.xaml.cs              |  238 [32m+[m[31m-[m
+ NexumAltivon.Desktop/DropshippingWindow.xaml       |    2 [32m+[m[31m-[m
+ NexumAltivon.Desktop/DropshippingWindow.xaml.cs    |   65 [32m+[m[31m-[m
+ NexumAltivon.Desktop/FiscalRoutingWindow.xaml      |   21 [32m+[m[31m-[m
+ NexumAltivon.Desktop/FiscalRoutingWindow.xaml.cs   |  196 [32m+[m[31m-[m
+ NexumAltivon.Desktop/LogisticsWindow.xaml          |    2 [32m+[m[31m-[m
+ NexumAltivon.Desktop/MainWindow.xaml               |   77 [32m+[m[31m-[m
+ NexumAltivon.Desktop/MainWindow.xaml.cs            |  416 [32m+++[m[31m-[m
+ NexumAltivon.Desktop/ManualNfeWindow.xaml          |   36 [32m+[m[31m-[m
+ NexumAltivon.Desktop/MarketingWindow.xaml          |    2 [32m+[m[31m-[m
+ NexumAltivon.Desktop/MarketingWindow.xaml.cs       |   65 [32m+[m[31m-[m
+ NexumAltivon.Desktop/Models/DesktopModule.cs       |   23 [32m+[m
+ NexumAltivon.Desktop/Models/FinanceModels.cs       |   70 [32m+[m[31m-[m
+ NexumAltivon.Desktop/Models/TerminalProfile.cs     |    3 [32m+[m[31m-[m
+ NexumAltivon.Desktop/ModuleWorkspaceWindow.xaml    |    8 [32m+[m[31m-[m
+ NexumAltivon.Desktop/ModuleWorkspaceWindow.xaml.cs |   66 [32m+[m[31m-[m
+ NexumAltivon.Desktop/NexumAltivon.Desktop.csproj   |   13 [32m+[m[31m-[m
+ NexumAltivon.Desktop/PdvSaleWindow.xaml            |   54 [32m+[m[31m-[m
+ NexumAltivon.Desktop/PdvSaleWindow.xaml.cs         |  356 [32m++[m[31m-[m
+ NexumAltivon.Desktop/Services/DesktopApiClient.cs  | 2317 [32m+++++++++[m[31m-----------[m
+ .../Services/DesktopAutoUpdateService.cs           |   94 [32m+[m[31m-[m
+ NexumAltivon.ERP.csproj                            |    4 [32m+[m
+ NexumAltivon.ERP.sln                               |   14 [32m+[m
+ .../API/ERP/SharedData/GenesisPdvService.cs        |  254 [32m++[m[31m-[m
+ NexumAltivon_Back-End/API/Program.cs               | 1341 [32m++++++++++[m[31m-[m
+ .../API/Services/ClienteService.cs                 |    4 [32m+[m[31m-[m
+ .../NexumAltivon.API.Tests.csproj                  |    8 [32m+[m[31m-[m
+ NexumAltivon_Back-End/NexumAltivon.API.csproj      |   24 [32m+[m[31m-[m
+ NexumAltivon_ERP/NexumAltivon_ERP.csproj           |    6 [32m+[m[31m-[m
+ NexumAltivon_Front-End/package-lock.json           |  221 [32m++[m
+ NexumAltivon_Front-End/package.json                |    1 [32m+[m
+ NexumAltivon_Front-End/src/App.js                  |    1 [32m+[m
+ NexumAltivon_Front-End/src/components/Navbar.js    |    2 [32m+[m[31m-[m
+ .../src/components/ProductCard.js                  |    7 [32m+[m[31m-[m
+ NexumAltivon_Front-End/src/context/CartContext.js  |   25 [32m+[m[31m-[m
+ NexumAltivon_Front-End/src/pages/Carrinho.js       |   27 [32m+[m[31m-[m
+ NexumAltivon_Front-End/src/pages/Checkout.js       |    5 [32m+[m[31m-[m
+ NexumAltivon_Front-End/src/pages/Dashboard.js      |  119 [32m+[m[31m-[m
+ NexumAltivon_Front-End/src/pages/Login.js          |   44 [32m+[m[31m-[m
+ NexumAltivon_Front-End/src/pages/Parceiros.js      |   12 [32m+[m[31m-[m
+ NexumAltivon_Front-End/src/pages/ProdutoDetalhe.js |   64 [32m+[m[31m-[m
+ NexumAltivon_Front-End/src/pages/Produtos.js       |   69 [32m+[m[31m-[m
+ NexumAltivon_Front-End/src/services/api.js         |    7 [32m+[m
+ PRODUCAO_STATUS_ATUAL.md                           |   76 [32m+[m[31m-[m
+ PROD_SAFE_UPDATE_CHECKLIST.md                      |   74 [32m+[m[31m-[m
+ docs/2026-06-16-checklist-prontidao-deploy.md      |   66 [31m-[m
+ docs/ARVORE-REAL-E-META-GENESISGEST-2026-07-18.md  |    6 [32m+[m[31m-[m
+ docs/CHECKLIST-CLINICO-GENESISGEST-2026-07-10.md   |  139 [32m+[m[31m-[m
+ docs/HANDOFF-PRODUCAO-PRIVADA-INTEGRACOES.md       |   75 [31m-[m
+ docs/sequencia-compra.md                           |   61 [31m-[m
+ docs/sequencia-financeiro.md                       |   56 [31m-[m
+ docs/sequencia-fiscal.md                           |   66 [31m-[m
+ docs/sequencia-venda.md                            |   63 [31m-[m
+ scripts/server/atualizar-api-oficial-5010.ps1      |   73 [32m+[m[31m-[m
+ scripts/server/instalar-api-oficial-24h-task.ps1   |   63 [32m+[m[31m-[m
+ scripts/server/reparar-banco-xampp-servico.ps1     |   16 [32m+[m[31m-[m
+ scripts/server/validar-api-oficial-24h-task.ps1    |   27 [32m+[m[31m-[m
+ 68 files changed, 4919 insertions(+), 2663 deletions(-)

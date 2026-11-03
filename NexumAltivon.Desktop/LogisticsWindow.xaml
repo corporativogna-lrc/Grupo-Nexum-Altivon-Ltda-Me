@@ -188,7 +188,7 @@
             </Border>
         </Grid>
 
-        <Border Grid.Row="4" Background="#0C1729" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="8" Padding="10">
+        <Border Grid.Row="4" Background="#CC0C1729" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="8" Padding="10">
             <TextBlock Text="{Binding Status}" Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap" />
         </Border>
     </Grid>

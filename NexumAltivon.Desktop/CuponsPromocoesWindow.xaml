@@ -1,0 +1,199 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5.7222 Data: 16/08/2026
+ -->
+<Window x:Class="NexumAltivon.Desktop.CuponsPromocoesWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GenesisGest.Net - Cupons e promoções"
+        Width="1280" Height="800" MinWidth="1080" MinHeight="680"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        Background="{StaticResource ShellBackground}"
+        FontFamily="Segoe UI">
+    <Window.Resources>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackground}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Padding" Value="16" />
+        </Style>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,5" />
+        </Style>
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{StaticResource AccentGold}" />
+            <Setter Property="Foreground" Value="#080704" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="0,0,8,8" />
+        </Style>
+        <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Margin" Value="0,0,8,8" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="14" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource Card}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="COMERCIAL / PROMOÇÕES" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold" FontSize="12" />
+                    <TextBlock Text="Cupons e promoções" Foreground="{StaticResource TextPrimary}" FontSize="25" FontWeight="Bold" Margin="0,5,0,0" />
+                    <TextBlock Text="Cadastro administrativo persistido na tabela oficial de cupons e consumido pelo checkout." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,5,0,0" />
+                    <TextBlock Text="{Binding Resumo}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,6,0,0" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Status}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" MaxWidth="420" HorizontalAlignment="Right" />
+                    <Button Content="Recarregar cupons" Style="{StaticResource SecondaryButton}" Click="Carregar_Click" Margin="0,10,0,0" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.45*" />
+                <ColumnDefinition Width="14" />
+                <ColumnDefinition Width="1*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource Card}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="10" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0">
+                        <TextBlock Text="Cupons persistidos" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                        <TextBlock Text="A grade é carregada pela API oficial e permite selecionar um registro para edição." Foreground="{StaticResource TextSecondary}" Margin="0,4,0,0" />
+                    </StackPanel>
+                    <DataGrid x:Name="CuponsGrid"
+                              Grid.Row="2"
+                              ItemsSource="{Binding Cupons}"
+                              SelectionChanged="CuponsGrid_SelectionChanged"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              SelectionMode="Single"
+                              HeadersVisibility="Column"
+                              Background="Transparent"
+                              BorderBrush="{StaticResource PanelBorder}"
+                              BorderThickness="1">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Código" Binding="{Binding Codigo}" Width="1.2*" />
+                            <DataGridTextColumn Header="Tipo" Binding="{Binding Tipo}" Width="1*" />
+                            <DataGridTextColumn Header="Valor" Binding="{Binding Valor, StringFormat={}{0:N2}}" Width="0.8*" />
+                            <DataGridTextColumn Header="Usos" Binding="{Binding UsosAtuais}" Width="0.7*" />
+                            <DataGridTextColumn Header="Vigência inicial" Binding="{Binding ValidoDe, StringFormat={}{0:dd/MM/yyyy HH:mm}}" Width="1.25*" />
+                            <DataGridTextColumn Header="Vigência final" Binding="{Binding ValidoAte, StringFormat={}{0:dd/MM/yyyy HH:mm}}" Width="1.25*" />
+                            <DataGridCheckBoxColumn Header="Ativo" Binding="{Binding Ativo}" Width="0.65*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource Card}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="Cadastro e manutenção" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                        <TextBlock Text="Os valores abaixo são enviados ao contrato administrativo oficial. A gravação só é confirmada após a releitura pela API." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,5,0,16" />
+
+                        <TextBlock Text="Código" Style="{StaticResource Label}" />
+                        <TextBox x:Name="CodigoBox" MaxLength="50" Margin="0,0,0,12" />
+
+                        <TextBlock Text="Tipo" Style="{StaticResource Label}" />
+                        <ComboBox x:Name="TipoBox" Margin="0,0,0,12" SelectedIndex="0">
+                            <ComboBoxItem Content="Percentual" />
+                            <ComboBoxItem Content="ValorFixo" />
+                            <ComboBoxItem Content="FreteGratis" />
+                        </ComboBox>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Valor" Style="{StaticResource Label}" />
+                                <TextBox x:Name="ValorBox" Margin="0,0,0,12" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Pedido mínimo" Style="{StaticResource Label}" />
+                                <TextBox x:Name="ValorMinimoBox" Margin="0,0,0,12" />
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock Text="Desconto máximo" Style="{StaticResource Label}" />
+                        <TextBox x:Name="ValorMaximoBox" Margin="0,0,0,12" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Quantidade total de usos" Style="{StaticResource Label}" />
+                                <TextBox x:Name="QuantidadeUsosBox" Margin="0,0,0,12" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Usos por cliente" Style="{StaticResource Label}" />
+                                <TextBox x:Name="QuantidadeClienteBox" Text="0" Margin="0,0,0,12" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Válido de (dd/MM/yyyy HH:mm)" Style="{StaticResource Label}" />
+                                <TextBox x:Name="ValidoDeBox" Margin="0,0,0,12" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Válido até (dd/MM/yyyy HH:mm)" Style="{StaticResource Label}" />
+                                <TextBox x:Name="ValidoAteBox" Margin="0,0,0,12" />
+                            </StackPanel>
+                        </Grid>
+
+                        <CheckBox x:Name="PrimeiroCompraBox" Content="Exclusivo para primeira compra" Foreground="{StaticResource TextPrimary}" Margin="0,0,0,8" />
+                        <CheckBox x:Name="AtivoBox" Content="Cupom ativo" IsChecked="True" Foreground="{StaticResource TextPrimary}" Margin="0,0,0,18" />
+
+                        <WrapPanel>
+                            <Button Content="Novo" Style="{StaticResource SecondaryButton}" Click="Novo_Click" />
+                            <Button Content="Salvar cupom" Style="{StaticResource PrimaryButton}" Click="Salvar_Click" />
+                            <Button Content="Desativar" Style="{StaticResource SecondaryButton}" Click="Desativar_Click" />
+                        </WrapPanel>
+
+                        <Border Background="{StaticResource PanelSurface}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,4,0,0">
+                            <StackPanel>
+                                <TextBlock Text="Registro selecionado" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding SelectedDetails}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,5,0,0" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

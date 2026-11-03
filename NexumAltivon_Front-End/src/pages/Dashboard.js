@@ -3,12 +3,12 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7190
+ * Versão: 1.1.5.7243 Data: 30/10/2026
  */
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { categoriaAPI, clienteAPI, dashboardAPI, empresaGrupoAPI, fiscalAPI, fornecedorAPI, integracoesAPI, leadAPI, pedidoAPI, produtoAPI, siteAPI } from '../services/api';
+import { categoriaAPI, clienteAPI, dashboardAPI, empresaGrupoAPI, fiscalAPI, fornecedorAPI, integracoesAPI, leadAPI, lojaAPI, pedidoAPI, produtoAPI, siteAPI } from '../services/api';
 import { formatDate, formatPrice, getLeadStatusClass, getPagamentoLabel, getPedidoStatusClass } from '../utils/formatters';
 import CupomAdminPanel from '../components/CupomAdminPanel';
 import AccessAuditPanel from '../components/AccessAuditPanel';
@@ -243,6 +243,7 @@ const integrationCredentialCategoryMap = {
 };
 
 const emptyProduto = {
+  lojaId: '',
   id: '',
   nome: '',
   descricaoCurta: '',
@@ -262,7 +263,7 @@ const emptyProduto = {
   destaque: true,
   ativo: true,
   sku: '',
-  categoriaId: 'classicos',
+  categoriaId: '',
   subcategoriaId: '',
   tipoProduto: 'Proprio',
   fornecedorId: '',
@@ -274,6 +275,7 @@ const emptyProduto = {
 };
 
 const emptyCategoria = {
+  lojaId: '',
   id: '',
   nome: '',
   descricao: '',
@@ -587,6 +589,21 @@ const fileToDataUrl = (file) =>
     reader.readAsDataURL(file);
   });
 
+const readImageDimensions = (file) =>
+  new Promise((resolve, reject) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error(`Não foi possível validar a resolução de ${file.name}.`));
+    };
+    image.src = objectUrl;
+  });
+
 const getProdutoDuplicateMessage = (form, produtos) => {
   const sku = normalizeText(form.sku);
   const id = normalizeText(form.id);
@@ -735,6 +752,7 @@ export default function Dashboard() {
   const [query, setQuery] = useState('');
   const [produtoForm, setProdutoForm] = useState(emptyProduto);
   const [categoriaForm, setCategoriaForm] = useState(emptyCategoria);
+  const [lojas, setLojas] = useState([]);
   const [clienteForm, setClienteForm] = useState(emptyCliente);
   const [fornecedorForm, setFornecedorForm] = useState(emptyFornecedor);
   const [leadForm, setLeadForm] = useState(emptyLead);
@@ -752,7 +770,7 @@ export default function Dashboard() {
   const loadData = useCallback(async () => {
     try {
       setLoadError('');
-      const [resumoRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, empresasGrupoRes, fiscalPedidosRes, integracoesRes, credenciaisRes, siteConfigRes, fiscalDraftRes] = await Promise.all([
+      const [resumoRes, pedidosRes, leadsRes, produtosRes, categoriasRes, clientesRes, fornecedoresRes, empresasGrupoRes, fiscalPedidosRes, integracoesRes, credenciaisRes, siteConfigRes, fiscalDraftRes, lojasRes] = await Promise.all([
         dashboardAPI.getResumo(),
         pedidoAPI.getAll(),
         leadAPI.getAll(),
@@ -766,6 +784,7 @@ export default function Dashboard() {
         integracoesAPI.getCredenciaisModelo(),
         siteAPI.getAll(),
         fiscalAPI.getRascunhoManual(),
+        lojaAPI.getAll(),
       ]);
       if (!resumoRes.data || !Array.isArray(resumoRes.data.vendas_periodo)) {
         throw new Error('A API nao retornou a serie operacional de vendas do cockpit.');
@@ -776,6 +795,7 @@ export default function Dashboard() {
       setLeads(Array.isArray(leadsRes.data) ? leadsRes.data : []);
       setProdutos(Array.isArray(produtosRes.data) ? produtosRes.data : []);
       setCategorias(Array.isArray(categoriasRes.data) ? categoriasRes.data : []);
+      setLojas(Array.isArray(lojasRes.data) ? lojasRes.data : []);
       setClientes(Array.isArray(clientesRes.data) ? clientesRes.data : []);
       setFornecedores(Array.isArray(fornecedoresRes.data) ? fornecedoresRes.data : []);
       setEmpresasGrupo(Array.isArray(empresasGrupoRes.data) ? empresasGrupoRes.data : []);
@@ -856,15 +876,27 @@ export default function Dashboard() {
     setFormStatus('');
   }, [routeState.activeCadastroTab, routeState.activeIntegration, routeState.activeTab]);
 
+  const categoriasDaLoja = useMemo(
+    () => categorias.filter((categoria) => String(categoria.lojaId || categoria.loja_id || '') === String(produtoForm.lojaId || '')),
+    [categorias, produtoForm.lojaId],
+  );
+
   const categoriasRaiz = useMemo(
-    () => categorias.filter((categoria) => !(categoria.categoria_pai_id || categoria.categoriaPaiId)),
-    [categorias],
+    () => categoriasDaLoja.filter((categoria) => !(categoria.categoria_pai_id || categoria.categoriaPaiId)),
+    [categoriasDaLoja],
+  );
+
+  const categoriasRaizDaCategoria = useMemo(
+    () => categorias.filter((categoria) =>
+      String(categoria.lojaId || categoria.loja_id || '') === String(categoriaForm.lojaId || '')
+      && !(categoria.categoria_pai_id || categoria.categoriaPaiId)),
+    [categorias, categoriaForm.lojaId],
   );
 
   const subcategoriasDisponiveis = useMemo(() => {
     if (!produtoForm.categoriaId) return [];
-    return categorias.filter((categoria) => (categoria.categoria_pai_id || categoria.categoriaPaiId) === produtoForm.categoriaId);
-  }, [categorias, produtoForm.categoriaId]);
+    return categoriasDaLoja.filter((categoria) => String(categoria.categoria_pai_id || categoria.categoriaPaiId) === String(produtoForm.categoriaId));
+  }, [categoriasDaLoja, produtoForm.categoriaId]);
 
   const categoriasHierarquicas = useMemo(() => (
     categorias.map((categoria) => ({
@@ -876,6 +908,11 @@ export default function Dashboard() {
   const submitCategoria = async (event) => {
     event.preventDefault();
     setFormStatus('');
+
+    if (!categoriaForm.lojaId) {
+      setFormStatus('Selecione a loja da categoria.');
+      return;
+    }
 
     const slugExistente = categorias.some((categoria) => String(categoria.id).toLowerCase() === String(categoriaForm.id).trim().toLowerCase());
     if (categoriaForm.id && slugExistente) {
@@ -891,6 +928,7 @@ export default function Dashboard() {
 
     const payload = {
       ...categoriaForm,
+      lojaId: Number(categoriaForm.lojaId),
       ordem: categoriaForm.ordem ? Number(categoriaForm.ordem) : 0,
       categoriaPaiId: categoriaForm.categoriaPaiId || null,
     };
@@ -904,6 +942,10 @@ export default function Dashboard() {
   const submitProduto = async (event) => {
     event.preventDefault();
     setFormStatus('');
+    if (!produtoForm.lojaId) {
+      setFormStatus('Selecione a loja do produto.');
+      return;
+    }
     const produtoDuplicateMessage = getProdutoDuplicateMessage(produtoForm, produtos);
     if (produtoDuplicateMessage) {
       setFormStatus(produtoDuplicateMessage);
@@ -912,6 +954,7 @@ export default function Dashboard() {
 
     const payload = {
       ...produtoForm,
+      lojaId: Number(produtoForm.lojaId),
       preco: Number(produtoForm.preco),
       precoPromocional: produtoForm.precoPromocional ? Number(produtoForm.precoPromocional) : null,
       custo: produtoForm.custo ? Number(produtoForm.custo) : null,
@@ -943,6 +986,16 @@ export default function Dashboard() {
       setFormStatus('Imagem muito grande. Use arquivo de até 2MB.');
       return;
     }
+    try {
+      const dimensions = await readImageDimensions(file);
+      if (Math.min(dimensions.width, dimensions.height) < 720 || dimensions.width * dimensions.height < 1_000_000) {
+        setFormStatus('A imagem principal precisa ter pelo menos 1 megapixel e 720 px no lado menor.');
+        return;
+      }
+    } catch (error) {
+      setFormStatus(error.message);
+      return;
+    }
 
     setUploadingImage(true);
     setFormStatus('');
@@ -968,6 +1021,11 @@ export default function Dashboard() {
     if (!files?.length) return;
 
     const selectedFiles = Array.from(files);
+    const gallerySlots = Math.max(0, 4 - galleryToArray(produtoForm.imagensGaleria).length);
+    if (selectedFiles.length > gallerySlots) {
+      setFormStatus(`A galeria aceita no máximo 4 imagens opcionais. Restam ${gallerySlots} vaga(s).`);
+      return;
+    }
     const invalidFile = selectedFiles.find((file) => !file.type.startsWith('image/'));
     if (invalidFile) {
       setFormStatus(`Arquivo inválido na galeria: ${invalidFile.name}.`);
@@ -977,6 +1035,19 @@ export default function Dashboard() {
     const oversizedFile = selectedFiles.find((file) => file.size > 2 * 1024 * 1024);
     if (oversizedFile) {
       setFormStatus(`Arquivo muito grande na galeria: ${oversizedFile.name}. Use até 2MB por imagem.`);
+      return;
+    }
+
+    try {
+      for (const file of selectedFiles) {
+        const dimensions = await readImageDimensions(file);
+        if (Math.min(dimensions.width, dimensions.height) < 720 || dimensions.width * dimensions.height < 1_000_000) {
+          setFormStatus(`A imagem ${file.name} precisa ter pelo menos 1 megapixel e 720 px no lado menor.`);
+          return;
+        }
+      }
+    } catch (error) {
+      setFormStatus(error.message);
       return;
     }
 
@@ -1639,6 +1710,20 @@ export default function Dashboard() {
                         <p className="mt-1 text-sm font-semibold text-slate-500">Informações principais para catálogo, estoque e vitrine pública.</p>
                         {produtoDuplicateMessage && <DuplicateAlert message={produtoDuplicateMessage} />}
                         <div className="mt-5 grid gap-4 md:grid-cols-2">
+                          <label className="block text-sm font-bold text-slate-700">
+                            Loja
+                            <select
+                              value={produtoForm.lojaId}
+                              required
+                              onChange={(event) => setProdutoForm((form) => ({ ...form, lojaId: event.target.value, categoriaId: '', subcategoriaId: '' }))}
+                              className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+                            >
+                              <option value="">Selecione a loja</option>
+                              {lojas.filter((loja) => loja.ativa !== false && loja.Ativa !== false).map((loja) => (
+                                <option key={loja.id || loja.Id} value={loja.id || loja.Id}>{loja.nome || loja.Nome}</option>
+                              ))}
+                            </select>
+                          </label>
                           <Field label="Slug público / ID do produto" value={produtoForm.id} onChange={(value) => setProdutoForm((form) => ({ ...form, id: value }))} />
                           <Field label="Nome" value={produtoForm.nome} onChange={(value) => setProdutoForm((form) => ({ ...form, nome: value }))} required />
                           <Field label="SKU / Código interno" value={produtoForm.sku} onChange={(value) => setProdutoForm((form) => ({ ...form, sku: value }))} />
@@ -1747,6 +1832,20 @@ export default function Dashboard() {
                           <h4 className="text-base font-black text-slate-950">Categorias e subcategorias</h4>
                           <p className="mt-1 text-sm font-semibold text-slate-500">Monte a hierarquia do catálogo antes de liberar o cadastro em massa.</p>
                           <div className="mt-4 grid gap-3">
+                            <label className="block text-sm font-bold text-slate-700">
+                              Loja
+                              <select
+                                value={categoriaForm.lojaId}
+                                required
+                                onChange={(event) => setCategoriaForm((form) => ({ ...form, lojaId: event.target.value, categoriaPaiId: '' }))}
+                                className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
+                              >
+                                <option value="">Selecione a loja</option>
+                                {lojas.filter((loja) => loja.ativa !== false && loja.Ativa !== false).map((loja) => (
+                                  <option key={loja.id || loja.Id} value={loja.id || loja.Id}>{loja.nome || loja.Nome}</option>
+                                ))}
+                              </select>
+                            </label>
                             <Field label="Slug / código" value={categoriaForm.id} onChange={(value) => setCategoriaForm((form) => ({ ...form, id: value }))} />
                             <Field label="Nome da categoria" value={categoriaForm.nome} onChange={(value) => setCategoriaForm((form) => ({ ...form, nome: value }))} required />
                             <Field label="Descrição" value={categoriaForm.descricao} onChange={(value) => setCategoriaForm((form) => ({ ...form, descricao: value }))} />
@@ -1758,7 +1857,7 @@ export default function Dashboard() {
                                 className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-950 focus:ring-4 focus:ring-slate-950/10"
                               >
                                 <option value="">Categoria principal</option>
-                                {categoriasRaiz.map((categoria) => (
+                                {categoriasRaizDaCategoria.map((categoria) => (
                                   <option key={categoria.id} value={categoria.id}>{categoria.nome}</option>
                                 ))}
                               </select>
@@ -3277,7 +3376,7 @@ function ImageGalleryField({ value, onChange, onUpload, uploading, className = '
         <div className="flex-1">
           <p className="text-sm font-bold text-slate-700">Galeria de imagens</p>
           <p className="mt-2 text-xs font-semibold text-slate-500">
-            Você pode colar URLs ou enviar várias imagens de uma vez. O sistema monta a galeria automaticamente.
+            Até 4 imagens opcionais; cada arquivo enviado deve ter pelo menos 1 megapixel e 720 px no lado menor.
           </p>
         </div>
         <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-black text-slate-800 hover:border-[#C9A227]">

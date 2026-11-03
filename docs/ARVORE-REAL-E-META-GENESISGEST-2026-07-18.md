@@ -3,12 +3,14 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7190
+ * Versão: 1.1.5.7226 Data: 16/08/2026
 -->
 
 # Arvore Real e Arvore Meta do GenesisGest.Net
 
-Apuracao tecnica: 2026-07-18.
+Apuracao tecnica atualizada: 2026-08-16.
+
+O mapa versionado de menu, formularios e estados do Desktop/PDV esta em docs/ARVORE-MENU-WPF-2026-08-16.md.
 
 ## Regra de Evidencia
 

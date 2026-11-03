@@ -1,0 +1,9 @@
+﻿  Determinando os projetos a serem restaurados...
+  D:\Nexum Altivon\NexumAltivon.com\NexumAltivon_Back-End\NexumAltivon.API.csproj restaurado (em 12,98 seg).
+  NexumAltivon.API -> D:\Nexum Altivon\NexumAltivon.com\NexumAltivon_Back-End\bin\Debug\net8.0\NexumAltivon.API.dll
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:01:59.59

@@ -3,14 +3,28 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7252 Data: 30/10/2026
  */
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { produtoAPI } from '../services/api';
+import { produtoAPI, resolvePublicAssetUrl } from '../services/api';
 import { useCart } from '../context/CartContext';
 import { formatPrice } from '../utils/formatters';
 import { ArrowLeft, Check, Minus, Plus, RefreshCw, Shield, ShoppingBag, Star, Truck } from 'lucide-react';
+
+const getProductOptions = (rawTags) => {
+  if (!rawTags || typeof rawTags !== 'string') return {};
+  try {
+    const metadata = JSON.parse(rawTags);
+    const options = metadata?.opcoes;
+    if (!options || typeof options !== 'object' || Array.isArray(options)) return {};
+    return Object.fromEntries(Object.entries(options).filter(([name, values]) =>
+      name.trim() && Array.isArray(values) && values.length > 0 && values.every((value) => typeof value === 'string' && value.trim()),
+    ));
+  } catch {
+    return {};
+  }
+};
 
 export default function ProdutoDetalhe() {
   const { id } = useParams();
@@ -19,6 +33,8 @@ export default function ProdutoDetalhe() {
   const [produto, setProduto] = useState(null);
   const [sugeridos, setSugeridos] = useState([]);
   const [quantidade, setQuantidade] = useState(1);
+  const [variacoesSelecionadas, setVariacoesSelecionadas] = useState({});
+  const [erroVariacao, setErroVariacao] = useState('');
   const [loading, setLoading] = useState(true);
 
   const loadProduto = useCallback(async () => {
@@ -57,8 +73,20 @@ export default function ProdutoDetalhe() {
     loadProduto();
   }, [loadProduto]);
 
+  useEffect(() => {
+    setVariacoesSelecionadas({});
+    setErroVariacao('');
+  }, [id]);
+
   const handleAddToCart = () => {
-    addToCart(produto, quantidade);
+    const options = getProductOptions(produto.tags || produto.Tags);
+    const missing = Object.keys(options).find((name) => !variacoesSelecionadas[name]);
+    if (missing) {
+      setErroVariacao(`Selecione ${missing.toLocaleLowerCase('pt-BR')} antes de adicionar ao carrinho.`);
+      return;
+    }
+    setErroVariacao('');
+    addToCart(produto, quantidade, variacoesSelecionadas);
     navigate('/carrinho');
   };
 
@@ -83,13 +111,16 @@ export default function ProdutoDetalhe() {
 
   const finalPrice = produto.preco_promocional || produto.preco;
   const hasDiscount = produto.preco_promocional && produto.preco_promocional < produto.preco;
-  const image = produto.imagem_url || produto.imagem || '';
+  const image = resolvePublicAssetUrl(
+    produto.imagem_url || produto.imagemUrl || produto.imagem || produto.imagemPrincipal || produto.imagem_principal || '',
+  );
   const dimensions = [
     produto.peso ? `${produto.peso} kg` : null,
     produto.altura ? `${produto.altura} cm de altura` : null,
     produto.largura ? `${produto.largura} cm de largura` : null,
     produto.comprimento ? `${produto.comprimento} cm de comprimento` : null,
   ].filter(Boolean);
+  const productOptions = getProductOptions(produto.tags || produto.Tags);
 
   return (
     <div className="min-h-screen bg-[#050505] py-8 text-white">
@@ -138,6 +169,29 @@ export default function ProdutoDetalhe() {
               </div>
 
               <p className="mb-7 max-w-2xl leading-7 text-[#C8C8C8]">{produto.descricao}</p>
+
+              {Object.entries(productOptions).length > 0 && (
+                <div className="mb-7 grid gap-4 sm:grid-cols-2" aria-label="Opções do produto">
+                  {Object.entries(productOptions).map(([name, values]) => (
+                    <label key={name} className="text-sm font-black text-[#D8D8D8]">
+                      {name}
+                      <select
+                        value={variacoesSelecionadas[name] || ''}
+                        onChange={(event) => {
+                          setVariacoesSelecionadas((current) => ({ ...current, [name]: event.target.value }));
+                          setErroVariacao('');
+                        }}
+                        className="mt-2 w-full rounded-xl border border-[#2A2A2A] bg-[#080808] px-4 py-3 text-white outline-none focus:border-[#C9A227]"
+                        required
+                      >
+                        <option value="">Selecione {name.toLocaleLowerCase('pt-BR')}</option>
+                        {values.map((value) => <option key={value} value={value}>{value}</option>)}
+                      </select>
+                    </label>
+                  ))}
+                  {erroVariacao && <p className="text-sm font-bold text-rose-400 sm:col-span-2" role="alert">{erroVariacao}</p>}
+                </div>
+              )}
 
               <div className="mb-7 grid gap-3 rounded-2xl border border-[#2A2A2A] bg-[#080808] p-4 sm:grid-cols-2">
                 <div>
@@ -220,7 +274,7 @@ export default function ProdutoDetalhe() {
                       >
                         <div className="aspect-[4/3] overflow-hidden rounded-xl bg-[#111111]">
                           <img
-                            src={item.imagem_url || item.imagem || ''}
+                            src={resolvePublicAssetUrl(item.imagem_url || item.imagemUrl || item.imagem || item.imagemPrincipal || item.imagem_principal || '')}
                             alt={item.nome}
                             className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
                           />

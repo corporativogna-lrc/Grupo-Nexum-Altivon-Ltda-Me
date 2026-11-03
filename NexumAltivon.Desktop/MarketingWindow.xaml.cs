@@ -22,6 +22,9 @@ public partial class MarketingWindow : Window, INotifyPropertyChanged
     private readonly TerminalProfile _profile;
     private string? _token;
     private bool _busy;
+    private bool _initializingCredentials;
+    private bool _passwordVisible;
+    private const string CredentialScope = "desktop/marketing";
 
     public MarketingWindow(TerminalProfile profile)
     {
@@ -32,6 +35,20 @@ public partial class MarketingWindow : Window, INotifyPropertyChanged
         ResetSegment();
         InitializeComponent();
         DataContext = this;
+        _initializingCredentials = true;
+        try
+        {
+            var saved = DesktopCredentialStore.Load(CredentialScope);
+            if (saved is not null)
+            {
+                LoginEmail = saved.Email;
+                LoginPassword.Password = saved.Password;
+                KeepLoginPasswordCheckBox.IsChecked = true;
+            }
+        }
+        catch (Exception ex) { Status = $"Não foi possível ler a senha salva: {ex.Message}"; }
+        finally { _initializingCredentials = false; }
+        RefreshBindings();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -47,6 +64,39 @@ public partial class MarketingWindow : Window, INotifyPropertyChanged
     public string SessionLabel { get; private set; } = "Sessao administrativa nao autenticada";
     public string EndpointLabel { get; private set; } = "API oficial obrigatoria";
     public string Status { get; private set; } = "Autentique-se para consultar campanhas e segmentos.";
+
+    private void ToggleLoginPassword_Click(object sender, RoutedEventArgs e)
+    {
+        _passwordVisible = !_passwordVisible;
+        if (_passwordVisible)
+        {
+            VisibleLoginPassword.Text = LoginPassword.Password;
+            LoginPassword.Visibility = Visibility.Collapsed;
+            VisibleLoginPassword.Visibility = Visibility.Visible;
+            ToggleLoginPasswordButton.Content = "Ocultar";
+        }
+        else
+        {
+            LoginPassword.Password = VisibleLoginPassword.Text;
+            VisibleLoginPassword.Visibility = Visibility.Collapsed;
+            LoginPassword.Visibility = Visibility.Visible;
+            ToggleLoginPasswordButton.Content = "Mostrar";
+        }
+    }
+
+    private void KeepLoginPasswordCheckBox_Unchecked(object sender, RoutedEventArgs e)
+    {
+        if (_initializingCredentials) return;
+        try { DesktopCredentialStore.Delete(CredentialScope); }
+        catch (Exception ex)
+        {
+            _initializingCredentials = true;
+            KeepLoginPasswordCheckBox.IsChecked = true;
+            _initializingCredentials = false;
+            Status = $"Não foi possível remover a senha salva: {ex.Message}";
+            RefreshBindings();
+        }
+    }
 
     public DesktopCrmCampanha? SelectedCampaign { get; set; }
     public DesktopCrmSegmento? SelectedSegment { get; set; }
@@ -93,7 +143,8 @@ public partial class MarketingWindow : Window, INotifyPropertyChanged
         SetBusy(true, "Autenticando na API oficial...");
         try
         {
-            var result = await _api.AuthenticateAsync(_profile, LoginEmail, LoginPassword.Password, MfaCode);
+            var password = _passwordVisible ? VisibleLoginPassword.Text : LoginPassword.Password;
+            var result = await _api.AuthenticateAsync(_profile, LoginEmail, password, MfaCode);
             if (!result.Success || string.IsNullOrWhiteSpace(result.Token) || result.User is null)
             {
                 IsAuthenticated = false;
@@ -104,10 +155,22 @@ public partial class MarketingWindow : Window, INotifyPropertyChanged
             }
 
             _token = result.Token;
+            string? warning = null;
+            try
+            {
+                if (KeepLoginPasswordCheckBox.IsChecked == true)
+                    DesktopCredentialStore.Save(CredentialScope, LoginEmail.Trim(), password);
+                else
+                    DesktopCredentialStore.Delete(CredentialScope);
+            }
+            catch (Exception ex) { warning = $"A sessão foi autenticada, mas a preferência de senha não foi aplicada: {ex.Message}"; }
             LoginPassword.Clear();
+            VisibleLoginPassword.Clear();
+            MfaCode = string.Empty;
             IsAuthenticated = true;
             SessionLabel = $"{result.User.Nome} / {result.User.Perfil}";
             EndpointLabel = _profile.ApiBaseUrl;
+            if (warning is not null) MessageBox.Show(warning, "Senha salva", MessageBoxButton.OK, MessageBoxImage.Warning);
             await ReloadAsync();
         }
         finally

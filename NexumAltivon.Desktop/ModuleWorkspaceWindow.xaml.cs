@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7205
  */
 
 using System.ComponentModel;
@@ -17,7 +17,6 @@ namespace NexumAltivon.Desktop;
 public partial class ModuleWorkspaceWindow : Window, INotifyPropertyChanged
 {
     private readonly DesktopApiClient _apiClient = new();
-    private readonly LocalOutboxService _outbox = new();
     private readonly TerminalProfile _profile;
     private string _status;
 
@@ -31,7 +30,7 @@ public partial class ModuleWorkspaceWindow : Window, INotifyPropertyChanged
         ReferenceCode = BuildReferenceCode(area, moduleTitle);
         Source = "Menu operacional desktop";
         ServerDatabase = $"{profile.ServerAddress}:{profile.DatabasePort}";
-        ExecutionPolicy = "Toda confirmação exige resposta persistida da API. Se a API falhar e a contingência estiver habilitada, o registro local será identificado explicitamente como pendente de sincronização.";
+        ExecutionPolicy = "Esta janela não possui contrato de domínio oficial para gravação. O botão de confirmação apenas informa o bloqueio; nenhum dado é enviado ou salvo localmente.";
         _status = "Nenhuma operação foi registrada nesta janela.";
 
         InitializeComponent();
@@ -64,57 +63,9 @@ public partial class ModuleWorkspaceWindow : Window, INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    private async void ConfirmarOperacao_Click(object sender, RoutedEventArgs e)
+    private void ConfirmarOperacao_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement control)
-        {
-            return;
-        }
-
-        control.IsEnabled = false;
-        Status = $"Enviando {ReferenceCode} para a API oficial...";
-
-        var payload = new WorkspaceOperationPayload(
-            ModuleTitle,
-            Area,
-            Detail,
-            ReferenceCode,
-            _profile.StoreCode,
-            _profile.TerminalCode,
-            _profile.OperatorName,
-            DateTime.UtcNow);
-
-        try
-        {
-            var result = await _apiClient.SubmitOperationAsync(
-                _profile,
-                NormalizeCode(Area),
-                ReferenceCode,
-                payload);
-
-            if (result.Success && result.PersistedOnServer && !string.IsNullOrWhiteSpace(result.ServerReference))
-            {
-                Status = $"Persistência confirmada em {result.Endpoint}. {result.ServerReference}.";
-                return;
-            }
-
-            if (!_profile.OfflineContingencyEnabled)
-            {
-                Status = $"Falha sem persistência: {result.Detail}";
-                return;
-            }
-
-            var outboxPath = await _outbox.SaveOperationAsync(NormalizeCode(Area), ReferenceCode, payload);
-            Status = $"API não confirmou persistência. Registro salvo somente na contingência local e pendente de sincronização: {outboxPath}. Motivo: {result.Detail}";
-        }
-        catch (Exception ex)
-        {
-            Status = $"Falha operacional não confirmada: {ex.Message}";
-        }
-        finally
-        {
-            control.IsEnabled = true;
-        }
+        Status = "Nenhum dado foi gravado: este módulo não possui endpoint de domínio oficial conectado ao Desktop.";
     }
 
     private async void AtualizarVinculo_Click(object sender, RoutedEventArgs e)
@@ -164,13 +115,4 @@ public partial class ModuleWorkspaceWindow : Window, INotifyPropertyChanged
         return allowed.Length == 0 ? "GENESIS" : new string(allowed);
     }
 
-    private sealed record WorkspaceOperationPayload(
-        string Modulo,
-        string Area,
-        string Detalhe,
-        string Codigo,
-        string Loja,
-        string Terminal,
-        string Operador,
-        DateTime CriadoEmUtc);
 }

@@ -36,9 +36,6 @@ const getDefaultApiUrl = () => {
   return isLocalhost ? 'http://127.0.0.1:5010' : PUBLIC_API_URL;
 };
 
-export const API_BASE_URL = normalizeApiUrl(process.env.REACT_APP_BACKEND_URL) || getDefaultApiUrl();
-const API_URL = `${API_BASE_URL}/api`;
-
 export const resolvePublicAssetUrl = (value) => {
   const assetUrl = String(value || '').trim();
   if (!assetUrl || /^(?:https?:|data:|blob:)/i.test(assetUrl)) return assetUrl;
@@ -222,6 +219,12 @@ export const unwrapApiData = (data) => {
   return normalizeData(data.dados ?? data.Dados ?? data.data ?? data.Data ?? data);
 };
 
+const getApiPagination = (payload) => ({
+  totalRegistros: Number(payload?.totalRegistros ?? payload?.total ?? payload?.TotalRegistros) || 0,
+  paginaAtual: Number(payload?.paginaAtual ?? payload?.pagina ?? payload?.PaginaAtual) || 1,
+  totalPaginas: Number(payload?.totalPaginas ?? payload?.TotalPaginas) || 1,
+});
+
 const api = axios.create({
   baseURL: API_URL,
   timeout: 30000,
@@ -272,6 +275,7 @@ const refreshSession = async () => {
 api.interceptors.response.use(
   (response) => ({
     ...response,
+    pagination: getApiPagination(response.data),
     data: unwrapApiData(response.data),
   }),
   async (error) => {

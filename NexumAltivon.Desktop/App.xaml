@@ -7,14 +7,14 @@
  -->
 <Application x:Class="NexumAltivon.Desktop.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             StartupUri="MainWindow.xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Application.Resources>
-        <SolidColorBrush x:Key="ShellBackground" Color="#050505" />
-        <SolidColorBrush x:Key="PanelBackground" Color="#11100D" />
-        <SolidColorBrush x:Key="PanelSurface" Color="#17150F" />
-        <SolidColorBrush x:Key="PanelElevated" Color="#211D12" />
-        <SolidColorBrush x:Key="PanelBorder" Color="#3A311C" />
+        <!-- Paleta translúcida para casar com Mica / Acrylic do Windows 11 -->
+        <SolidColorBrush x:Key="ShellBackground" Color="#66080805" />
+        <SolidColorBrush x:Key="PanelBackground" Color="#CC11100D" />
+        <SolidColorBrush x:Key="PanelSurface" Color="#B317150F" />
+        <SolidColorBrush x:Key="PanelElevated" Color="#E6211D12" />
+        <SolidColorBrush x:Key="PanelBorder" Color="#803A311C" />
         <SolidColorBrush x:Key="TextPrimary" Color="#FFF7DE" />
         <SolidColorBrush x:Key="TextSecondary" Color="#C7BA92" />
         <SolidColorBrush x:Key="TextMuted" Color="#887C5B" />

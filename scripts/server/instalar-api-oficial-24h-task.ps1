@@ -3,7 +3,7 @@
 # Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
 # Sistema de gestão: GenesisGest.Net
 # Ano Início: 04/2024 Publicado e operacional: 05/2026
-# Versão: 1.1.5
+# Versão: 1.1.5.7244 Data: 30/10/2026
 #
 
 [CmdletBinding()]
@@ -12,7 +12,8 @@ param(
     [string]$TaskName = "NexumAltivonApi24h",
     [string]$ApiUrl = "http://127.0.0.1:5010",
     [string]$DatabaseServiceName = "NexumAltivonMySQL",
-    [string]$TunnelServiceName = "Cloudflared"
+    [string]$TunnelServiceName = "Cloudflared",
+    [switch]$LocalOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -75,6 +76,26 @@ function Ensure-AutomaticService {
     }
 }
 
+function Set-ServiceRecoveryPolicy {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][int]$RestartDelayMilliseconds
+    )
+
+    $actions = "restart/$RestartDelayMilliseconds/restart/$RestartDelayMilliseconds/restart/$RestartDelayMilliseconds"
+    $failureOutput = & sc.exe failure $Name reset= 86400 actions= $actions 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Nao foi possivel configurar reinicio automatico do servico '$Name': $($failureOutput -join ' ')"
+    }
+
+    $failureFlagOutput = & sc.exe failureflag $Name 1 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Nao foi possivel ativar recuperacao para falhas do servico '$Name': $($failureFlagOutput -join ' ')"
+    }
+
+    Write-InstallStep "Recuperacao de $Name configurada para tres reinicios consecutivos e falhas do servico."
+}
+
 function Stop-ExistingOfficialRuntime {
     $existingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     if ($existingTask -and $existingTask.State -eq "Running") {
@@ -95,6 +116,28 @@ function Stop-ExistingOfficialRuntime {
     foreach ($process in $apiProcesses) {
         Write-InstallStep "Encerrando API oficial anterior PID $($process.ProcessId)."
         Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+
+    $remaining = Get-NetTCPConnection -LocalPort 5010 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($remaining) {
+        $remainingProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $($remaining.OwningProcess)" -ErrorAction SilentlyContinue
+        $healthStatus = $null
+        try {
+            $healthResponse = Invoke-WebRequest -UseBasicParsing -Uri "$ApiUrl/health" -TimeoutSec 10
+            $healthStatus = [int]$healthResponse.StatusCode
+        }
+        catch {
+            $healthStatus = $null
+        }
+
+        if ($remainingProcess -and $remainingProcess.Name -eq "dotnet.exe" -and $healthStatus -eq 200) {
+            Write-InstallStep "Encerrando dono remanescente da porta oficial 5010 PID $($remaining.OwningProcess), dotnet.exe com health HTTP 200."
+            Stop-Process -Id $remaining.OwningProcess -Force -ErrorAction Stop
+        }
+        else {
+            $processName = if ($remainingProcess) { $remainingProcess.Name } else { "desconhecido" }
+            throw "A porta 5010 esta ocupada por PID $($remaining.OwningProcess) ($processName) e nao foi identificada como a API oficial. Health=$healthStatus."
+        }
     }
 
     for ($attempt = 1; $attempt -le 30; $attempt++) {
@@ -150,7 +193,20 @@ if ($scheduleService.Status -ne [ServiceProcess.ServiceControllerStatus]::Runnin
 }
 
 $databaseService = Ensure-AutomaticService -Name $DatabaseServiceName
-$tunnelService = Ensure-AutomaticService -Name $TunnelServiceName
+Set-ServiceRecoveryPolicy -Name $DatabaseServiceName -RestartDelayMilliseconds 60000
+$tunnelService = $null
+if ($LocalOnly) {
+    Write-InstallStep "Modo local: servico Cloudflare Tunnel nao sera exigido para registrar a API oficial."
+    $tunnelService = [pscustomobject]@{
+        Name = $TunnelServiceName
+        Status = "NotConfigured"
+        StartMode = "NotApplicable"
+        StartName = $null
+    }
+} else {
+    $tunnelService = Ensure-AutomaticService -Name $TunnelServiceName
+    Set-ServiceRecoveryPolicy -Name $TunnelServiceName -RestartDelayMilliseconds 20000
+}
 
 Stop-ExistingOfficialRuntime
 
@@ -213,6 +269,7 @@ $result = [pscustomobject]@{
     StartScript = $startScript
     PrivateConfig = $privateConfig
     ApiUrl = $ApiUrl
+    LocalOnly = $LocalOnly.IsPresent
     DatabaseService = "$($databaseService.Name):$($databaseService.Status):$($databaseService.StartMode)"
     TunnelService = "$($tunnelService.Name):$($tunnelService.Status):$($tunnelService.StartMode)"
     ListenerPid = $listener.OwningProcess

@@ -11,6 +11,7 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -27,9 +28,8 @@ public static class DesktopAutoUpdateService
 {
     private const string DefaultRepository = "corporativogna-lrc/Grupo-Nexum-Altivon-Ltda-Me";
     private static readonly string[] InstallerExtensions = [".msixbundle", ".msix", ".msi", ".exe"];
-    private static readonly string[] PackageExtensions = [".msixbundle", ".msix", ".msi", ".exe", ".zip"];
 
-    public static async Task<DesktopUpdateResult> CheckDownloadAndApplyAsync(CancellationToken cancellationToken = default)
+    public static async Task<DesktopUpdateResult> CheckAndDownloadLatestAsync(CancellationToken cancellationToken = default)
     {
         var currentVersion = GetCurrentVersion();
         var repository = Environment.GetEnvironmentVariable("GENESIS_UPDATE_GITHUB_REPOSITORY");
@@ -60,9 +60,7 @@ public static class DesktopAutoUpdateService
             }
 
             var packagePath = await DownloadAssetAsync(httpClient, release.TagName, asset, cancellationToken);
-            TryStartInstaller(packagePath);
-
-            return new DesktopUpdateResult(true, currentVersion.ToString(), latestVersion.ToString(), packagePath, $"Pacote de atualização baixado: {Path.GetFileName(packagePath)}.");
+            return new DesktopUpdateResult(true, currentVersion.ToString(), latestVersion.ToString(), packagePath, $"Pacote oficial baixado. A instalação requer confirmação do operador: {Path.GetFileName(packagePath)}.");
         }
         catch (OperationCanceledException)
         {
@@ -106,10 +104,11 @@ public static class DesktopAutoUpdateService
     {
         return assets
             .Where(asset => !string.IsNullOrWhiteSpace(asset.BrowserDownloadUrl))
-            .Where(asset => PackageExtensions.Contains(Path.GetExtension(asset.Name), StringComparer.OrdinalIgnoreCase))
+            .Where(asset => InstallerExtensions.Contains(Path.GetExtension(asset.Name), StringComparer.OrdinalIgnoreCase))
+            .Where(asset => asset.Name.Contains("desktop", StringComparison.OrdinalIgnoreCase)
+                || asset.Name.Contains("genesis", StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(asset => asset.Name.Contains("desktop", StringComparison.OrdinalIgnoreCase))
             .ThenByDescending(asset => asset.Name.Contains("genesis", StringComparison.OrdinalIgnoreCase))
-            .ThenByDescending(asset => asset.Name.Contains("delta", StringComparison.OrdinalIgnoreCase))
             .ThenByDescending(asset => InstallerExtensions.Contains(Path.GetExtension(asset.Name), StringComparer.OrdinalIgnoreCase))
             .ThenBy(asset => asset.Name)
             .FirstOrDefault();
@@ -117,6 +116,11 @@ public static class DesktopAutoUpdateService
 
     private static async Task<string> DownloadAssetAsync(HttpClient httpClient, string releaseTag, GitHubAsset asset, CancellationToken cancellationToken)
     {
+        if (asset.Size <= 0 || string.IsNullOrWhiteSpace(asset.Name) || !string.Equals(Path.GetFileName(asset.Name), asset.Name, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("A release retornou um pacote com nome ou tamanho inválido.");
+        }
+
         var safeTag = string.Join("_", releaseTag.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
         var updateDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -128,46 +132,71 @@ public static class DesktopAutoUpdateService
         var packagePath = Path.Combine(updateDirectory, asset.Name);
         if (File.Exists(packagePath) && new FileInfo(packagePath).Length == asset.Size)
         {
-            return packagePath;
+            if (string.IsNullOrWhiteSpace(asset.Digest)
+                || await HasPublishedDigestAsync(packagePath, asset.Digest, cancellationToken))
+            {
+                return packagePath;
+            }
+
+            File.Delete(packagePath);
         }
 
+        var temporaryPath = packagePath + ".download";
         await using var source = await httpClient.GetStreamAsync(asset.BrowserDownloadUrl, cancellationToken);
-        await using var target = File.Create(packagePath);
-        await source.CopyToAsync(target, cancellationToken);
+        await using (var target = File.Create(temporaryPath))
+        {
+            await source.CopyToAsync(target, cancellationToken);
+        }
+
+        if (!File.Exists(temporaryPath) || new FileInfo(temporaryPath).Length != asset.Size)
+        {
+            File.Delete(temporaryPath);
+            throw new InvalidDataException("O tamanho do pacote baixado não confere com a release do GitHub.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(asset.Digest)
+            && !await HasPublishedDigestAsync(temporaryPath, asset.Digest, cancellationToken))
+        {
+            File.Delete(temporaryPath);
+            throw new InvalidDataException("O digest SHA-256 do pacote diverge do digest publicado pelo GitHub.");
+        }
+
+        File.Move(temporaryPath, packagePath, true);
 
         return packagePath;
     }
 
-    private static void TryStartInstaller(string packagePath)
+    private static async Task<bool> HasPublishedDigestAsync(string packagePath, string digest, CancellationToken cancellationToken)
     {
-        var autoInstall = string.Equals(
-            Environment.GetEnvironmentVariable("GENESIS_UPDATE_AUTO_INSTALL"),
-            "true",
-            StringComparison.OrdinalIgnoreCase);
-        if (!autoInstall)
+        if (!digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase))
         {
-            return;
+            throw new InvalidDataException("A release publicou um algoritmo de digest não suportado.");
+        }
+
+        await using var packageStream = File.OpenRead(packagePath);
+        var actualDigest = Convert.ToHexString(await SHA256.HashDataAsync(packageStream, cancellationToken));
+        return actualDigest.Equals(digest[7..], StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static void InstallDownloadedPackage(string packagePath)
+    {
+        if (string.IsNullOrWhiteSpace(packagePath) || !File.Exists(packagePath))
+        {
+            throw new FileNotFoundException("O pacote baixado não está disponível no caminho informado.", packagePath);
         }
 
         var extension = Path.GetExtension(packagePath);
-        if (extension.Equals(".msi", StringComparison.OrdinalIgnoreCase))
+        if (!InstallerExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
         {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "msiexec.exe",
-                Arguments = $"/i \"{packagePath}\"",
-                UseShellExecute = true
-            });
-            return;
+            throw new InvalidOperationException($"Extensão de instalador não compatível: {extension}");
         }
 
-        if (InstallerExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+        var startInfo = extension.Equals(".msi", StringComparison.OrdinalIgnoreCase)
+            ? new ProcessStartInfo { FileName = "msiexec.exe", Arguments = $"/i \"{packagePath}\"", UseShellExecute = true }
+            : new ProcessStartInfo { FileName = packagePath, UseShellExecute = true };
+        if (Process.Start(startInfo) is null)
         {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = packagePath,
-                UseShellExecute = true
-            });
+            throw new InvalidOperationException("O Windows não iniciou o instalador.");
         }
     }
 
@@ -204,5 +233,8 @@ public static class DesktopAutoUpdateService
 
         [JsonPropertyName("browser_download_url")]
         public string BrowserDownloadUrl { get; init; } = string.Empty;
+
+        [JsonPropertyName("digest")]
+        public string? Digest { get; init; }
     }
 }

@@ -1,0 +1,173 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5.7206
+ -->
+<Window x:Class="NexumAltivon.Desktop.SiteMidiasWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GenesisGest.Net - Biblioteca oficial de mídias"
+        Width="1240"
+        Height="780"
+        MinWidth="1080"
+        MinHeight="680"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource ShellBackground}"
+        FontFamily="Segoe UI">
+    <Window.Resources>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackground}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Padding" Value="16" />
+        </Style>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,5" />
+        </Style>
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{StaticResource AccentGold}" />
+            <Setter Property="Foreground" Value="#080704" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="14,9" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="0,0,8,8" />
+        </Style>
+        <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{StaticResource PanelSurface}" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="14,9" />
+            <Setter Property="Margin" Value="0,0,8,8" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="14" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource Card}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="SITE / CONTEÚDO OFICIAL" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold" FontSize="12" />
+                    <TextBlock Text="Biblioteca de mídias" Foreground="{StaticResource TextPrimary}" FontSize="25" FontWeight="Bold" Margin="0,5,0,0" />
+                    <TextBlock Text="Logos, banners, imagens de lojas e materiais institucionais persistidos no banco e no wwwroot oficial." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,5,0,0" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Status}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" MaxWidth="390" HorizontalAlignment="Right" />
+                    <Button Content="Recarregar biblioteca" Style="{StaticResource SecondaryButton}" Click="Carregar_Click" Margin="0,10,0,0" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.45*" />
+                <ColumnDefinition Width="14" />
+                <ColumnDefinition Width="1*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource Card}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="10" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="180" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Registros persistidos" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                            <TextBlock Text="Selecione uma mídia para atualizar metadados ou desvincular." Foreground="{StaticResource TextSecondary}" Margin="0,4,0,0" />
+                        </StackPanel>
+                        <ComboBox x:Name="TipoFiltroBox" Grid.Column="1" SelectionChanged="TipoFiltro_Changed" VerticalAlignment="Center">
+                            <ComboBoxItem Content="Todos" IsSelected="True" />
+                            <ComboBoxItem Content="Logo" />
+                            <ComboBoxItem Content="Banner" />
+                            <ComboBoxItem Content="Loja" />
+                            <ComboBoxItem Content="Institucional" />
+                        </ComboBox>
+                    </Grid>
+                    <DataGrid x:Name="MidiasGrid"
+                              Grid.Row="2"
+                              ItemsSource="{Binding Midias}"
+                              SelectionChanged="MidiasGrid_SelectionChanged"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              SelectionMode="Single"
+                              HeadersVisibility="Column"
+                              Background="Transparent"
+                              BorderBrush="{StaticResource PanelBorder}"
+                              BorderThickness="1">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Nome" Binding="{Binding Nome}" Width="2*" />
+                            <DataGridTextColumn Header="Tipo" Binding="{Binding Tipo}" Width="*" />
+                            <DataGridTextColumn Header="Arquivo" Binding="{Binding NomeArquivoOriginal}" Width="1.5*" />
+                            <DataGridTextColumn Header="Dimensão" Binding="{Binding Dimensao}" Width="1.2*" />
+                            <DataGridTextColumn Header="Tamanho" Binding="{Binding TamanhoFormatado}" Width="1.1*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource Card}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="Metadados e persistência" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                        <TextBlock Text="O upload grava a imagem em wwwroot/uploads e o registro auditável no banco oficial." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,5,0,16" />
+
+                        <TextBlock Text="Nome da mídia" Style="{StaticResource Label}" />
+                        <TextBox x:Name="NomeBox" Margin="0,0,0,12" />
+
+                        <TextBlock Text="Tipo" Style="{StaticResource Label}" />
+                        <ComboBox x:Name="TipoBox" Margin="0,0,0,12">
+                            <ComboBoxItem Content="Logo" />
+                            <ComboBoxItem Content="Banner" />
+                            <ComboBoxItem Content="Loja" />
+                            <ComboBoxItem Content="Institucional" />
+                        </ComboBox>
+
+                        <TextBlock Text="Texto alternativo" Style="{StaticResource Label}" />
+                        <TextBox x:Name="TextoAlternativoBox" TextWrapping="Wrap" AcceptsReturn="True" Height="70" Margin="0,0,0,12" />
+
+                        <TextBlock Text="Arquivo selecionado" Style="{StaticResource Label}" />
+                        <TextBlock Text="{Binding SelectedFilePath}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                        <Button Content="Selecionar imagem" Style="{StaticResource SecondaryButton}" Click="SelecionarArquivo_Click" />
+
+                        <Separator Margin="0,5,0,14" />
+                        <WrapPanel>
+                            <Button Content="Enviar nova mídia" Style="{StaticResource PrimaryButton}" Click="Enviar_Click" />
+                            <Button Content="Atualizar metadados" Style="{StaticResource SecondaryButton}" Click="Atualizar_Click" />
+                            <Button Content="Excluir mídia" Style="{StaticResource SecondaryButton}" Click="Excluir_Click" />
+                            <Button Content="Abrir URL pública" Style="{StaticResource SecondaryButton}" Click="AbrirUrl_Click" />
+                        </WrapPanel>
+
+                        <Border Background="{StaticResource PanelSurface}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,8,0,0">
+                            <StackPanel>
+                                <TextBlock Text="Registro selecionado" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding SelectedDetails}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,5,0,0" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

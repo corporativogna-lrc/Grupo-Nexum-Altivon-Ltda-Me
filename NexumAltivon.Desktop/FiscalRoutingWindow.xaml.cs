@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7205
  */
 
 using System.Collections.ObjectModel;
@@ -19,25 +19,27 @@ namespace NexumAltivon.Desktop;
 public partial class FiscalRoutingWindow : Window, INotifyPropertyChanged
 {
     private readonly DesktopApiClient _api = new();
-    private readonly LocalOutboxService _outbox = new();
-    private readonly TerminalProfile _terminal = new();
+    private readonly TerminalProfile _profile;
     private string _codigo = string.Empty;
     private string _tipo;
-    private string _empresaCandidata = "Grupo Nexum Altivon";
-    private string _regimeFiscal = "Simples Nacional";
-    private string _ufDestino = "SP";
+    private string _empresaCandidata = string.Empty;
+    private string _regimeFiscal = string.Empty;
+    private string _ufOrigem = string.Empty;
+    private string _ufDestino = string.Empty;
     private string _cfop = "5102";
     private string _naturezaOperacao = "Venda de mercadoria";
     private string _valorOperacao = "0,00";
     private string _custoFiscalEstimado = "0,00";
     private string _custoLogisticoEstimado = "0,00";
     private string _margemBrutaEstimada = "0,00";
-    private string _rankingEmpresas = "Informe valor e margem para calcular a melhor empresa emissora.";
+    private string _rankingEmpresas = "Informe UF de origem, UF de destino e valor para consultar o motor fiscal oficial.";
+    private string _decisao = "Nenhum roteamento oficial foi consultado.";
     private string _observacoes = string.Empty;
-    private string _status = "Pronto para calcular regra fiscal local.";
+    private string _status = "Pronto para consultar o roteamento fiscal oficial.";
 
-    public FiscalRoutingWindow(string operationType)
+    public FiscalRoutingWindow(string operationType, TerminalProfile profile)
     {
+        _profile = profile;
         _tipo = operationType;
         OperationTypes = new ObservableCollection<string>
         {
@@ -46,25 +48,12 @@ public partial class FiscalRoutingWindow : Window, INotifyPropertyChanged
             "SPED / EFD / REINF",
             "Tributos e retenções"
         };
-        Empresas = new ObservableCollection<string>
-        {
-            "Grupo Nexum Altivon",
-            "Geração Top Mais",
-            "Chronnus Relojoaria",
-            "Gran Festas",
-            "Moda Mim",
-            "Estrutural Line"
-        };
-        Regimes = new ObservableCollection<string> { "Simples Nacional", "Lucro Presumido", "Lucro Real", "MEI / contingência teste" };
-
         NovoDocumento();
         InitializeComponent();
         DataContext = this;
     }
 
     public ObservableCollection<string> OperationTypes { get; }
-    public ObservableCollection<string> Empresas { get; }
-    public ObservableCollection<string> Regimes { get; }
     public string WindowTitle => $"GenesisGest.Net - {Tipo}";
 
     public string Codigo
@@ -102,6 +91,12 @@ public partial class FiscalRoutingWindow : Window, INotifyPropertyChanged
     {
         get => _ufDestino;
         set => SetField(ref _ufDestino, value.ToUpperInvariant());
+    }
+
+    public string UfOrigem
+    {
+        get => _ufOrigem;
+        set => SetField(ref _ufOrigem, value.ToUpperInvariant());
     }
 
     public string Cfop
@@ -176,82 +171,93 @@ public partial class FiscalRoutingWindow : Window, INotifyPropertyChanged
         set => SetField(ref _status, value);
     }
 
-    public string ResultadoLabel => $"R$ {ResultadoEstimado:N2}";
-    public string Decisao => ResultadoEstimado >= 0
-        ? $"Emitir por {EmpresaCandidata}: margem preservada após custo fiscal/logístico."
-        : $"Revisar {EmpresaCandidata}: operação abaixo da margem mínima após custos.";
+    public string ResultadoLabel => string.IsNullOrWhiteSpace(EmpresaCandidata)
+        ? "Aguardando consulta"
+        : EmpresaCandidata;
+    public string Decisao => _decisao;
     public string RankingEmpresas
     {
         get => _rankingEmpresas;
         set => SetField(ref _rankingEmpresas, value);
     }
 
-    private decimal ResultadoEstimado => ParseDecimal(MargemBrutaEstimada) - ParseDecimal(CustoFiscalEstimado) - ParseDecimal(CustoLogisticoEstimado);
-
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    private async void Salvar_Click(object sender, RoutedEventArgs e)
+    private async void CalcularMelhorEmpresa_Click(object sender, RoutedEventArgs e)
     {
-        if (ParseDecimal(ValorOperacao) <= 0 || ParseDecimal(MargemBrutaEstimada) <= 0)
+        if (!string.Equals(Tipo, "Empresa emissora automática", StringComparison.Ordinal))
         {
-            Status = "Informe valor da operação e margem bruta antes de salvar a regra fiscal.";
+            Status = "Consulta bloqueada: esta janela só possui contrato oficial para empresa emissora automática.";
             return;
         }
 
-        var draft = new FiscalRoutingDraft
-        {
-            Codigo = Codigo,
-            Tipo = Tipo,
-            EmpresaCandidata = EmpresaCandidata,
-            RegimeFiscal = RegimeFiscal,
-            UfDestino = UfDestino,
-            Cfop = Cfop.Trim(),
-            NaturezaOperacao = NaturezaOperacao.Trim(),
-            ValorOperacao = ParseDecimal(ValorOperacao),
-            CustoFiscalEstimado = ParseDecimal(CustoFiscalEstimado),
-            CustoLogisticoEstimado = ParseDecimal(CustoLogisticoEstimado),
-            MargemBrutaEstimada = ParseDecimal(MargemBrutaEstimada),
-            Decisao = Decisao,
-            Observacoes = Observacoes.Trim(),
-            Status = "Regra fiscal local registrada"
-        };
-
-        var submit = await _api.SubmitOperationAsync(_terminal, "fiscal", Codigo, draft);
-        if (submit.Success)
-        {
-            Status = $"Regra fiscal gravada no servidor: {submit.ServerReference ?? submit.Detail}";
-            return;
-        }
-
-        var path = await _outbox.SaveOperationAsync("fiscal", Codigo, draft);
-        Status = $"API indisponível. Regra fiscal salva em contingência local: {path}. Motivo: {submit.Detail}";
-    }
-
-    private void CalcularMelhorEmpresa_Click(object sender, RoutedEventArgs e)
-    {
         var valor = ParseDecimal(ValorOperacao);
-        var margem = ParseDecimal(MargemBrutaEstimada);
-        if (valor <= 0 || margem <= 0)
+        if (valor <= 0 || !IsUf(UfOrigem) || !IsUf(UfDestino))
         {
-            Status = "Cálculo bloqueado: informe valor da operação e margem bruta estimada.";
+            Status = "Consulta bloqueada: informe valor positivo e UFs válidas com duas letras.";
             return;
         }
 
-        var candidatos = Empresas
-            .Select(empresa => CalcularCandidato(empresa, valor, margem, UfDestino))
-            .OrderByDescending(x => x.Resultado)
-            .ThenBy(x => x.CustoFiscal + x.CustoLogistico)
-            .ToList();
-        var melhor = candidatos[0];
+        if (string.IsNullOrWhiteSpace(_profile.DesktopAccessToken))
+        {
+            Status = "Consulta bloqueada: o terminal não possui token autenticado.";
+            return;
+        }
 
-        EmpresaCandidata = melhor.Empresa;
-        RegimeFiscal = melhor.Regime;
-        CustoFiscalEstimado = melhor.CustoFiscal.ToString("N2", CultureInfo.GetCultureInfo("pt-BR"));
-        CustoLogisticoEstimado = melhor.CustoLogistico.ToString("N2", CultureInfo.GetCultureInfo("pt-BR"));
-        RankingEmpresas = string.Join(Environment.NewLine, candidatos.Select((x, index) =>
-            $"{index + 1}. {x.Empresa}: resultado R$ {x.Resultado:N2}, fiscal R$ {x.CustoFiscal:N2}, logística R$ {x.CustoLogistico:N2}"));
-        Status = $"Melhor decisão calculada: {melhor.Empresa}, resultado estimado R$ {melhor.Resultado:N2}.";
-        AtualizarResumo();
+        try
+        {
+            Status = "Consultando o motor fiscal oficial...";
+            var request = new DesktopFiscalRoutingSimulationRequest(
+                string.Equals(UfOrigem, UfDestino, StringComparison.OrdinalIgnoreCase)
+                    ? "VendaInterna"
+                    : "VendaInterestadual",
+                valor,
+                0m,
+                UfOrigem,
+                UfDestino,
+                null,
+                null,
+                string.IsNullOrWhiteSpace(NaturezaOperacao) ? null : NaturezaOperacao.Trim(),
+                false,
+                false,
+                true,
+                false);
+            var result = await _api.SimulateFiscalRoutingAsync(_profile, _profile.DesktopAccessToken, request);
+            if (!result.Success || result.Data is null)
+            {
+                Status = $"Roteamento não confirmado: {result.Detail}";
+                return;
+            }
+
+            var decision = result.Data;
+            if (!decision.Sucesso || string.IsNullOrWhiteSpace(decision.RazaoSocialSelecionada))
+            {
+                Status = $"O motor fiscal não selecionou empresa: {decision.Resumo}";
+                EmpresaCandidata = string.Empty;
+                RankingEmpresas = decision.Resumo;
+                _decisao = decision.Resumo;
+                AtualizarResumo();
+                return;
+            }
+
+            EmpresaCandidata = decision.RazaoSocialSelecionada;
+            RegimeFiscal = decision.Ranking.FirstOrDefault(item =>
+                string.Equals(item.RazaoSocial, decision.RazaoSocialSelecionada, StringComparison.OrdinalIgnoreCase))?.RegimeTributario ?? string.Empty;
+            var selected = decision.Ranking.FirstOrDefault(item =>
+                string.Equals(item.RazaoSocial, decision.RazaoSocialSelecionada, StringComparison.OrdinalIgnoreCase));
+            CustoFiscalEstimado = selected?.CustoTributarioEstimado.ToString("N2", CultureInfo.GetCultureInfo("pt-BR")) ?? "0,00";
+            CustoLogisticoEstimado = selected?.CustoOperacionalEstimado.ToString("N2", CultureInfo.GetCultureInfo("pt-BR")) ?? "0,00";
+            MargemBrutaEstimada = selected?.MargemEstimadaPercentual.ToString("N2", CultureInfo.GetCultureInfo("pt-BR")) ?? "0,00";
+            RankingEmpresas = string.Join(Environment.NewLine, decision.Ranking.Select((item, index) =>
+                $"{index + 1}. {item.RazaoSocial}: total R$ {item.CustoTotalEstimado:N2}, fiscal R$ {item.CustoTributarioEstimado:N2}, operacional R$ {item.CustoOperacionalEstimado:N2}, margem {item.MargemEstimadaPercentual:N2}%"));
+            _decisao = decision.Resumo;
+            Status = $"Roteamento oficial confirmado: {decision.RazaoSocialSelecionada}.";
+            AtualizarResumo();
+        }
+        catch (Exception ex)
+        {
+            Status = $"Roteamento não confirmado e nenhum dado foi gravado: {ex.Message}";
+        }
     }
 
     private void Novo_Click(object sender, RoutedEventArgs e)
@@ -273,10 +279,16 @@ public partial class FiscalRoutingWindow : Window, INotifyPropertyChanged
             CustoFiscalEstimado = "0,00";
             CustoLogisticoEstimado = "0,00";
             MargemBrutaEstimada = "0,00";
+            UfOrigem = string.Empty;
+            UfDestino = string.Empty;
+            EmpresaCandidata = string.Empty;
+            RegimeFiscal = string.Empty;
+            RankingEmpresas = "Informe UF de origem, UF de destino e valor para consultar o motor fiscal oficial.";
+            _decisao = "Nenhum roteamento oficial foi consultado.";
             Observacoes = string.Empty;
         }
 
-        Status = "Novo cálculo fiscal pronto para preenchimento.";
+        Status = "Nova consulta fiscal pronta para preenchimento.";
         AtualizarResumo();
     }
 
@@ -284,23 +296,6 @@ public partial class FiscalRoutingWindow : Window, INotifyPropertyChanged
     {
         OnPropertyChanged(nameof(ResultadoLabel));
         OnPropertyChanged(nameof(Decisao));
-    }
-
-    private static FiscalCandidateResult CalcularCandidato(string empresa, decimal valor, decimal margem, string ufDestino)
-    {
-        var perfil = empresa switch
-        {
-            "Chronnus Relojoaria" => new FiscalProfile("Simples Nacional", 0.062m, 19m),
-            "Gran Festas" => new FiscalProfile("Simples Nacional", 0.071m, 16m),
-            "Moda Mim" => new FiscalProfile("Simples Nacional", 0.068m, 18m),
-            "Estrutural Line" => new FiscalProfile("Lucro Presumido", 0.112m, 24m),
-            "Geração Top Mais" => new FiscalProfile("Simples Nacional", 0.059m, 14m),
-            _ => new FiscalProfile("Simples Nacional", 0.065m, 15m)
-        };
-        var foraSp = string.Equals(ufDestino?.Trim(), "SP", StringComparison.OrdinalIgnoreCase) ? 0m : 0.012m;
-        var custoFiscal = decimal.Round(valor * (perfil.AliquotaEfetiva + foraSp), 2);
-        var custoLogistico = decimal.Round(perfil.CustoLogisticoBase + valor * 0.015m, 2);
-        return new FiscalCandidateResult(empresa, perfil.Regime, custoFiscal, custoLogistico, margem - custoFiscal - custoLogistico);
     }
 
     private static decimal ParseDecimal(string value)
@@ -321,6 +316,11 @@ public partial class FiscalRoutingWindow : Window, INotifyPropertyChanged
         return chars.Length == 0 ? "DOC" : new string(chars);
     }
 
+    private static bool IsUf(string value)
+    {
+        return value.Length == 2 && value.All(char.IsLetter);
+    }
+
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
         if (EqualityComparer<T>.Default.Equals(field, value))
@@ -338,12 +338,4 @@ public partial class FiscalRoutingWindow : Window, INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
-    private sealed record FiscalProfile(string Regime, decimal AliquotaEfetiva, decimal CustoLogisticoBase);
-
-    private sealed record FiscalCandidateResult(
-        string Empresa,
-        string Regime,
-        decimal CustoFiscal,
-        decimal CustoLogistico,
-        decimal Resultado);
 }

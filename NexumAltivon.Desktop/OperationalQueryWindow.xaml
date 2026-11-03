@@ -1,0 +1,117 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5.7247 Data: 30/10/2026
+ -->
+<Window x:Class="NexumAltivon.Desktop.OperationalQueryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="{Binding WindowTitle}"
+        Width="1180"
+        Height="760"
+        MinWidth="880"
+        MinHeight="560"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource ShellBackground}"
+        FontFamily="Segoe UI">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="14" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="14" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Background="{StaticResource PanelBackground}"
+                BorderBrush="{StaticResource PanelBorder}"
+                BorderThickness="1"
+                CornerRadius="12"
+                Padding="18">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="{Binding Sector}" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding WindowTitle}" Foreground="{StaticResource TextPrimary}" FontSize="26" FontWeight="Bold" Margin="0,4,0,0" />
+                    <TextBlock Text="{Binding Description}" Foreground="{StaticResource TextSecondary}" Margin="0,7,0,0" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                    <TextBlock Text="Tabela / domínio" Foreground="{StaticResource TextMuted}" HorizontalAlignment="Right" />
+                    <TextBlock Text="{Binding TableName}" Foreground="{StaticResource TextPrimary}" FontWeight="SemiBold" HorizontalAlignment="Right" />
+                    <TextBlock Text="{Binding Permission}" Foreground="{StaticResource TextSecondary}" Margin="0,4,0,0" HorizontalAlignment="Right" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2"
+                Background="{StaticResource PanelSurface}"
+                BorderBrush="{StaticResource PanelBorder}"
+                BorderThickness="1"
+                CornerRadius="10"
+                Padding="12"
+                Visibility="{Binding StandardQueryVisibility}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Endpoint oficial" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
+                <TextBox Grid.Column="1" Text="{Binding Endpoint}" IsReadOnly="True" Margin="12,0" />
+                <Button Grid.Column="2" Content="Consultar dados oficiais" Click="Consultar_Click" IsDefault="True" />
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2"
+                Background="{StaticResource PanelSurface}"
+                BorderBrush="{StaticResource PanelBorder}"
+                BorderThickness="1"
+                CornerRadius="10"
+                Padding="12"
+                Visibility="{Binding OrderTrackingVisibility}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="1.1*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="1.2*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Número do pedido" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
+                <TextBox Grid.Column="1" Text="{Binding OrderNumber, UpdateSourceTrigger=PropertyChanged}" Margin="10,0" MaxLength="80" />
+                <TextBlock Grid.Column="2" Text="E-mail ou CPF/CNPJ do comprador" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
+                <TextBox Grid.Column="3" Text="{Binding CustomerIdentity, UpdateSourceTrigger=PropertyChanged}" Margin="10,0" MaxLength="160" />
+                <Button Grid.Column="4" Content="Consultar pedido" Click="Consultar_Click" IsDefault="True" />
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="4"
+                Background="{StaticResource PanelBackground}"
+                BorderBrush="{StaticResource PanelBorder}"
+                BorderThickness="1"
+                CornerRadius="12"
+                Padding="14">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="{Binding Status}" Foreground="{StaticResource AccentGreen}" TextWrapping="Wrap" Margin="0,0,0,10" />
+                <TextBox Grid.Row="1"
+                         Text="{Binding ResultJson}"
+                         IsReadOnly="True"
+                         AcceptsReturn="True"
+                         TextWrapping="NoWrap"
+                         VerticalScrollBarVisibility="Auto"
+                         HorizontalScrollBarVisibility="Auto"
+                         FontFamily="Consolas"
+                         FontSize="13" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

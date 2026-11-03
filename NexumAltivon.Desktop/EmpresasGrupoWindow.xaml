@@ -1,0 +1,306 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5.7219
+ -->
+<Window x:Class="NexumAltivon.Desktop.EmpresasGrupoWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GenesisGest.Net - Empresas do grupo"
+        Width="1420"
+        Height="850"
+        MinWidth="1100"
+        MinHeight="680"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource ShellBackground}"
+        FontFamily="Segoe UI">
+    <Window.Resources>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackground}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Padding" Value="16" />
+        </Style>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,5" />
+        </Style>
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{StaticResource AccentGold}" />
+            <Setter Property="Foreground" Value="#080704" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="14,9" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="0,0,8,8" />
+        </Style>
+        <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{StaticResource PanelSurface}" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="14,9" />
+            <Setter Property="Margin" Value="0,0,8,8" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="14" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource Card}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="MASTER DATA / FISCAL" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold" FontSize="12" />
+                    <TextBlock Text="Empresas do grupo" Foreground="{StaticResource TextPrimary}" FontSize="25" FontWeight="Bold" Margin="0,5,0,0" />
+                    <TextBlock Text="Cadastro societário e fiscal individual ligado à tabela oficial de empresas do grupo." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,5,0,0" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Status}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" MaxWidth="520" HorizontalAlignment="Right" />
+                    <Button Content="Recarregar empresas" Style="{StaticResource SecondaryButton}" Click="Carregar_Click" Margin="0,10,0,0" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.15*" />
+                <ColumnDefinition Width="14" />
+                <ColumnDefinition Width="1.35*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource Card}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="10" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0">
+                        <TextBlock Text="Empresas persistidas" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                        <TextBlock Text="Consulta oficial com edição e desativação lógica por registro." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                    </StackPanel>
+                    <DataGrid x:Name="EmpresasGrid"
+                              Grid.Row="2"
+                              ItemsSource="{Binding Empresas}"
+                              SelectionChanged="EmpresasGrid_SelectionChanged"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              SelectionMode="Single"
+                              HeadersVisibility="Column"
+                              Background="Transparent"
+                              BorderBrush="{StaticResource PanelBorder}"
+                              BorderThickness="1">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Id" Binding="{Binding Id}" Width="0.5*" />
+                            <DataGridTextColumn Header="Razão social" Binding="{Binding RazaoSocial}" Width="2.1*" />
+                            <DataGridTextColumn Header="CNPJ" Binding="{Binding Cnpj}" Width="1.25*" />
+                            <DataGridTextColumn Header="Código" Binding="{Binding CodigoEmpresa}" Width="1.0*" />
+                            <DataGridCheckBoxColumn Header="Ativa" Binding="{Binding Ativa}" Width="0.65*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource Card}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel>
+                        <TextBlock Text="Novo cadastro fiscal" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                        <TextBlock Text="O formulário usa GET/POST/PUT/DELETE oficiais e confirma cada alteração após releitura do banco." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,5,0,18" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Tipo de cadastro" Style="{StaticResource Label}" />
+                                <TextBox x:Name="TipoCadastroBox" Text="GrupoSocietario" Margin="0,0,0,12" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Código interno" Style="{StaticResource Label}" />
+                                <TextBox x:Name="CodigoEmpresaBox" Margin="0,0,0,12" />
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Text="Razão social *" Style="{StaticResource Label}" />
+                        <TextBox x:Name="RazaoSocialBox" Margin="0,0,0,12" />
+                        <TextBlock Text="Nome fantasia" Style="{StaticResource Label}" />
+                        <TextBox x:Name="NomeFantasiaBox" Margin="0,0,0,12" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="CNPJ *" Style="{StaticResource Label}" />
+                                <TextBox x:Name="CnpjBox" Margin="0,0,0,12" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Matriz/filial" Style="{StaticResource Label}" />
+                                <TextBox x:Name="MatrizFilialBox" Margin="0,0,0,12" />
+                            </StackPanel>
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Inscrição estadual" Style="{StaticResource Label}" />
+                                <TextBox x:Name="InscricaoEstadualBox" Margin="0,0,0,12" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Inscrição municipal" Style="{StaticResource Label}" />
+                                <TextBox x:Name="InscricaoMunicipalBox" Margin="0,0,0,12" />
+                            </StackPanel>
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Regime tributário" Style="{StaticResource Label}" />
+                                <TextBox x:Name="RegimeTributarioBox" Margin="0,0,0,12" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Categoria fiscal" Style="{StaticResource Label}" />
+                                <TextBox x:Name="CategoriaFiscalBox" Margin="0,0,0,12" />
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Text="Natureza da operação padrão" Style="{StaticResource Label}" />
+                        <TextBox x:Name="NaturezaOperacaoBox" Margin="0,0,0,12" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="E-mail fiscal" Style="{StaticResource Label}" />
+                                <TextBox x:Name="EmailFiscalBox" Margin="0,0,0,12" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="E-mail comercial" Style="{StaticResource Label}" />
+                                <TextBox x:Name="EmailComercialBox" Margin="0,0,0,12" />
+                            </StackPanel>
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="0.7*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Telefone" Style="{StaticResource Label}" />
+                                <TextBox x:Name="TelefoneBox" Margin="0,0,0,12" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="CEP" Style="{StaticResource Label}" />
+                                <TextBox x:Name="CepBox" Margin="0,0,0,12" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="4">
+                                <TextBlock Text="UF" Style="{StaticResource Label}" />
+                                <TextBox x:Name="EstadoBox" MaxLength="2" Margin="0,0,0,12" />
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Text="Logradouro" Style="{StaticResource Label}" />
+                        <TextBox x:Name="LogradouroBox" Margin="0,0,0,12" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="0.7*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="1.3*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Número" Style="{StaticResource Label}" />
+                                <TextBox x:Name="NumeroBox" Margin="0,0,0,12" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Bairro" Style="{StaticResource Label}" />
+                                <TextBox x:Name="BairroBox" Margin="0,0,0,12" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="4">
+                                <TextBlock Text="Cidade" Style="{StaticResource Label}" />
+                                <TextBox x:Name="CidadeBox" Margin="0,0,0,12" />
+                            </StackPanel>
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Ambiente NF-e" Style="{StaticResource Label}" />
+                                <TextBox x:Name="AmbienteNfeBox" Text="HOMOLOGACAO" Margin="0,0,0,12" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Série NF-e" Style="{StaticResource Label}" />
+                                <TextBox x:Name="SerieNfeBox" Margin="0,0,0,12" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="4">
+                                <TextBlock Text="Série NFC-e" Style="{StaticResource Label}" />
+                                <TextBox x:Name="SerieNfceBox" Margin="0,0,0,12" />
+                            </StackPanel>
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Modelo PDV" Style="{StaticResource Label}" />
+                                <TextBox x:Name="ModeloPdvBox" Text="NFCe" Margin="0,0,0,12" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Próximo número NFC-e" Style="{StaticResource Label}" />
+                                <TextBox x:Name="ProximaNfceBox" Margin="0,0,0,12" />
+                            </StackPanel>
+                        </Grid>
+                        <WrapPanel Margin="0,0,0,10">
+                            <CheckBox x:Name="PermiteNfeEntradaBox" Content="Entrada NF-e" IsChecked="True" Margin="0,0,12,8" />
+                            <CheckBox x:Name="PermiteNfeSaidaBox" Content="Saída NF-e" IsChecked="True" Margin="0,0,12,8" />
+                            <CheckBox x:Name="PermiteMarketplaceBox" Content="Marketplace" Margin="0,0,12,8" />
+                            <CheckBox x:Name="EmitentePreferencialBox" Content="Emitente preferencial" Margin="0,0,12,8" />
+                            <CheckBox x:Name="AtivaBox" Content="Ativa" IsChecked="True" Margin="0,0,12,8" />
+                        </WrapPanel>
+                        <TextBlock Text="Observações" Style="{StaticResource Label}" />
+                        <TextBox x:Name="ObservacoesBox" Margin="0,0,0,12" MaxLength="4000" TextWrapping="Wrap" AcceptsReturn="True" MinHeight="70" />
+                        <WrapPanel>
+                            <Button Content="Novo" Style="{StaticResource SecondaryButton}" Click="Novo_Click" />
+                            <Button Content="Salvar empresa" Style="{StaticResource PrimaryButton}" Click="Salvar_Click" />
+                            <Button Content="Desativar empresa" Style="{StaticResource SecondaryButton}" Click="Excluir_Click" />
+                        </WrapPanel>
+                        <Border Background="{StaticResource PanelSurface}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,12,0,0">
+                            <TextBlock Text="{Binding SelectedDetails}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" />
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

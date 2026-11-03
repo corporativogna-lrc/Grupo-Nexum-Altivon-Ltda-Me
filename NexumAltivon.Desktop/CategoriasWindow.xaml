@@ -1,0 +1,144 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5.7214
+ -->
+<Window x:Class="NexumAltivon.Desktop.CategoriasWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GenesisGest.Net - Categorias e subcategorias"
+        Width="1180"
+        Height="760"
+        MinWidth="980"
+        MinHeight="620"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource ShellBackground}"
+        FontFamily="Segoe UI">
+    <Window.Resources>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackground}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Padding" Value="16" />
+        </Style>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,5" />
+        </Style>
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{StaticResource AccentGold}" />
+            <Setter Property="Foreground" Value="#080704" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="14,9" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="0,0,8,8" />
+        </Style>
+        <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Padding" Value="14,9" />
+            <Setter Property="Margin" Value="0,0,8,8" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="14" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource Card}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="MASTER DATA / CATEGORIAS" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold" FontSize="12" />
+                    <TextBlock Text="Categorias e subcategorias" Foreground="{StaticResource TextPrimary}" FontSize="25" FontWeight="Bold" Margin="0,5,0,0" />
+                    <TextBlock Text="Cadastro individual ligado à tabela de categorias do catálogo oficial." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,5,0,0" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Status}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" MaxWidth="420" HorizontalAlignment="Right" />
+                    <Button Content="Recarregar categorias" Style="{StaticResource SecondaryButton}" Click="Carregar_Click" Margin="0,10,0,0" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.2*" />
+                <ColumnDefinition Width="14" />
+                <ColumnDefinition Width="0.9*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource Card}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="10" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0">
+                        <TextBlock Text="Categorias persistidas" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                        <TextBlock Text="Consulta oficial em modo somente leitura." Foreground="{StaticResource TextSecondary}" Margin="0,4,0,0" />
+                    </StackPanel>
+                    <DataGrid x:Name="CategoriasGrid"
+                              Grid.Row="2"
+                              ItemsSource="{Binding Categorias}"
+                              SelectionChanged="CategoriasGrid_SelectionChanged"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              SelectionMode="Single"
+                              HeadersVisibility="Column"
+                              Background="Transparent"
+                              BorderBrush="{StaticResource PanelBorder}"
+                              BorderThickness="1">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Slug" Binding="{Binding Id}" Width="1.1*" />
+                            <DataGridTextColumn Header="Nome" Binding="{Binding Nome}" Width="1.8*" />
+                            <DataGridTextColumn Header="Nível" Binding="{Binding Nivel}" Width="0.7*" />
+                            <DataGridTextColumn Header="Categoria pai" Binding="{Binding CategoriaPaiId}" Width="1.2*" />
+                            <DataGridTextColumn Header="Ordem" Binding="{Binding Ordem}" Width="0.7*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource Card}">
+                <StackPanel>
+                    <TextBlock Text="Nova categoria" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                    <TextBlock Text="O contrato oficial oferece criação e consulta. Edição e exclusão permanecem bloqueadas até existir endpoint de domínio correspondente." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,5,0,18" />
+
+                    <TextBlock Text="Código ou slug" Style="{StaticResource Label}" />
+                    <TextBox x:Name="CodigoBox" Margin="0,0,0,12" MaxLength="120" />
+                    <TextBlock Text="Nome" Style="{StaticResource Label}" />
+                    <TextBox x:Name="NomeBox" Margin="0,0,0,12" MaxLength="180" />
+                    <TextBlock Text="Descrição" Style="{StaticResource Label}" />
+                    <TextBox x:Name="DescricaoBox" Margin="0,0,0,12" MaxLength="500" TextWrapping="Wrap" AcceptsReturn="True" MinHeight="70" />
+                    <TextBlock Text="Categoria pai" Style="{StaticResource Label}" />
+                    <ComboBox x:Name="CategoriaPaiBox" ItemsSource="{Binding Categorias}" DisplayMemberPath="Caminho" SelectedValuePath="Id" Margin="0,0,0,12" />
+                    <TextBlock Text="Ordem" Style="{StaticResource Label}" />
+                    <TextBox x:Name="OrdemBox" Margin="0,0,0,18" Text="0" MaxLength="8" />
+
+                    <WrapPanel>
+                        <Button Content="Novo" Style="{StaticResource SecondaryButton}" Click="Novo_Click" />
+                        <Button Content="Cadastrar categoria" Style="{StaticResource PrimaryButton}" Click="Salvar_Click" />
+                    </WrapPanel>
+
+                    <Border Background="{StaticResource PanelSurface}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,12,0,0">
+                        <StackPanel>
+                            <TextBlock Text="Contexto" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding SelectedDetails}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,5,0,0" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

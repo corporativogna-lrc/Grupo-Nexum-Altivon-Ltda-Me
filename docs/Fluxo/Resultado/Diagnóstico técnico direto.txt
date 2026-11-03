@@ -1,0 +1,231 @@
+Diagnóstico técnico direto
+
+A consolidação foi concluída sem alterar a raiz do projeto, código-fonte, migrations, runtime ou bancos MySQL.
+
+O novo arquivo mantém a estrutura Markdown dos documentos encaminhados, preserva integralmente as três fontes em anexos literais e organiza o desenvolvimento em um fluxo único. O checklist original registra 7/31 itens concluídos na Definition of Done e 4/14 bloqueadores integralmente concluídos. Durante a análise, constatei que a tabela física da Definition of Done já possui 37 linhas, embora o cabeçalho ainda use o denominador 31; o novo documento preserva a métrica histórica e cria uma base reconciliável, sem alterar retroativamente a evidência.
+
+A matriz mais recente inventaria 269 objetos, sendo 257 tabelas e 12 views, com 102 referências literais na API, 35 no Desktop e 17 janelas WPF. Ela também identifica as três janelas genéricas que ainda não comprovam persistência no domínio declarado: CorporateMasterDataWindow, FiscalRoutingWindow e ModuleWorkspaceWindow.
+
+A árvore real e meta foi incorporada e ampliada para representar o estado final do ecossistema: plataforma, segurança, GRC, Master Data, financeiro, contabilidade, fiscal, comercial, CRM, e-commerce, compras, WMS, logística, manufatura, HCM, jurídico, projetos, ESG, BI, IA, SRE, DevSecOps, experiência multicanal e banco canônico.
+
+Arquivos criados
+Pacote completo recomendado
+
+Baixar pacote completo do Fluxo Mestre
+
+O ZIP contém:
+
+Fluxo_Mestre_GenesisGest_2026-07-19/
+├── FLUXO-MESTRE-CLINICO-GENESISGEST-2026-07-19.md
+├── INSTALAR-FLUXO-MESTRE-GENESISGEST.cmd
+├── MANIFESTO-FLUXO-MESTRE-GENESISGEST.txt
+├── SHA256SUMS-FLUXO-MESTRE.txt
+└── Fontes/
+    ├── CHECKLIST-CLINICO-GENESISGEST-2026-07-10.md
+    ├── ARVORE-REAL-E-META-GENESISGEST-2026-07-18.md
+    └── MATRIZ-PARIDADE-BANCO-WPF-2026-07-18.md
+Arquivos separados
+FLUXO-MESTRE-CLINICO-GENESISGEST-2026-07-19.md
+Baixar o instalador para o diretório solicitado
+MANIFESTO-FLUXO-MESTRE-GENESISGEST.txt
+SHA256SUMS-FLUXO-MESTRE.txt
+Conteúdo final entregue
+
+O documento possui aproximadamente 471 KB e 2.976 linhas, contendo:
+
+Conteúdo	Quantidade
+Tarefas sequenciais A-xxx	323
+Evidências históricas catalogadas	94
+Setores empresariais planejados	22
+Formulários catalogados	270
+Relatórios catalogados	149
+Gráficos e indicadores catalogados	120
+Processos automatizados catalogados	132
+Objetos Banco-WPF preservados	269
+Fontes integrais anexadas	3
+
+A sequência foi organizada assim:
+
+A-001 a A-094
+└── Evidências e intervenções históricas, na ordem documental registrada.
+
+A-095 a A-213
+└── UBD, WPFDB, WPF-VIS, B1-B14, CAP-01-CAP-15,
+    ferramentas do painel legado, falsos positivos e 37 linhas da DoD.
+
+A-214 a A-323
+└── Novos pacotes setoriais para completar integralmente o ecossistema.
+
+Cada setor recebeu:
+
+processos evolutivos;
+dependências;
+critério de abertura;
+critério de encerramento;
+percentual atingido;
+percentual ainda pendente;
+nível de atenção;
+formulários necessários;
+relatórios necessários;
+gráficos e indicadores;
+automações;
+gate de homologação.
+Fluxo operacional definido
+
+A execução foi estruturada para impedir dispersão:
+
+PENDENTE
+  -> PRONTO
+  -> ATIVO
+  -> RAMIFICAÇÃO_ATIVA
+  -> EM_VALIDACAO
+  -> CONCLUIDO
+
+Também foram definidos os estados:
+
+BLOQUEADO_EXTERNO
+REABERTO
+
+As regras principais são:
+
+Um único fluxo vertical crítico global por vez.
+No máximo uma tarefa-pai ativa em cada setor.
+Uma ramificação só pode ser aberta para fechar a tarefa-pai atual.
+A próxima onda não começa enquanto houver sucesso falso, risco de tenant, escrita sem auditoria ou perda de correlação.
+Uma integração bloqueada por credencial não é considerada concluída.
+Toda conclusão exige evidência operacional.
+Setores incluídos
+
+O planejamento abrange:
+
+S00 Governança, arquitetura e qualidade
+S01 Plataforma, IAM, SSO, tenants e segurança
+S02 GRC, auditoria, privacidade e conformidade
+S03 Master Data e estrutura multiempresarial
+S04 Financeiro e tesouraria
+S05 Contabilidade, controladoria e consolidação
+S06 Fiscal, tributário e obrigações legais
+S07 Comercial, vendas, preços e contratos
+S08 CRM, marketing, atendimento e Yara
+S09 E-commerce, portal, lojas e omnicanalidade
+S10 Marketplaces, dropshipping e parceiros
+S11 Compras, sourcing e fornecedores
+S12 Estoque, WMS e inventário
+S13 Logística, TMS, transporte e comércio exterior
+S14 Manufatura, PCP, MES, qualidade, manutenção e ativos
+S15 HCM, folha, ponto, saúde e segurança
+S16 Jurídico, riscos e ESG
+S17 Projetos, serviços, campo, facilities e patrimônio
+S18 BI, dados, MDM, analytics e IA
+S19 Integrações, SRE, DevSecOps, observabilidade e ITSM
+S20 Experiência WPF, React, mobile e acessibilidade
+S21 Unificação dos bancos e modelo canônico
+Percentuais e atenção setorial
+
+A média de maturidade de planejamento resultou em 44,5%, com lacuna média estimada de 55,5%. Esse indicador não substitui a medição clínica estrita de 22,6%; ele serve para ordenar tecnicamente os trabalhos.
+
+As áreas que exigem atenção crítica são:
+
+Fiscal e tributário
+Marketplaces e dropshipping
+Estoque e WMS
+Logística e transporte
+Manufatura, PCP, MES e manutenção
+HCM, folha e eSocial
+Jurídico, riscos e ESG
+Projetos, serviços e facilities
+Unificação dos bancos
+
+As áreas em atenção redobrada são:
+
+Contabilidade e controladoria
+GRC, auditoria e privacidade
+BI, dados e IA
+Experiência WPF/React/mobile
+
+A tabela completa contém, para cada setor:
+
+percentual atingido;
+percentual restante;
+justificativa baseada nas evidências;
+identificadores originais relacionados;
+nível de atenção;
+processos necessários para 100%.
+Árvore estrutural final
+
+O documento termina com a árvore do estado de conclusão, contemplando:
+
+governança e arquitetura;
+plataforma e segurança;
+GRC e privacidade;
+Master Data;
+financeiro e tesouraria;
+contabilidade e consolidação;
+fiscal e obrigações;
+comercial e CRM;
+e-commerce e marketplaces;
+compras e fornecedores;
+WMS e logística;
+manufatura e ativos;
+HCM;
+jurídico e ESG;
+projetos e facilities;
+BI, dados e IA;
+WPF, React, mobile e acessibilidade;
+integrações e observabilidade;
+DevSecOps e ITSM;
+banco canônico após UBD-01 a UBD-08.
+Instalação no diretório solicitado
+Baixe o ZIP completo.
+Extraia seu conteúdo.
+Execute:
+INSTALAR-FLUXO-MESTRE-GENESISGEST.cmd
+
+O instalador criará e preencherá:
+
+C:\Users\Rodrigo Costa\Desktop\Fluxo\Resultado
+
+Depois da cópia, ele:
+
+calcula o SHA-256 do arquivo instalado;
+compara o resultado com o hash esperado;
+gera CONFIRMACAO-INSTALACAO.txt;
+abre o diretório no Explorer.
+
+A execução do .cmd não pôde ser realizada neste ambiente Linux. A estrutura do pacote, os arquivos, os hashes e a integridade interna do ZIP foram validados.
+
+Integridade
+FLUXO-MESTRE-CLINICO-GENESISGEST-2026-07-19.md
+SHA-256:
+7ad4495f6d81a1b982110e6bbdfd1cc415e46f1c96964fb9f47fa36120fb916b
+
+Fluxo_Mestre_GenesisGest_2026-07-19.zip
+SHA-256:
+a7476efc16fe2903f6d930b1554bebd13de95349b0b0c89ea1388950a1eee59d
+Checklist de conferência
+Requisito	Status
+Manter o bloqueio operacional Yara 5.5	Concluído
+Analisar os três arquivos enviados	Concluído
+Usar o checklist clínico como arquivo principal	Concluído
+Criar novo arquivo na mesma extensão Markdown	Concluído
+Preservar integralmente o conteúdo original	Concluído em anexos literais
+Organizar tarefas concluídas	Concluído
+Organizar tarefas em andamento	Concluído
+Organizar tarefas pendentes	Concluído
+Preservar numerações originais	Concluído
+Criar numeração transversal A-xxx	Concluído, 323 tarefas
+Setorizar o fluxo empresarial	Concluído, 22 setores
+Evitar abertura desordenada de ramificações	Concluído pela máquina de estados
+Incluir todas as ferramentas adicionais necessárias	Concluído
+Listar formulários por setor	Concluído, 270 formulários
+Listar relatórios por setor	Concluído, 149 relatórios
+Listar gráficos por setor	Concluído, 120 gráficos
+Listar automações por setor	Concluído, 132 automações
+Incluir percentuais e lacunas	Concluído
+Indicar setores com atenção redobrada	Concluído
+Converter excelência e resultados em critérios mensuráveis	Concluído
+Criar a árvore estrutural final	Concluído
+Preparar instalação no caminho solicitado	Concluído via .cmd
+Modificar a raiz do projeto	Não realizado, conforme solicitado
+Modificar MySQL ou migrations	Não realizado
+Alterar os três arquivos originais	Não realizado

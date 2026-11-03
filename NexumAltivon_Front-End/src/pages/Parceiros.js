@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7190
+ * Versão: 1.1.5.7191
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -70,15 +70,15 @@ export default function Parceiros() {
   }, [pageCount, rotationSeconds]);
 
   return (
-    <main className="min-h-screen bg-[#050505] text-white">
+    <main className="min-h-screen min-w-0 overflow-x-hidden bg-[#050505] text-white">
       <section className="border-b border-white/10 px-4 py-14 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
           <p className="text-sm font-black uppercase tracking-[0.24em] text-[#E8D5A3]">Rede comercial</p>
-          <h1 className="mt-4 font-serif text-5xl font-bold text-[#C9A227]">Parceiros</h1>
+          <h1 className="mt-4 font-serif text-4xl font-bold text-[#C9A227] sm:text-5xl">Parceiros</h1>
           <p className="mt-5 max-w-3xl text-lg leading-8 text-zinc-300">Fornecedores, parceiros de compra e venda e marketplaces oficialmente publicados pelo Grupo Nexum Altivon.</p>
-          <div className="mt-8 flex flex-wrap gap-2" role="tablist" aria-label="Filtrar parceiros">
+          <div className="mt-8 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap" role="tablist" aria-label="Filtrar parceiros">
             {filters.map((item) => (
-              <button key={item.value} type="button" onClick={() => setFilter(item.value)} className={`rounded-full px-4 py-2 text-sm font-black transition ${filter === item.value ? 'bg-[#C9A227] text-black' : 'border border-white/15 text-zinc-300 hover:border-[#C9A227]'}`}>{item.label}</button>
+              <button key={item.value} type="button" onClick={() => setFilter(item.value)} className={`min-w-0 rounded-full px-3 py-2 text-sm font-black transition sm:px-4 ${filter === item.value ? 'bg-[#C9A227] text-black' : 'border border-white/15 text-zinc-300 hover:border-[#C9A227]'}`}>{item.label}</button>
             ))}
           </div>
         </div>
@@ -87,7 +87,7 @@ export default function Parceiros() {
       <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
         {loading && <div className="flex min-h-72 items-center justify-center"><LoaderCircle className="animate-spin text-[#C9A227]" size={34} /></div>}
         {!loading && error && <div className="rounded-lg border border-red-400/30 bg-red-500/10 p-5 text-sm font-bold text-red-100" role="alert">{error}</div>}
-        {!loading && !error && filteredPartners.length === 0 && <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-5 text-sm font-bold text-amber-100">Nenhum perfil desta categoria está publicado no momento.</div>}
+        {!loading && !error && filteredPartners.length === 0 && <div className="min-w-0 break-words rounded-lg border border-amber-400/30 bg-amber-500/10 p-5 text-sm font-bold leading-6 text-amber-100">Nenhum perfil desta categoria está publicado no momento.</div>}
         {!loading && !error && filteredPartners.length > 0 && (
           <>
             <div className="grid gap-7 md:grid-cols-2" data-testid="partner-rotation-grid">

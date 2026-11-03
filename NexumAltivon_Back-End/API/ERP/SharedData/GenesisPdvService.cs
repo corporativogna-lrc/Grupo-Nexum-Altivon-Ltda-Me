@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7243 Data: 30/10/2026
  */
 
 using System.Data;
@@ -92,6 +92,73 @@ public static class GenesisPdvService
     {
         ValidarVenda(request);
 
+        var itensNormalizados = new List<GenesisPdvVendaItemRequest>(request.Itens.Count);
+        foreach (var item in request.Itens)
+        {
+            var skuInformado = TrimOrNull(item.Sku) ?? TrimOrNull(item.ProdutoCodigo);
+            var produto = item.ProdutoNexumId.HasValue
+                ? await nexumDb.Produtos.FirstOrDefaultAsync(candidate => candidate.Id == item.ProdutoNexumId.Value, ct)
+                : null;
+            if (produto is null && !string.IsNullOrWhiteSpace(skuInformado))
+            {
+                produto = await nexumDb.Produtos.FirstOrDefaultAsync(
+                    candidate => candidate.Sku == skuInformado || candidate.CodigoBarras == skuInformado, ct);
+            }
+            if (produto is null || !produto.Ativo)
+            {
+                throw new ArgumentException($"O SKU {skuInformado ?? "(ausente)"} nao corresponde a um produto ativo cadastrado no catalogo Nexum.");
+            }
+            if (!string.IsNullOrWhiteSpace(skuInformado)
+                && !string.Equals(skuInformado, produto.Sku, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(skuInformado, produto.CodigoBarras, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException("O SKU enviado nao corresponde ao produto selecionado.");
+            }
+
+            var precoCatalogo = produto.PrecoPromocional ?? produto.Preco;
+            if (precoCatalogo <= 0m || Math.Abs(item.PrecoUnitario - precoCatalogo) > 0.01m)
+            {
+                throw new ArgumentException($"O preco de {produto.Nome} mudou. Recarregue o produto antes de finalizar.");
+            }
+            var descontoMaximo = item.Quantidade * precoCatalogo;
+            if (item.Desconto < 0m || item.Desconto > descontoMaximo)
+            {
+                throw new ArgumentException($"Desconto invalido para {produto.Nome}.");
+            }
+
+            itensNormalizados.Add(item with
+            {
+                ProdutoNexumId = produto.Id,
+                ProdutoCodigo = produto.Sku,
+                Sku = produto.Sku,
+                Descricao = produto.Nome,
+                PrecoUnitario = precoCatalogo,
+                CustoUnitario = produto.Custo
+            });
+        }
+
+        foreach (var grupo in itensNormalizados.GroupBy(item => item.ProdutoNexumId!.Value))
+        {
+            var produto = await nexumDb.Produtos.FirstAsync(candidate => candidate.Id == grupo.Key, ct);
+            var quantidade = grupo.Sum(item => item.Quantidade);
+            var disponivel = produto.EstoqueAtual - produto.EstoqueReservado;
+            if (disponivel < quantidade)
+            {
+                throw new ArgumentException($"Estoque insuficiente para {produto.Nome}. Disponivel: {Math.Max(0, disponivel)}.");
+            }
+        }
+
+        request = request with { Itens = itensNormalizados };
+
+        if (string.IsNullOrWhiteSpace(request.EmpresaCodigo))
+        {
+            throw new ArgumentException("Informe o codigo da empresa emissora; nao sera selecionada uma empresa padrao.");
+        }
+        if (string.IsNullOrWhiteSpace(request.Operador))
+        {
+            throw new ArgumentException("Informe o usuario operador do Genesis; nao sera selecionado um usuario padrao.");
+        }
+
         var subtotal = request.Itens.Sum(item => Math.Round(item.Quantidade * item.PrecoUnitario, 2, MidpointRounding.AwayFromZero));
         var desconto = Math.Max(0m, request.Desconto);
         var frete = Math.Max(0m, request.Frete);
@@ -109,15 +176,23 @@ public static class GenesisPdvService
         }
 
         GenesisPdvVendaSnapshot venda;
-        await using var transaction = await connection.BeginTransactionAsync(ct);
+        await using var transaction = await connection.BeginTransactionAsync(IsolationLevel.Serializable, ct);
         try
         {
             var empresaId = await ResolverEmpresaIdAsync(connection, transaction, request.EmpresaCodigo, ct);
             var usuarioId = await ResolverUsuarioIdAsync(connection, transaction, request.Operador, empresaId, ct);
-            var clienteId = await ResolverClienteGenesisAsync(connection, transaction, request, ct);
+            var cliente = await ResolverClienteGenesisAsync(connection, transaction, request, ct);
+            request = request with { ClienteNome = cliente.Nome, ClienteDocumento = cliente.Documento };
+            var clienteId = cliente.Id;
             var tabelaPrecoId = await ResolverTabelaPrecoAsync(connection, transaction, empresaId, ct);
             var contaReceitaId = await ResolverContaReceitaAsync(connection, transaction, ct);
             var depositoId = await ResolverDepositoAsync(connection, transaction, empresaId, ct);
+            if (await ScalarIntOrNullAsync(connection, transaction,
+                    "SELECT pdv_id FROM vnd_pedidos WHERE pdv_numero = @numero LIMIT 1;", ct,
+                    ("@numero", numero)).ConfigureAwait(false) is not null)
+            {
+                throw new ArgumentException($"A venda {numero} ja foi registrada. Consulte as vendas recentes antes de tentar novamente.");
+            }
             var pedidoId = await NextIdAsync(connection, transaction, "vnd_pedidos", "pdv_id", ct);
 
             await ExecuteAsync(
@@ -308,7 +383,8 @@ public static class GenesisPdvService
     {
         try
         {
-            var cliente = await ObterOuCriarClienteNexumAsync(nexumDb, venda, ct);
+            await using var transaction = await nexumDb.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            var cliente = await ResolverClienteNexumAsync(nexumDb, venda, ct);
             var pedido = new Pedido
             {
                 NumeroPedido = venda.Numero.Length > 20 ? venda.Numero[..20] : venda.Numero,
@@ -340,11 +416,21 @@ public static class GenesisPdvService
             {
                 var produto = await ResolverProdutoNexumAsync(nexumDb, item, ct);
                 var quantidade = Math.Max(1, (int)Math.Ceiling(item.Quantidade));
-                if (produto is not null)
+                if (produto is null || !produto.Ativo)
                 {
-                    produto.EstoqueAtual = Math.Max(0, produto.EstoqueAtual - quantidade);
-                    produto.EstoqueReservado = Math.Max(0, produto.EstoqueReservado - quantidade);
-                    produto.UpdatedAt = DateTime.UtcNow;
+                    throw new InvalidOperationException($"Produto/SKU {item.Sku ?? item.ProdutoCodigo ?? item.ProdutoNexumId?.ToString() ?? "(sem identificação)"} não está ativo no catálogo Nexum.");
+                }
+
+                var estoqueAtualizado = await nexumDb.Produtos
+                    .Where(candidato => candidato.Id == produto.Id
+                        && candidato.Ativo
+                        && candidato.EstoqueAtual - candidato.EstoqueReservado >= quantidade)
+                    .ExecuteUpdateAsync(atualizacao => atualizacao
+                        .SetProperty(candidato => candidato.EstoqueAtual, candidato => candidato.EstoqueAtual - quantidade)
+                        .SetProperty(candidato => candidato.UpdatedAt, DateTime.UtcNow), ct);
+                if (estoqueAtualizado != 1)
+                {
+                    throw new InvalidOperationException($"Estoque disponível insuficiente no catálogo Nexum para o SKU {produto.Sku}.");
                 }
 
                 nexumDb.PedidoItens.Add(new PedidoItem
@@ -402,6 +488,7 @@ public static class GenesisPdvService
             });
 
             await nexumDb.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
 
             venda.ClienteNexumId = cliente.Id;
             venda.PedidoNexumId = pedido.Id;
@@ -414,48 +501,29 @@ public static class GenesisPdvService
         }
     }
 
-    private static async Task<Cliente> ObterOuCriarClienteNexumAsync(NexumDbContext nexumDb, GenesisPdvVendaSnapshot venda, CancellationToken ct)
+    private static async Task<Cliente> ResolverClienteNexumAsync(NexumDbContext nexumDb, GenesisPdvVendaSnapshot venda, CancellationToken ct)
     {
         if (venda.ClienteNexumId.HasValue)
         {
-            var clientePorId = await nexumDb.Clientes.FirstOrDefaultAsync(item => item.Id == venda.ClienteNexumId.Value, ct);
+            var clientePorId = await nexumDb.Clientes.FirstOrDefaultAsync(item => item.Id == venda.ClienteNexumId.Value && item.Status == StatusCliente.Ativo, ct);
             if (clientePorId is not null) return clientePorId;
         }
 
         var documento = OnlyDigits(venda.ClienteDocumento);
         if (!string.IsNullOrWhiteSpace(documento))
         {
-            var clientePorDocumento = await nexumDb.Clientes.FirstOrDefaultAsync(item => item.CpfCnpj == documento, ct);
+            var clientePorDocumento = await nexumDb.Clientes.FirstOrDefaultAsync(item => item.CpfCnpj == documento && item.Status == StatusCliente.Ativo, ct);
             if (clientePorDocumento is not null) return clientePorDocumento;
         }
 
-        var email = TrimOrNull(venda.ClienteEmail);
+        var email = TrimOrNull(venda.ClienteEmail)?.ToLowerInvariant();
         if (!string.IsNullOrWhiteSpace(email))
         {
-            var clientePorEmail = await nexumDb.Clientes.FirstOrDefaultAsync(item => item.Email == email, ct);
+            var clientePorEmail = await nexumDb.Clientes.FirstOrDefaultAsync(item => item.Email == email && item.Status == StatusCliente.Ativo, ct);
             if (clientePorEmail is not null) return clientePorEmail;
         }
 
-        email ??= !string.IsNullOrWhiteSpace(documento)
-            ? $"pdv.{documento}@nexumaltivon.local"
-            : $"pdv.{Guid.NewGuid():N}@nexumaltivon.local";
-
-        var cliente = new Cliente
-        {
-            Tipo = string.IsNullOrWhiteSpace(documento) || documento.Length <= 11 ? TipoCliente.PF : TipoCliente.PJ,
-            Nome = venda.ClienteNome,
-            Email = email,
-            CpfCnpj = documento,
-            Newsletter = false,
-            Vip = false,
-            Status = StatusCliente.Ativo,
-            ConfirmadoEm = DateTime.UtcNow,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-        nexumDb.Clientes.Add(cliente);
-        await nexumDb.SaveChangesAsync(ct);
-        return cliente;
+        throw new InvalidOperationException("Cliente não encontrado como cadastro ativo no Nexum. Cadastre ou vincule o cliente antes de espelhar a venda do PDV.");
     }
 
     private static async Task<Produto?> ResolverProdutoNexumAsync(NexumDbContext nexumDb, GenesisPdvVendaItemSnapshot item, CancellationToken ct)
@@ -475,111 +543,75 @@ public static class GenesisPdvService
     private static async Task<int> ResolverEmpresaIdAsync(DbConnection connection, DbTransaction transaction, string? empresaCodigo, CancellationToken ct)
     {
         var code = TrimOrNull(empresaCodigo);
-        if (!string.IsNullOrWhiteSpace(code))
+        if (string.IsNullOrWhiteSpace(code))
         {
-            var found = await ScalarIntOrNullAsync(
-                connection,
-                transaction,
-                """
-                SELECT emp_id
-                FROM adm_empresas
-                WHERE emp_ativo = 1
-                  AND (emp_cnpj = @codigo OR emp_nome_fantasia = @codigo OR emp_razao_social = @codigo)
-                ORDER BY emp_matriz DESC, emp_id
-                LIMIT 1;
-                """,
-                ct,
-                ("@codigo", code));
-            if (found.HasValue) return found.Value;
+            throw new ArgumentException("Codigo da empresa emissora obrigatorio.");
         }
 
         return await ScalarIntOrNullAsync(
             connection,
             transaction,
-            "SELECT emp_id FROM adm_empresas WHERE emp_ativo = 1 ORDER BY emp_matriz DESC, emp_id LIMIT 1;",
-            ct) ?? 1;
+            """
+            SELECT emp_id FROM adm_empresas
+            WHERE emp_ativo = 1
+              AND (emp_cnpj = @codigo OR emp_nome_fantasia = @codigo OR emp_razao_social = @codigo)
+            LIMIT 1;
+            """,
+            ct,
+            ("@codigo", code)) ?? throw new ArgumentException($"Empresa emissora '{code}' nao encontrada ou inativa. Nenhuma empresa padrao foi selecionada.");
     }
 
     private static async Task<int> ResolverUsuarioIdAsync(DbConnection connection, DbTransaction transaction, string? operador, int empresaId, CancellationToken ct)
     {
         var login = TrimOrNull(operador);
-        if (!string.IsNullOrWhiteSpace(login))
+        if (string.IsNullOrWhiteSpace(login))
         {
-            var found = await ScalarIntOrNullAsync(
-                connection,
-                transaction,
-                """
-                SELECT usr_id
-                FROM adm_usuarios
-                WHERE usr_ativo = 1
-                  AND (usr_login = @login OR usr_email = @login OR usr_nome = @login)
-                ORDER BY CASE WHEN usr_emp_id = @empresaId THEN 0 ELSE 1 END, usr_id
-                LIMIT 1;
-                """,
-                ct,
-                ("@login", login),
-                ("@empresaId", empresaId));
-            if (found.HasValue) return found.Value;
+            throw new ArgumentException("Usuario operador obrigatorio.");
         }
 
         return await ScalarIntOrNullAsync(
             connection,
             transaction,
-            "SELECT usr_id FROM adm_usuarios WHERE usr_ativo = 1 ORDER BY CASE WHEN usr_emp_id = @empresaId THEN 0 ELSE 1 END, usr_id LIMIT 1;",
+            """
+            SELECT usr_id FROM adm_usuarios
+            WHERE usr_ativo = 1
+              AND (usr_login = @login OR usr_email = @login OR usr_nome = @login)
+              AND (usr_emp_id = @empresaId OR usr_emp_id IS NULL)
+            LIMIT 1;
+            """,
             ct,
-            ("@empresaId", empresaId)) ?? 1;
+            ("@login", login),
+            ("@empresaId", empresaId)) ?? throw new ArgumentException($"Usuario operador '{login}' nao encontrado ou inativo na empresa selecionada.");
     }
 
-    private static async Task<int> ResolverClienteGenesisAsync(DbConnection connection, DbTransaction transaction, GenesisPdvVendaRequest request, CancellationToken ct)
+    private static async Task<(int Id, string Nome, string Documento)> ResolverClienteGenesisAsync(DbConnection connection, DbTransaction transaction, GenesisPdvVendaRequest request, CancellationToken ct)
     {
         var documento = OnlyDigits(request.ClienteDocumento);
-        if (!string.IsNullOrWhiteSpace(documento))
+        if (string.IsNullOrWhiteSpace(documento))
         {
-            var found = await ScalarIntOrNullAsync(
-                connection,
-                transaction,
-                "SELECT pes_id FROM adm_pessoas_empresas WHERE pes_cpf_cnpj = @documento LIMIT 1;",
-                ct,
-                ("@documento", documento));
-            if (found.HasValue) return found.Value;
+            throw new ArgumentException("CPF/CNPJ de cliente cadastrado obrigatorio para venda PDV.");
         }
 
-        var email = TrimOrNull(request.ClienteEmail)?.ToLowerInvariant();
-        if (!string.IsNullOrWhiteSpace(email))
-        {
-            var found = await ScalarIntOrNullAsync(
-                connection,
-                transaction,
-                "SELECT pes_id FROM adm_pessoas_empresas WHERE pes_email = @email LIMIT 1;",
-                ct,
-                ("@email", email));
-            if (found.HasValue) return found.Value;
-        }
-
-        var id = await NextIdAsync(connection, transaction, "adm_pessoas_empresas", "pes_id", ct);
-        await ExecuteAsync(
+        await using var command = CreateCommand(
             connection,
             transaction,
             """
-            INSERT INTO adm_pessoas_empresas
-                (pes_id, pes_tipo, pes_nome_razao, pes_nome_fantasia, pes_cpf_cnpj, pes_rg_ie,
-                 pes_cliente, pes_fornecedor, pes_colaborador, pes_transportadora,
-                 pes_email, pes_observacoes, pes_ativo)
-            VALUES
-                (@id, @tipo, @nome, @fantasia, @documento, NULL,
-                 1, 0, 0, 0,
-                 @email, @observacoes, 1);
+            SELECT pes_id, pes_nome_razao, pes_cpf_cnpj
+            FROM adm_pessoas_empresas
+            WHERE REPLACE(REPLACE(REPLACE(REPLACE(pes_cpf_cnpj, '.', ''), '-', ''), '/', ''), ' ', '') = @documento
+              AND pes_ativo = 1 AND pes_cliente = 1
+            LIMIT 1;
             """,
-            ct,
-            ("@id", id),
-            ("@tipo", string.IsNullOrWhiteSpace(documento) || documento.Length <= 11 ? "FISICA" : "JURIDICA"),
-            ("@nome", request.ClienteNome.Trim()),
-            ("@fantasia", request.ClienteNome.Trim()),
-            ("@documento", documento),
-            ("@email", email),
-            ("@observacoes", "Cliente criado automaticamente por venda PDV/online."));
+            ("@documento", documento));
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+        {
+            throw new ArgumentException("Cliente nao encontrado. Cadastre-o antes da venda; o PDV nao cria cadastros implicitamente.");
+        }
 
-        return id;
+        return (GetInt(reader, "pes_id"),
+            GetString(reader, "pes_nome_razao") ?? throw new ArgumentException("O cliente cadastrado nao possui nome/razao social."),
+            GetString(reader, "pes_cpf_cnpj") ?? documento);
     }
 
     private static async Task<int> ResolverTabelaPrecoAsync(DbConnection connection, DbTransaction transaction, int empresaId, CancellationToken ct) =>
@@ -594,7 +626,7 @@ public static class GenesisPdvService
             LIMIT 1;
             """,
             ct,
-            ("@empresaId", empresaId)) ?? 1;
+            ("@empresaId", empresaId)) ?? throw new ArgumentException($"A empresa {empresaId} nao possui tabela de preco ativa.");
 
     private static async Task<int> ResolverContaReceitaAsync(DbConnection connection, DbTransaction transaction, CancellationToken ct) =>
         await ScalarIntOrNullAsync(
@@ -607,7 +639,7 @@ public static class GenesisPdvService
             ORDER BY CASE WHEN pct_classe = 'RECEITA' THEN 0 ELSE 1 END, pct_id
             LIMIT 1;
             """,
-            ct) ?? 1;
+            ct) ?? throw new ArgumentException("Nenhuma conta de receita ativa foi configurada para a venda.");
 
     private static async Task<int?> ResolverDepositoAsync(DbConnection connection, DbTransaction transaction, int empresaId, CancellationToken ct) =>
         await ScalarIntOrNullAsync(
@@ -621,7 +653,7 @@ public static class GenesisPdvService
             LIMIT 1;
             """,
             ct,
-            ("@empresaId", empresaId));
+            ("@empresaId", empresaId)) ?? throw new ArgumentException($"A empresa {empresaId} nao possui deposito ativo para movimentacao de estoque.");
 
     private static async Task<int> ResolverItemGenesisAsync(DbConnection connection, DbTransaction transaction, GenesisPdvVendaItemRequest item, int empresaId, int sequencia, CancellationToken ct)
     {

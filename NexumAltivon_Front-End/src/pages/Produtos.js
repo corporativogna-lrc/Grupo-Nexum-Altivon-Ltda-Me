@@ -39,6 +39,11 @@ export default function Produtos() {
   const [produtos, setProdutos] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [paginaAtual, setPaginaAtual] = useState(1);
+  const [totalPaginas, setTotalPaginas] = useState(1);
+  const [totalRegistros, setTotalRegistros] = useState(0);
+  const [erroCarregarMais, setErroCarregarMais] = useState('');
   const [searchTerm, setSearchTerm] = useState(params.get('busca') || '');
   const [selectedCategory, setSelectedCategory] = useState(params.get('categoria') || '');
   const [sortBy, setSortBy] = useState('destaque');
@@ -46,13 +51,14 @@ export default function Produtos() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setErroCarregarMais('');
     try {
       const [produtosRes, categoriasRes] = await Promise.all([
         produtoAPI.getAll({
           pagina: 1,
           itensPorPagina: 60,
           busca: searchTerm.trim() || undefined,
-          categoriaId: selectedCategory || undefined,
+          categoria_id: selectedCategory || undefined,
         }),
         categoriaAPI.getAll(),
       ]);
@@ -60,16 +66,50 @@ export default function Produtos() {
       const categoriasData = unwrapApiData(categoriasRes.data);
       setProdutos(Array.isArray(produtosData) ? produtosData.filter(isProdutoPublicavel) : []);
       setCategorias(Array.isArray(categoriasData) ? categoriasData : []);
+      setPaginaAtual(1);
+      setTotalPaginas(Math.max(1, produtosRes.pagination?.totalPaginas || 1));
+      setTotalRegistros(produtosRes.pagination?.totalRegistros || (Array.isArray(produtosData) ? produtosData.length : 0));
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
         console.error('Erro:', error);
       }
       setProdutos([]);
       setCategorias([]);
+      setPaginaAtual(1);
+      setTotalPaginas(1);
+      setTotalRegistros(0);
     } finally {
       setLoading(false);
     }
   }, [searchTerm, selectedCategory]);
+
+  const loadNextPage = useCallback(async () => {
+    if (loadingMore || paginaAtual >= totalPaginas) return;
+    const nextPage = paginaAtual + 1;
+    setLoadingMore(true);
+    setErroCarregarMais('');
+    try {
+      const response = await produtoAPI.getAll({
+        pagina: nextPage,
+        itensPorPagina: 60,
+        busca: searchTerm.trim() || undefined,
+        categoria_id: selectedCategory || undefined,
+      });
+      const pageItems = unwrapApiData(response.data);
+      if (!Array.isArray(pageItems)) throw new Error('A API retornou uma página de produtos em formato inválido.');
+      setProdutos((current) => {
+        const knownIds = new Set(current.map((product) => String(product.id)));
+        return [...current, ...pageItems.filter((product) => isProdutoPublicavel(product) && !knownIds.has(String(product.id)))];
+      });
+      setPaginaAtual(nextPage);
+      setTotalPaginas(Math.max(1, response.pagination?.totalPaginas || totalPaginas));
+      setTotalRegistros(response.pagination?.totalRegistros || totalRegistros);
+    } catch (error) {
+      setErroCarregarMais(error?.message || 'Não foi possível carregar a próxima página de produtos.');
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, paginaAtual, searchTerm, selectedCategory, totalPaginas, totalRegistros]);
 
   useEffect(() => {
     loadData();
@@ -129,7 +169,7 @@ export default function Produtos() {
             </div>
             <div className="grid grid-cols-3 gap-3 rounded-2xl border border-[#2A2A2A] bg-black/40 p-3 text-center backdrop-blur">
               <div>
-                <p className="text-2xl font-black text-[#C9A227]">{filteredProdutos.length}</p>
+                <p className="text-2xl font-black text-[#C9A227]">{filteredProdutos.length}{totalRegistros > filteredProdutos.length ? ` / ${totalRegistros}` : ''}</p>
                 <p className="text-xs font-bold uppercase text-[#A0A0A0]">produtos</p>
               </div>
               <div>
@@ -239,11 +279,26 @@ export default function Produtos() {
           )}
 
           {!loading && filteredProdutos.length > 0 && (
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3" data-testid="produtos-grid">
-              {filteredProdutos.map((produto) => (
-                <ProductCard key={produto.id} product={produto} />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3" data-testid="produtos-grid">
+                {filteredProdutos.map((produto) => (
+                  <ProductCard key={produto.id} product={produto} />
+                ))}
+              </div>
+              {paginaAtual < totalPaginas && (
+                <div className="mt-8 flex flex-col items-center gap-3">
+                  {erroCarregarMais && <p className="text-sm font-bold text-rose-300" role="alert">{erroCarregarMais}</p>}
+                  <button
+                    type="button"
+                    onClick={loadNextPage}
+                    disabled={loadingMore}
+                    className="rounded-full border border-[#C9A227] px-7 py-3 text-sm font-black text-[#C9A227] transition hover:bg-[#C9A227] hover:text-black disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {loadingMore ? 'Carregando produtos…' : `Carregar mais produtos (${Math.max(0, totalRegistros - produtos.length)} restantes)`}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </section>

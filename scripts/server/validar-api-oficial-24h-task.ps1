@@ -13,7 +13,8 @@ param(
     [string]$ApiUrl = "http://127.0.0.1:5010",
     [string]$PublicApiUrl = "https://api.nexumaltivon.com.br",
     [string]$DatabaseServiceName = "NexumAltivonMySQL",
-    [string]$TunnelServiceName = "Cloudflared"
+    [string]$TunnelServiceName = "Cloudflared",
+    [switch]$LocalOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -122,7 +123,7 @@ $scheduleService = Get-ServiceEvidence -Name "Schedule"
 $databaseService = Get-ServiceEvidence -Name $DatabaseServiceName
 $tunnelService = Get-ServiceEvidence -Name $TunnelServiceName
 
-foreach ($serviceEvidence in @($scheduleService, $databaseService, $tunnelService)) {
+foreach ($serviceEvidence in @($scheduleService, $databaseService)) {
     if (-not $serviceEvidence.Exists) {
         $validationErrors.Add("Servico obrigatorio '$($serviceEvidence.Name)' nao esta instalado.")
         continue
@@ -134,6 +135,18 @@ foreach ($serviceEvidence in @($scheduleService, $databaseService, $tunnelServic
 
     if ($serviceEvidence.StartMode -ne "Auto") {
         $validationErrors.Add("Servico obrigatorio '$($serviceEvidence.Name)' nao esta Automatic. StartMode=$($serviceEvidence.StartMode).")
+    }
+}
+
+if (-not $LocalOnly -and -not $tunnelService.Exists) {
+    $validationErrors.Add("Servico obrigatorio '$TunnelServiceName' nao esta instalado.")
+} elseif (-not $LocalOnly) {
+    if ($tunnelService.Status -ne "Running") {
+        $validationErrors.Add("Servico obrigatorio '$TunnelServiceName' nao esta Running. Estado=$($tunnelService.Status).")
+    }
+
+    if ($tunnelService.StartMode -ne "Auto") {
+        $validationErrors.Add("Servico obrigatorio '$TunnelServiceName' nao esta Automatic. StartMode=$($tunnelService.StartMode).")
     }
 }
 
@@ -221,9 +234,13 @@ $endpointResults = @(
     Test-OfficialEndpoint -Endpoint "$ApiUrl/health/db"
     Test-OfficialEndpoint -Endpoint "$ApiUrl/health/db/genesis"
     Test-OfficialEndpoint -Endpoint "$ApiUrl/api/site/configuracoes/publico"
-    Test-OfficialEndpoint -Endpoint "$($PublicApiUrl.TrimEnd('/'))/health"
-    Test-OfficialEndpoint -Endpoint "$($PublicApiUrl.TrimEnd('/'))/api/site/configuracoes/publico"
 )
+if (-not $LocalOnly) {
+    $endpointResults += @(
+        Test-OfficialEndpoint -Endpoint "$($PublicApiUrl.TrimEnd('/'))/health"
+        Test-OfficialEndpoint -Endpoint "$($PublicApiUrl.TrimEnd('/'))/api/site/configuracoes/publico"
+    )
+}
 
 foreach ($endpointResult in $endpointResults) {
     if (-not $endpointResult.Succeeded) {
@@ -235,6 +252,8 @@ $result = [pscustomobject]@{
     CheckedAt = (Get-Date).ToString("s")
     ValidationSucceeded = ($validationErrors.Count -eq 0)
     ValidationErrors = ($validationErrors -join " | ")
+    LocalOnly = $LocalOnly.IsPresent
+    PublicValidationSkipped = $LocalOnly.IsPresent
     ProjectRoot = $resolvedProjectRoot
     ProjectDriveType = if ($logicalDisk) { $logicalDisk.DriveType } else { $null }
     TaskName = if ($task) { $task.TaskName } else { $TaskName }

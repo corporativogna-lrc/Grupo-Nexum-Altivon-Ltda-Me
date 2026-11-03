@@ -5,7 +5,7 @@
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
  * Versão: 1.1.5
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Eye, EyeOff, LogIn } from 'lucide-react';
@@ -20,6 +20,20 @@ export default function Login() {
   const [showSenha, setShowSenha] = useState(false);
   const [mfaRequired, setMfaRequired] = useState(false);
   const [mfaCode, setMfaCode] = useState('');
+  const [keepPassword, setKeepPassword] = useState(false);
+
+  useEffect(() => {
+    if (!window.isSecureContext || !navigator.credentials?.get) return;
+    navigator.credentials.get({ password: true, mediation: 'optional' })
+      .then((credential) => {
+        if (credential?.type === 'password') {
+          setEmail(credential.id || '');
+          setSenha(credential.password || '');
+          setKeepPassword(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -29,6 +43,15 @@ export default function Login() {
     const result = await login(email, senha, mfaCode.trim());
 
     if (result.success) {
+      if (keepPassword && window.isSecureContext && window.PasswordCredential && navigator.credentials?.store) {
+        try {
+          await navigator.credentials.store(new window.PasswordCredential({ id: email.trim(), password: senha }));
+        } catch {
+          window.alert('Login efetuado. O navegador não conseguiu salvar a senha; use o gerenciador de senhas do navegador.');
+        }
+      } else if (keepPassword) {
+        window.alert('Login efetuado. Este navegador não oferece salvamento seguro de senha pelo site; use o gerenciador de senhas do navegador.');
+      }
       navigate(result.destination || '/dashboard');
     } else {
       setMfaRequired(Boolean(result.mfaRequired));
@@ -49,7 +72,7 @@ export default function Login() {
           <p className="mt-2 text-gray-300">Clientes seguem para a área do cliente. Equipe administrativa entra no GenesisGest.Net.</p>
         </div>
 
-        <form className="bg-white p-8 rounded-2xl shadow-2xl space-y-6" onSubmit={handleSubmit}>
+        <form id="nexum-login-form" className="bg-white p-8 rounded-2xl shadow-2xl space-y-6" onSubmit={handleSubmit}>
           {error && (
             <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded" data-testid="login-error">
               {error}
@@ -60,6 +83,8 @@ export default function Login() {
             <label className="block text-sm font-semibold text-gray-700 mb-2">Email</label>
             <input
               type="email"
+              name="username"
+              autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -74,6 +99,8 @@ export default function Login() {
             <div className="flex items-center gap-2 rounded-lg border border-gray-300 focus-within:ring-2 focus-within:ring-amber-500">
               <input
                 type={showSenha ? 'text' : 'password'}
+                name="password"
+                autoComplete="current-password"
                 value={senha}
                 onChange={(e) => setSenha(e.target.value)}
                 required
@@ -92,6 +119,19 @@ export default function Login() {
               </button>
             </div>
           </div>
+
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={keepPassword}
+              onChange={(event) => {
+                const checked = event.target.checked;
+                setKeepPassword(checked);
+                if (!checked) Promise.resolve(navigator.credentials?.preventSilentAccess?.()).catch(() => {});
+              }}
+            />
+            Manter senha salva neste navegador
+          </label>
 
           {mfaRequired && (
             <div>

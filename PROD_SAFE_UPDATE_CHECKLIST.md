@@ -1,59 +1,41 @@
 # Checklist de atualizacao segura em producao
 
-Objetivo: toda alteracao publicada em producao deve ser validada antes e depois da subida, sem derrubar o site, a API ou o painel operacional.
+Objetivo: validar cada alteracao antes e depois da publicacao, sem derrubar o site, a API ou o painel operacional.
 
-## 1) Antes de publicar
+## Antes de publicar
 
-- Confirmar escopo exato da alteracao.
-- Gerar backup local atualizado quando a alteracao mexer em deploy, API, banco, DNS ou painel.
-- Rodar build local do front-end:
-  - `npm run build` em `NexumAltivon_Front-End`.
-- Rodar publish local da API quando houver alteracao no backend:
-  - `dotnet publish NexumAltivon_Back-End\NexumAltivon.API.csproj -c Release`.
+- Confirmar o escopo exato e preservar alteracoes locais preexistentes.
+- Gerar backup atualizado antes de alterar deploy, API, banco, DNS ou painel.
+- Executar o build do frontend no diretorio `NexumAltivon_Front-End`.
+- Executar `dotnet publish` da API em Release quando houver mudanca no backend.
 - Conferir que nenhum segredo real foi versionado.
-- Conferir se URLs publicas estao corretas:
-  - Front-end deve chamar `https://api.nexumaltivon.com`.
-  - Login deve usar `/api/auth/login`.
+- Confirmar a URL canonica do site: `https://nexumaltivon.com.br`.
+- Confirmar a API: `https://api.nexumaltivon.com.br` e o endpoint de login `/api/auth/login`.
+- Usar a publicacao oficial existente e registrar o commit publicado.
 
-## 2) Publicacao
+## Depois de publicar
 
-- Publicar primeiro o front-end quando a alteracao for visual ou de apontamento da API.
-- Publicar API separadamente quando houver alteracao de backend.
-- Evitar trocar DNS junto com codigo, salvo quando isso for o objetivo da etapa.
-- Manter uma versao anterior pronta para rollback.
+Validar fora do ambiente local:
 
-## 3) Depois de publicar
+- `https://nexumaltivon.com.br/` retorna HTTP 200.
+- `https://nexumaltivon.com.br/login` e validado no navegador; o HTTP direto pode depender do roteamento SPA de GitHub Pages.
+- `https://api.nexumaltivon.com.br/health` retorna HTTP 200.
+- `https://api.nexumaltivon.com.br/health/db` e `/health/db/genesis` retornam sucesso.
+- Preflight CORS do site para a API permite o fluxo de login.
+- Login e sessao sao verificados com credencial autorizada, sem registrar senha em log.
+- Conferir console/rede do navegador e o carregamento de assets.
+- No Desktop, compilar a solucao completa, gerar o pacote oficial, instalar e abrir o executavel; validar login/API e modulos preservados.
 
-Testar fora do ambiente local:
+Nao inserir cadastros artificiais em producao. Para testar escrita, usar somente dado controlado explicitamente autorizado, registrar identificador e remover de forma verificavel ao final. Os registros de login/usuario e cadastro de empresas existentes sao dados uteis e devem ser preservados.
 
-- `https://www.nexumaltivon.com`
-- `https://www.nexumaltivon.com/login`
-- `https://api.nexumaltivon.com/`
-- `https://api.nexumaltivon.com/health`
+## Se algo falhar
 
-Validar no painel:
+- Interromper novas publicacoes e localizar a falha em DNS, frontend, API, banco, CORS, credenciais ou empacotamento Desktop.
+- Nao efetuar rollback destrutivo sem identificar o artefato anterior e preservar o estado atual.
+- Registrar evidencia, causa, correcao e resultado no checklist do projeto.
 
-- Login administrativo.
-- Abrir dashboard.
-- Listar produtos.
-- Cadastrar um produto de teste controlado.
-- Cadastrar cliente de teste controlado.
-- Cadastrar fornecedor de teste controlado.
-- Cadastrar lead de teste controlado.
+## Configuracao de producao
 
-## 4) Se algo falhar
-
-- Nao continuar novas alteracoes.
-- Identificar se a falha esta em DNS, front-end, API, banco ou senha/variavel de ambiente.
-- Fazer rollback para o ultimo pacote funcional.
-- Registrar o erro e a acao tomada antes de tentar nova publicacao.
-
-## 5) Variaveis obrigatorias da API em producao
-
-- `AdminUser__Email`
-- `AdminUser__Password`
-- `AdminUser__Name`
-- `AdminUser__Role`
-- `JwtSettings__SecretKey`
-- `ConnectionStrings__DefaultConnection`
-
+- Usar as variaveis efetivamente exigidas pela configuracao da API publicada.
+- Nao documentar valores de segredo nem presumir nomes de configuracao sem conferir o codigo e o arquivo privado de runtime.
+- Configuracoes locais privadas permanecem fora do Git.

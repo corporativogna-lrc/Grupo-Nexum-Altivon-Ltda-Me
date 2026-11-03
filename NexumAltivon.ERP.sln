@@ -15,6 +15,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NexumAltivon_ERP", "NexumAl
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NexumAltivon.API.Tests", "NexumAltivon_Back-End\NexumAltivon.API.Tests.csproj", "{30A4CD5E-2C22-40A4-B181-A851D0A3F02F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SandboxViewer", "..\SandboxViewer\SandboxViewer.csproj", "{6AE1E59E-C786-4567-9840-4A522D8A195F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -85,6 +87,18 @@ Global
 		{30A4CD5E-2C22-40A4-B181-A851D0A3F02F}.Release|x64.Build.0 = Release|Any CPU
 		{30A4CD5E-2C22-40A4-B181-A851D0A3F02F}.Release|x86.ActiveCfg = Release|Any CPU
 		{30A4CD5E-2C22-40A4-B181-A851D0A3F02F}.Release|x86.Build.0 = Release|Any CPU
+		{6AE1E59E-C786-4567-9840-4A522D8A195F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6AE1E59E-C786-4567-9840-4A522D8A195F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6AE1E59E-C786-4567-9840-4A522D8A195F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{6AE1E59E-C786-4567-9840-4A522D8A195F}.Debug|x64.Build.0 = Debug|Any CPU
+		{6AE1E59E-C786-4567-9840-4A522D8A195F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{6AE1E59E-C786-4567-9840-4A522D8A195F}.Debug|x86.Build.0 = Debug|Any CPU
+		{6AE1E59E-C786-4567-9840-4A522D8A195F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6AE1E59E-C786-4567-9840-4A522D8A195F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6AE1E59E-C786-4567-9840-4A522D8A195F}.Release|x64.ActiveCfg = Release|Any CPU
+		{6AE1E59E-C786-4567-9840-4A522D8A195F}.Release|x64.Build.0 = Release|Any CPU
+		{6AE1E59E-C786-4567-9840-4A522D8A195F}.Release|x86.ActiveCfg = Release|Any CPU
+		{6AE1E59E-C786-4567-9840-4A522D8A195F}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

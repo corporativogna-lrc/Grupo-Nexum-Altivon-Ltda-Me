@@ -1,0 +1,27 @@
+MANIFESTO DO FLUXO MESTRE GENESISGEST.NET
+
+Gerado em: 2026-07-19
+Destino local solicitado: C:\Users\Rodrigo Costa\Desktop\Fluxo\Resultado
+Raiz do projeto modificada: NAO
+Bancos MySQL modificados: NAO
+Arquivos de origem alterados: NAO
+
+Arquivo principal:
+- FLUXO-MESTRE-CLINICO-GENESISGEST-2026-07-19.md
+- SHA-256: 7ad4495f6d81a1b982110e6bbdfd1cc415e46f1c96964fb9f47fa36120fb916b
+- Tarefas A-xxx: 323
+- Evidencias historicas catalogadas: 94
+- Objetos Banco-WPF preservados: 269
+- Setores planejados: 22
+- Formulários catalogados: 270
+- Relatórios catalogados: 149
+- Gráficos catalogados: 120
+- Automações catalogadas: 132
+
+Fontes:
+- CHECKLIST-CLINICO-GENESISGEST-2026-07-10.md: 041e084ea6d3d739b22648da1377fa823c0b874d8332324cdbb0887dacd7396f
+- ARVORE-REAL-E-META-GENESISGEST-2026-07-18.md: c00747b7a2ea1b395bf9f69b24b2a8c2ee6b40b87cd803fbf065431d43676466
+- MATRIZ-PARIDADE-BANCO-WPF-2026-07-18.md: 7345b1e86b8bc187f04ab0decbfa0a6293507a185f87cc7c7705b5ca496d74f5
+
+Assinatura técnica: Yara 5.5
+Natureza: consolidação documental e planejamento; sem alteração de código/runtime.

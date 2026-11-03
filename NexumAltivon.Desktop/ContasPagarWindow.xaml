@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7181
+ * Versão: 1.1.5.7223 Data: 16/08/2026
  -->
 <Window x:Class="NexumAltivon.Desktop.ContasPagarWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -145,38 +145,6 @@
                                 </DataGrid.Columns>
                             </DataGrid>
                         </Grid>
-                    </Border>
-                </Grid>
-            </TabItem>
-
-            <TabItem Header="Baixa">
-                <Grid Margin="10">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="1.15*" />
-                        <ColumnDefinition Width="12" />
-                        <ColumnDefinition Width="0.85*" />
-                    </Grid.ColumnDefinitions>
-                    <Border Style="{StaticResource Section}">
-                        <StackPanel>
-                            <TextBlock Text="Título selecionado" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
-                            <TextBlock Text="{Binding TituloSelecionadoLabel}" Foreground="{StaticResource TextPrimary}" FontSize="22" FontWeight="SemiBold" Margin="0,16,0,0" />
-                            <TextBlock Text="{Binding TituloSelecionadoDetalhe}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,8,0,0" />
-                        </StackPanel>
-                    </Border>
-                    <Border Grid.Column="2" Style="{StaticResource Section}">
-                        <StackPanel>
-                            <TextBlock Text="Registrar pagamento" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
-                            <TextBlock Text="Valor pago" Style="{StaticResource Label}" Margin="0,16,0,5" />
-                            <TextBox Text="{Binding ValorBaixa, UpdateSourceTrigger=PropertyChanged}" />
-                            <TextBlock Text="Data do pagamento" Style="{StaticResource Label}" Margin="0,12,0,5" />
-                            <DatePicker SelectedDate="{Binding DataBaixa}" />
-                            <TextBlock Text="Forma de pagamento" Style="{StaticResource Label}" Margin="0,12,0,5" />
-                            <TextBox Text="{Binding FormaBaixa, UpdateSourceTrigger=PropertyChanged}" MaxLength="50" />
-                            <TextBlock Text="Observações" Style="{StaticResource Label}" Margin="0,12,0,5" />
-                            <TextBox Text="{Binding ObservacoesBaixa, UpdateSourceTrigger=PropertyChanged}"
-                                     MaxLength="500" AcceptsReturn="True" Height="64" TextWrapping="Wrap" />
-                            <Button Content="Confirmar baixa" Click="Baixar_Click" Background="{StaticResource AccentGreen}" Margin="0,18,0,0" IsEnabled="{Binding PodeOperar}" />
-                        </StackPanel>
                     </Border>
                 </Grid>
             </TabItem>

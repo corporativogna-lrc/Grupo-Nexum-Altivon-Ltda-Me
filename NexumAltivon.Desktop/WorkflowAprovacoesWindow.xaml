@@ -1,0 +1,263 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5.7221 Data: 16/08/2026
+ -->
+<Window x:Class="NexumAltivon.Desktop.WorkflowAprovacoesWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GenesisGest.Net - Workflow e aprovações"
+        Width="1380"
+        Height="880"
+        MinWidth="1120"
+        MinHeight="700"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource ShellBackground}"
+        FontFamily="Segoe UI">
+    <Window.Resources>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackground}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Padding" Value="16" />
+        </Style>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,5" />
+        </Style>
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{StaticResource AccentGold}" />
+            <Setter Property="Foreground" Value="#080704" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="14,9" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="0,0,8,8" />
+        </Style>
+        <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{StaticResource PanelSurface}" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="14,9" />
+            <Setter Property="Margin" Value="0,0,8,8" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="14" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource Card}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="GOVERNANÇA / APROVAÇÕES" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold" FontSize="12" />
+                    <TextBlock Text="Workflow e aprovações" Foreground="{StaticResource TextPrimary}" FontSize="25" FontWeight="Bold" Margin="0,5,0,0" />
+                    <TextBlock Text="Defina estados, transições autorizadas e acompanhe instâncias por entidade e registro no tenant atual." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,5,0,0" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Status}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" MaxWidth="480" HorizontalAlignment="Right" />
+                    <Button Content="Recarregar dados" Style="{StaticResource SecondaryButton}" Click="Recarregar_Click" Margin="0,10,0,0" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <TabControl Grid.Row="2" Background="Transparent" BorderThickness="0">
+            <TabItem Header="Definições">
+                <Grid Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1.15*" />
+                        <ColumnDefinition Width="14" />
+                        <ColumnDefinition Width="1.35*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Style="{StaticResource Card}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="10" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Definições persistidas" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                                <TextBlock Text="Cada definição pertence ao tenant resolvido pela API." Foreground="{StaticResource TextSecondary}" Margin="0,4,0,0" />
+                            </StackPanel>
+                            <DataGrid x:Name="DefinicoesGrid"
+                                      Grid.Row="2"
+                                      ItemsSource="{Binding Definicoes}"
+                                      SelectionChanged="DefinicoesGrid_SelectionChanged"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True"
+                                      CanUserAddRows="False"
+                                      CanUserDeleteRows="False"
+                                      SelectionMode="Single"
+                                      HeadersVisibility="Column"
+                                      Background="Transparent"
+                                      BorderBrush="{StaticResource PanelBorder}"
+                                      BorderThickness="1">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Entidade" Binding="{Binding Entidade}" Width="1.2*" />
+                                    <DataGridTextColumn Header="Código" Binding="{Binding Codigo}" Width="1.1*" />
+                                    <DataGridTextColumn Header="Nome" Binding="{Binding Nome}" Width="1.8*" />
+                                    <DataGridCheckBoxColumn Header="Ativa" Binding="{Binding Ativo}" Width="0.7*" />
+                                    <DataGridTextColumn Header="Atualizada" Binding="{Binding AtualizadoEm, StringFormat=dd/MM/yyyy HH:mm}" Width="1.5*" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Column="2" Style="{StaticResource Card}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock Text="Contrato da definição" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                                <TextBlock Text="Estados: um por linha. Transições: ORIGEM|DESTINO|AÇÃO|PERFIL1,PERFIL2." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,5,0,18" />
+
+                                <TextBlock Text="Entidade" Style="{StaticResource Label}" />
+                                <TextBox x:Name="EntidadeBox" Margin="0,0,0,12" MaxLength="120" />
+                                <TextBlock Text="Código" Style="{StaticResource Label}" />
+                                <TextBox x:Name="CodigoBox" Margin="0,0,0,12" MaxLength="100" />
+                                <TextBlock Text="Nome" Style="{StaticResource Label}" />
+                                <TextBox x:Name="NomeBox" Margin="0,0,0,12" MaxLength="180" />
+                                <TextBlock Text="Estados" Style="{StaticResource Label}" />
+                                <TextBox x:Name="EstadosBox" Margin="0,0,0,12" MinHeight="92" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                                <TextBlock Text="Transições" Style="{StaticResource Label}" />
+                                <TextBox x:Name="TransicoesBox" Margin="0,0,0,12" MinHeight="142" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                                <CheckBox x:Name="AtivoBox" Content="Definição ativa" IsChecked="True" Foreground="{StaticResource TextPrimary}" Margin="0,0,0,16" />
+
+                                <WrapPanel>
+                                    <Button Content="Novo" Style="{StaticResource SecondaryButton}" Click="NovaDefinicao_Click" />
+                                    <Button Content="Salvar definição" Style="{StaticResource PrimaryButton}" Click="SalvarDefinicao_Click" />
+                                    <Button Content="Desativar definição" Style="{StaticResource SecondaryButton}" Click="DesativarDefinicao_Click" />
+                                </WrapPanel>
+                                <Border Background="{StaticResource PanelSurface}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,4,0,0">
+                                    <TextBlock Text="{Binding DefinicaoDetails}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" />
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Instâncias e transições">
+                <Grid Margin="0,12,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0" Style="{StaticResource Card}">
+                        <WrapPanel>
+                            <StackPanel Width="220" Margin="0,0,12,0">
+                                <TextBlock Text="Entidade" Style="{StaticResource Label}" />
+                                <TextBox x:Name="FiltroEntidadeBox" />
+                            </StackPanel>
+                            <StackPanel Width="180" Margin="0,0,12,0">
+                                <TextBlock Text="Estado" Style="{StaticResource Label}" />
+                                <TextBox x:Name="FiltroEstadoBox" />
+                            </StackPanel>
+                            <StackPanel Width="250" Margin="0,0,12,0">
+                                <TextBlock Text="Chave do registro" Style="{StaticResource Label}" />
+                                <TextBox x:Name="FiltroRegistroBox" />
+                            </StackPanel>
+                            <Button Content="Consultar instâncias" Style="{StaticResource PrimaryButton}" Click="CarregarInstancias_Click" VerticalAlignment="Bottom" />
+                        </WrapPanel>
+                    </Border>
+
+                    <Grid Grid.Row="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1.2*" />
+                            <ColumnDefinition Width="14" />
+                            <ColumnDefinition Width="1*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" Style="{StaticResource Card}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="10" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="Instâncias ativas" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                                <DataGrid x:Name="InstanciasGrid"
+                                          Grid.Row="2"
+                                          ItemsSource="{Binding Instancias}"
+                                          SelectionChanged="InstanciasGrid_SelectionChanged"
+                                          AutoGenerateColumns="False"
+                                          IsReadOnly="True"
+                                          CanUserAddRows="False"
+                                          CanUserDeleteRows="False"
+                                          SelectionMode="Single"
+                                          Background="Transparent"
+                                          BorderBrush="{StaticResource PanelBorder}"
+                                          BorderThickness="1">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Entidade" Binding="{Binding Entidade}" Width="1.1*" />
+                                        <DataGridTextColumn Header="Registro" Binding="{Binding RegistroChave}" Width="1.4*" />
+                                        <DataGridTextColumn Header="Estado" Binding="{Binding EstadoAtual}" Width="1*" />
+                                        <DataGridTextColumn Header="Atualizada" Binding="{Binding AtualizadoEm, StringFormat=dd/MM/yyyy HH:mm}" Width="1.5*" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Column="2" Style="{StaticResource Card}">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
+                                    <TextBlock Text="Operação da instância" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                                    <TextBlock Text="A abertura e cada transição são persistidas e relidas pelo contrato oficial." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,5,0,16" />
+                                    <TextBlock Text="Definição" Style="{StaticResource Label}" />
+                                    <ComboBox x:Name="DefinicaoInstanciaBox" ItemsSource="{Binding Definicoes}" DisplayMemberPath="Nome" Margin="0,0,0,12" />
+                                    <TextBlock Text="Entidade" Style="{StaticResource Label}" />
+                                    <TextBox x:Name="InstanciaEntidadeBox" Margin="0,0,0,12" />
+                                    <TextBlock Text="Chave do registro" Style="{StaticResource Label}" />
+                                    <TextBox x:Name="InstanciaRegistroBox" Margin="0,0,0,12" />
+                                    <TextBlock Text="Estado inicial" Style="{StaticResource Label}" />
+                                    <TextBox x:Name="EstadoInicialBox" Margin="0,0,0,12" />
+                                    <TextBlock Text="Observação" Style="{StaticResource Label}" />
+                                    <TextBox x:Name="InstanciaObservacaoBox" Margin="0,0,0,12" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="55" />
+                                    <WrapPanel>
+                                        <Button Content="Nova instância" Style="{StaticResource SecondaryButton}" Click="NovaInstancia_Click" />
+                                        <Button Content="Abrir instância" Style="{StaticResource PrimaryButton}" Click="AbrirInstancia_Click" />
+                                        <Button Content="Encerrar instância" Style="{StaticResource SecondaryButton}" Click="EncerrarInstancia_Click" />
+                                    </WrapPanel>
+
+                                    <TextBlock Text="Transicionar estado" Foreground="{StaticResource TextPrimary}" FontSize="16" FontWeight="Bold" Margin="0,8,0,10" />
+                                    <TextBlock Text="Destino" Style="{StaticResource Label}" />
+                                    <TextBox x:Name="DestinoBox" Margin="0,0,0,12" />
+                                    <TextBlock Text="Ação" Style="{StaticResource Label}" />
+                                    <TextBox x:Name="AcaoBox" Margin="0,0,0,12" />
+                                    <TextBlock Text="Observação da transição" Style="{StaticResource Label}" />
+                                    <TextBox x:Name="TransicaoObservacaoBox" Margin="0,0,0,12" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="55" />
+                                    <WrapPanel>
+                                        <Button Content="Aplicar transição" Style="{StaticResource PrimaryButton}" Click="AplicarTransicao_Click" />
+                                        <Button Content="Ler histórico" Style="{StaticResource SecondaryButton}" Click="CarregarHistorico_Click" />
+                                    </WrapPanel>
+                                    <DataGrid x:Name="HistoricoGrid" ItemsSource="{Binding Historico}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" Margin="0,8,0,0" Height="170" Background="Transparent" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="Origem" Binding="{Binding EstadoOrigem}" Width="1*" />
+                                            <DataGridTextColumn Header="Destino" Binding="{Binding EstadoDestino}" Width="1*" />
+                                            <DataGridTextColumn Header="Ação" Binding="{Binding Acao}" Width="1.2*" />
+                                            <DataGridTextColumn Header="Data" Binding="{Binding CriadoEm, StringFormat=dd/MM/yyyy HH:mm}" Width="1.4*" />
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                    <Border Background="{StaticResource PanelSurface}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,12,0,0">
+                                        <TextBlock Text="{Binding InstanciaDetails}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" />
+                                    </Border>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</Window>

@@ -1,0 +1,6 @@
+cd 'D:/Nexum Altivon/NexumAltivon.com/NexumAltivon.Desktop'
+dotnet build --nologo --verbosity quiet 2>&1 | Select-String -Pattern 'CS0246' | ForEach-Object {
+  # A linha tem formato: "... DesktopXpto.cs(56,33): error CS0246: ..."
+  # Quero o nome do tipo que aparece no final: "O nome do tipo ... "DesktopXpto" não pode ser encontrado"
+  if ($_ -match '"([A-Za-z_][A-Za-z0-9_]*)"') { $matches[1] }
+} | Sort-Object -Unique

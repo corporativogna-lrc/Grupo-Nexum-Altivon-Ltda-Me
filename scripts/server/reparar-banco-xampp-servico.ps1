@@ -3,7 +3,7 @@
 # Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
 # Sistema de gestão: GenesisGest.Net
 # Ano Início: 04/2024 Publicado e operacional: 05/2026
-# Versão: 1.1.5
+# Versão: 1.1.5.7244 Data: 30/10/2026
 #
 
 [CmdletBinding()]
@@ -35,6 +35,14 @@ function Invoke-Sc {
     }
 
     return $output
+}
+
+function Set-DatabaseRecoveryPolicy {
+    param([Parameter(Mandatory = $true)][string]$Name)
+
+    $actions = 'restart/60000/restart/60000/restart/60000'
+    Invoke-Sc -Arguments @('failure', $Name, 'reset=', '86400', 'actions=', $actions) | Out-Null
+    Invoke-Sc -Arguments @('failureflag', $Name, '1') | Out-Null
 }
 
 function Wait-ServiceRemoved {
@@ -144,7 +152,9 @@ $currentService = Get-CimInstance Win32_Service -Filter "Name='$ServiceName'" -E
 $currentListener = Get-NetTCPConnection -LocalPort $DatabasePort -State Listen -ErrorAction SilentlyContinue
 
 if ($currentService -and $currentService.State -eq "Running" -and $currentListener -and -not $ForceRecreateService) {
+    Set-DatabaseRecoveryPolicy -Name $ServiceName
     Write-Host "Servico $ServiceName ja esta operacional em $DatabasePort."
+    Write-Host "Recuperacao automatica configurada para tres reinicios apos falha."
     exit 0
 }
 
@@ -159,8 +169,8 @@ if ($currentService) {
 }
 
 $binaryPath = "`"$mysqldPath`" --defaults-file=`"$serviceIniPath`" $ServiceName"
-Invoke-Sc -Arguments @("create", $ServiceName, "binPath=", $binaryPath, "start=", "auto", "DisplayName=", "mysql") | Out-Null
-Invoke-Sc -Arguments @("failure", $ServiceName, "reset=", "60", "actions=", "restart/60000/restart/60000/`"`"/60000") | Out-Null
+Invoke-Sc -Arguments @("create", $ServiceName, "binPath=", $binaryPath, "start=", "auto", "DisplayName=", "Nexum Altivon MySQL") | Out-Null
+Set-DatabaseRecoveryPolicy -Name $ServiceName
 
 Start-Service -Name $ServiceName
 Wait-DatabasePort -Port $DatabasePort -TimeoutSeconds $StartupTimeoutSeconds

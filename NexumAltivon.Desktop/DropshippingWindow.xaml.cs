@@ -21,6 +21,9 @@ public partial class DropshippingWindow : Window, INotifyPropertyChanged
     private readonly TerminalProfile _profile;
     private string? _token;
     private bool _busy;
+    private bool _initializingCredentials;
+    private bool _passwordVisible;
+    private const string CredentialScope = "desktop/dropshipping";
 
     public DropshippingWindow(TerminalProfile profile)
     {
@@ -28,7 +31,21 @@ public partial class DropshippingWindow : Window, INotifyPropertyChanged
         ChannelTypes = new ObservableCollection<string>(["CJDropshipping", "Shopify", "AliExpress", "Dropi", "Cartpanda", "Nuvemshop", "Outro"]);
         InitializeComponent();
         DataContext = this;
+        _initializingCredentials = true;
+        try
+        {
+            var saved = DesktopCredentialStore.Load(CredentialScope);
+            if (saved is not null)
+            {
+                LoginEmail = saved.Email;
+                LoginPassword.Password = saved.Password;
+                KeepLoginPasswordCheckBox.IsChecked = true;
+            }
+        }
+        catch (Exception ex) { Status = $"Não foi possível ler a senha salva: {ex.Message}"; }
+        finally { _initializingCredentials = false; }
         ResetForm();
+        RefreshBindings();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -52,6 +69,39 @@ public partial class DropshippingWindow : Window, INotifyPropertyChanged
     public string CredentialStatus { get; set; } = "Aguardando leitura da API";
     public string CredentialDetail { get; set; } = "Credenciais permanecem exclusivamente no servidor.";
 
+    private void ToggleLoginPassword_Click(object sender, RoutedEventArgs e)
+    {
+        _passwordVisible = !_passwordVisible;
+        if (_passwordVisible)
+        {
+            VisibleLoginPassword.Text = LoginPassword.Password;
+            LoginPassword.Visibility = Visibility.Collapsed;
+            VisibleLoginPassword.Visibility = Visibility.Visible;
+            ToggleLoginPasswordButton.Content = "Ocultar";
+        }
+        else
+        {
+            LoginPassword.Password = VisibleLoginPassword.Text;
+            VisibleLoginPassword.Visibility = Visibility.Collapsed;
+            LoginPassword.Visibility = Visibility.Visible;
+            ToggleLoginPasswordButton.Content = "Mostrar";
+        }
+    }
+
+    private void KeepLoginPasswordCheckBox_Unchecked(object sender, RoutedEventArgs e)
+    {
+        if (_initializingCredentials) return;
+        try { DesktopCredentialStore.Delete(CredentialScope); }
+        catch (Exception ex)
+        {
+            _initializingCredentials = true;
+            KeepLoginPasswordCheckBox.IsChecked = true;
+            _initializingCredentials = false;
+            Status = $"Não foi possível remover a senha salva: {ex.Message}";
+            RefreshBindings();
+        }
+    }
+
     private async void Authenticate_Click(object sender, RoutedEventArgs e)
     {
         if (_busy)
@@ -62,7 +112,8 @@ public partial class DropshippingWindow : Window, INotifyPropertyChanged
         SetBusy(true, "Autenticando na API oficial...");
         try
         {
-            var result = await _api.AuthenticateAsync(_profile, LoginEmail, LoginPassword.Password, MfaCode);
+            var password = _passwordVisible ? VisibleLoginPassword.Text : LoginPassword.Password;
+            var result = await _api.AuthenticateAsync(_profile, LoginEmail, password, MfaCode);
             if (!result.Success || string.IsNullOrWhiteSpace(result.Token) || result.User is null)
             {
                 _token = null;
@@ -73,10 +124,22 @@ public partial class DropshippingWindow : Window, INotifyPropertyChanged
             }
 
             _token = result.Token;
+            string? warning = null;
+            try
+            {
+                if (KeepLoginPasswordCheckBox.IsChecked == true)
+                    DesktopCredentialStore.Save(CredentialScope, LoginEmail.Trim(), password);
+                else
+                    DesktopCredentialStore.Delete(CredentialScope);
+            }
+            catch (Exception ex) { warning = $"A sessão foi autenticada, mas a preferência de senha não foi aplicada: {ex.Message}"; }
             LoginPassword.Clear();
+            VisibleLoginPassword.Clear();
+            MfaCode = string.Empty;
             IsAuthenticated = true;
             SessionLabel = $"{result.User.Nome} / {result.User.Perfil}";
             EndpointLabel = _profile.ApiBaseUrl;
+            if (warning is not null) MessageBox.Show(warning, "Senha salva", MessageBoxButton.OK, MessageBoxImage.Warning);
             await ReloadAsync();
         }
         finally

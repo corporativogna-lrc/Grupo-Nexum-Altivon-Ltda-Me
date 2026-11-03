@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7205
  -->
 <Window x:Class="NexumAltivon.Desktop.ModuleWorkspaceWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -105,9 +105,9 @@
                 <Border Grid.Column="2" Style="{StaticResource WorkspaceCard}">
                     <StackPanel>
                         <TextBlock Text="Ações disponíveis" Foreground="{StaticResource TextPrimary}" FontSize="20" FontWeight="Bold" />
-                        <TextBlock Text="O resultado diferencia gravação confirmada no servidor, contingência local e falha, incluindo a referência persistida." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,8,0,16" />
+                        <TextBlock Text="Este módulo ainda não possui endpoint de domínio oficial conectado. A confirmação abaixo não envia nem salva dados." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,8,0,16" />
 
-                        <Button Content="Registrar solicitação operacional"
+                        <Button Content="Verificar contrato do módulo"
                                 Padding="16,10"
                                 Background="{StaticResource AccentGold}"
                                 Foreground="#080704"
@@ -131,7 +131,7 @@
                                 BorderThickness="1"
                                 Click="Fechar_Click" />
 
-                        <Border Background="#0C1729" CornerRadius="14" Padding="14" Margin="0,18,0,0">
+                        <Border Background="#CC0C1729" CornerRadius="14" Padding="14" Margin="0,18,0,0">
                             <StackPanel>
                                 <TextBlock Text="Status" Foreground="{StaticResource AccentGreen}" FontWeight="SemiBold" />
                                 <TextBlock Text="{Binding Status}" Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap" Margin="0,5,0,0" />

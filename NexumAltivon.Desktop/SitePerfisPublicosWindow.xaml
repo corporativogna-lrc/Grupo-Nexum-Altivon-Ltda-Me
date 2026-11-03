@@ -1,0 +1,271 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5.7207
+ -->
+<Window x:Class="NexumAltivon.Desktop.SitePerfisPublicosWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GenesisGest.Net - Perfis públicos de lojas e parceiros"
+        Width="1320"
+        Height="860"
+        MinWidth="1140"
+        MinHeight="720"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource ShellBackground}"
+        FontFamily="Segoe UI">
+    <Window.Resources>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackground}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Padding" Value="16" />
+        </Style>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,5" />
+        </Style>
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{StaticResource AccentGold}" />
+            <Setter Property="Foreground" Value="#080704" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="14,9" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="0,0,8,8" />
+        </Style>
+        <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{StaticResource PanelSurface}" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="14,9" />
+            <Setter Property="Margin" Value="0,0,8,8" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="14" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource Card}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="SITE / LOJAS E PARCEIROS" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold" FontSize="12" />
+                    <TextBlock Text="Perfis públicos comerciais" Foreground="{StaticResource TextPrimary}" FontSize="25" FontWeight="Bold" Margin="0,5,0,0" />
+                    <TextBlock Text="Cadastro individual de lojas, fornecedores, marketplaces e parceiros com identidade, divulgação, cores e produtos autorizados." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,5,0,0" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Status}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" MaxWidth="410" HorizontalAlignment="Right" />
+                    <WrapPanel HorizontalAlignment="Right" Margin="0,10,0,0">
+                        <Button Content="Novo perfil" Style="{StaticResource PrimaryButton}" Click="Novo_Click" />
+                        <Button Content="Recarregar" Style="{StaticResource SecondaryButton}" Click="Carregar_Click" />
+                    </WrapPanel>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.25*" />
+                <ColumnDefinition Width="14" />
+                <ColumnDefinition Width="1.45*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource Card}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="10" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0">
+                        <TextBlock Text="Perfis cadastrados" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                        <TextBlock Text="Cada registro possui origem própria e publicação individual." Foreground="{StaticResource TextSecondary}" Margin="0,4,0,0" />
+                    </StackPanel>
+                    <DataGrid x:Name="PerfisGrid"
+                              Grid.Row="2"
+                              ItemsSource="{Binding Perfis}"
+                              SelectionChanged="PerfisGrid_SelectionChanged"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              SelectionMode="Single"
+                              HeadersVisibility="Column"
+                              Background="Transparent"
+                              BorderBrush="{StaticResource PanelBorder}"
+                              BorderThickness="1">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Nome" Binding="{Binding Nome}" Width="2*" />
+                            <DataGridTextColumn Header="Tipo" Binding="{Binding TipoPerfil}" Width="1.2*" />
+                            <DataGridTextColumn Header="Origem" Binding="{Binding OrigemTipo}" Width="1*" />
+                            <DataGridCheckBoxColumn Header="Publicado" Binding="{Binding Publicado}" Width="0.9*" />
+                            <DataGridTextColumn Header="Ordem" Binding="{Binding OrdemExibicao}" Width="0.7*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource Card}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="Cadastro do perfil público" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                        <TextBlock Text="A API valida origem, slug, imagens, cores, produtos e concorrência antes de persistir." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,5,0,14" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Tipo de perfil" Style="{StaticResource Label}" />
+                                <ComboBox x:Name="TipoPerfilBox" SelectionChanged="TipoPerfil_Changed" Margin="0,0,0,10">
+                                    <ComboBoxItem Content="Loja" />
+                                    <ComboBoxItem Content="Fornecedor" />
+                                    <ComboBoxItem Content="ParceiroVenda" />
+                                    <ComboBoxItem Content="ParceiroCompra" />
+                                    <ComboBoxItem Content="Marketplace" />
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Origem" Style="{StaticResource Label}" />
+                                <ComboBox x:Name="OrigemTipoBox" SelectionChanged="OrigemTipo_Changed" Margin="0,0,0,10">
+                                    <ComboBoxItem Content="Loja" />
+                                    <ComboBoxItem Content="Fornecedor" />
+                                    <ComboBoxItem Content="Marketplace" />
+                                    <ComboBoxItem Content="Parceiro" />
+                                </ComboBox>
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock Text="Cadastro de origem real" Style="{StaticResource Label}" />
+                        <ComboBox x:Name="OrigemBox" ItemsSource="{Binding OrigensDoTipoSelecionado}" DisplayMemberPath="DisplayName" SelectedValuePath="Id" Margin="0,0,0,10" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="1.3*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Nome público" Style="{StaticResource Label}" />
+                                <TextBox x:Name="NomeBox" Margin="0,0,0,10" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Slug" Style="{StaticResource Label}" />
+                                <TextBox x:Name="SlugBox" Margin="0,0,0,10" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Segmento" Style="{StaticResource Label}" />
+                                <TextBox x:Name="SegmentoBox" Margin="0,0,0,10" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Atividade" Style="{StaticResource Label}" />
+                                <TextBox x:Name="AtividadeBox" Margin="0,0,0,10" />
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock Text="Descrição pública" Style="{StaticResource Label}" />
+                        <TextBox x:Name="DescricaoBox" TextWrapping="Wrap" AcceptsReturn="True" Height="78" Margin="0,0,0,10" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Logo URL oficial" Style="{StaticResource Label}" />
+                                <TextBox x:Name="LogoUrlBox" Margin="0,0,0,5" />
+                                <ComboBox x:Name="LogoMediaBox" ItemsSource="{Binding MidiasDisponiveis}" DisplayMemberPath="Nome" SelectedValuePath="CaminhoRelativo" SelectionChanged="LogoMedia_Changed" Margin="0,0,0,10" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Banner URL oficial" Style="{StaticResource Label}" />
+                                <TextBox x:Name="BannerUrlBox" Margin="0,0,0,5" />
+                                <ComboBox x:Name="BannerMediaBox" ItemsSource="{Binding MidiasDisponiveis}" DisplayMemberPath="Nome" SelectedValuePath="CaminhoRelativo" SelectionChanged="BannerMedia_Changed" Margin="0,0,0,10" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Cores #RRGGBB" Style="{StaticResource Label}" />
+                                <TextBox x:Name="CoresBox" ToolTip="primaria;secundaria;fundo;texto" Margin="0,0,0,10" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Produtos autorizados (IDs separados por vírgula)" Style="{StaticResource Label}" />
+                                <TextBox x:Name="ProdutoIdsBox" Margin="0,0,0,10" />
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Text="{Binding ProdutosDisponiveisResumo}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,0,0,10" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="100" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Site público HTTPS" Style="{StaticResource Label}" />
+                                <TextBox x:Name="SiteUrlBox" Margin="0,0,0,10" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Ordem" Style="{StaticResource Label}" />
+                                <TextBox x:Name="OrdemBox" Margin="0,0,0,10" />
+                            </StackPanel>
+                            <CheckBox x:Name="PublicadoBox" Grid.Column="4" Content="Publicado" Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,0,10" />
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Chamada comercial" Style="{StaticResource Label}" />
+                                <TextBox x:Name="CtaTextoBox" Margin="0,0,0,10" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="URL da chamada" Style="{StaticResource Label}" />
+                                <TextBox x:Name="CtaUrlBox" Margin="0,0,0,10" />
+                            </StackPanel>
+                        </Grid>
+
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Salvar perfil oficial" Style="{StaticResource PrimaryButton}" Click="Salvar_Click" />
+                            <Button Content="Excluir perfil" Style="{StaticResource SecondaryButton}" Click="Excluir_Click" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding SelectedDetails}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

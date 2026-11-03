@@ -1,0 +1,130 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5.7203
+ * Origem funcional: adaptação auditada do LURCO432 para o Desktop WPF
+ -->
+<Window x:Class="NexumAltivon.Desktop.AuditoriaOperacionalWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GenesisGest.Net - Auditoria operacional"
+        Width="1280"
+        Height="780"
+        MinWidth="1020"
+        MinHeight="650"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource ShellBackground}"
+        FontFamily="Segoe UI">
+    <Window.Resources>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackground}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="16" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Style="{StaticResource Card}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="GRC / IAM" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold" FontSize="14" />
+                    <TextBlock Text="Auditoria operacional" Foreground="{StaticResource TextPrimary}" FontWeight="Bold" FontSize="24" Margin="0,4,0,0" />
+                    <TextBlock Text="Trilha administrativa somente leitura, filtrada pela API oficial." Foreground="{StaticResource TextSecondary}" Margin="0,4,0,0" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="Admin" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2" Style="{StaticResource Card}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="130" />
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Margin="0,0,10,0">
+                    <TextBlock Text="Módulo" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6" />
+                    <TextBox Text="{Binding Modulo, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Margin="0,0,10,0">
+                    <TextBlock Text="Tabela" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6" />
+                    <TextBox Text="{Binding Tabela, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+                <StackPanel Grid.Column="2" Margin="0,0,10,0">
+                    <TextBlock Text="Usuário" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6" />
+                    <TextBox Text="{Binding UsuarioTexto, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+                <StackPanel Grid.Column="3" Margin="0,0,10,0">
+                    <TextBlock Text="Data inicial" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6" />
+                    <TextBox Text="{Binding DataInicioTexto, UpdateSourceTrigger=PropertyChanged}" ToolTip="dd/MM/aaaa" />
+                </StackPanel>
+                <StackPanel Grid.Column="4" Margin="0,0,10,0">
+                    <TextBlock Text="Data final" Foreground="{StaticResource TextSecondary}" Margin="0,0,10,6" />
+                    <TextBox Text="{Binding DataFimTexto, UpdateSourceTrigger=PropertyChanged}" ToolTip="dd/MM/aaaa" />
+                </StackPanel>
+                <Button Grid.Column="5" Content="Consultar" Click="Consultar_Click" MinWidth="100" Margin="0,0,8,0" VerticalAlignment="Bottom" />
+                <Button Grid.Column="6" Content="Limpar" Click="Limpar_Click" MinWidth="80" VerticalAlignment="Bottom" />
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="4" Style="{StaticResource Card}">
+            <DataGrid ItemsSource="{Binding Registros}"
+                      AutoGenerateColumns="False"
+                      IsReadOnly="True"
+                      CanUserAddRows="False"
+                      CanUserDeleteRows="False"
+                      CanUserReorderColumns="False"
+                      CanUserResizeRows="False"
+                      GridLinesVisibility="None"
+                      HeadersVisibility="Column"
+                      Background="{StaticResource PanelSurface}"
+                      Foreground="{StaticResource TextPrimary}"
+                      BorderThickness="0">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Id" Binding="{Binding Id}" Width="90" />
+                    <DataGridTextColumn Header="Tabela" Binding="{Binding Tabela}" Width="190" />
+                    <DataGridTextColumn Header="Registro" Binding="{Binding RegistroId}" Width="100" />
+                    <DataGridTextColumn Header="Ação" Binding="{Binding Acao}" Width="120" />
+                    <DataGridTextColumn Header="Usuário" Binding="{Binding UsuarioId}" Width="100" />
+                    <DataGridTextColumn Header="Tipo" Binding="{Binding UsuarioTipo}" Width="130" />
+                    <DataGridTextColumn Header="IP" Binding="{Binding IpAddress}" Width="140" />
+                    <DataGridTextColumn Header="Endpoint" Binding="{Binding Endpoint}" Width="*" />
+                    <DataGridTextColumn Header="Data" Binding="{Binding CreatedAt, StringFormat={}{0:dd/MM/yyyy HH:mm:ss}}" Width="160" />
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+
+        <Border Grid.Row="6" Style="{StaticResource Card}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding Status}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" />
+                <TextBlock Grid.Column="1" Text="{Binding Resumo}" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

@@ -1,0 +1,212 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5.7217
+ -->
+<Window x:Class="NexumAltivon.Desktop.ItensServicoWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GenesisGest.Net - Produtos e serviços"
+        Width="1450"
+        Height="850"
+        MinWidth="1180"
+        MinHeight="680"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource ShellBackground}"
+        FontFamily="Segoe UI">
+    <Window.Resources>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackground}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Padding" Value="16" />
+        </Style>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,5" />
+        </Style>
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{StaticResource AccentGold}" />
+            <Setter Property="Foreground" Value="#080704" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="14,9" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="0,0,8,8" />
+        </Style>
+        <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{StaticResource PanelSurface}" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="14,9" />
+            <Setter Property="Margin" Value="0,0,8,8" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="14" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource Card}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="MASTER DATA / CATALOGO" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold" FontSize="12" />
+                    <TextBlock Text="Produtos e serviços" Foreground="{StaticResource TextPrimary}" FontSize="25" FontWeight="Bold" Margin="0,5,0,0" />
+                    <TextBlock Text="Cadastro individual da tabela vnd_itens, com classificação, dimensões, estoque e desativação." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,5,0,0" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Status}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" MaxWidth="520" HorizontalAlignment="Right" />
+                    <Button Content="Recarregar catálogo" Style="{StaticResource SecondaryButton}" Click="Carregar_Click" Margin="0,10,0,0" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.55*" />
+                <ColumnDefinition Width="14" />
+                <ColumnDefinition Width="0.95*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource Card}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="10" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Itens persistidos" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                            <TextBlock Text="Consulta oficial com filtro por código, descrição e tipo." Foreground="{StaticResource TextSecondary}" Margin="0,4,0,0" />
+                        </StackPanel>
+                        <TextBox x:Name="FiltroBox" Grid.Column="1" VerticalAlignment="Bottom" Margin="8,0,8,0" Height="32" ToolTip="Código ou descrição" />
+                        <Button Grid.Column="2" Content="Pesquisar" Style="{StaticResource SecondaryButton}" Click="Pesquisar_Click" Margin="0,0,0,0" />
+                    </Grid>
+                    <DataGrid x:Name="ItensGrid"
+                              Grid.Row="2"
+                              ItemsSource="{Binding Itens}"
+                              SelectionChanged="ItensGrid_SelectionChanged"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              SelectionMode="Single"
+                              HeadersVisibility="Column"
+                              Background="Transparent"
+                              BorderBrush="{StaticResource PanelBorder}"
+                              BorderThickness="1">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Id" Binding="{Binding Id}" Width="0.45*" />
+                            <DataGridTextColumn Header="Código" Binding="{Binding Codigo}" Width="1.1*" />
+                            <DataGridTextColumn Header="Descrição" Binding="{Binding Descricao}" Width="2.1*" />
+                            <DataGridTextColumn Header="Tipo" Binding="{Binding Tipo}" Width="1.0*" />
+                            <DataGridTextColumn Header="Un." Binding="{Binding Unidade}" Width="0.55*" />
+                            <DataGridCheckBoxColumn Header="Estoque" Binding="{Binding ControlaEstoque}" Width="0.7*" />
+                            <DataGridCheckBoxColumn Header="Lote" Binding="{Binding ControlaLote}" Width="0.55*" />
+                            <DataGridCheckBoxColumn Header="Série" Binding="{Binding ControlaSerie}" Width="0.55*" />
+                            <DataGridCheckBoxColumn Header="Ativo" Binding="{Binding Ativo}" Width="0.55*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource Card}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel>
+                        <TextBlock Text="Cadastro individual" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                        <TextBlock Text="Os campos correspondem ao contrato real de vnd_itens. O sucesso só aparece após GET de releitura." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,5,0,18" />
+
+                        <TextBlock Text="Empresa (ID)" Style="{StaticResource Label}" />
+                        <TextBox x:Name="EmpresaIdBox" Margin="0,0,0,12" MaxLength="10" Text="1" />
+                        <TextBlock Text="Código" Style="{StaticResource Label}" />
+                        <TextBox x:Name="CodigoBox" Margin="0,0,0,12" MaxLength="50" />
+                        <TextBlock Text="Tipo" Style="{StaticResource Label}" />
+                        <ComboBox x:Name="TipoBox" Margin="0,0,0,12" SelectedIndex="0">
+                            <ComboBoxItem Content="PRODUTO" />
+                            <ComboBoxItem Content="SERVICO" />
+                            <ComboBoxItem Content="MATERIA_PRIMA" />
+                            <ComboBoxItem Content="INSUMO" />
+                        </ComboBox>
+                        <TextBlock Text="Descrição" Style="{StaticResource Label}" />
+                        <TextBox x:Name="DescricaoBox" Margin="0,0,0,12" MaxLength="200" />
+                        <TextBlock Text="Descrição detalhada" Style="{StaticResource Label}" />
+                        <TextBox x:Name="DescricaoDetalhadaBox" Margin="0,0,0,12" MaxLength="2000" TextWrapping="Wrap" AcceptsReturn="True" MinHeight="58" />
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="10" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Unidade" Style="{StaticResource Label}" />
+                                <TextBox x:Name="UnidadeBox" MaxLength="10" Text="UN" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="NCM" Style="{StaticResource Label}" />
+                                <TextBox x:Name="NcmBox" MaxLength="10" />
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Text="CEST" Style="{StaticResource Label}" />
+                        <TextBox x:Name="CestBox" Margin="0,0,0,12" MaxLength="10" />
+                        <TextBlock Text="Peso e dimensões (campos opcionais)" Style="{StaticResource Label}" />
+                        <Grid Margin="0,0,0,12">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="8" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="8" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="8" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="PesoBrutoBox" Grid.Column="0" ToolTip="Peso bruto" />
+                            <TextBox x:Name="PesoLiquidoBox" Grid.Column="2" ToolTip="Peso líquido" />
+                            <TextBox x:Name="AlturaBox" Grid.Column="4" ToolTip="Altura" />
+                            <TextBox x:Name="LarguraBox" Grid.Row="2" Grid.Column="0" ToolTip="Largura" />
+                            <TextBox x:Name="ProfundidadeBox" Grid.Row="2" Grid.Column="2" ToolTip="Profundidade" />
+                        </Grid>
+                        <WrapPanel Margin="0,0,0,14">
+                            <CheckBox x:Name="ControlaEstoqueBox" Content="Controla estoque" Margin="0,0,12,8" />
+                            <CheckBox x:Name="ControlaLoteBox" Content="Controla lote" Margin="0,0,12,8" />
+                            <CheckBox x:Name="ControlaSerieBox" Content="Controla série" Margin="0,0,12,8" />
+                            <CheckBox x:Name="AtivoBox" Content="Ativo" IsChecked="True" Margin="0,0,12,8" />
+                        </WrapPanel>
+
+                        <WrapPanel>
+                            <Button Content="Novo" Style="{StaticResource SecondaryButton}" Click="Novo_Click" />
+                            <Button Content="Salvar item" Style="{StaticResource PrimaryButton}" Click="Salvar_Click" />
+                            <Button Content="Desativar item" Style="{StaticResource SecondaryButton}" Click="Excluir_Click" />
+                        </WrapPanel>
+
+                        <Border Background="{StaticResource PanelSurface}" BorderBrush="{StaticResource PanelBorder}" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,12,0,0">
+                            <StackPanel>
+                                <TextBlock Text="Contexto" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding SelectedDetails}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,5,0,0" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

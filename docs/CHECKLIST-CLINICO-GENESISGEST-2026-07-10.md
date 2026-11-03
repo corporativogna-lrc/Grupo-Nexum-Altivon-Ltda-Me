@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7190
+ * Versão: 1.1.5.7260 Data: 30/10/2026
 -->
 
 # Checklist Clinico GenesisGest.Net v1.1.5
@@ -97,7 +97,7 @@ Evidencia atualizada em 2026-07-19: `scripts/server/auditar-paridade-banco-wpf.p
 
 | ID | Requisito | Status real | Evidencia objetiva |
 |---|---|---|---|
-| B1 | Solution unica compila API, ERP e Desktop | Concluido local | `NexumAltivon.ERP.sln` lista API, ERP, Desktop e projeto raiz; build Release com 0 erros e 0 avisos |
+| B1 | Solution unica compila API, ERP e Desktop | Reaberto em 2026-10-30 | Build oficial WPF mais recente falhou com 1.016 erros e 2 avisos; a correção gradual reduziu a contagem de 1.365 para 1.016. A classificação atual tem 254 páginas sem code-behind; implementar contratos reais, sem excluir telas nem criar handlers de sucesso falso. |
 | B2 | Controllers MVC fora do ativo e endpoints criticos sem 404 | Ajustado e publicado na branch de entrega | API oficial e Minimal API; controllers MVC removidos do projeto da API ativa no commit `4bacfe5`; smoke publico passou nos pontos obrigatorios |
 | B3 | Duplicacao massiva da raiz removida do build ativo | Concluido para a raiz legacy | Diretorios legados da raiz foram removidos do build/versionamento no commit `7ccc668`; solution Release seguiu compilando com 0 erros e 0 avisos |
 | B4 | `Sys_AuditableEntity` em 100% das entidades transacionais | Parcial avancado | Commit `07a465e` aplicou tenant, soft-delete, auditoria central e `row_version` BLOB no `NexumDbContext`. Em 2026-07-18, as sete tabelas transacionais raw SQL de Compras/Estoque receberam tenant, auditoria, soft-delete, RowVersion e indice `(tenant_id,is_deleted)`; heranca direta ainda nao cobre todas as classes |
@@ -110,13 +110,20 @@ Evidencia atualizada em 2026-07-19: `scripts/server/auditar-paridade-banco-wpf.p
 | B11 | Documentacao tecnica e OpenAPI | Parcial | Docs principais existem; `/swagger/v1/swagger.json` foi ajustado para ser registrado fora de Development/Staging |
 | B12 | Compose dev com MySQL e Redis | Concluido em arquivo | `docker/docker-compose.yml` contem MySQL 8, Redis 7 e MinIO |
 | B13 | Staging | Parcial | `docker-compose.staging.yml` e job de staging existem; health-check pos-deploy ainda precisa ajuste |
-| B14 | Desktop auto-update | Parcial | Servico consulta GitHub Releases, baixa pacote e pode iniciar instalador por variavel de ambiente; delta nao comprovado |
+| B14 | Desktop auto-update | Parcial avancado em 2026-10-30 | `AtualizacaoDesktopWindow` esta no menu Sistema e consulta GitHub Releases; seleciona instaladores identificados como Desktop/Genesis, valida tamanho e SHA-256 se a release publica digest, baixa em `%LOCALAPPDATA%\GenesisGest.Net\Updates` e inicia somente depois de confirmacao. No startup pode consultar/baixar sem instalar. Release concreta, instalacao em cliente, rollback e delta seguem sem homologacao |
 
 ## Intervencao Validada Nesta Etapa
 
 | Item | Resultado |
 |---|---|
 | Seeds auditaveis do `NexumDbContext` | `Loja`, `Transportadora`, `Marketplace` e `DropshippingConfig` passaram a declarar valores obrigatorios de auditoria e flags operacionais em `HasData` |
+| Gatilho CI/CD do frontend | Ajustado em 2026-10-30 no commit `a5cbd33b2d9e587b9d0b8d904a57e5afefc23585`: push e pull request agora incluem `NexumAltivon_Front-End/**`; execução 41097234355 concluiu verde em API, cobertura/testes, frontend e os dois builds Docker. Deploy Production/Staging foram ignorados pelas condições de acionamento manual |
+| Build WPF em 2026-10-30 | A verificacao por `scripts/compilar-validar-oficial.ps1 -Modo Wpf` reproduziu 1.020 erros e 2 avisos; predominam handlers XAML ausentes (`BuscaChanged`, `Resultados_SelectionChanged`, `Salvar_Click`, `Excluir_Click`) nas 255 paginas sem code-behind catalogadas em `docs/CLASSIFICACAO-XAML-WPF-2026-10-30.md`. Nao excluir paginas para forcar compilacao. O PDV de venda usa `POST /api/erp/genesis/pdv/vendas` com empresa, cliente, operador, produtos e idempotencia explicitos, mas ainda nao foi homologado com cadastros/credenciais reais. Abertura/fechamento de caixa e devolucao agora permanecem bloqueados no menu ate haver contrato transacional proprio. Desktop segue sem pacote/publicacao ate corrigir os handlers, compilar, instalar e homologar |
+| PDV catálogo/desktop 2026-10-30 | Ajustado `PdvSaleWindow`: consulta `GET /api/produtos`, exige produto selecionado no retorno oficial e carrega SKU, preço promocional/normal, custo e estoque do cadastro; valida estoque acumulado no carrinho e a API continua autoridade final no POST. A busca de `HOM-CHR-018` retornou HTTP 200 local com estoque 5 e preço R$ 399,98. Texto de contingência foi corrigido para deixar explícito que rascunho local não sincroniza automaticamente; status da API e árvore de menu não prometem venda/caixa/fiscal homologados. Rebuild WPF continua em 1.020 erros/2 avisos nas outras janelas sem handlers; nenhuma homologação autenticada ou publicação Desktop foi declarada |
+| Consulta de pedidos no menu Desktop 2026-10-30 | O item “Consulta de pedido” agora abre a consulta operacional autenticada existente e executa `GET /api/pedidos` sob política Gerente; nenhuma mutação ou dado local simulado. O endpoint retornou 401 sem token, confirmando que não é público; uso com sessão autenticada aguarda build Desktop liberado e homologação interativa |
+| Acompanhamento de pedido no menu Desktop 2026-10-30 | “Status do pedido” agora abre a consulta pública identificada pela rota oficial `GET /api/pedidos/acompanhar`, com campos obrigatórios de número e e-mail ou CPF/CNPJ do comprador. A chamada aceita apenas leitura, não inclui JWT e apresenta erros HTTP da API sem fabricar sucesso. A consulta real depende de dados válidos do comprador; build, instalação e homologação visual continuam pendentes pelo bloqueio global dos handlers WPF |
+| Cliente vinculado no PDV 2026-10-30 | A fonte implementa busca por nome, e-mail ou documento em `GET /api/clientes?busca=...` com JWT de gerente; o filtro é aplicado no banco antes do limite de 500 resultados. Sem termo, mantém a listagem recente. O Desktop exige confirmação explícita da nova API ao pesquisar; versão antiga é rejeitada sem exibir resultados parciais. A tela filtra resultados por ativo e exige documento; nome, e-mail, CPF/CNPJ e ID Nexum vão na venda. O backend valida o documento contra cliente ativo do Genesis. `dotnet build NexumAltivon_Back-End/API/NexumAltivon.API.csproj -c Release --no-restore` passou com 0 avisos/erros em 2026-10-30. O endpoint novo ainda não foi publicado; build WPF segue em 1.020 erros/2 avisos nas outras telas. Busca autenticada e venda aguardam API publicada e cadastros correspondentes Genesis/Nexum |
+| Vitrine e disponibilidade pública 2026-10-30 | Revalidação: site, API pública e `/health` locais responderam HTTP 200; `/health/db` e `/health/db/genesis` locais também 200. `GET /api/produtos` público retornou 60+40 registros, 100 SKUs únicos. As 100 URLs SVG do seed têm arquivo local correspondente e todas responderam HEAD HTTP 200 com `image/svg+xml`. `NexumAltivonMySQL`, `Cloudflared` e `Schedule` estavam `Running/Automatic`. Esta sessão não conseguiu ler a tarefa `NexumAltivonApi24h`: módulo `ScheduledTasks` indisponível e `schtasks /Query` retornou acesso negado; o status atual do gatilho de boot requer consulta elevada. Isso não substitui homologação visual no navegador autenticado nem build/publicação do Desktop |
 | Validacao operacional da etapa | `dotnet build NexumAltivon.ERP.sln -c Release --no-restore -m:1 /nr:false /p:UseSharedCompilation=false` passou com 0 avisos e 0 erros apos remover a base de validacao da solution |
 | Republicacao oficial 5010 | Validacao elevada em 2026-07-13T00:53:39 confirmou task `NexumAltivonApi24h` `Running`, usuario `SISTEMA`, `RunLevel Highest`, PID `10928`, `dotnet.exe NexumAltivon.API.dll`, `/health`, `/health/db`, `/health/db/genesis` e `/api/site/configuracoes/publico` com HTTP 200 |
 | Republicacao oficial 5010 complementar | Validacao elevada em 2026-07-13T23:45:31 confirmou task `NexumAltivonApi24h` `Running`, usuario `SISTEMA`, `RunLevel Highest`, PID `12876`, `dotnet.exe NexumAltivon.API.dll`, `/health`, `/health/db`, `/health/db/genesis` e `/api/site/configuracoes/publico` com HTTP 200 |
@@ -147,6 +154,8 @@ Evidencia atualizada em 2026-07-19: `scripts/server/auditar-paridade-banco-wpf.p
 | Publicacao operacional 1.1.5.7187 | API oficial republicada somente em `127.0.0.1:5010`; tarefa `NexumAltivonApi24h` validada como `SYSTEM/ServiceAccount`, com um gatilho de boot, nenhum de logon, reinicio automatico e processo invisivel. MySQL e Cloudflared estao `Running/Auto`; health local/publico, Nexum, Genesis e configuracao publica responderam HTTP 200. API compilada/publicada e Desktop carregam a revisao `98f6e8a` no `ProductVersion`; as DLLs compilada e publicada da API possuem o mesmo SHA-256 `D6012958C7E22E5791330F701058A27D74743BC47C3E3FB9090B4112338917FB` |
 | Gate da entrega 1.1.5.7187 | A solution Release compilou os cinco projetos com 0 erros e 0 avisos; `37/37` testes da API passaram. O frontend concluiu o build CRACO otimizado com codigo de saida `0` e gerou `main.7a8fb961.js`; o `postbuild-pages.js` executou isoladamente com rastreamento de deprecacao e codigo de saida `0` |
 | Integridade documental de rotas | O termo traduzido exibido na captura nao existia no checkout oficial nem em `origin/main`. A imagem apresentava traducao automatica simultanea de metodos e rotas, enquanto o fonte versionado mantinha `GET`, `POST`, `/health` e `/swagger`. As rotas e metodos do README foram protegidos como literais de codigo Markdown para impedir traducao do conteudo tecnico |
+| PDV: diferenciar venda de abertura/fechamento | Menu e cartoes de acao nao devem abrir uma venda ao selecionar abertura/fechamento de caixa. Sem endpoint oficial para sessoes, saldo inicial, sangrias, suprimentos, conferencia e conciliacao, os comandos agora exibem bloqueio rastreavel e nao abrem `PdvSaleWindow`; pagamento continua disponivel dentro de uma venda e troca/devolucao continua bloqueada sem estorno atomico |
+| Boot e reconexao de API/DB/tunel — revalidacao 2026-10-30 | **Parcial / requer sessao administrativa** | Health local, health dos schemas Nexum e Genesis, configuracao publica, health remoto, porta MySQL 3309 e HTTPS 443 responderam. MySQL, Cloudflared e Schedule estao Running/Automatic. A validacao estrita nao encontrou `NexumAltivonApi24h`; a sessao sem privilegio tambem nao consegue identificar a linha de comando/proprietario do listener PID 5356. MySQL tem duas tentativas de restart e Cloudflared uma. Os instaladores oficiais agora configuram tres tentativas e failure flag; aplicar tarefa SYSTEM e politicas exige executar scripts como Administrador. Reboot real nao foi executado. |
 | Integracoes de notificacao | `NotificacaoService` deixou de engolir recusas do WhatsApp, passou a validar URL, telefone, mensagem e configuracoes obrigatorias, propaga recusas de SendGrid/WhatsApp e recebe `CancellationToken` em toda E/S. `AssistenteIaService` fixa a persona no servidor, valida chave/modelo externamente e nao aceita seletor enviado pelo navegador |
 | Publicacao do gate e Services | Em 2026-07-17T05:30, a API foi republicada somente na porta 5010. Tarefa `NexumAltivonApi24h` validada como `SYSTEM`, boot exclusivo, PID `2516`; MySQL e Cloudflared `Running/Auto`; health local/public, dois bancos, configuracao publica e Swagger responderam 200. O hash SHA-256 da DLL compilada coincide com a DLL publicada e o diretorio publicado contem zero assemblies de teste |
 | Separacao Yara/Sophia publicada | Yara usa exclusivamente `/api/assistentes/yara/mensagem` e recebe contexto somente leitura de lojas/produtos publicaveis do MySQL. Sophia usa `/api/assistentes/sophia/mensagem` com policy `Admin`. Configuracao de chaves/modelos usa `/api/admin/integracoes/openai` com policy `SuperAdmin`. A rota ambigua anterior retorna 410, sem seletor de persona |
@@ -208,6 +217,10 @@ Evidencia atualizada em 2026-07-19: `scripts/server/auditar-paridade-banco-wpf.p
 | API ativa | Commit `07a465e` alinhou auditoria tenant, migrations, confirmacao de cadastro, Melhor Envio real e filtros de produto publicavel; `dotnet build NexumAltivon_Back-End\NexumAltivon.API.csproj -c Release` passou com 0 erros e 0 avisos |
 | Banco local oficial | MySQL XAMPP validado em `127.0.0.1:3309`; em 2026-07-18, `nexum_altivon` possui 203 tabelas base e 12 views, e `genesis_bd` possui 48 tabelas base |
 | Catalogo publico | Consulta direta no banco confirmou 91 produtos ativos e 91 produtos publicaveis pelo filtro atual da API |
+| Catalogo de homologacao 2026-10-30 | Importado no MySQL local oficial: 6 lojas, 72 categorias e 100 produtos ativos, cada SKU com SVG ilustrativo 1000x1000 e 5 unidades. Foram criados seis perfis publicos associados às lojas. API pública confirma 100 SKUs em duas páginas (60+40) e seis lojas em `/api/site/lojas`; detalhe Grann-Tur responde HTTP 200. As imagens ainda retornam 404 no GitHub Pages e aguardam publicação do bundle/assets. Preços são referências de homologação; nenhuma venda foi declarada homologada. |
+| Publicação GitHub Pages 2026-10-30 | Build isolado baseado na `origin/main` compilou. Commit `27ffbd2` preparado com assets, paginação, seeds e checklist, mas `git push` falhou: o credential helper configurado referencia `C:\Program Files\GitHub CLI\gh.exe`, ausente no computador. Nenhum conteúdo foi publicado no GitHub nesta tentativa; URL de imagem segue 404. |
+| Verificacao publica 2026-10-30 | `/health` e `/api/site/configuracoes/publico` retornaram HTTP 200 com CORS para o apex. Após a importação, `/api/lojas` retorna 6, `/api/categorias` 72, `/api/produtos` 100, `/api/site/lojas` 6; página 1 de produtos retorna 60 e página 2 retorna 40. Login, checkout e venda PDV continuam pendentes de homologação autenticada. |
+| XAMPP `my.ini` | Leitura atual de `D:\xampp\mysql\bin\my.ini` confirmou `basedir`, `datadir`, `innodb_data_home_dir` e `innodb_log_group_home_dir` apontando para `D:/xampp/mysql/data`, com porta 3309. A configuracao atual corresponde ao caminho oficial do MySQL do projeto; nenhum ajuste foi necessario nesta revisao. |
 | API oficial 5010 | Task `NexumAltivonApi24h` validada em 2026-07-13T00:53:39 como `Running`, usuario `SISTEMA`, `RunLevel Highest`, processo `dotnet.exe NexumAltivon.API.dll`, PID `10928`, `/health`, `/health/db`, `/health/db/genesis` e `/api/site/configuracoes/publico` com HTTP 200 |
 | GitHub oficial atualizado | `origin/main` e `origin/work/delivery-2026-06-13` alinhados no commit `8d58edb fix: api - limpar base de teste e corrigir seeds auditaveis` |
 
@@ -322,6 +335,27 @@ Referencia oficial para aquisicao da credencial Yara: o faturamento do ChatGPT e
 
 ## GitHub e Commit
 
+## Governanca de progresso e versionamento
+
+- Todo bloco continua sendo comunicado ao proprietario com evidencia objetiva de codigo, contrato, formulario, tabela, permissao, persistencia, releitura, build e teste.
+- O aceite comercial e a divulgacao de marco permanecem bloqueados ate ultrapassar 260 tabelas operacionais. O numerador somente considera tabelas com contrato real, tela ou consulta correspondente, RBAC, auditoria, persistencia e evidencia de funcionamento.
+- A fonte central de versao e Directory.Build.props. Cabecalhos, assemblies, documentos, mapas e publicacoes devem permanecer sincronizados no identificador da entrega.
+
+## Revalidacao operacional 2026-10-30
+
+- Site raiz e API/health: HTTP 200; API tambem passou em `/health/db`, `/health/db/genesis` e configuracao publica.
+- CORS do dominio canonico e preflight do login: aprovados. O dominio canonico do site e `https://nexumaltivon.com.br`; nao usar `www` como URL oficial.
+- GitHub Pages: commit `aeb9fd2ffe4dd295edbf2f86e9b4579ca18d7e82`, workflow 41092984319 concluido com sucesso.
+- A tarefa API 24h e o supervisor foram validados no servidor, incluindo recuperacao configurada e endpoints locais/publicos.
+- Corrigido no Desktop o probe de disponibilidade que chamava `/api/health` embora a API ativa exponha `/health`; as URLs local e publica em `/health` responderam HTTP 200 depois da alteracao.
+- Login interativo real permanece pendente de validacao com credencial autorizada. O acesso HTTP direto a `/login` retorna 404; a rota SPA e entregue por `/?/login` e deve ser conferida no navegador.
+- Build, pacote, instalacao e login Desktop permanecem pendentes pelo bloqueio B1. Os arquivos XAML sem code-behind foram preservados e nao devem ser descartados.
+- A matriz banco/WPF de julho e um snapshot historico, nao prova de paridade atual; regenerar somente por auditoria controlada com fonte de versao corrente.
+- Os documentos em `Desconsiderados provisoriamente` contem sequencia e escopo uteis; manter como referencias, sem trata-los como prova de implementacao.
+- A arvore de menu e ramificacoes do Desktop/PDV e mantida em docs/ARVORE-MENU-WPF-2026-08-16.md e tambem acessivel dentro do menu Sistema do Desktop.
+- O mapa registra separadamente implementado, consulta, pendente e bloqueado externamente. Nenhum item parcial e contado como tabela operacional.
+- Lote WPF de consultas operacionais de 16/08/2026: 40 entradas individuais no menu Retaguarda, catálogo central em `OperationalQueryCatalog.cs`, janela `OperationalQueryWindow` e contrato GET protegido pelo `DesktopApiClient`. O lote foi compilado no WPF com zero erros e zero avisos; consultas não aumentam o numerador de tabelas CRUD operacionais.
+
 Estado apurado:
 
 - Branch local: `work/delivery-2026-06-13`.
@@ -337,3 +371,102 @@ Estado apurado:
 ## Regra de continuidade
 
 Nao declarar item como concluido sem uma evidencia tecnica associada: build, teste, rota HTTP, consulta de banco, migracao aplicada, arquivo publicado, commit remoto ou validacao visual quando o item for de interface.
+
+## Continuidade WPF — 2026-10-30
+
+- O build Release do Desktop foi executado novamente depois das correcoes: 1.020 erros e 2 avisos; log completo em `D:\xampp\mysql\backup\desktop-build-followup34-20261030.log`. O erro C# do envio PDV foi removido; os handlers XAML ainda bloqueiam pacote, instalacao e publicacao do Desktop.
+- Contrato de itens/servicos alinhado aos DTOs e request reais de `/api/itens-servico`; o cliente usa o DELETE de desativacao existente. O gerenciamento de tenants agora trata `Id` como `Guid`, conforme contrato da API. Ambos os grupos de erros desapareceram do build seguinte.
+- O cliente WPF passou a consumir CRUD de `/api/dropshipping/canais`, DRE e lancamentos contabeis, simulacao oficial de roteamento fiscal, expedicoes, atualizacao de logistica, avanco de fluxo, rastreamento real, status de leads e configuracao OpenAI. Os contratos JSON de versao concorrente de frete e status de lead seguem os nomes snake_case exigidos pela API.
+- Classificacao das paginas sem code-behind registrada em `docs/CLASSIFICACAO-XAML-WPF-2026-10-30.md`: 294 XAML no total, 39 code-behinds e 255 pendentes. `AtualizacaoDesktopWindow` foi recuperada e ligada ao menu Sistema. As demais 255 ficaram em ramos tematicos preliminares; nenhuma tem referencia estatica C# fora do proprio code-behind ausente. Cabeçalhos de copia/triagem continuam sem valor funcional confirmado. Pendencia B1: reconciliar cada pagina com navegacao real e contrato antes de implementar.
+- B14: auto-update do Desktop agora tem tela propria ligada ao menu, download manualmente solicitavel e instalacao confirmada pelo operador. O build removeu os quatro erros XAML dessa pagina. Ainda nao homologuei uma release real ou rollback.
+- Bloqueio predominante restante: eventos XAML (`BuscaChanged`, `Resultados_SelectionChanged`, `Salvar_Click`, `Excluir_Click` e outros) sem handler. O PDV agora tem um fluxo de envio real para API, sem empresa/operador padrao nem criacao silenciosa de cliente, mas esta pendente de build e homologacao com cadastros reais. A escrita Genesis precede o espelhamento Nexum e nao pode ser atomica entre bancos; falha do espelhamento fica indicada como `ERRO_NEXUM` para reconciliacao, sem sucesso falso. As telas nao devem receber sucesso visual sem persistencia e releitura.
+- Checklist do Desktop: contratos tipados acima — **ajustado**; build Release — **pendente/bloqueado**; empacotamento, instalacao e login real — **nao validaveis enquanto o build falhar**; publicacao Desktop — **nao realizada**. Site/API permanecem com o estado descrito na secao de producao e nao foram modificados nesta rodada.
+
+## Revalidacao publica e build Desktop — 2026-10-30
+
+- A API oficial e o site responderam HTTP 200 em `/health`, `/health/db`, `/health/db/genesis`, `/api/site/configuracoes/publico`, `/api/produtos` e no SVG `https://nexumaltivon.com.br/imagens/catalogo/hom-chr-018.svg`. A API publicou catálogo e URL de imagem canônica; isso confirma disponibilidade HTTP, não substitui conferência visual do navegador.
+- O build oficial isolado da API (`scripts/compilar-validar-oficial.ps1 -Modo Api`) passou sem avisos nem erros. A busca de clientes adicionada ao contrato ainda requer publicação oficial para funcionar no PDV.
+- O build oficial isolado WPF foi repetido e reproduziu 1.020 erros e 2 avisos, causados principalmente por eventos referenciados nas 255 páginas XAML sem code-behind. Não foram removidas telas nem criados handlers genéricos que aparentassem persistência.
+- A publicação da API e a instalação/publicação do Desktop seguem pendentes: a sessão atual não é Administrador; o atualizador oficial exige elevação para operar a tarefa `NexumAltivonApi24h`. Não foi contornado o controle do Windows.
+- Revalidacao de catalogo: a rota paginada publica retorna 60 itens na pagina 1 e 40 na pagina 2 (100 SKUs distintos). Os 100 `imagemUrl` foram buscados individualmente; todos responderam HTTP 200 como `image/svg+xml` e iniciam com elemento SVG valido. O portal usa pagina 1 com 60 itens e oferece acao explicita para carregar o restante; `/catalogo` usa a rota SPA `/?/catalogo` publicada em GitHub Pages.
+- Causa raiz das imagens quebradas: o DTO publico fornece `imagemUrl` (camelCase), mas `ProductCard`, `ProdutoDetalhe` e `Carrinho` só liam `imagem_url` ou `imagem`. Ajustado para aceitar os nomes reais de API e resolver caminhos relativos pela URL oficial. Inclui a imagem principal e as sugestões do detalhe, além das miniaturas do carrinho.
+- Frontend `npm run build`: concluído com sucesso; bundle local `main.86aa495e.js` inclui o campo `imagemUrl`. A versão do código foi elevada para `1.1.5.7252`. A publicação pública desse bundle ainda não foi executada nesta etapa.
+- Conferência do portal publicado: GitHub Pages entrega `main.88a4ab57.js` (512.734 caracteres), que contém leitura do campo `imagemUrl`; `origin/main` também tem suporte camelCase em ProductCard, detalhe e carrinho. Portanto, o suporte já está no código público. A captura com ícone de imagem quebrada não foi reproduzida visualmente nesta sessão (Chrome sem janela acessível); requer recarga sem cache no navegador do usuário caso persista.
+- Correção de escopo da publicação de imagens: o bundle local `main.86aa495e.js` desta branch não foi publicado por este build, mas `origin/main` e o bundle público `main.88a4ab57.js` já suportam `imagemUrl`. A falha da captura permanece sem reprodução visual confirmada; a alteração local consolida essa leitura também no ramo de entrega atual.
+
+## Continuidade Estoque Genesis — 2026-10-30 (1.1.5.7255)
+
+- API: `GET /api/erp/estoque-fisico` é somente leitura e protegido pela política Gerente. A empresa Genesis é resolvida pelo CNPJ em `sys_tenants.documento`; a query de saldos filtra pelo `emp_id` resolvido e agrega quantidades física, reservada e disponível por SKU. CNPJ passa por validação dos dígitos verificadores; duplicidade ativa não seleciona uma empresa arbitrariamente. Busca acima de 100 caracteres retorna HTTP 400.
+- Segurança e falhas: CNPJ ausente/inválido, empresa sem correspondência ou duplicada retornam HTTP 409 com causa; não há fallback para outra empresa nem consulta de saldo sem filtro empresarial. O tenant padrão ainda não tem CNPJ e permanece sem saldo até cadastro real.
+- Desktop: menu “Saldo físico” conectado à janela canônica `SaldosProdutoWindow`, pesquisa por SKU/descrição, atualização autenticada e grade somente leitura. Removidos controles de edição/gravação em memória que não tinham contrato de domínio.
+- Verificação: build oficial API concluído em `1.1.5.7255`, 0 avisos e 0 erros. Build WPF repetido após reaproveitar a janela: 1.016 erros e 2 avisos, redução de quatro erros de evento; build global ainda bloqueia homologação do executável.
+- Pendências de aceite: configurar CNPJ empresarial real por tenant, publicar a API pela tarefa oficial elevada, homologar resposta autenticada contra registros reais `est_saldos`, corrigir o backlog de handlers WPF e publicar o Desktop. Não foi testado saldo real nesta etapa.
+
+## Continuidade PDV — leitura de código de barras/QR — 2026-10-30 (1.1.5.7256)
+
+- API de catálogo: pesquisa pública agora considera `codigo_barras` e `qr_code` além de nome, SKU, descrição e categoria; códigos numéricos aceitam pontuação comum no cadastro e entrada acima de 256 caracteres retorna HTTP 400.
+- Desktop: o campo do PDV aceita busca por teclado/leitor; Enter dispara a consulta. Um identificador único exato seleciona o produto, duplicidades não são escolhidas automaticamente, e o operador ainda precisa adicionar o item à venda.
+- Contrato da resposta do catálogo já contém `codigoBarras` e `qrCode`; o DTO Desktop passou a preservá-los para conferência local.
+- Verificação: build oficial da API `1.1.5.7256` aprovado com 0 avisos e 0 erros; build WPF continua em 1.016 erros e 2 avisos por telas pendentes, sem erro identificado no PDV.
+- Homologação do leitor físico e da venda com itens/CNPJ reais continua pendente; a busca continua restrita a produtos publicáveis. Abertura/fechamento de caixa e emissão/devolução seguem pendentes pelos contratos documentados.
+
+## Continuidade — manutenção de identificadores do produto — 2026-10-30 (1.1.5.7258)
+
+- API: criada listagem administrativa autenticada por tenant e atualização de código de barras/QR com limites de tamanho, rejeição de caracteres de controle, unicidade por loja, RowVersion e conflito HTTP 409 em gravação concorrente. Auditoria/shadow properties existentes registram a alteração; nenhuma migration foi necessária.
+- Desktop: menu “Código de barras e QR Code” abre janela real, pesquisa e navega páginas de 100 produtos via metadados da API; preserva seleção ao recarregar e persiste somente os identificadores. Sem JWT, erro ou conflito, a tela informa a falha sem sucesso simulado.
+- Validação: build Release da API aprovado com 0 avisos e 0 erros. Build Desktop reproduz 1.016 erros e 2 avisos nas 254 páginas XAML sem code-behind; nenhum erro dos arquivos desta janela, cliente ou contrato foi reportado. Homologação contra sessão/registro real permanece pendente.
+- Limitações explícitas: geração de imagem de QR/etiqueta e homologação operacional ficam pendentes. Ao salvar, ao menos um dos dois identificadores deve permanecer informado.
+
+## Continuidade Compras — contrato de alteração de status — 2026-10-30 (1.1.5.7259)
+
+- O DTO Desktop enviava `Motivo`, enquanto os endpoints reais `/api/compras/pedidos/{id}/status` e `/api/compras/solicitacoes/{id}/status` recebem `Observacoes`; o nome `NovoStatus` também não correspondia explicitamente ao JSON `novo_status` da API.
+- Contrato WPF alinhado com `JsonPropertyName("novo_status")` e `JsonPropertyName("observacoes")`; observação agora é nullable, como a API aceita. Isso corrige a forma do payload e remove os dois avisos CS8604 esperados na chamada.
+- Build Desktop Release repetido em `1.1.5.7259`: os dois avisos CS8604 desapareceram; restam 1.016 erros CS1061, quatro handlers ausentes em cada uma das 254 páginas sem code-behind. Nenhum erro foi reportado nos arquivos `CodigoBarrasQrWindow`, `DesktopApiClient` ou `DesktopApiContracts`.
+- O contrato de payload está alinhado por atributos JSON e compila; uma operação real de mudança de status ainda depende do build global, instalação e sessão autenticada do Desktop.
+
+## Revalidação de produção — API e rota de identificadores — 2026-10-30
+
+- O site público respondeu HTTP 200 e `https://api.nexumaltivon.com.br/health` respondeu HTTP 200 (`Healthy`). Isso confirma entrega do HTML e saúde básica da API, não homologação visual do portal.
+- `GET /api/admin/produtos/identificadores` respondeu HTTP 404 tanto em `http://127.0.0.1:5010` quanto no domínio público; a implementação está no código compilado, mas ainda não foi promovida ao runtime oficial.
+- O atualizador oficial exige Administrador; a sessão observada não está elevada e não dispõe do cmdlet `Get-ScheduledTask`. O checkout atual está 31 commits atrás de `origin/main` e tem 575 arquivos modificados/não rastreados, portanto não foi usado para substituir o runtime de produção.
+- O GitHub público não tem releases publicados. O `ci-cd.yml` de `origin/main` compila e publica artefatos da API e do frontend, mas não tem job Windows para compilar/empacotar o Desktop; os últimos runs verdes não provam um build WPF.
+- Aceite de produção: **pendente** até integração revisada com a linha publicada, publicação oficial com rollback e verificação HTTP 401/403 sem token e operação autenticada com token autorizado.
+
+## Revalidação da vitrine — produtos e imagens — 2026-10-30
+
+- A API pública retorna 100 produtos em duas páginas (60 e 40), todos com `imagemUrl` absoluto.
+- As 100 URLs únicas foram consultadas por HEAD: 100 HTTP 200 com `image/svg+xml`; esta evidência confirma disponibilidade das imagens no servidor, mas não substitui inspeção visual no navegador.
+
+## Continuidade catálogo — preservar identificadores em edição — 2026-10-30 (1.1.5.7260)
+
+- A revisão do `PUT /api/produtos/{id}` encontrou regeneração incondicional de código de barras e QR Code. Isso sobrescrevia valores manuais gravados pela tela “Código de barras e QR Code” ao editar preço, estoque ou descrição.
+- O PUT agora identifica os valores automáticos anteriores: regenera o EAN interno se ainda corresponder ao SKU anterior e trata o QR como automático somente quando o JSON corresponde ao formato gerado e aos campos originais. Identificadores personalizados são preservados durante a edição comum; QR automático é atualizado quando SKU/nome/tipo/fornecedor mudam.
+- Validação: `dotnet build NexumAltivon_Back-End/NexumAltivon.API.csproj -c Release --no-restore` passou em `1.1.5.7260`, com 0 avisos e 0 erros. A rota atualizada segue sem publicação oficial; o endpoint público ainda responde 404 até o deploy controlado.
+
+## Autenticação e opções de senha nas telas de login — 2026-11-02
+
+| Fluxo | Implementação e validação |
+|---|---|
+| Entrada do Desktop | `App` deixa de abrir o menu sem sessão, apresenta `DesktopLoginWindow`, autentica via `/api/auth/login` com MFA quando exigido e injeta a mesma sessão no `MainWindow`; o menu principal mantém a inicialização maximizada. Cancelar login encerra a aplicação. |
+| Mostrar senha | Desktop, autenticação dos módulos Dropshipping/Marketing e login do portal alternam entre campo mascarado e texto mantendo o valor. |
+| Manter senha | Windows Credential Manager guarda as credenciais por escopo de tela, sem arquivo/localStorage. Portal usa Credential Management API somente em contexto seguro; navegadores sem suporte informam que não puderam guardar pelo site. |
+| Elevação administrativa | Login de Gestão de Acessos e autenticação administrativa de Configurações de Rede não oferecem gravação de senha. |
+| Desktop | Após restaurar `BCrypt.Net-Next 4.2.0`, o build WPF oficial continua falhando com 1.016 erros CS1061 nos handlers ausentes de outras janelas XAML já registrados no checklist. Busca filtrada no log não encontrou erro em `DesktopLoginWindow`, `DesktopCredentialStore`, `DropshippingWindow`, `MarketingWindow`, `StockTraceabilityWindow`, `App.xaml.cs` ou `MainWindow.xaml.cs`; o aplicativo inteiro ainda não compila para homologar execução. |
+| Portal | `npm run build` compilou com sucesso em produção. A alteração ainda não foi publicada; login real e salvamento no gerenciador do navegador não foram ensaiados com conta válida. |
+| Publicação | Pendente: reconciliar os arquivos selecionados com a linha publicada, compilar o Desktop completo, publicar com rollback e verificar login no executável oficial. O commit `abe20d1` permanece no worktree auxiliar e não foi enviado; a tela de saldo criada ali é redundante com `SaldosProdutoWindow` oficial e não foi portada. |
+
+## Próximo item do checklist — Estoque
+
+- Saldo físico já usa `SaldosProdutoWindow` e `GET /api/erp/estoque-fisico`, com política Gerente, vínculo CNPJ/empresa e leitura de `est_saldos` por tenant. Não duplicar a tela.
+- `GET /api/erp/estoque-movimentacoes` foi adicionado sob política Gerente: resolve tenant por CNPJ válido e empresa Genesis única, restringe o histórico a essa empresa e retorna até 500 eventos pesquisáveis por SKU, descrição, documento, lote ou série. A janela `StockTraceabilityWindow` é de leitura e foi conectada ao menu “Rastreabilidade por origem”.
+- Validação da API: Release sem avisos/erros e testes xUnit 37/37 passaram. A API não foi promovida; não houve consulta autenticada às tabelas reais. A inspeção local da tabela `est_movimentacoes` confirma o contrato de colunas, mas não comprova procedência operacional das linhas.
+- Saldo fiscal, inventário e transferências seguem pendentes até existir contrato fiscal/ledger confirmado, vínculo de depósitos/lojas validado e processo de auditoria. Dados operacionais fora de logins e cadastro de empresas foram classificados pelo usuário como dados de teste; nenhuma migração ou alteração de estoque foi feita neste bloco.
+
+## Correção do link de confirmação de cadastro — 2026-11-02
+
+| Verificação | Resultado |
+|---|---|
+| Rota enviada no e-mail | Corrigida de `/confirmar-cadastro.html` para `/confirmar-cadastro`, que existe no React Router. |
+| Compatibilidade com e-mails anteriores | Adicionado alias React `/confirmar-cadastro.html`; o redirecionamento SPA do GitHub Pages preserva caminho e token. |
+| Escopo | Aplicado aos três emissores da API ativa e ao `ClienteService` para manter o contrato paralelo alinhado. |
+| Homologação | Build do frontend concluído (`Compiled successfully`; bundle 148,39 kB gzip) e build Release da API concluído (0 avisos/erros). Envio real de e-mail e confirmação contra banco compartilhado não foram executados para evitar gravar cadastro de teste. |

@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7205
  -->
 <Window x:Class="NexumAltivon.Desktop.FiscalRoutingWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -44,12 +44,12 @@
                     <StackPanel>
                         <TextBlock Text="FISCAL / MOTOR DE DECISÃO" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold" />
                         <TextBlock Text="{Binding WindowTitle}" Foreground="{StaticResource TextPrimary}" FontSize="30" FontWeight="Bold" Margin="0,6,0,0" />
-                        <TextBlock Text="Janela local para calcular e registrar a empresa emissora mais eficiente, considerando custo fiscal, custo logístico e margem da operação." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,8,0,0" MaxWidth="760" />
+                        <TextBlock Text="Consulta o motor fiscal oficial da API para selecionar a empresa emissora com base nos dados persistidos do grupo. Esta tela não grava regra local." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,8,0,0" MaxWidth="760" />
                     </StackPanel>
                     <Border Grid.Column="1" Background="{StaticResource PanelSurface}" CornerRadius="14" Padding="14" VerticalAlignment="Center">
                         <StackPanel>
                             <TextBlock Text="{Binding Codigo}" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Right" />
-                            <TextBlock Text="Regra fiscal local" Foreground="{StaticResource AccentGreen}" HorizontalAlignment="Right" Margin="0,4,0,0" />
+                            <TextBlock Text="Consulta oficial" Foreground="{StaticResource AccentGreen}" HorizontalAlignment="Right" Margin="0,4,0,0" />
                             <TextBlock Text="{Binding Status}" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Right" Margin="0,4,0,0" />
                         </StackPanel>
                     </Border>
@@ -73,13 +73,17 @@
                             </StackPanel>
                             <StackPanel Margin="0,0,0,12">
                                 <TextBlock Text="Empresa candidata" Foreground="{StaticResource TextSecondary}" />
-                                <ComboBox ItemsSource="{Binding Empresas}" SelectedItem="{Binding EmpresaCandidata}" />
+                                <TextBox Text="{Binding EmpresaCandidata}" IsReadOnly="True" />
                             </StackPanel>
                             <StackPanel Margin="0,0,12,12">
                                 <TextBlock Text="Regime fiscal" Foreground="{StaticResource TextSecondary}" />
-                                <ComboBox ItemsSource="{Binding Regimes}" SelectedItem="{Binding RegimeFiscal}" />
+                                <TextBox Text="{Binding RegimeFiscal}" IsReadOnly="True" />
                             </StackPanel>
                             <StackPanel Margin="0,0,0,12">
+                                <TextBlock Text="UF origem" Foreground="{StaticResource TextSecondary}" />
+                                <TextBox Text="{Binding UfOrigem, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Margin="0,0,12,12">
                                 <TextBlock Text="UF destino" Foreground="{StaticResource TextSecondary}" />
                                 <TextBox Text="{Binding UfDestino, UpdateSourceTrigger=PropertyChanged}" />
                             </StackPanel>
@@ -119,13 +123,12 @@
                         <TextBlock Text="Decisão fiscal" Foreground="{StaticResource TextPrimary}" FontSize="20" FontWeight="Bold" />
                         <Border Background="{StaticResource PanelSurface}" CornerRadius="14" Padding="14" Margin="0,14,0,12">
                             <StackPanel>
-                                <TextBlock Text="Resultado estimado" Foreground="{StaticResource TextSecondary}" />
+                                <TextBlock Text="Empresa selecionada pelo motor" Foreground="{StaticResource TextSecondary}" />
                                 <TextBlock Text="{Binding ResultadoLabel}" Foreground="{StaticResource TextPrimary}" FontSize="28" FontWeight="Bold" />
                                 <TextBlock Text="{Binding Decisao}" Foreground="{StaticResource AccentGold}" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,8,0,0" />
                             </StackPanel>
                         </Border>
-                        <Button Content="Salvar regra fiscal local" Background="{StaticResource AccentGold}" Foreground="#080704" BorderThickness="0" FontWeight="Bold" Click="Salvar_Click" Margin="0,0,0,10" />
-                        <Button Content="Calcular melhor empresa emissora" Click="CalcularMelhorEmpresa_Click" Margin="0,0,0,10" />
+                        <Button Content="Consultar roteamento oficial" Background="{StaticResource AccentGold}" Foreground="#080704" BorderThickness="0" FontWeight="Bold" Click="CalcularMelhorEmpresa_Click" Margin="0,0,0,10" />
                         <Button Content="Novo cálculo" Click="Novo_Click" Margin="0,0,0,10" />
                         <Button Content="Fechar" Click="Fechar_Click" />
 
@@ -136,7 +139,7 @@
                             </StackPanel>
                         </Border>
 
-                        <Border Background="#0C1729" CornerRadius="14" Padding="14" Margin="0,18,0,0">
+                        <Border Background="#CC0C1729" CornerRadius="14" Padding="14" Margin="0,18,0,0">
                             <TextBlock Text="{Binding Status}" Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap" />
                         </Border>
                     </StackPanel>

@@ -59,7 +59,7 @@
                     <ColumnDefinition Width="12" /><ColumnDefinition Width="1.2*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel><TextBlock Text="E-mail administrativo" Style="{StaticResource FieldLabel}" /><TextBox Text="{Binding LoginEmail, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
-                <StackPanel Grid.Column="2"><TextBlock Text="Senha" Style="{StaticResource FieldLabel}" /><PasswordBox x:Name="LoginPassword" /></StackPanel>
+                <StackPanel Grid.Column="2"><TextBlock Text="Senha" Style="{StaticResource FieldLabel}" /><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="8" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><PasswordBox x:Name="LoginPassword" /><TextBox x:Name="VisibleLoginPassword" Visibility="Collapsed" /><Button Grid.Column="2" x:Name="ToggleLoginPasswordButton" Content="Mostrar" Click="ToggleLoginPassword_Click" Padding="10,5" /></Grid><CheckBox x:Name="KeepLoginPasswordCheckBox" Content="Manter senha salva neste computador" Unchecked="KeepLoginPasswordCheckBox_Unchecked" Margin="0,7,0,0" /></StackPanel>
                 <StackPanel Grid.Column="4"><TextBlock Text="MFA (quando ativo)" Style="{StaticResource FieldLabel}" /><TextBox Text="{Binding MfaCode, UpdateSourceTrigger=PropertyChanged}" MaxLength="8" /></StackPanel>
                 <Button Grid.Column="6" Content="Autenticar" Click="Authenticate_Click" Padding="22,10" VerticalAlignment="Bottom" />
             </Grid>

@@ -1,0 +1,204 @@
+<!--
+ * Propriedade intelectual: Luís Rodrigo da Costa
+ * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
+ * Sistema de gestão: GenesisGest.Net
+ * Ano Início: 04/2024 Publicado e operacional: 05/2026
+ * Versão: 1.1.5.7224 Data: 16/08/2026
+ -->
+<Window x:Class="NexumAltivon.Desktop.LancamentoContabilWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GenesisGest.Net - Lançamentos contábeis"
+        Width="1460"
+        Height="900"
+        MinWidth="1180"
+        MinHeight="720"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource ShellBackground}"
+        FontFamily="Segoe UI"
+        Loaded="Window_Loaded"
+        Closed="Window_Closed">
+    <Window.Resources>
+        <Style x:Key="Section" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackground}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="16" />
+        </Style>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+            <Setter Property="Margin" Value="0,0,0,5" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Style="{StaticResource Section}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="FICO / CONTABILIDADE" Foreground="{StaticResource AccentGold}" FontWeight="SemiBold" />
+                    <TextBlock Text="Lançamentos contábeis" Foreground="{StaticResource TextPrimary}" FontSize="25" FontWeight="Bold" Margin="0,4,0,0" />
+                    <StackPanel Orientation="Horizontal" Margin="0,7,0,0">
+                        <TextBlock Text="{Binding CodigoContexto}" Foreground="{StaticResource TextPrimary}" FontWeight="SemiBold" />
+                        <TextBlock Text="  |  " Foreground="{StaticResource TextMuted}" />
+                        <TextBlock Text="{Binding TenantLabel}" Foreground="{StaticResource TextSecondary}" />
+                        <TextBlock Text="  |  " Foreground="{StaticResource TextMuted}" />
+                        <TextBlock Text="{Binding EstadoContexto}" Foreground="{StaticResource AccentGreen}" />
+                    </StackPanel>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="Novo lançamento" Click="Novo_Click" IsEnabled="{Binding PodeOperar}" Margin="0,0,8,0" />
+                    <Button Content="Recarregar" Click="Recarregar_Click" IsEnabled="{Binding PodeOperar}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <TabControl Grid.Row="2">
+            <TabItem Header="Lançamento e partidas">
+                <Grid Margin="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="0.92*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="1.08*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Style="{StaticResource Section}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock Text="Cabeçalho transacional" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                                <TextBlock Text="Empresa" Style="{StaticResource Label}" Margin="0,16,0,5" />
+                                <TextBox Text="{Binding EmpresaIdText, UpdateSourceTrigger=PropertyChanged}" MaxLength="12" />
+                                <TextBlock Text="Lote" Style="{StaticResource Label}" Margin="0,12,0,5" />
+                                <TextBox Text="{Binding Lote, UpdateSourceTrigger=PropertyChanged}" MaxLength="80" />
+                                <TextBlock Text="Sublote" Style="{StaticResource Label}" Margin="0,12,0,5" />
+                                <TextBox Text="{Binding Sublote, UpdateSourceTrigger=PropertyChanged}" MaxLength="80" />
+                                <TextBlock Text="Data" Style="{StaticResource Label}" Margin="0,12,0,5" />
+                                <DatePicker SelectedDate="{Binding DataLancamento}" />
+                                <TextBlock Text="Valor do lançamento" Style="{StaticResource Label}" Margin="0,12,0,5" />
+                                <TextBox Text="{Binding ValorLancamento, UpdateSourceTrigger=PropertyChanged}" MaxLength="20" />
+                                <TextBlock Text="Tipo" Style="{StaticResource Label}" Margin="0,12,0,5" />
+                                <ComboBox SelectedValue="{Binding TipoLancamento}" SelectedValuePath="Content">
+                                    <ComboBoxItem Content="MANUAL" />
+                                    <ComboBoxItem Content="AUTOMATICO" />
+                                </ComboBox>
+                                <TextBlock Text="Histórico padrão" Style="{StaticResource Label}" Margin="0,12,0,5" />
+                                <TextBox Text="{Binding HistoricoPadrao, UpdateSourceTrigger=PropertyChanged}" MaxLength="255" />
+                                <TextBlock Text="Complemento" Style="{StaticResource Label}" Margin="0,12,0,5" />
+                                <TextBox Text="{Binding Complemento, UpdateSourceTrigger=PropertyChanged}" MaxLength="500" AcceptsReturn="True" Height="70" TextWrapping="Wrap" />
+                                <TextBlock Text="Módulo de origem" Style="{StaticResource Label}" Margin="0,12,0,5" />
+                                <TextBox Text="{Binding OrigemModulo, UpdateSourceTrigger=PropertyChanged}" MaxLength="80" />
+                                <TextBlock Text="ID de origem" Style="{StaticResource Label}" Margin="0,12,0,5" />
+                                <TextBox Text="{Binding OrigemIdText, UpdateSourceTrigger=PropertyChanged}" MaxLength="12" />
+                                <TextBlock Text="{Binding Validacao}" Foreground="{StaticResource AccentAmber}" TextWrapping="Wrap" Margin="0,14,0,0" />
+                                <Button Content="Gravar lançamento contábil" Click="Salvar_Click" Background="{StaticResource AccentGreen}" Margin="0,18,0,0" IsEnabled="{Binding PodeOperar}" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+
+                    <Border Grid.Column="2" Style="{StaticResource Section}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <DockPanel>
+                                <TextBlock Text="Partidas" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                                <TextBlock Text="{Binding PartidasLabel}" Foreground="{StaticResource TextSecondary}" DockPanel.Dock="Right" />
+                            </DockPanel>
+                            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,10">
+                                <Button Content="Adicionar partida" Click="AdicionarPartida_Click" IsEnabled="{Binding PodeOperar}" Margin="0,0,8,0" />
+                                <Button Content="Remover partida" Click="RemoverPartida_Click" IsEnabled="{Binding PodeOperar}" />
+                            </StackPanel>
+                            <DataGrid Grid.Row="2" ItemsSource="{Binding Partidas}" SelectedItem="{Binding SelectedPartida}" AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="False" SelectionMode="Single" Margin="0,0,0,0">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Tipo" Binding="{Binding Tipo, UpdateSourceTrigger=PropertyChanged}" Width="105" />
+                                    <DataGridTextColumn Header="Plano de conta" Binding="{Binding PlanoContaIdText, UpdateSourceTrigger=PropertyChanged}" Width="125" />
+                                    <DataGridTextColumn Header="Centro de custo" Binding="{Binding CentroCustoIdText, UpdateSourceTrigger=PropertyChanged}" Width="125" />
+                                    <DataGridTextColumn Header="Valor" Binding="{Binding ValorText, UpdateSourceTrigger=PropertyChanged}" Width="105" />
+                                    <DataGridTextColumn Header="Histórico" Binding="{Binding Historico, UpdateSourceTrigger=PropertyChanged}" Width="*" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Lançamentos gravados">
+                <Border Style="{StaticResource Section}" Margin="10">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <DockPanel>
+                            <TextBlock Text="Registros relidos da API oficial" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                            <TextBlock Text="{Binding LancamentosLabel}" Foreground="{StaticResource TextSecondary}" DockPanel.Dock="Right" />
+                        </DockPanel>
+                        <DataGrid Grid.Row="1" ItemsSource="{Binding Lancamentos}" AutoGenerateColumns="False" IsReadOnly="True" Margin="0,12,0,0">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="70" />
+                                <DataGridTextColumn Header="Empresa" Binding="{Binding EmpresaId}" Width="80" />
+                                <DataGridTextColumn Header="Data" Binding="{Binding Data, StringFormat=dd/MM/yyyy}" Width="100" />
+                                <DataGridTextColumn Header="Lote" Binding="{Binding Lote}" Width="150" />
+                                <DataGridTextColumn Header="Histórico" Binding="{Binding HistoricoPadrao}" Width="*" />
+                                <DataGridTextColumn Header="Valor" Binding="{Binding Valor, StringFormat=N2}" Width="110" />
+                                <DataGridTextColumn Header="Tipo" Binding="{Binding Tipo}" Width="110" />
+                                <DataGridCheckBoxColumn Header="Estornado" Binding="{Binding Estornado}" Width="85" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Grid>
+                </Border>
+            </TabItem>
+
+            <TabItem Header="Trilha de auditoria">
+                <Border Style="{StaticResource Section}" Margin="10">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="Auditoria de cnt_lancamentos" Foreground="{StaticResource TextPrimary}" FontSize="18" FontWeight="Bold" />
+                        <DataGrid Grid.Row="1" ItemsSource="{Binding Auditoria}" AutoGenerateColumns="False" IsReadOnly="True" Margin="0,12,0,0">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Data" Binding="{Binding CreatedAt, StringFormat=dd/MM/yyyy HH:mm:ss}" Width="150" />
+                                <DataGridTextColumn Header="Registro" Binding="{Binding RegistroId}" Width="85" />
+                                <DataGridTextColumn Header="Ação" Binding="{Binding Acao}" Width="100" />
+                                <DataGridTextColumn Header="Usuário" Binding="{Binding UsuarioId}" Width="85" />
+                                <DataGridTextColumn Header="Endpoint" Binding="{Binding Endpoint}" Width="*" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Grid>
+                </Border>
+            </TabItem>
+        </TabControl>
+
+        <Border Grid.Row="4" Style="{StaticResource Section}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding Status}" Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <TextBlock Text="Débitos: " Foreground="{StaticResource TextSecondary}" />
+                    <TextBlock Text="{Binding TotalDebitosLabel}" Foreground="{StaticResource TextPrimary}" FontWeight="Bold" />
+                    <TextBlock Text="   Créditos: " Foreground="{StaticResource TextSecondary}" />
+                    <TextBlock Text="{Binding TotalCreditosLabel}" Foreground="{StaticResource AccentGold}" FontWeight="Bold" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

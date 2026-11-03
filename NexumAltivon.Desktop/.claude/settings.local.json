@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -NoProfile -Command \"cd 'D:/Nexum Altivon/NexumAltivon.com/NexumAltivon.Desktop'; \\(Get-ChildItem *.xaml | Where-Object { \\\\$_.Name -notlike '*_Patch*' -and \\\\$_.Name -notlike 'App*' -and \\\\$_.Name -notlike 'Main*' } | Measure-Object\\).Count; \\(Get-ChildItem *.xaml.cs | Where-Object { \\\\$_.Name -notlike '*_Patch*' -and \\\\$_.Name -notlike 'App*' -and \\\\$_.Name -notlike 'Main*' } | Measure-Object\\).Count; Test-Path 'LURCO432_Triagem'\")"
+    ]
+  }
+}

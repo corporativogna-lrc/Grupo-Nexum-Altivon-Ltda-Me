@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7181
+ * Versão: 1.1.5.7222
  -->
 <Project Sdk="Microsoft.NET.Sdk">
 
@@ -21,5 +21,17 @@
   <ItemGroup>
     <Content Include="Assets\GenesisGest.ico" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BCrypt.Net-Next" Version="4.2.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Analyzers" Version="9.0.0" />
+  </ItemGroup>
+
+  <!--
+    Materiais LURCO432 ja foram triados em 2026-08-17.
+    Os arquivos Patch estao em D:\Atualizacoes e Desenvolvimentos Uteis\Projeto Nexum
+    Acompanhamento LURCO432\Arquivos Utilizados e Arquivos Descartados.
+    Conforme CLAUDE.md, arquivos de patch nao entram como dependencia de runtime.
+  -->
 
 </Project>

@@ -94,6 +94,7 @@ function AppShell() {
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/acompanhar-pedido" element={<AcompanharPedido />} />
         <Route path="/confirmar-cadastro" element={<ConfirmarCadastro />} />
+        <Route path="/confirmar-cadastro.html" element={<ConfirmarCadastro />} />
         <Route path="/confirmar-email" element={<ConfirmarCadastro />} />
         <Route path="/institucional" element={<Institucional />} />
         <Route path="/politica-privacidade" element={<PoliticaPrivacidade />} />

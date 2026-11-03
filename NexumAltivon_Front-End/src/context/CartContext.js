@@ -1,7 +1,11 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { STORAGE_KEYS } from '../constants';
 
+// GenesisGest.Net • 1.1.5.7243 • mantém seleções distintas do mesmo SKU no carrinho.
+
 const CartContext = createContext();
+
+const getCartItemKey = (item) => item.cartKey || String(item.id);
 
 export function CartProvider({ children }) {
   const [cart, setCart] = useState([]);
@@ -23,35 +27,38 @@ export function CartProvider({ children }) {
     localStorage.setItem(STORAGE_KEYS.CART, JSON.stringify(cart));
   }, [cart]);
 
-  const addToCart = (product, quantity = 1) => {
+  const addToCart = (product, quantity = 1, selectedOptions = {}) => {
+    const variant = Object.fromEntries(Object.entries(selectedOptions).sort(([left], [right]) => left.localeCompare(right)));
+    const variantKey = JSON.stringify(variant);
+    const cartItem = { ...product, quantity, variacao: variant, variantKey, cartKey: `${product.id}::${variantKey}` };
     setCart(prevCart => {
-      const existingItem = prevCart.find(item => item.id === product.id);
+      const existingItem = prevCart.find(item => getCartItemKey(item) === cartItem.cartKey);
 
       if (existingItem) {
         return prevCart.map(item =>
-          item.id === product.id
+          getCartItemKey(item) === cartItem.cartKey
             ? { ...item, quantity: item.quantity + quantity }
             : item
         );
       }
 
-      return [...prevCart, { ...product, quantity }];
+      return [...prevCart, cartItem];
     });
   };
 
-  const removeFromCart = (productId) => {
-    setCart(prevCart => prevCart.filter(item => item.id !== productId));
+  const removeFromCart = (cartItemKey) => {
+    setCart(prevCart => prevCart.filter(item => getCartItemKey(item) !== String(cartItemKey)));
   };
 
-  const updateQuantity = (productId, quantity) => {
+  const updateQuantity = (cartItemKey, quantity) => {
     if (quantity <= 0) {
-      removeFromCart(productId);
+      removeFromCart(cartItemKey);
       return;
     }
 
     setCart(prevCart =>
       prevCart.map(item =>
-        item.id === productId ? { ...item, quantity } : item
+        getCartItemKey(item) === String(cartItemKey) ? { ...item, quantity } : item
       )
     );
   };

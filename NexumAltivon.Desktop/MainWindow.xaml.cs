@@ -3,9 +3,11 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5.7187
+ * Versão: 1.1.5.7195
  */
 
+using NexumAltivon.Desktop.Models;
+using NexumAltivon.Desktop.Services;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -14,8 +16,6 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
-using NexumAltivon.Desktop.Models;
-using NexumAltivon.Desktop.Services;
 
 namespace NexumAltivon.Desktop;
 
@@ -41,7 +41,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _showFiscalDashboard = true;
     private bool _showLogisticsDashboard = true;
 
-    public TerminalProfile Terminal { get; } = new();
+    public TerminalProfile Terminal { get; }
     public ObservableCollection<DesktopModule> Modules { get; } = new();
     public ObservableCollection<WorkstationAction> PdvActions { get; } = new();
     public ObservableCollection<OrganizationNode> OrganizationUnits { get; } = new();
@@ -150,8 +150,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public MainWindow()
+    public MainWindow() : this(new TerminalProfile())
     {
+    }
+
+    public MainWindow(TerminalProfile terminal)
+    {
+        Terminal = terminal;
         InitializeComponent();
         DataContext = this;
 
@@ -326,6 +331,27 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SelectedModuleTitle = title;
         SelectedModuleDetail = detail;
 
+        //if (title is "Saldo físico" or "Saldo fiscal")
+        //{
+        //    var balanceWindow = new InventoryBalanceWindow(Terminal, title == "Saldo fiscal") { Owner = this };
+        //    balanceWindow.ShowDialog();
+        //    return;
+        //}
+
+        //if (string.Equals(title, "Consulta de pedido", StringComparison.OrdinalIgnoreCase))
+        //{
+        //    var ordersWindow = new PedidoConsultaWindow(Terminal) { Owner = this };
+        //    ordersWindow.ShowDialog();
+        //    return;
+        //}
+
+        if (string.Equals(title, "Código de barras e QR Code", StringComparison.OrdinalIgnoreCase))
+        {
+            var identifiersWindow = new CodigoBarrasQrWindow(Terminal) { Owner = this };
+            identifiersWindow.ShowDialog();
+            return;
+        }
+
         if (title == "Fornecedores")
         {
             var supplierWindow = new SupplierManagementWindow(Terminal)
@@ -346,6 +372,48 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        if (title == "Empresas do grupo")
+        {
+            var companyWindow = new EmpresasGrupoWindow(Terminal) { Owner = this };
+            companyWindow.ShowDialog();
+            return;
+        }
+
+        //if (title == "Produtos e serviços")
+        //{
+            //var productWindow = new ProductManagementWindow(Terminal) { Owner = this };
+            //productWindow.ShowDialog();
+            //return;
+        //}
+
+        ////if (title == "Categorias e subcategorias")
+        ////{
+        ////    var categoryWindow = new CategoryManagementWindow(Terminal) { Owner = this };
+        ////    categoryWindow.ShowDialog();
+        ////    return;
+        ////}
+
+        ////if (title == "Centros de custo")
+        ////{
+        ////    var costCenterWindow = new CostCenterManagementWindow(Terminal) { Owner = this };
+        ////    costCenterWindow.ShowDialog();
+        ////    return;
+        ////}
+
+        //if (title is "Colaboradores" or "Contratações" or "Demissões")
+        //{
+        //    var rhWindow = new RhManagementWindow(Terminal, title == "Colaboradores" ? null : title) { Owner = this };
+        //    rhWindow.ShowDialog();
+        //    return;
+        //}
+
+        //if (title == "Cargos e departamentos")
+        //{
+        //    var referencesWindow = new RhReferenceManagementWindow(Terminal) { Owner = this };
+        //    referencesWindow.ShowDialog();
+        //    return;
+        //}
+
         if (title == "Usuários, perfis e permissões")
         {
             var accessWindow = new AccessManagementWindow(Terminal)
@@ -356,13 +424,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        if (IsMasterDataWorkspace(title))
-        {
-            var masterDataWindow = new CorporateMasterDataWindow(title);
-            masterDataWindow.Owner = this;
-            masterDataWindow.ShowDialog();
-            return;
-        }
+        //if (title == "Trilha de auditoria")
+        //{
+        //    var auditWindow = new AuditManagementWindow(Terminal) { Owner = this };
+        //    auditWindow.ShowDialog();
+        //    return;
+        //}
+
+        //if (IsMasterDataWorkspace(title))
+        //{
+        //    var masterDataWindow = new CorporateMasterDataWindow(title);
+        //    masterDataWindow.Owner = this;
+        //    masterDataWindow.ShowDialog();
+        //    return;
+        //}
 
         if (title == "Contas a pagar")
         {
@@ -436,7 +511,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (IsFiscalWorkspace(title))
         {
-            var fiscalWindow = new FiscalRoutingWindow(title);
+            var fiscalWindow = new FiscalRoutingWindow(title, Terminal) { Owner = this };
             fiscalWindow.ShowDialog();
             return;
         }
@@ -513,7 +588,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (action.Route is "pdv-fiscal")
         {
-            var fiscalWindow = new FiscalRoutingWindow("Empresa emissora automática")
+            var fiscalWindow = new FiscalRoutingWindow("Empresa emissora automática", Terminal)
             {
                 Owner = this
             };
@@ -623,15 +698,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private static bool IsMasterDataWorkspace(string title)
     {
-        return title is "Produtos e serviços"
-            or "Categorias e subcategorias"
-            or "Empresas do grupo"
-            or "Centros de custo"
-            or "Colaboradores / RH / folha"
-            or "Contratações"
-            or "Demissões"
-            or "Cargos e departamentos"
-            or "Ponto e jornada";
+        return title is "Ponto e jornada";
     }
 
     private static bool IsProcurementWorkspace(string title)

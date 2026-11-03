@@ -3,7 +3,7 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7243 Data: 30/10/2026
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -273,7 +273,8 @@ export default function Checkout() {
         loja_id: lojaId,
         itens: cart.map(item => ({
           produtoId: String(item.slug || item.sku || item.id),
-          quantidade: item.quantity
+          quantidade: item.quantity,
+          variacao: item.variacao && Object.keys(item.variacao).length > 0 ? JSON.stringify(item.variacao) : null
         })),
         cupom_codigo: cupomAplicado?.codigo,
         endereco_entrega: endereco,

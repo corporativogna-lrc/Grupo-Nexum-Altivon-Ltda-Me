@@ -3,13 +3,13 @@
  * Com apoio: IA Chatgpt/Codex que atende por nome: Sophia
  * Sistema de gestão: GenesisGest.Net
  * Ano Início: 04/2024 Publicado e operacional: 05/2026
- * Versão: 1.1.5
+ * Versão: 1.1.5.7252 Data: 30/10/2026
  */
 import { useCart } from '../context/CartContext';
 import { Link, useNavigate } from 'react-router-dom';
 import { Trash2, Plus, Minus, ShoppingBag } from 'lucide-react';
 import { useState } from 'react';
-import { cupomAPI, produtoAPI } from '../services/api';
+import { cupomAPI, produtoAPI, resolvePublicAssetUrl } from '../services/api';
 
 export default function Carrinho() {
   const { cart, removeFromCart, updateQuantity, getTotal, clearCart } = useCart();
@@ -75,17 +75,17 @@ export default function Carrinho() {
           const estoqueAtual = Number(produtoAtual?.estoque || 0);
 
           if (!produtoAtual || estoqueAtual <= 0) {
-            removeFromCart(item.id);
+            removeFromCart(item.cartKey || item.id);
             houveAjuste = true;
             return;
           }
 
           if (item.quantity > estoqueAtual) {
-            updateQuantity(item.id, estoqueAtual);
+            updateQuantity(item.cartKey || item.id, estoqueAtual);
             houveAjuste = true;
           }
         } catch {
-          removeFromCart(item.id);
+          removeFromCart(item.cartKey || item.id);
           houveAjuste = true;
         }
       }));
@@ -130,22 +130,29 @@ export default function Carrinho() {
             {cart.map((item) => {
               const price = item.preco_promocional || item.preco;
               return (
-                <div key={item.id} className="flex items-center gap-4 rounded-2xl border border-[#2A2A2A] bg-[#111111] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.35)]" data-testid={`cart-item-${item.id}`}>
-                  <img src={item.imagem_url || item.imagem} alt={item.nome} className="h-24 w-24 rounded-xl object-cover" />
+                <div key={item.cartKey || item.id} className="flex items-center gap-4 rounded-2xl border border-[#2A2A2A] bg-[#111111] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.35)]" data-testid={`cart-item-${item.cartKey || item.id}`}>
+                  <img
+                    src={resolvePublicAssetUrl(item.imagem_url || item.imagemUrl || item.imagem || item.imagemPrincipal || item.imagem_principal || '')}
+                    alt={item.nome}
+                    className="h-24 w-24 rounded-xl object-cover"
+                  />
                   <div className="flex-1">
                     <h3 className="text-lg font-black text-white">{item.nome}</h3>
+                    {item.variacao && Object.keys(item.variacao).length > 0 && (
+                      <p className="mt-1 text-sm text-[#A0A0A0]">{Object.entries(item.variacao).map(([name, value]) => `${name}: ${value}`).join(' · ')}</p>
+                    )}
                     <p className="font-bold text-[#C9A227]">{formatPrice(price)}</p>
                   </div>
                   <div className="flex items-center overflow-hidden rounded-full border border-[#2A2A2A] bg-[#080808]">
-                    <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="p-3 hover:bg-[#1A1A1A]">
+                    <button onClick={() => updateQuantity(item.cartKey || item.id, item.quantity - 1)} className="p-3 hover:bg-[#1A1A1A]">
                       <Minus size={16} />
                     </button>
                     <span className="w-12 text-center font-black">{item.quantity}</span>
-                    <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="p-3 hover:bg-[#1A1A1A]">
+                    <button onClick={() => updateQuantity(item.cartKey || item.id, item.quantity + 1)} className="p-3 hover:bg-[#1A1A1A]">
                       <Plus size={16} />
                     </button>
                   </div>
-                  <button onClick={() => removeFromCart(item.id)} className="rounded-full p-2 text-rose-400 hover:bg-rose-500/10">
+                  <button onClick={() => removeFromCart(item.cartKey || item.id)} className="rounded-full p-2 text-rose-400 hover:bg-rose-500/10">
                     <Trash2 size={20} />
                   </button>
                 </div>
